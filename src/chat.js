@@ -1,10 +1,13 @@
 import { createInterface } from "node:readline";
 import { chatCompletion } from "./openrouter.js";
+import { UsageTracker } from "./tracker.js";
 
-export async function startChat(apiKey, model, providerName, reasoningEffort) {
+export async function startChat(apiKey, model, providerName, reasoningEffort, pricing) {
   const messages = [
     { role: "system", content: "You are a helpful assistant." },
   ];
+
+  const tracker = new UsageTracker();
 
   const label = providerName ? `${providerName} / ${model}` : model;
   if (reasoningEffort) {
@@ -38,6 +41,7 @@ export async function startChat(apiKey, model, providerName, reasoningEffort) {
     messages.push({ role: "user", content: input });
 
     let result;
+    let shownThinkingBanner = false;
 
     try {
       process.stdout.write("\n");
@@ -55,6 +59,11 @@ export async function startChat(apiKey, model, providerName, reasoningEffort) {
         }
       }, providerName, reasoningEffort);
       process.stdout.write("\n\n");
+
+      if (result.usage) {
+        tracker.record(result.usage, pricing);
+        tracker.printTurn(result.usage, pricing);
+      }
     } catch (err) {
       console.error(`\nError: ${err.message}\n`);
       if (err.message.includes("Rate limited")) {

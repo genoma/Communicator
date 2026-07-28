@@ -55,7 +55,7 @@ if (opts.listEndpoints) {
 
 const prefs = await loadPreferences(opts.config);
 
-let modelId, modelName, providerName, reasoningEffort;
+let modelId, modelName, providerName, reasoningEffort, pricing;
 
 function resolveReasoningFlag() {
   if (opts.reasoning === false) return null;
@@ -107,11 +107,12 @@ if (opts.model && opts.provider) {
       continue;
     }
     providerName = ep.providerName;
+    pricing = ep.pricing;
     break;
   }
 }
 
-await startChat(apiKey, modelId, providerName, reasoningEffort);
+await startChat(apiKey, modelId, providerName, reasoningEffort, pricing);
 
 const savedPrefs = { lastModel: modelId, lastProvider: providerName };
 if (reasoningEffort !== undefined) {

@@ -95,12 +95,14 @@ export async function chatCompletion(apiKey, model, messages, onToken, providerN
     throw new Error(`OpenRouter chat failed (${res.status}): ${body}`);
   }
 
+  const cacheStatus = res.headers.get("x-openrouter-cache-status");
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let fullText = "";
   let fullReasoning = "";
   let buffer = "";
   let inThinking = false;
+  let finalUsage = null;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -117,6 +119,15 @@ export async function chatCompletion(apiKey, model, messages, onToken, providerN
       if (data === "[DONE]") continue;
       try {
         const parsed = JSON.parse(data);
+
+        if (parsed.usage) {
+          finalUsage = parsed.usage;
+          if (cacheStatus === "HIT") {
+            finalUsage.cacheHit = true;
+          }
+          continue;
+        }
+
         const delta = parsed.choices?.[0]?.delta;
         if (!delta) continue;
 
@@ -146,5 +157,15 @@ export async function chatCompletion(apiKey, model, messages, onToken, providerN
     }
   }
 
-  return { content: fullText, reasoning: fullReasoning || undefined };
+  const usage = finalUsage;
+
+  if (cacheStatus === "HIT" && !usage) {
+    return {
+      content: fullText,
+      reasoning: fullReasoning || undefined,
+      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cacheHit: true },
+    };
+  }
+
+  return { content: fullText, reasoning: fullReasoning || undefined, usage };
 }
