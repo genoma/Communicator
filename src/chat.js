@@ -1,13 +1,18 @@
 import { createInterface } from "node:readline";
 import { chatCompletion } from "./openrouter.js";
 
-export async function startChat(apiKey, model, providerName) {
+export async function startChat(apiKey, model, providerName, reasoningEffort) {
   const messages = [
     { role: "system", content: "You are a helpful assistant." },
   ];
 
   const label = providerName ? `${providerName} / ${model}` : model;
-  console.log(`\nConnected to ${label}`);
+  if (reasoningEffort) {
+    const { getEffortLabel } = await import("./prompts.js");
+    console.log(`\nConnected to ${label}  [thinking: ${getEffortLabel(reasoningEffort)}]`);
+  } else {
+    console.log(`\nConnected to ${label}`);
+  }
   console.log('Type your message and press Enter. "/quit" or Ctrl+C to exit.\n');
 
   const rl = createInterface({
@@ -32,13 +37,23 @@ export async function startChat(apiKey, model, providerName) {
 
     messages.push({ role: "user", content: input });
 
-    let fullResponse = "";
+    let result;
 
     try {
       process.stdout.write("\n");
-      fullResponse = await chatCompletion(apiKey, model, messages, (token) => {
-        process.stdout.write(token);
-      }, providerName);
+      result = await chatCompletion(apiKey, model, messages, (token, type) => {
+        if (type === "start_reasoning") {
+          shownThinkingBanner = true;
+          process.stdout.write("\x1b[90m[Thinking]\x1b[0m\n");
+          process.stdout.write(token);
+        } else if (type === "reasoning") {
+          process.stdout.write(`\x1b[90m${token}\x1b[0m`);
+        } else if (type === "end_reasoning") {
+          process.stdout.write("\n\n\x1b[1m[Answer]\x1b[0m\n\n");
+        } else if (type === "content") {
+          process.stdout.write(token);
+        }
+      }, providerName, reasoningEffort);
       process.stdout.write("\n\n");
     } catch (err) {
       console.error(`\nError: ${err.message}\n`);
@@ -49,8 +64,12 @@ export async function startChat(apiKey, model, providerName) {
       continue;
     }
 
-    if (fullResponse) {
-      messages.push({ role: "assistant", content: fullResponse });
+    if (result.content) {
+      const msg = { role: "assistant", content: result.content };
+      if (result.reasoning) {
+        msg.reasoning = result.reasoning;
+      }
+      messages.push(msg);
     }
 
     rl.prompt();

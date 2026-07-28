@@ -1,4 +1,4 @@
-import { search } from "@inquirer/prompts";
+import { search, select } from "@inquirer/prompts";
 import { Separator } from "@inquirer/core";
 
 export const BACK_SENTINEL = Symbol("back");
@@ -83,6 +83,61 @@ export async function selectProvider(endpoints) {
       }
       return filtered;
     },
+  });
+
+  return answer;
+}
+
+const EFFORT_LABELS = {
+  max: "X-High (max)",
+  xhigh: "X-High",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  minimal: "Minimal",
+  none: "Disabled",
+};
+
+const FULL_EFFORT_LIST = ["max", "xhigh", "high", "medium", "low", "minimal", "none"];
+
+export function getEffortLabel(effort) {
+  return EFFORT_LABELS[effort] || effort;
+}
+
+export async function selectReasoningEffort(reasoning, lastEffort) {
+  if (!reasoning) return undefined;
+
+  const efforts = reasoning.supported_efforts || FULL_EFFORT_LIST;
+  const mandatory = reasoning.mandatory === true;
+
+  const filteredEfforts = mandatory
+    ? efforts.filter((e) => e !== "none")
+    : efforts;
+
+  const noneIdx = filteredEfforts.indexOf("none");
+  if (noneIdx > 0) {
+    filteredEfforts.splice(noneIdx, 1);
+    filteredEfforts.unshift("none");
+  }
+
+  if (filteredEfforts.length === 0) return undefined;
+
+  const defaultEffort =
+    lastEffort ||
+    (reasoning.default_effort && reasoning.default_effort !== "none"
+      ? reasoning.default_effort
+      : null) ||
+    "medium";
+
+  const defaultIdx = filteredEfforts.indexOf(defaultEffort);
+
+  const answer = await select({
+    message: "Select reasoning effort:",
+    choices: filteredEfforts.map((e) => ({
+      name: getEffortLabel(e),
+      value: e === "none" ? null : e,
+    })),
+    default: defaultIdx >= 0 ? filteredEfforts[defaultIdx] : undefined,
   });
 
   return answer;

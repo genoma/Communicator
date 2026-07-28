@@ -3,7 +3,7 @@
 import { Command } from "commander";
 import { getApiKey, loadPreferences, savePreferences } from "./src/config.js";
 import { fetchModels, fetchEndpoints } from "./src/openrouter.js";
-import { selectModel, selectProvider, BACK_SENTINEL } from "./src/prompts.js";
+import { selectModel, selectProvider, selectReasoningEffort, BACK_SENTINEL } from "./src/prompts.js";
 import { startChat } from "./src/chat.js";
 
 const program = new Command();
@@ -16,7 +16,9 @@ program
   .option("-l, --list", "list available models and exit")
   .option("-L, --list-endpoints <model>", "list providers/endpoints for a model and exit")
   .option("--key-file <path>", "path to OpenRouter API key file")
-  .option("--config <path>", "path to preferences config file");
+  .option("--config <path>", "path to preferences config file")
+  .option("--reasoning-effort <level>", "reasoning effort: max, xhigh, high, medium, low, minimal, none")
+  .option("--no-reasoning", "disable reasoning entirely");
 
 program.parse();
 const opts = program.opts();
@@ -54,14 +56,22 @@ if (opts.listEndpoints) {
 
 const prefs = await loadPreferences(opts.config);
 
-let modelId, modelName, providerName;
+let modelId, modelName, providerName, reasoningEffort;
+
+function resolveReasoningFlag() {
+  if (opts.reasoning === false) return null;
+  if (opts.reasoningEffort) return opts.reasoningEffort;
+  return undefined;
+}
 
 if (opts.model && opts.provider) {
   modelId = opts.model;
   modelName = modelId;
   providerName = opts.provider;
+  reasoningEffort = resolveReasoningFlag();
 } else {
   const models = await fetchModels(apiKey);
+  reasoningEffort = resolveReasoningFlag();
 
   for (;;) {
     let selected;
@@ -73,6 +83,12 @@ if (opts.model && opts.provider) {
       selected = await selectModel(models, prefs.lastModel);
       modelId = selected.id;
       modelName = selected.name;
+    }
+
+    if (reasoningEffort === undefined) {
+      const modelData = models.find((m) => m.id === modelId);
+      const lastEffort = prefs.reasoningEffort?.[modelId];
+      reasoningEffort = await selectReasoningEffort(modelData?.reasoning, lastEffort);
     }
 
     if (opts.provider) {
@@ -87,15 +103,21 @@ if (opts.model && opts.provider) {
     }
 
     const ep = await selectProvider(endpoints);
-    if (ep === BACK_SENTINEL) continue;
+    if (ep === BACK_SENTINEL) {
+      reasoningEffort = undefined;
+      continue;
+    }
     providerName = ep.providerName;
     break;
   }
 }
 
-await startChat(apiKey, modelId, providerName);
+await startChat(apiKey, modelId, providerName, reasoningEffort);
 
-await savePreferences(
-  { lastModel: modelId, lastProvider: providerName },
-  opts.config
-);
+const savedPrefs = { lastModel: modelId, lastProvider: providerName };
+if (reasoningEffort !== undefined) {
+  if (!prefs.reasoningEffort) prefs.reasoningEffort = {};
+  prefs.reasoningEffort[modelId] = reasoningEffort;
+  savedPrefs.reasoningEffort = prefs.reasoningEffort;
+}
+await savePreferences(savedPrefs, opts.config);

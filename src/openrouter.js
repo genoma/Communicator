@@ -21,6 +21,7 @@ export async function fetchModels(apiKey) {
     provider: m.id.split("/")[0],
     contextLength: m.context_length,
     description: m.description,
+    reasoning: m.reasoning || null,
   }));
 }
 
@@ -52,7 +53,7 @@ export async function fetchEndpoints(apiKey, modelId) {
   }));
 }
 
-export async function chatCompletion(apiKey, model, messages, onToken, providerName) {
+export async function chatCompletion(apiKey, model, messages, onToken, providerName, reasoningEffort) {
   const body = {
     model,
     messages,
@@ -65,6 +66,12 @@ export async function chatCompletion(apiKey, model, messages, onToken, providerN
       order: [providerName],
       allow_fallbacks: false,
     };
+  }
+
+  if (reasoningEffort) {
+    body.reasoning = { effort: reasoningEffort, exclude: false };
+  } else if (reasoningEffort === null) {
+    body.reasoning = { enabled: false };
   }
 
   const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
@@ -91,7 +98,9 @@ export async function chatCompletion(apiKey, model, messages, onToken, providerN
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let fullText = "";
+  let fullReasoning = "";
   let buffer = "";
+  let inThinking = false;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -108,10 +117,28 @@ export async function chatCompletion(apiKey, model, messages, onToken, providerN
       if (data === "[DONE]") continue;
       try {
         const parsed = JSON.parse(data);
-        const delta = parsed.choices?.[0]?.delta?.content;
-        if (delta) {
-          fullText += delta;
-          onToken(delta);
+        const delta = parsed.choices?.[0]?.delta;
+        if (!delta) continue;
+
+        const reasoningToken = delta.reasoning_content;
+        if (reasoningToken) {
+          fullReasoning += reasoningToken;
+          if (!inThinking) {
+            inThinking = true;
+            onToken("\n", "start_reasoning");
+          }
+          onToken(reasoningToken, "reasoning");
+          continue;
+        }
+
+        const contentToken = delta.content;
+        if (contentToken) {
+          if (inThinking) {
+            inThinking = false;
+            onToken(null, "end_reasoning");
+          }
+          fullText += contentToken;
+          onToken(contentToken, "content");
         }
       } catch {
         // skip unparseable chunks
@@ -119,5 +146,5 @@ export async function chatCompletion(apiKey, model, messages, onToken, providerN
     }
   }
 
-  return fullText;
+  return { content: fullText, reasoning: fullReasoning || undefined };
 }
