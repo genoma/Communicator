@@ -13,7 +13,7 @@ export async function startChat(apiKey, model, providerName, reasoningEffort) {
   } else {
     console.log(`\nConnected to ${label}`);
   }
-  console.log('Type your message and press Enter. "/quit" or Ctrl+C to exit.\n');
+  console.log('Type your message and press Enter. "/quit" or Cmd+C/Ctrl+C to exit.\n');
 
   const rl = createInterface({
     input: process.stdin,

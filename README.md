@@ -72,6 +72,6 @@ communicator --config /path/to/config.json  # custom config file path
 ```
 
 In chat mode, type your message and press Enter. The response streams token by token.
-Type `/quit` or CMD+C/CTRL-C to exit.
+Type `/quit` or Cmd+C/Ctrl+C to exit.
 
 Preferences (last chosen model and provider) are saved to `~/.communicator.json`.
