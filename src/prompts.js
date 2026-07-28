@@ -1,4 +1,7 @@
 import { search } from "@inquirer/prompts";
+import { Separator } from "@inquirer/core";
+
+export const BACK_SENTINEL = Symbol("back");
 
 export async function selectModel(models, lastModel) {
   const choices = models.map((m) => ({
@@ -39,7 +42,13 @@ export async function selectProvider(endpoints) {
     return ep;
   }
 
-  const choices = endpoints.map((ep) => {
+  const backChoice = {
+    name: "← Back to model selection",
+    value: BACK_SENTINEL,
+    description: "Return to the model picker",
+  };
+
+  const providerChoices = endpoints.map((ep) => {
     const promptPrice = ep.pricing?.prompt
       ? `$${(parseFloat(ep.pricing.prompt) * 1_000_000).toFixed(2)}/M tokens`
       : "?";
@@ -53,17 +62,26 @@ export async function selectProvider(endpoints) {
     };
   });
 
+  const fullChoices = [backChoice, new Separator(), ...providerChoices];
+
   const answer = await search({
     message: `Select a provider (${endpoints.length} available)`,
     source: async (input) => {
-      if (!input) return choices;
+      if (!input) return fullChoices;
       const q = input.toLowerCase();
-      return choices.filter(
+      const filtered = providerChoices.filter(
         (c) =>
           c.name.toLowerCase().includes(q) ||
           c.value.providerName.toLowerCase().includes(q) ||
           (c.value.tag && c.value.tag.toLowerCase().includes(q))
       );
+      if (filtered.length === 0) {
+        const backMatch =
+          "← back to model selection".includes(q) ||
+          "back".includes(q);
+        return backMatch ? [backChoice] : [];
+      }
+      return filtered;
     },
   });
 

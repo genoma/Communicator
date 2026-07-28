@@ -3,7 +3,7 @@
 import { Command } from "commander";
 import { getApiKey, loadPreferences, savePreferences } from "./src/config.js";
 import { fetchModels, fetchEndpoints } from "./src/openrouter.js";
-import { selectModel, selectProvider } from "./src/prompts.js";
+import { selectModel, selectProvider, BACK_SENTINEL } from "./src/prompts.js";
 import { startChat } from "./src/chat.js";
 
 const program = new Command();
@@ -56,26 +56,41 @@ const prefs = await loadPreferences(opts.config);
 
 let modelId, modelName, providerName;
 
-if (opts.model) {
+if (opts.model && opts.provider) {
   modelId = opts.model;
   modelName = modelId;
-} else {
-  const models = await fetchModels(apiKey);
-  const selected = await selectModel(models, prefs.lastModel);
-  modelId = selected.id;
-  modelName = selected.name;
-}
-
-if (opts.provider) {
   providerName = opts.provider;
 } else {
-  const endpoints = await fetchEndpoints(apiKey, modelId);
-  if (!endpoints.length) {
-    console.error(`No providers found for model: ${modelId}`);
-    process.exit(1);
+  const models = await fetchModels(apiKey);
+
+  for (;;) {
+    let selected;
+    if (opts.model) {
+      modelId = opts.model;
+      modelName = modelId;
+      selected = null;
+    } else {
+      selected = await selectModel(models, prefs.lastModel);
+      modelId = selected.id;
+      modelName = selected.name;
+    }
+
+    if (opts.provider) {
+      providerName = opts.provider;
+      break;
+    }
+
+    const endpoints = await fetchEndpoints(apiKey, modelId);
+    if (!endpoints.length) {
+      console.error(`No providers found for model: ${modelId}`);
+      process.exit(1);
+    }
+
+    const ep = await selectProvider(endpoints);
+    if (ep === BACK_SENTINEL) continue;
+    providerName = ep.providerName;
+    break;
   }
-  const selected = await selectProvider(endpoints);
-  providerName = selected.providerName;
 }
 
 await startChat(apiKey, modelId, providerName);
