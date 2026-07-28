@@ -68,6 +68,7 @@ communicator -L "openai/gpt-4o"                       # list providers for a mod
 communicator --reasoning-effort high                  # force reasoning level
 communicator --no-reasoning                           # disable reasoning
 communicator --config /path/to/config.json            # custom preferences path
+communicator --system-prompt /path/to/prompt.md       # custom system prompt file
 ```
 
 ### Options
@@ -81,6 +82,7 @@ communicator --config /path/to/config.json            # custom preferences path
 | `--reasoning-effort <level>`      | Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`                   |
 | `--no-reasoning`                  | Disable reasoning entirely                                                                           |
 | `--config <path>`                 | Custom path for the preferences JSON file (default: `~/.communicator.json`)                          |
+| `--system-prompt <path>`          | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`)                 |
 
 `--reasoning-effort` and `--no-reasoning` are mutually exclusive — the last one on the command line wins.
 
@@ -119,6 +121,23 @@ Special commands:
 |-------------------|----------------------|
 | `/quit`           | Exit the chat        |
 | `Cmd+C` / `Ctrl+C` | Interrupt and exit  |
+
+## System Prompt
+
+The system prompt sets the AI's persona and behavior. Customize it by creating a file at `~/.communicator-system-prompt.md` with your system prompt content.
+
+```bash
+echo "You are a sarcastic engineer. Always respond with a clever remark." > ~/.communicator-system-prompt.md
+```
+
+Override the default path with `--system-prompt`:
+
+```bash
+communicator --system-prompt /path/to/custom-prompt.md
+```
+
+- If the file is missing or empty, the default `"You are a helpful assistant."` prompt is used silently.
+- The file is read once at startup. Changes require restarting the chat.
 
 ## Preferences
 

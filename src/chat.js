@@ -2,9 +2,10 @@ import { createInterface } from "node:readline";
 import { chatCompletion } from "./openrouter.js";
 import { UsageTracker } from "./tracker.js";
 
-export async function startChat(apiKey, model, providerName, reasoningEffort, pricing) {
+export async function startChat(apiKey, model, providerName, reasoningEffort, pricing, systemPrompt = null) {
+  const systemContent = systemPrompt || "You are a helpful assistant.";
   const messages = [
-    { role: "system", content: "You are a helpful assistant." },
+    { role: "system", content: systemContent },
   ];
 
   const tracker = new UsageTracker();

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { getApiKey, loadPreferences, savePreferences } from "./src/config.js";
+import { getApiKey, loadPreferences, loadSystemPrompt, savePreferences } from "./src/config.js";
 import { fetchModels, fetchEndpoints } from "./src/openrouter.js";
 import { selectModel, selectProvider, selectReasoningEffort, BACK_SENTINEL } from "./src/prompts.js";
 import { startChat } from "./src/chat.js";
@@ -16,6 +16,7 @@ program
   .option("-l, --list", "list available models and exit")
   .option("-L, --list-endpoints <model>", "list providers/endpoints for a model and exit")
   .option("--config <path>", "path to preferences config file")
+  .option("--system-prompt <path>", "path to a custom system prompt file")
   .option("--reasoning-effort <level>", "reasoning effort: max, xhigh, high, medium, low, minimal, none")
   .option("--no-reasoning", "disable reasoning entirely");
 
@@ -54,6 +55,7 @@ if (opts.listEndpoints) {
 }
 
 const prefs = await loadPreferences(opts.config);
+const systemPrompt = await loadSystemPrompt(opts.systemPrompt);
 
 let modelId, modelName, providerName, reasoningEffort, pricing;
 
@@ -112,7 +114,7 @@ if (opts.model && opts.provider) {
   }
 }
 
-await startChat(apiKey, modelId, providerName, reasoningEffort, pricing);
+await startChat(apiKey, modelId, providerName, reasoningEffort, pricing, systemPrompt);
 
 const savedPrefs = { lastModel: modelId, lastProvider: providerName };
 if (reasoningEffort !== undefined) {
