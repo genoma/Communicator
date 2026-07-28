@@ -131,7 +131,8 @@ export async function chatCompletion(apiKey, model, messages, onToken, providerN
         const delta = parsed.choices?.[0]?.delta;
         if (!delta) continue;
 
-        const reasoningToken = delta.reasoning_content;
+        // Some providers use "reasoning" (DeepSeek) instead of "reasoning_content" (OpenAI standard)
+        const reasoningToken = delta.reasoning_content ?? (typeof delta.reasoning === "string" ? delta.reasoning : undefined);
         if (reasoningToken) {
           fullReasoning += reasoningToken;
           if (!inThinking) {
