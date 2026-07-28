@@ -52,11 +52,13 @@ rm ~/.openrouter-key
 
 ## Setup
 
-Create `~/.openrouter-key` with your OpenRouter API key as plain text:
+Set the `OPENROUTER_API_KEY` environment variable:
 
 ```bash
-echo "sk-or-v1-your-key-here" > ~/.openrouter-key
+export OPENROUTER_API_KEY="sk-or-v1-your-key-here"
 ```
+
+Add that line to your shell profile (`~/.zshrc`, `~/.bashrc`, etc.) to persist it.
 
 ## Usage
 
@@ -66,7 +68,6 @@ communicator -m "openai/gpt-4o"             # skip model picker
 communicator -m "openai/gpt-4o" -p "OpenAI" # skip both pickers
 communicator -l                             # list all models
 communicator -L "openai/gpt-4o"             # list providers for a model
-communicator --key-file /path/to/key        # custom key file path
 communicator --config /path/to/config.json  # custom config file path
 ```
 

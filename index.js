@@ -15,7 +15,6 @@ program
   .option("-p, --provider <name>", "skip provider picker, use this provider name directly")
   .option("-l, --list", "list available models and exit")
   .option("-L, --list-endpoints <model>", "list providers/endpoints for a model and exit")
-  .option("--key-file <path>", "path to OpenRouter API key file")
   .option("--config <path>", "path to preferences config file")
   .option("--reasoning-effort <level>", "reasoning effort: max, xhigh, high, medium, low, minimal, none")
   .option("--no-reasoning", "disable reasoning entirely");
@@ -23,7 +22,7 @@ program
 program.parse();
 const opts = program.opts();
 
-const apiKey = await getApiKey(opts.keyFile);
+const apiKey = getApiKey();
 
 if (opts.list) {
   const models = await fetchModels(apiKey);
