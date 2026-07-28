@@ -2,11 +2,12 @@
 
 Chat from your terminal with streaming responses, interactive model/provider selection, and live cost tracking.
 
-> ⚠️ **Heads up:** This is a hobby project I built for myself, shared in case it helps someone else. It works ish, but:
+> ⚠️ **Heads up:** This is a hobby project I built for myself, shared in case it helps someone else. It works, maybe, but:
 > - OpenRouter only, no other APIs for now
 > - Rough around the edges (minimal error handling)
 > - Text only, no vision
 > - No promises beyond "it mostly doesn't break"
+> - Minimal testing (cross your fingers and use cheap models)
 > 
 > Fork it, break it, fix it, disregard it, I won't take it personally.
 
