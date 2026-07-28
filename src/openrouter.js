@@ -8,7 +8,7 @@ export async function fetchModels(apiKey) {
   if (!res.ok) {
     const body = await res.text();
     if (res.status === 401) {
-      console.error("Invalid API key. Check your ~/.openrouter-key file.");
+      console.error("Invalid API key. Check your OPENROUTER_API_KEY environment variable.");
       process.exit(1);
     }
     throw new Error(`OpenRouter models fetch failed (${res.status}): ${body}`);
@@ -86,7 +86,7 @@ export async function chatCompletion(apiKey, model, messages, onToken, providerN
   if (!res.ok) {
     const body = await res.text();
     if (res.status === 401) {
-      console.error("Invalid API key. Check your ~/.openrouter-key file.");
+      console.error("Invalid API key. Check your OPENROUTER_API_KEY environment variable.");
       process.exit(1);
     }
     if (res.status === 429) {
