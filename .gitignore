@@ -1,1 +1,74 @@
+# --- macOS ---
+.DS_Store
+.DS_Store?
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# --- macOS Sorbet / Swift / Xcode ---
+*.swp
+*.swo
+*~
+
+# --- Node.js ---
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+lerna-debug.log*
+
+# --- Environment / Secrets ---
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+*.pem
+
+# --- Logs ---
+logs/
+*.log
+
+# --- Runtime ---
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# --- Dependency directories ---
+jspm_packages/
+
+# --- TypeScript (if added later) ---
+*.tsbuildinfo
+dist/
+build/
+
+# --- IDE / Editors ---
+.idea/
+*.iml
+.vscode/
+*.sublime-workspace
+*.sublime-project
+.vs/
+
+# --- OS generated files ---
+.DS_Store
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- Kilo ---
+.kilo
+
+# --- Node / OS ---
+lib-cov/
+coverage/
+.grunt/
+lock.asp
