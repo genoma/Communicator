@@ -111,13 +111,18 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   }]
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning, sessionId }) {
   const body = {
     model,
     messages,
     stream: true,
+    stream_options: { include_usage: true },
     temperature: 0.7,
     venice_parameters: { include_venice_system_prompt: false },
+  }
+
+  if (sessionId) {
+    body.prompt_cache_key = sessionId
   }
 
   if (reasoningEffort && supportsReasoning !== false) {

@@ -111,7 +111,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
         } else if (type === "content") {
           process.stdout.write(token)
         }
-      }, provider: endpointProviderName, reasoningEffort, supportsReasoning })
+      }, provider: endpointProviderName, reasoningEffort, supportsReasoning, sessionId })
       process.stdout.write("\n\n")
 
       if (result.usage) {

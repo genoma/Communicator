@@ -3,7 +3,7 @@ import { selectModel, selectProvider, selectReasoningEffort, resolveReasoningFla
 import { startChat } from "../chat.js"
 import { ensureSessionsDir, listSessions, saveSession } from "../sessions.js"
 import { resumeCmd } from "./resume.js"
-import { savePreferences } from "../config.js"
+import { getApiKey, savePreferences } from "../config.js"
 
 export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerType }) {
   let modelId, modelName, endpointProviderName, reasoningEffort, pricing
@@ -25,6 +25,7 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerTyp
     sessionId = result.sessionId
     sessionCreatedAt = result.sessionCreatedAt
     providerType = result.providerType || providerType
+    apiKey = getApiKey(providerType)
   } else {
     reasoningEffort = resolveReasoningFlag({ reasoning: opts.reasoning, reasoningEffort: opts.reasoningEffort })
   }
