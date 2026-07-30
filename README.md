@@ -60,45 +60,33 @@ export OPENROUTER_API_KEY="sk-or-v1-your-key-here"
 
 Add that line to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make it permanent.
 
-## Usage
+## Commands
 
-```bash
-communicator                                          # full interactive flow
-communicator -m "openai/gpt-4o"                       # skip model picker
-communicator -m "openai/gpt-4o" -p "OpenAI"            # skip model + provider pickers
-communicator -l                                       # list all available models
-communicator -L "openai/gpt-4o"                       # list providers for a model
-communicator --reasoning-effort high                  # force reasoning level
-communicator --no-reasoning                           # disable reasoning
-communicator --resume                                  # pick a session to resume from a list
-communicator --resume 2026-07-30                       # resume matching a prefix (first 10 chars of session ID)
-communicator --resume 2026-07-30T19-11-45              # resume an exact session by its ID
-communicator -s                                       # list saved sessions and exit
-communicator --list-sessions                           # list saved sessions and exit
-communicator --export                                   # export a session to markdown (interactive picker)
-communicator --export 2026-07-30                        # export matching a prefix
-communicator --export 2026-07-30T19-11-45               # export an exact session by its ID
-communicator --config /path/to/config.json             # custom preferences path
-communicator --system-prompt /path/to/prompt.md        # custom system prompt file
-```
-
-### Options
-
-| Flag                              | Description                                                                                          |
-|-----------------------------------|------------------------------------------------------------------------------------------------------|
-| `-m, --model <id>`                | Skip the model picker, use this model ID directly                                                    |
-| `-p, --provider <name>`           | Skip the provider picker, use this provider name directly                                            |
-| `-l, --list`                      | Fetch and display all available models (name, ID, context length), then exit                         |
-| `-L, --list-endpoints <model>`    | Fetch and display providers/endpoints for a model (pricing, uptime), then exit                       |
-| `--reasoning-effort <level>`      | Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`                   |
-| `--no-reasoning`                  | Disable reasoning entirely                                                                           |
-| `-r, --resume [session-id]`      | Resume a saved session. Without an ID, shows an interactive picker. With an ID, matches by prefix    |
-| `-e, --export [session-id]`      | Export a saved session as markdown (saved to current directory as `session-{id}.md`)                  |
-| `-s, --list-sessions`             | List saved sessions (timestamp, model, message count, preview) and exit                              |
-| `--config <path>`                 | Custom path for the preferences JSON file (default: `~/.communicator.json`)                          |
-| `--system-prompt <path>`          | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`)                 |
+| Short | Flag                  | Args     | Description                                                                          |
+|-------|-----------------------|----------|--------------------------------------------------------------------------------------|
+| `-m`  | `--model`             | `<id>`   | Skip the model picker and use this model directly                                    |
+| `-p`  | `--provider`          | `<name>` | Skip the provider picker and use this provider directly                              |
+| —     | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`   |
+| —     | `--no-reasoning`      | —        | Disable reasoning entirely                                                           |
+| `-l`  | `--list`              | —        | List all available models (name, ID, context length) and exit                        |
+| `-L`  | `--list-endpoints`    | `<model>`| List providers for a model (pricing, uptime) and exit                                |
+| `-s`  | `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, preview) and exit              |
+| `-r`  | `--resume`            | `[id]`   | Resume a saved session. No arg = picker, partial ID = prefix match                   |
+| `-e`  | `--export`            | `[id]`   | Export a session to markdown. Same ID matching as `--resume`                         |
+| —     | `--config`            | `<path>` | Custom path for the preferences JSON file (default: `~/.communicator.json`)          |
+| —     | `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
 
 `--reasoning-effort` and `--no-reasoning` are mutually exclusive — the last one on the command line wins.
+
+Quick start:
+
+```bash
+communicator                                         # full interactive flow
+communicator -m "openai/gpt-4o" -p "OpenAI"          # skip pickers
+communicator --resume                                # resume a saved session
+```
+
+## Usage
 
 ### Interactive flow
 
