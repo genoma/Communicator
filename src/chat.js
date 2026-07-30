@@ -17,7 +17,7 @@ function renderHistory(messages) {
       process.stdout.write(`> ${msg.content}\n\n`)
     } else if (msg.role === "assistant") {
       if (msg.reasoning) {
-        process.stdout.write("\x1b[90m[Thinking]\x1b[0m\n")
+        process.stdout.write("\x1b[90m[Thinking]\x1b[0m\n\n")
         process.stdout.write(`\x1b[90m${msg.reasoning}\x1b[0m\n`)
         process.stdout.write("\n\x1b[1m[Answer]\x1b[0m\n\n")
       }
