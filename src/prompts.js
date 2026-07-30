@@ -39,7 +39,9 @@ export async function selectModel(models, lastModel) {
 export async function selectProvider(endpoints) {
   if (endpoints.length === 1) {
     const ep = endpoints[0];
-    console.log(`Only one provider available: ${ep.providerName} (${ep.pricing?.prompt || "?"})`);
+    const sip = ep.pricing?.prompt != null ? `$${(parseFloat(ep.pricing.prompt) * 1_000_000).toFixed(2)}` : "?";
+    const soc = ep.pricing?.completion != null ? `$${(parseFloat(ep.pricing.completion) * 1_000_000).toFixed(2)}` : "?";
+    console.log(`Only one provider available: ${ep.providerName} (in ${sip} / out ${soc}/M)`);
     return ep;
   }
 
@@ -50,11 +52,17 @@ export async function selectProvider(endpoints) {
   };
 
   const providerChoices = endpoints.map((ep) => {
-    const promptPrice = ep.pricing?.prompt
-      ? `$${(parseFloat(ep.pricing.prompt) * 1_000_000).toFixed(2)}/M tokens`
+    const inPrice = ep.pricing?.prompt != null
+      ? `$${(parseFloat(ep.pricing.prompt) * 1_000_000).toFixed(2)}`
+      : "?";
+    const outPrice = ep.pricing?.completion != null
+      ? `$${(parseFloat(ep.pricing.completion) * 1_000_000).toFixed(2)}`
+      : "?";
+    const priceText = inPrice !== "?" || outPrice !== "?"
+      ? `in ${inPrice} out ${outPrice}/M`
       : "?";
     const uptime = ep.uptime30m != null ? `${ep.uptime30m.toFixed(0)}% uptime` : "?";
-    const label = `${ep.providerName}  —  ${promptPrice}  ${uptime}`;
+    const label = `${ep.providerName}  —  ${priceText}  ${uptime}`;
 
     return {
       name: label,
