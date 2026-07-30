@@ -1,9 +1,5 @@
-import { readFile, writeFile, access } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
-
-const DEFAULT_CONFIG_FILE = join(homedir(), ".communicator.json");
-const DEFAULT_SYSTEM_PROMPT_FILE = join(homedir(), ".communicator-system-prompt.md");
+import { readFile, writeFile, access } from "node:fs/promises"
+import { DEFAULT_CONFIG_FILE, DEFAULT_SYSTEM_PROMPT_FILE } from "./constants.js"
 
 export function getApiKey() {
   const key = process.env.OPENROUTER_API_KEY?.trim();

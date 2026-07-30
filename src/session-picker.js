@@ -1,16 +1,14 @@
 import { search } from "@inquirer/prompts"
+import { formatSessionItem } from "./sessions.js"
 
 export async function selectSession(sessions) {
   const choices = sessions.map((s) => {
-    const time = s.id.replace("T", " ")
-    const model = s.model.length > 35 ? s.model.slice(0, 32) + "..." : s.model
-    const count = `${s.messageCount} msg${s.messageCount !== 1 ? "s" : ""}`
-    const preview = s.preview ? `"${s.preview}${s.preview.length >= 60 ? "..." : ""}"` : ""
+    const { line } = formatSessionItem(s)
 
     return {
-      name: `${time}  ${model.padEnd(37)} ${count.padEnd(12)} ${preview}`,
+      name: line,
       value: s.id,
-      description: `${s.providerName}  •  ${s.messageCount} messages`,
+      description: `${s.providerName}  \u2022  ${s.messageCount} messages`,
     }
   })
 

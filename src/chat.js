@@ -2,8 +2,8 @@ import { createInterface } from "node:readline"
 import { chatCompletion } from "./openrouter.js"
 import { UsageTracker } from "./tracker.js"
 import { ensureSessionsDir, saveSession } from "./sessions.js"
-
-const THIN_SEP = "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+import { THIN_SEP } from "./constants.js"
+import { getEffortLabel } from "./prompts.js"
 
 function renderHistory(messages) {
   if (!messages || messages.length <= 1) return
@@ -46,7 +46,6 @@ export async function startChat(apiKey, model, providerName, reasoningEffort, pr
 
   const label = providerName ? `${providerName} / ${model}` : model
   if (reasoningEffort) {
-    const { getEffortLabel } = await import("./prompts.js")
     console.log(`\nConnected to ${label}  [thinking: ${getEffortLabel(reasoningEffort)}]`)
   } else {
     console.log(`\nConnected to ${label}`)
@@ -88,7 +87,7 @@ export async function startChat(apiKey, model, providerName, reasoningEffort, pr
 
     try {
       process.stdout.write("\n")
-      result = await chatCompletion(apiKey, model, messages, (token, type) => {
+      result = await chatCompletion({ apiKey, model, messages, onToken: (token, type) => {
         if (type === "start_reasoning") {
           shownThinkingBanner = true
           process.stdout.write("\x1b[90m[Thinking]\x1b[0m\n")
@@ -100,7 +99,7 @@ export async function startChat(apiKey, model, providerName, reasoningEffort, pr
         } else if (type === "content") {
           process.stdout.write(token)
         }
-      }, providerName, reasoningEffort)
+      }, provider: providerName, reasoningEffort })
       process.stdout.write("\n\n")
 
       if (result.usage) {

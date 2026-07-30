@@ -274,15 +274,23 @@ The last model and provider become defaults in the interactive pickers. Reasonin
 ## How it works
 
 ```
-cli (index.js)     — commander argument parsing, orchestration
-├── config.js      — API key (env), preferences load/save (~/.communicator.json)
-├── openrouter.js  — OpenRouter API client: models, endpoints, streaming chat completions
-├── prompts.js     — interactive TUI pickers using @inquirer/prompts (model, provider, reasoning)
-├── sessions.js    — session persistence: save, load, list, resolve (~/.communicator/sessions/)
-├── session-picker.js — interactive session selector for --resume
-├── export.js      — markdown exporter: format session data, write to file
-├── tracker.js     — per-turn + cumulative token/cost accounting with cache detection
-└── chat.js        — readline loop, token streaming display, usage tracking integration, auto-save
+cli (index.js)           — commander argument parsing, delegates to command modules
+├── commands/
+│   ├── list-models.js   — --list handler
+│   ├── list-endpoints.js — --list-endpoints handler
+│   ├── list-sessions.js — --list-sessions handler
+│   ├── export-cmd.js    — --export handler
+│   ├── resume.js        — --resume handler (load session, return params)
+│   └── chat-start.js    — main interactive flow: model/provider pickers, chat, save
+├── config.js            — API key (env), preferences load/save (~/.communicator.json)
+├── constants.js         — shared constants (paths, labels, SSE markers) and formatCost
+├── openrouter.js        — OpenRouter API client: models, endpoints, streaming chat completions
+├── prompts.js           — interactive TUI pickers using @inquirer/prompts (model, provider, reasoning)
+├── sessions.js          — session persistence: save, load, list, resolve (~/.communicator/sessions/)
+├── session-picker.js    — interactive session selector for --resume and --export
+├── export.js            — markdown exporter: format session data, write to file
+├── tracker.js           — per-turn + cumulative token/cost accounting with cache detection
+└── chat.js              — readline loop, token streaming display, usage tracking integration, auto-save
 ```
 
 Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing and [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) for the interactive search/select UI.

@@ -1,15 +1,12 @@
 #!/usr/bin/env node
 
 import { Command } from "commander"
-import { access } from "node:fs/promises"
-import { join } from "node:path"
-import { getApiKey, loadPreferences, loadSystemPrompt, savePreferences } from "./src/config.js"
-import { fetchModels, fetchEndpoints } from "./src/openrouter.js"
-import { selectModel, selectProvider, selectReasoningEffort, BACK_SENTINEL } from "./src/prompts.js"
-import { startChat } from "./src/chat.js"
-import { ensureSessionsDir, resolveSession, loadSession, saveSession, listSessionsForPicker } from "./src/sessions.js"
-import { selectSession } from "./src/session-picker.js"
-import { exportSession } from "./src/export.js"
+import { getApiKey, loadPreferences, loadSystemPrompt } from "./src/config.js"
+import { listModelsCmd } from "./src/commands/list-models.js"
+import { listEndpointsCmd } from "./src/commands/list-endpoints.js"
+import { listSessionsCmd } from "./src/commands/list-sessions.js"
+import { exportCmd } from "./src/commands/export-cmd.js"
+import { chatStart } from "./src/commands/chat-start.js"
 
 const program = new Command()
 
@@ -34,231 +31,26 @@ const opts = program.opts()
 const apiKey = getApiKey()
 
 if (opts.list) {
-  const models = await fetchModels(apiKey)
-  for (const m of models) {
-    console.log(
-      `${m.name.padEnd(40)} ${m.id.padEnd(50)} ${m.contextLength?.toLocaleString() || "?"} ctx`
-    )
-  }
+  await listModelsCmd(apiKey)
   process.exit(0)
 }
 
 if (opts.listEndpoints) {
-  const endpoints = await fetchEndpoints(apiKey, opts.listEndpoints)
-  if (!endpoints.length) {
-    console.log(`No endpoints found for ${opts.listEndpoints}`)
-    process.exit(0)
-  }
-  console.log(`${endpoints.length} provider(s) for ${opts.listEndpoints}:\n`)
-  for (const ep of endpoints) {
-    const promptPrice = ep.pricing?.prompt
-      ? `$${(parseFloat(ep.pricing.prompt) * 1_000_000).toFixed(2)}/M`
-      : "?"
-    const uptime = ep.uptime30m != null ? `${ep.uptime30m.toFixed(0)}%` : "?"
-    console.log(
-      `${ep.providerName.padEnd(20)} | prompt ${promptPrice.padEnd(12)} | uptime ${uptime} | tag ${ep.tag}`
-    )
-  }
+  await listEndpointsCmd(apiKey, opts.listEndpoints)
   process.exit(0)
 }
 
 if (opts.listSessions) {
-  const dir = await ensureSessionsDir()
-  const sessions = await listSessionsForPicker(dir)
-  if (!sessions.length) {
-    console.log("No saved sessions found.")
-    process.exit(0)
-  }
-  console.log(`${sessions.length} saved session(s):\n`)
-  for (const s of sessions) {
-    const time = s.id.replace("T", " ")
-    const model = s.model.length > 35 ? s.model.slice(0, 32) + "..." : s.model
-    const count = `${s.messageCount} msg${s.messageCount !== 1 ? "s" : ""}`
-    const preview = s.preview ? `"${s.preview}${s.preview.length >= 60 ? "..." : ""}"` : ""
-    console.log(`${time}  ${model.padEnd(37)} ${count.padEnd(12)} ${preview}`)
-  }
+  await listSessionsCmd()
   process.exit(0)
 }
 
 if (opts.export !== undefined) {
-  const dir = await ensureSessionsDir()
-  let matchedId
-
-  if (opts.export && typeof opts.export === "string") {
-    const matches = await resolveSession(dir, opts.export)
-    if (matches.length === 0) {
-      console.error(`No session found matching "${opts.export}"`)
-      process.exit(1)
-    }
-    if (matches.length === 1) {
-      matchedId = matches[0].id
-    } else {
-      matchedId = await selectSession(matches)
-    }
-  } else {
-    const sessions = await listSessionsForPicker(dir)
-    if (!sessions.length) {
-      console.log("No saved sessions to export.")
-      process.exit(0)
-    }
-    matchedId = await selectSession(sessions)
-  }
-
-  if (!matchedId) process.exit(0)
-
-  const sessionData = await loadSession(dir, matchedId)
-  const outputPath = join(process.cwd(), `session-${matchedId}.md`)
-  try {
-    await exportSession(sessionData, outputPath)
-    console.log(`Exported to ${outputPath}`)
-  } catch (err) {
-    console.error(`Export failed: ${err.message}`)
-    process.exit(1)
-  }
+  await exportCmd(typeof opts.export === "string" ? opts.export : null)
   process.exit(0)
 }
 
 const prefs = await loadPreferences(opts.config)
 const systemPrompt = await loadSystemPrompt(opts.systemPrompt)
 
-let modelId, modelName, providerName, reasoningEffort, pricing
-let initialMessages = null
-let sessionId = null
-let sessionCreatedAt = null
-
-function resolveReasoningFlag() {
-  if (opts.reasoning === false) return null
-  if (opts.reasoningEffort) return opts.reasoningEffort
-  return undefined
-}
-
-if (opts.resume !== undefined) {
-  const dir = await ensureSessionsDir()
-  let matchedId
-
-  if (opts.resume && typeof opts.resume === "string") {
-    const matches = await resolveSession(dir, opts.resume)
-    if (matches.length === 0) {
-      console.error(`No session found matching "${opts.resume}"`)
-      process.exit(1)
-    }
-    if (matches.length === 1) {
-      matchedId = matches[0].id
-    } else {
-      matchedId = await selectSession(matches)
-    }
-  } else {
-    const sessions = await listSessionsForPicker(dir)
-    if (!sessions.length) {
-      console.log("No saved sessions to resume.")
-      process.exit(0)
-    }
-    matchedId = await selectSession(sessions)
-  }
-
-  const sessionData = await loadSession(dir, matchedId)
-  modelId = sessionData.model
-  modelName = modelId
-  providerName = sessionData.providerName || null
-  reasoningEffort = sessionData.reasoningEffort
-  pricing = sessionData.pricing || null
-  initialMessages = sessionData.messages
-  sessionId = matchedId
-  sessionCreatedAt = sessionData.createdAt
-} else {
-  if (opts.model && opts.provider) {
-    modelId = opts.model
-    modelName = modelId
-    providerName = opts.provider
-    reasoningEffort = resolveReasoningFlag()
-  } else {
-    const models = await fetchModels(apiKey)
-    reasoningEffort = resolveReasoningFlag()
-
-    for (;;) {
-      let selected
-      if (opts.model) {
-        modelId = opts.model
-        modelName = modelId
-        selected = null
-      } else {
-        selected = await selectModel(models, prefs.lastModel)
-        modelId = selected.id
-        modelName = selected.name
-      }
-
-      if (reasoningEffort === undefined) {
-        const modelData = models.find((m) => m.id === modelId)
-        const lastEffort = prefs.reasoningEffort?.[modelId]
-        reasoningEffort = await selectReasoningEffort(modelData?.reasoning, lastEffort)
-      }
-
-      if (opts.provider) {
-        providerName = opts.provider
-        break
-      }
-
-      const endpoints = await fetchEndpoints(apiKey, modelId)
-      if (!endpoints.length) {
-        console.error(`No providers found for model: ${modelId}`)
-        process.exit(1)
-      }
-
-      const ep = await selectProvider(endpoints)
-      if (ep === BACK_SENTINEL) {
-        reasoningEffort = undefined
-        continue
-      }
-      providerName = ep.providerName
-      pricing = ep.pricing
-      break
-    }
-  }
-
-  const dir = await ensureSessionsDir()
-  let baseId = new Date().toISOString().replace(/:/g, "-").replace(/\..+/, "")
-  sessionId = baseId
-  let suffix = 1
-  while (true) {
-    try {
-      await access(join(dir, `${sessionId}.json`))
-      suffix++
-      sessionId = `${baseId}-${suffix}`
-    } catch {
-      break
-    }
-  }
-  sessionCreatedAt = new Date().toISOString()
-}
-
-const finalMessages = await startChat(apiKey, modelId, providerName, reasoningEffort, pricing, {
-  systemPrompt,
-  initialMessages,
-  sessionId,
-  createdAt: sessionCreatedAt,
-})
-
-if (sessionId && finalMessages && finalMessages.length > 1) {
-  try {
-    const dir = await ensureSessionsDir()
-    await saveSession(dir, sessionId, {
-      model: modelId,
-      providerName,
-      reasoningEffort: reasoningEffort ?? null,
-      pricing: pricing ?? null,
-      createdAt: sessionCreatedAt,
-      updatedAt: new Date().toISOString(),
-      messages: finalMessages,
-    })
-  } catch {
-    // non-fatal
-  }
-}
-
-const savedPrefs = { lastModel: modelId, lastProvider: providerName }
-if (reasoningEffort !== undefined) {
-  if (!prefs.reasoningEffort) prefs.reasoningEffort = {}
-  prefs.reasoningEffort[modelId] = reasoningEffort
-  savedPrefs.reasoningEffort = prefs.reasoningEffort
-}
-await savePreferences(savedPrefs, opts.config)
+await chatStart({ apiKey, opts, prefs, systemPrompt })

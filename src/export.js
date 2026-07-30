@@ -1,4 +1,6 @@
 import { writeFile } from "node:fs/promises"
+import { formatCost } from "./constants.js"
+import { computeTurnCost } from "./tracker.js"
 
 function formatTimestamp(iso) {
   if (!iso) return "Unknown"
@@ -8,30 +10,18 @@ function formatTimestamp(iso) {
 function calculateCost(pricing, messages) {
   if (!pricing?.prompt || !pricing?.completion) return null
 
-  const promptPrice = parseFloat(pricing.prompt)
-  const completionPrice = parseFloat(pricing.completion)
-  if (Number.isNaN(promptPrice) || Number.isNaN(completionPrice)) return null
-
   let totalCost = 0
   let hasUsage = false
 
   for (const msg of messages) {
     if (msg.role === "assistant" && msg.usage) {
       hasUsage = true
-      const pt = msg.usage.prompt_tokens ?? 0
-      const ct = msg.usage.completion_tokens ?? 0
-      totalCost += pt * promptPrice + ct * completionPrice
+      totalCost += computeTurnCost(msg.usage, pricing)
     }
   }
 
   if (!hasUsage) return null
   return totalCost
-}
-
-function formatCost(cost) {
-  if (cost === null || cost === undefined) return "N/A"
-  if (cost < 0.000001) return "$0.000000"
-  return `$${cost.toFixed(6)}`
 }
 
 export function formatMarkdown(sessionData) {

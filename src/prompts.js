@@ -1,5 +1,6 @@
-import { search, select } from "@inquirer/prompts";
-import { Separator } from "@inquirer/core";
+import { search, select } from "@inquirer/prompts"
+import { Separator } from "@inquirer/core"
+import { EFFORT_LABELS } from "./constants.js"
 
 export const BACK_SENTINEL = Symbol("back");
 
@@ -88,16 +89,6 @@ export async function selectProvider(endpoints) {
   return answer;
 }
 
-const EFFORT_LABELS = {
-  max: "X-High (max)",
-  xhigh: "X-High",
-  high: "High",
-  medium: "Medium",
-  low: "Low",
-  minimal: "Minimal",
-  none: "Disabled",
-};
-
 const FULL_EFFORT_LIST = ["max", "xhigh", "high", "medium", "low", "minimal", "none"];
 
 export function getEffortLabel(effort) {
@@ -141,4 +132,10 @@ export async function selectReasoningEffort(reasoning, lastEffort) {
   });
 
   return answer;
+}
+
+export function resolveReasoningFlag({ reasoning, reasoningEffort }) {
+  if (reasoning === false) return null
+  if (reasoningEffort) return reasoningEffort
+  return undefined
 }

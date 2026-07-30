@@ -1,4 +1,24 @@
-const THIN_SEP = "───────────────────────────────────────";
+import { THIN_SEP, formatCost } from "./constants.js"
+
+export function computeTurnCost(usage, pricing) {
+  if (!usage || pricing?.prompt == null || pricing?.completion == null) return 0
+  const promptPrice = parseFloat(pricing.prompt)
+  const completionPrice = parseFloat(pricing.completion)
+  if (Number.isNaN(promptPrice) || Number.isNaN(completionPrice)) return 0
+  const pt = usage.prompt_tokens ?? 0
+  const ct = usage.completion_tokens ?? 0
+  return pt * promptPrice + ct * completionPrice
+}
+
+function _computeMetrics(usage, pricing) {
+  const pt = usage.prompt_tokens ?? 0
+  const ct = usage.completion_tokens ?? 0
+  const tt = usage.total_tokens ?? pt + ct
+  const cached = usage.prompt_tokens_details?.cached_tokens ?? 0
+  const hit = cached > 0 || usage.cacheHit
+  const turnCost = computeTurnCost(usage, pricing)
+  return { pt, ct, tt, cached, hit, turnCost }
+}
 
 export class UsageTracker {
   constructor() {
@@ -14,11 +34,7 @@ export class UsageTracker {
   record(usage, pricing) {
     if (!usage) return;
 
-    const pt = usage.prompt_tokens ?? 0;
-    const ct = usage.completion_tokens ?? 0;
-    const tt = usage.total_tokens ?? pt + ct;
-    const cached = usage.prompt_tokens_details?.cached_tokens ?? 0;
-    const hit = cached > 0 || usage.cacheHit;
+    const { pt, ct, tt, cached, hit, turnCost } = _computeMetrics(usage, pricing)
 
     this.promptTokens += pt;
     this.completionTokens += ct;
@@ -26,24 +42,13 @@ export class UsageTracker {
     this.requests += 1;
     if (hit) this.cacheHits += 1;
     this.cachedTokens += cached;
-
-    if (pricing?.prompt != null && pricing?.completion != null) {
-      const promptPrice = parseFloat(pricing.prompt);
-      const completionPrice = parseFloat(pricing.completion);
-      if (!Number.isNaN(promptPrice) && !Number.isNaN(completionPrice)) {
-        this.cost += pt * promptPrice + ct * completionPrice;
-      }
-    }
+    this.cost += turnCost;
   }
 
   printTurn(usage, pricing) {
     if (!usage) return;
 
-    const pt = usage.prompt_tokens ?? 0;
-    const ct = usage.completion_tokens ?? 0;
-    const tt = usage.total_tokens ?? pt + ct;
-    const cached = usage.prompt_tokens_details?.cached_tokens ?? 0;
-    const hit = cached > 0 || usage.cacheHit;
+    const { pt, ct, tt, cached, hit, turnCost } = _computeMetrics(usage, pricing)
 
     console.log(`\x1b[90m${THIN_SEP}\x1b[0m`);
 
@@ -62,18 +67,9 @@ export class UsageTracker {
       console.log(`  Cache   ${parts.join(", ")}`);
     }
 
-    let turnCost = 0;
-    if (pricing?.prompt != null && pricing?.completion != null) {
-      const promptPrice = parseFloat(pricing.prompt);
-      const completionPrice = parseFloat(pricing.completion);
-      if (!Number.isNaN(promptPrice) && !Number.isNaN(completionPrice)) {
-        turnCost = pt * promptPrice + ct * completionPrice;
-      }
-    }
-
     if (pricing) {
-      const turnPart = turnCost < 0.000001 ? "$0.000000" : `$${turnCost.toFixed(6)}`;
-      const sessionPart = this.cost < 0.000001 ? "$0.000000" : `$${this.cost.toFixed(6)}`;
+      const turnPart = formatCost(turnCost);
+      const sessionPart = formatCost(this.cost);
       console.log(`  Cost    ${turnPart} this turn  |  ${sessionPart} session`);
     }
 
@@ -85,12 +81,12 @@ export class UsageTracker {
     const arrowDown = "\u2193";
     const eq = "\u003d";
 
-    let s = `${arrowUp} ${this.totalTokens.toLocaleString()} prompt  ${arrowDown} ${this.completionTokens.toLocaleString()} completion  ${eq} ${this.totalTokens.toLocaleString()} total  |  ${this.requests} request(s)`;
+    let s = `${arrowUp} ${this.promptTokens.toLocaleString()} prompt  ${arrowDown} ${this.completionTokens.toLocaleString()} completion  ${eq} ${this.totalTokens.toLocaleString()} total  |  ${this.requests} request(s)`;
     if (this.cacheHits > 0) {
       s += `  |  ${this.cacheHits} cache hit(s) [${this.cachedTokens.toLocaleString()} cached tokens]`;
     }
     if (this.cost > 0) {
-      s += `  |  $${this.cost.toFixed(6)} cost`;
+      s += `  |  ${formatCost(this.cost)} cost`;
     }
     return s;
   }

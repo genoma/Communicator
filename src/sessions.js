@@ -1,8 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises"
-import { homedir } from "node:os"
 import { join, basename, extname } from "node:path"
-
-const SESSIONS_DIR = join(homedir(), ".communicator", "sessions")
+import { SESSIONS_DIR } from "./constants.js"
+import { selectSession } from "./session-picker.js"
 
 export async function ensureSessionsDir() {
   await mkdir(SESSIONS_DIR, { recursive: true })
@@ -14,45 +13,28 @@ export async function resolveSession(dir, partialId) {
   return sessions.filter((s) => s.id.startsWith(partialId))
 }
 
-export async function listSessions(dir) {
-  let entries
-  try {
-    entries = await readdir(dir)
-  } catch {
-    return []
-  }
-
-  const jsonFiles = entries.filter((f) => extname(f) === ".json")
-  const sessions = []
-
-  for (const file of jsonFiles) {
-    const id = basename(file, ".json")
-    const filePath = join(dir, file)
-
-    try {
-      const raw = await readFile(filePath, "utf-8")
-      const parsed = JSON.parse(raw)
-      const msgCount = Array.isArray(parsed.messages) ? parsed.messages.length : 0
-
-      if (msgCount <= 1) continue
-
-      sessions.push({
-        id,
-        model: parsed.model || "unknown",
-        providerName: parsed.providerName || "unknown",
-        createdAt: parsed.createdAt || null,
-        updatedAt: parsed.updatedAt || null,
-        messageCount: msgCount,
-      })
-    } catch {
-      continue
+export async function resolveSessionInteractive(dir, partialId) {
+  if (partialId && typeof partialId === "string") {
+    const matches = await resolveSession(dir, partialId)
+    if (matches.length === 0) {
+      console.error(`No session found matching "${partialId}"`)
+      process.exit(1)
     }
+    if (matches.length === 1) {
+      return matches[0].id
+    }
+    return selectSession(matches)
   }
 
-  return sessions.sort((a, b) => b.id.localeCompare(a.id))
+  const sessions = await listSessions(dir, { withPreview: true })
+  if (!sessions.length) {
+    console.log("No saved sessions found.")
+    process.exit(0)
+  }
+  return selectSession(sessions)
 }
 
-export async function listSessionsForPicker(dir) {
+export async function listSessions(dir, { withPreview = false } = {}) {
   let entries
   try {
     entries = await readdir(dir)
@@ -75,11 +57,13 @@ export async function listSessionsForPicker(dir) {
       if (msgCount <= 1) continue
 
       let preview = ""
-      const msgs = parsed.messages
-      for (let i = 1; i < msgs.length; i++) {
-        if (msgs[i].role === "user") {
-          preview = String(msgs[i].content || "").slice(0, 60)
-          break
+      if (withPreview) {
+        const msgs = parsed.messages
+        for (let i = 1; i < msgs.length; i++) {
+          if (msgs[i].role === "user") {
+            preview = String(msgs[i].content || "").slice(0, 60)
+            break
+          }
         }
       }
 
@@ -125,4 +109,13 @@ export async function loadSession(dir, id) {
   }
 
   return data
+}
+
+export function formatSessionItem(s) {
+  const time = s.id.replace("T", " ")
+  const model = s.model.length > 35 ? s.model.slice(0, 32) + "..." : s.model
+  const count = `${s.messageCount} msg${s.messageCount !== 1 ? "s" : ""}`
+  const preview = s.preview ? `"${s.preview}${s.preview.length >= 60 ? "..." : ""}"` : ""
+  const line = `${time}  ${model.padEnd(37)} ${count.padEnd(12)} ${preview}`
+  return { time, model, count, preview, line }
 }
