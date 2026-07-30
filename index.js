@@ -15,22 +15,22 @@ program
   .description("OpenRouter CLI chat with interactive model & provider selection")
   .option("-m, --model <id>", "skip model picker, use this model ID directly")
   .option("-p, --provider <name>", "skip provider picker, use this provider name directly")
-  .option("-l, --list", "list available models and exit")
-  .option("-L, --list-endpoints <model>", "list providers/endpoints for a model and exit")
+  .option("--lm, --list-models", "list available models and exit")
+  .option("--le, --list-endpoints <model>", "list providers/endpoints for a model and exit")
   .option("-r, --resume [session-id]", "resume a saved session (optional session ID)")
   .option("-e, --export [session-id]", "export a saved session as markdown")
-  .option("-s, --list-sessions", "list saved sessions and exit")
-  .option("--config <path>", "path to preferences config file")
-  .option("--system-prompt <path>", "path to a custom system prompt file")
-  .option("--reasoning-effort <level>", "reasoning effort: max, xhigh, high, medium, low, minimal, none")
-  .option("--no-reasoning", "disable reasoning entirely")
+  .option("--ls, --list-sessions", "list saved sessions and exit")
+  .option("--cfg, --config <path>", "path to preferences config file")
+  .option("--sp, --system-prompt <path>", "path to a custom system prompt file")
+  .option("--re, --reasoning-effort <level>", "reasoning effort: max, xhigh, high, medium, low, minimal, none")
+  .option("--nr, --no-reasoning", "disable reasoning entirely")
 
 program.parse()
 const opts = program.opts()
 
 const apiKey = getApiKey()
 
-if (opts.list) {
+if (opts.listModels) {
   await listModelsCmd(apiKey)
   process.exit(0)
 }

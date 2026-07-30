@@ -66,15 +66,15 @@ Add that line to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make it 
 |-------|-----------------------|----------|--------------------------------------------------------------------------------------|
 | `-m`  | `--model`             | `<id>`   | Skip the model picker and use this model directly                                    |
 | `-p`  | `--provider`          | `<name>` | Skip the provider picker and use this provider directly                              |
-| —     | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`   |
-| —     | `--no-reasoning`      | —        | Disable reasoning entirely                                                           |
-| `-l`  | `--list`              | —        | List all available models (name, ID, context length) and exit                        |
-| `-L`  | `--list-endpoints`    | `<model>`| List providers for a model (pricing, uptime) and exit                                |
-| `-s`  | `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, preview) and exit              |
+| `--re`| `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`   |
+| `--nr`| `--no-reasoning`      | —        | Disable reasoning entirely                                                           |
+| `--lm`| `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
+| `--le`| `--list-endpoints`    | `<model>`| List providers for a model (pricing, uptime) and exit                                |
+| `--ls`| `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, preview) and exit              |
 | `-r`  | `--resume`            | `[id]`   | Resume a saved session. No arg = picker, partial ID = prefix match                   |
 | `-e`  | `--export`            | `[id]`   | Export a session to markdown. Same ID matching as `--resume`                         |
-| —     | `--config`            | `<path>` | Custom path for the preferences JSON file (default: `~/.communicator.json`)          |
-| —     | `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
+| `--cfg`| `--config`           | `<path>` | Custom path for the preferences JSON file (default: `~/.communicator.json`)          |
+| `--sp`| `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
 
 `--reasoning-effort` and `--no-reasoning` are mutually exclusive — the last one on the command line wins.
 
@@ -83,6 +83,7 @@ Quick start:
 ```bash
 communicator                                         # full interactive flow
 communicator -m "openai/gpt-4o" -p "OpenAI"          # skip pickers
+communicator --ls                                    # list saved sessions
 communicator --resume                                # resume a saved session
 ```
 
@@ -148,7 +149,7 @@ Every chat session is automatically saved to `~/.communicator/sessions/<timestam
 ### Listing sessions
 
 ```bash
-communicator -s
+communicator --ls
 communicator --list-sessions
 ```
 
