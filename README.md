@@ -20,6 +20,7 @@ Chat from your terminal with streaming responses, interactive model/provider sel
 - **Usage & cost tracking** — after each turn: prompt / completion / total token counts, cache hit detection, and a dollar-cost breakdown (per turn + cumulative session total)
 - **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/`. Each turn writes atomically; `/quit` and `Ctrl+C` trigger a final save
 - **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, and reasoning effort. Supports prefix matching and an interactive picker
+- **Markdown export** — export any saved session as a clean markdown file with `--export`, with collapsible reasoning blocks and cost summary
 - **Session persistence** — last model, provider, and per-model reasoning effort are saved to `~/.communicator.json` and restored on next launch
 - **CLI flags to skip pickers** — pass `-m`, `-p`, `--reasoning-effort`, or `--no-reasoning` to bypass interactive prompts
 - **Lightweight** — two runtime dependencies, pure Node.js ESM
@@ -72,7 +73,11 @@ communicator --no-reasoning                           # disable reasoning
 communicator --resume                                  # pick a session to resume from a list
 communicator --resume 2026-07-30                       # resume matching a prefix (first 10 chars of session ID)
 communicator --resume 2026-07-30T19-11-45              # resume an exact session by its ID
+communicator -s                                       # list saved sessions and exit
 communicator --list-sessions                           # list saved sessions and exit
+communicator --export                                   # export a session to markdown (interactive picker)
+communicator --export 2026-07-30                        # export matching a prefix
+communicator --export 2026-07-30T19-11-45               # export an exact session by its ID
 communicator --config /path/to/config.json             # custom preferences path
 communicator --system-prompt /path/to/prompt.md        # custom system prompt file
 ```
@@ -88,7 +93,8 @@ communicator --system-prompt /path/to/prompt.md        # custom system prompt fi
 | `--reasoning-effort <level>`      | Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`                   |
 | `--no-reasoning`                  | Disable reasoning entirely                                                                           |
 | `-r, --resume [session-id]`      | Resume a saved session. Without an ID, shows an interactive picker. With an ID, matches by prefix    |
-| `--list-sessions`                | List saved sessions (timestamp, model, message count, preview) and exit                              |
+| `-e, --export [session-id]`      | Export a saved session as markdown (saved to current directory as `session-{id}.md`)                  |
+| `-s, --list-sessions`             | List saved sessions (timestamp, model, message count, preview) and exit                              |
 | `--config <path>`                 | Custom path for the preferences JSON file (default: `~/.communicator.json`)                          |
 | `--system-prompt <path>`          | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`)                 |
 
@@ -154,6 +160,7 @@ Every chat session is automatically saved to `~/.communicator/sessions/<timestam
 ### Listing sessions
 
 ```bash
+communicator -s
 communicator --list-sessions
 ```
 
@@ -181,6 +188,49 @@ communicator --resume 2026-07-30T19-11-45
 ```
 
 When resuming, the original model, provider, and reasoning effort are restored automatically. The conversation picks up right where you left off — all previous messages are preserved. `--resume` takes precedence over `-m` and `-p` flags (they are silently ignored).
+
+### Exporting sessions
+
+Export any saved session as a clean, readable markdown file:
+
+```bash
+# Interactive picker — browse and select from all saved sessions
+communicator --export
+
+# Prefix match — exports if exactly one session starts with "2026-07-30"
+communicator --export 2026-07-30
+
+# Full session ID — exports the exact session
+communicator --export 2026-07-30T19-11-45
+```
+
+The exported markdown file is saved in the current working directory as `session-{id}.md` and includes:
+
+- **Header** — timestamp, model, provider, message count, reasoning effort, and accumulated cost
+- **User messages** — blockquoted under a `## You` heading
+- **Assistant responses** — reasoning shown under `### thinking`, final answer under `### Answer`
+- **Cost** — calculated from token usage and provider pricing (shows "N/A" if pricing is unavailable)
+
+Example output:
+
+```markdown
+# Chat Session — 2026-07-30 19:11:45 UTC
+**Model:** `openai/gpt-4o` | **Provider:** OpenAI | **Messages:** 4 | **Cost:** $0.000124
+
+---
+
+## You
+> What is the capital of France?
+
+---
+
+## Assistant
+### thinking
+The user is asking a straightforward geography question...
+
+### Answer
+The capital of France is Paris.
+```
 
 ### Session file format
 
@@ -230,6 +280,7 @@ cli (index.js)     — commander argument parsing, orchestration
 ├── prompts.js     — interactive TUI pickers using @inquirer/prompts (model, provider, reasoning)
 ├── sessions.js    — session persistence: save, load, list, resolve (~/.communicator/sessions/)
 ├── session-picker.js — interactive session selector for --resume
+├── export.js      — markdown exporter: format session data, write to file
 ├── tracker.js     — per-turn + cumulative token/cost accounting with cache detection
 └── chat.js        — readline loop, token streaming display, usage tracking integration, auto-save
 ```

@@ -9,6 +9,7 @@ import { selectModel, selectProvider, selectReasoningEffort, BACK_SENTINEL } fro
 import { startChat } from "./src/chat.js"
 import { ensureSessionsDir, resolveSession, loadSession, saveSession, listSessionsForPicker } from "./src/sessions.js"
 import { selectSession } from "./src/session-picker.js"
+import { exportSession } from "./src/export.js"
 
 const program = new Command()
 
@@ -20,7 +21,8 @@ program
   .option("-l, --list", "list available models and exit")
   .option("-L, --list-endpoints <model>", "list providers/endpoints for a model and exit")
   .option("-r, --resume [session-id]", "resume a saved session (optional session ID)")
-  .option("--list-sessions", "list saved sessions and exit")
+  .option("-e, --export [session-id]", "export a saved session as markdown")
+  .option("-s, --list-sessions", "list saved sessions and exit")
   .option("--config <path>", "path to preferences config file")
   .option("--system-prompt <path>", "path to a custom system prompt file")
   .option("--reasoning-effort <level>", "reasoning effort: max, xhigh, high, medium, low, minimal, none")
@@ -74,6 +76,44 @@ if (opts.listSessions) {
     const count = `${s.messageCount} msg${s.messageCount !== 1 ? "s" : ""}`
     const preview = s.preview ? `"${s.preview}${s.preview.length >= 60 ? "..." : ""}"` : ""
     console.log(`${time}  ${model.padEnd(37)} ${count.padEnd(12)} ${preview}`)
+  }
+  process.exit(0)
+}
+
+if (opts.export !== undefined) {
+  const dir = await ensureSessionsDir()
+  let matchedId
+
+  if (opts.export && typeof opts.export === "string") {
+    const matches = await resolveSession(dir, opts.export)
+    if (matches.length === 0) {
+      console.error(`No session found matching "${opts.export}"`)
+      process.exit(1)
+    }
+    if (matches.length === 1) {
+      matchedId = matches[0].id
+    } else {
+      matchedId = await selectSession(matches)
+    }
+  } else {
+    const sessions = await listSessionsForPicker(dir)
+    if (!sessions.length) {
+      console.log("No saved sessions to export.")
+      process.exit(0)
+    }
+    matchedId = await selectSession(sessions)
+  }
+
+  if (!matchedId) process.exit(0)
+
+  const sessionData = await loadSession(dir, matchedId)
+  const outputPath = join(process.cwd(), `session-${matchedId}.md`)
+  try {
+    await exportSession(sessionData, outputPath)
+    console.log(`Exported to ${outputPath}`)
+  } catch (err) {
+    console.error(`Export failed: ${err.message}`)
+    process.exit(1)
   }
   process.exit(0)
 }

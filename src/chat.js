@@ -121,6 +121,9 @@ export async function startChat(apiKey, model, providerName, reasoningEffort, pr
       if (result.reasoning) {
         msg.reasoning = result.reasoning
       }
+      if (result.usage) {
+        msg.usage = result.usage
+      }
       messages.push(msg)
     }
 
