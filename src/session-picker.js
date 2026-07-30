@@ -8,7 +8,7 @@ export async function selectSession(sessions) {
     return {
       name: line,
       value: s.id,
-      description: `${s.providerName}  \u2022  ${s.messageCount} messages`,
+      description: `${s.providerName}${s.providerType && s.providerType !== "openrouter" ? ` (${s.providerType})` : ""}  \u2022  ${s.messageCount} messages`,
     }
   })
 

@@ -1,34 +1,44 @@
 # Communicator
 
-Chat from your terminal with streaming responses, interactive model/provider selection, and live cost tracking.
+Chat from your terminal with streaming responses, interactive model/provider selection, and live cost tracking. Supports OpenRouter and Venice.ai backends.
 
 > ⚠️ **Heads up:** This is a hobby project I built for myself, shared in case it helps someone else. It works, maybe, but:
-> - OpenRouter only, no other APIs for now
 > - Rough around the edges (minimal error handling)
 > - Text only, no vision
 > - No promises beyond "it mostly doesn't break"
 > - Minimal testing (cross your fingers and use cheap models)
-> 
+>
 > Fork it, break it, fix it, disregard it, I won't take it personally.
 
 ## Features
 
+- **Multi-provider** — OpenRouter and Venice.ai backends, switchable via `--provider`. Adding new providers is straightforward via the provider abstraction layer
 - **Interactive model picker** — searchable and filterable by name or model ID, with context-length display
-- **Provider selection** — compare pricing, uptime %, and routing tags before starting a chat. Single-provider models skip this step automatically. Navigate back to the model picker at any time
-- **Reasoning effort control** — per-model effort level persisted across sessions. Only shown for models that support reasoning
+- **Provider selection** — compare pricing, uptime %, and routing tags before starting a chat. Single-provider models skip this step automatically. Navigate back to the model picker at any time. Venice models are directly available (no multi-provider routing)
+- **Reasoning effort control** — per-model effort level persisted across sessions. Only shown for models that support reasoning. OpenRouter uses its native reasoning format; Venice uses standard OpenAI `reasoning_effort`
 - **Streaming responses** — tokens appear as they arrive, with reasoning tokens shown in gray under a `[Thinking]` banner and a `[Answer]` separator before the final response
-- **Usage & cost tracking** — after each turn: prompt / completion / total token counts, cache hit detection, and a dollar-cost breakdown (per turn + cumulative session total)
+- **Usage & cost tracking** — after each turn: prompt / completion / total token counts, cache hit detection (OpenRouter), and a dollar-cost breakdown (per turn + cumulative session total)
 - **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/`. Each turn writes atomically; `/quit` and `Ctrl+C` trigger a final save
-- **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, and reasoning effort. Supports prefix matching and an interactive picker
+- **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, and reasoning effort. Automatically detects and uses the correct API backend. Supports prefix matching and an interactive picker
 - **Markdown export** — export any saved session as a clean markdown file with `--export`, with collapsible reasoning blocks and cost summary
 - **Session persistence** — last model, provider, and per-model reasoning effort are saved to `~/.communicator.json` and restored on next launch
-- **CLI flags to skip pickers** — pass `-m`, `-p`, `--reasoning-effort`, or `--no-reasoning` to bypass interactive prompts
+- **CLI flags to skip pickers** — pass `-m`, `--reasoning-effort`, or `--no-reasoning` to bypass interactive prompts
 - **Lightweight** — two runtime dependencies, pure Node.js ESM
 
 ## Requirements
 
 - **Node.js** >= 18
-- **OpenRouter API key** — create one at [openrouter.ai/keys](https://openrouter.ai/keys)
+
+### API Keys
+
+At least one of:
+
+| Provider   | Env variable          | Get a key at                          |
+|------------|-----------------------|---------------------------------------|
+| OpenRouter | `OPENROUTER_API_KEY`  | [openrouter.ai/keys](https://openrouter.ai/keys) |
+| Venice.ai  | `VENICE_API_KEY`      | [venice.ai/settings/api](https://venice.ai/settings/api) |
+
+You can set up both to switch between them at runtime.
 
 ## Install
 
@@ -55,17 +65,21 @@ communicator --help
 ## Setup
 
 ```bash
+# OpenRouter
 export OPENROUTER_API_KEY="sk-or-v1-your-key-here"
+
+# Venice.ai
+export VENICE_API_KEY="vkey-your-key-here"
 ```
 
-Add that line to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make it permanent.
+Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make them permanent.
 
 ## Commands
 
 | Short | Flag                  | Args     | Description                                                                          |
 |-------|-----------------------|----------|--------------------------------------------------------------------------------------|
 | `-m`  | `--model`             | `<id>`   | Skip the model picker and use this model directly                                    |
-| `-p`  | `--provider`          | `<name>` | Skip the provider picker and use this provider directly                              |
+| `-p`  | `--provider`          | `<name>` | Select the API backend: `openrouter` (default) or `venice`                           |
 | `--re`| `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`   |
 | `--nr`| `--no-reasoning`      | —        | Disable reasoning entirely                                                           |
 | `--lm`| `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
@@ -82,21 +96,47 @@ Add that line to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make it 
 Quick start:
 
 ```bash
-communicator                                         # full interactive flow
-communicator -m "openai/gpt-4o" -p "OpenAI"          # skip pickers
-communicator --ls                                    # list saved sessions
-communicator --resume                                # resume a saved session
-communicator --export                                # export a session to cwd
-communicator --export --output-dir ~/Documents       # export to custom directory
+# OpenRouter (default)
+communicator                                            # full interactive flow
+communicator -m "openai/gpt-4o"                         # skip model picker
+communicator --lm                                       # list OpenRouter models
+communicator --le "anthropic/claude-sonnet-4-20250514"  # list endpoints for a model
+
+# Venice.ai
+communicator -p venice                                  # Venice interactive flow
+communicator -p venice -m "qwen-3-7-max"                # skip model picker
+communicator -p venice --lm                             # list Venice models (no API key needed)
+communicator -p venice --le "qwen-3-7-max"              # show Venice endpoint info
+
+# Session management
+communicator --ls                                       # list saved sessions
+communicator --resume                                   # resume a saved session
+communicator --export                                   # export a session to cwd
+communicator --export --output-dir ~/Documents          # export to custom directory
+
+# Reasoning
+communicator -m "deepseek/deepseek-v4-flash" --re high  # force high reasoning effort
+communicator --nr                                       # disable reasoning
+communicator -p venice -m "deepseek-v4-flash" --re high # Venice with reasoning
 ```
 
 ## Usage
 
+### Providers
+
+Communicator supports two API backends:
+
+- **OpenRouter** — Multi-provider gateway with endpoint-level routing. When you select a model, you'll pick which provider (e.g., OpenAI, Azure, Anthropic) actually serves the request. Supports cache-hit detection and per-endpoint pricing comparisons. Use `--provider openrouter` (this is the default).
+
+- **Venice.ai** — Direct model access without multi-provider routing. Models are available directly; there's no endpoint picker step. Venice's `/models` endpoint is public, so you can list models without an API key. Use `--provider venice`.
+
+The provider is saved in each session, so resuming a Venice session automatically uses the Venice backend — no need to pass `-p venice` again.
+
 ### Interactive flow
 
-1. **Model selection** — searchable picker with fuzzy filtering by name or ID. Your last-used model appears first.
-2. **Reasoning effort** — shown only when the selected model supports reasoning. The chosen level is saved per model and restored as default next time.
-3. **Provider selection** — displays pricing, 30-minute uptime %, and routing tags. Navigate ← back to the model picker to change your selection. Models with a single provider skip this step entirely.
+1. **Model selection** — searchable picker with fuzzy filtering by name or ID. Your last-used model appears first. Venice models show names as listed on the Venice dashboard (e.g., `Qwen 3.7 Max`); OpenRouter models include the org prefix (e.g., `Google: Gemini 3.6 Flash`).
+2. **Reasoning effort** — shown only when the selected model supports reasoning. The chosen level is saved per model and restored as default next time. Venice uses the standard OpenAI `reasoning_effort` parameter; OpenRouter uses its native reasoning format.
+3. **Provider selection** (OpenRouter only) — displays pricing, 30-minute uptime %, and routing tags. Navigate ← back to the model picker to change your selection. Models with a single provider skip this step entirely. Venice models go straight to chat.
 
 ### Chat session
 
@@ -119,7 +159,7 @@ The capital of France is Paris.
 ───────────────────────────────────────
 ```
 
-Cache hits are detected and shown when OpenRouter serves a cached response. The session cost accumulates across turns within the same chat.
+Cache hits are detected and shown when OpenRouter serves a cached response. The session cost accumulates across turns within the same chat. Venice pricing is normalized from per-1M-token rates to per-token for consistent cost display.
 
 Special commands:
 
@@ -144,6 +184,7 @@ communicator --system-prompt /path/to/custom-prompt.md
 
 - If the file is missing or empty, the default `"You are a helpful assistant."` prompt is used silently.
 - The file is read once at startup. Changes require restarting the chat.
+- Venice always sets `include_venice_system_prompt: false` since the app provides its own system prompt.
 
 ## Session Persistence & Resume
 
@@ -162,7 +203,7 @@ Output shows each session's timestamp, model, message count, and a preview of th
 3 saved session(s):
 
 2026-07-30 19:15:22  openai/gpt-4o                        12 msgs       "Write a Python script that..."
-2026-07-30 18:42:10  anthropic/claude-sonnet-4-20250514   5 msgs        "Explain how garbage collection..."
+2026-07-30 18:42:10  deepseek-v4-flash                     5 msgs       "Explain how garbage collection..."
 2026-07-30 17:11:45  google/gemini-2.5-pro                 23 msgs       "Compare Rust and Go for..."
 ```
 
@@ -179,7 +220,9 @@ communicator --resume 2026-07-30
 communicator --resume 2026-07-30T19-11-45
 ```
 
-When resuming, the original model, provider, and reasoning effort are restored automatically. The conversation picks up right where you left off — all previous messages are preserved. `--resume` takes precedence over `-m` and `-p` flags (they are silently ignored).
+When resuming, the original model, provider backend (OpenRouter or Venice), endpoint provider, and reasoning effort are restored automatically. The conversation picks up right where you left off — all previous messages are preserved. `--resume` takes precedence over `-m` and `-p` flags (they are silently ignored).
+
+Older sessions saved without a `providerType` field default to OpenRouter for backward compatibility.
 
 ### Exporting sessions
 
@@ -235,18 +278,26 @@ Each session is stored as a JSON file:
 {
   "model": "openai/gpt-4o",
   "providerName": "OpenAI",
+  "providerType": "openrouter",
   "reasoningEffort": "high",
+  "pricing": {
+    "prompt": 0.0000025,
+    "completion": 0.00001
+  },
   "createdAt": "2026-07-30T19:11:45.000Z",
   "updatedAt": "2026-07-30T19:15:22.000Z",
   "messages": [
     { "role": "system", "content": "You are a helpful assistant." },
     { "role": "user", "content": "Hello" },
-    { "role": "assistant", "content": "Hi there!", "reasoning": "..." }
+    { "role": "assistant", "content": "Hi there!", "reasoning": "...", "usage": { "prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17 } }
   ]
 }
 ```
 
+- `providerName` is the endpoint provider (e.g., `"OpenAI"` for OpenRouter, `"venice"` for Venice)
+- `providerType` is the API backend (`"openrouter"` or `"venice"`). Older sessions without this field default to `"openrouter"` on resume
 - `reasoningEffort` is `null` when reasoning is explicitly disabled
+- `pricing` stores per-token dollar amounts used for cost calculation
 - `updatedAt` is bumped on every auto-save
 - Empty sessions (no user messages) are never saved
 
@@ -265,22 +316,26 @@ Stored in `~/.communicator.json` (customizable with `--config`):
 }
 ```
 
-The last model and provider become defaults in the interactive pickers. Reasoning effort is saved per model ID and restored automatically.
+The last model and provider become defaults in the interactive pickers. Reasoning effort is saved per model ID and restored automatically. Preferences are currently scoped across both API backends — your last OpenRouter model will show as the favorite even when using Venice (this will be improved in a future release).
 
 ## How it works
 
 ```
 cli (index.js)           — commander argument parsing, delegates to command modules
 ├── commands/
-│   ├── list-models.js   — --list handler
-│   ├── list-endpoints.js — --list-endpoints handler
-│   ├── list-sessions.js — --list-sessions handler
+│   ├── list-models.js   — --lm handler
+│   ├── list-endpoints.js — --le handler
+│   ├── list-sessions.js — --ls handler
 │   ├── export-cmd.js    — --export handler
 │   ├── resume.js        — --resume handler (load session, return params)
-│   └── chat-start.js    — main interactive flow: model/provider pickers, chat, save
-├── config.js            — API key (env), preferences load/save (~/.communicator.json)
+│   └── chat-start.js    — main interactive flow: model/endpoint pickers, chat, save
+├── providers/
+│   ├── index.js         — factory: getProvider(name) → provider module
+│   ├── openrouter.js    — OpenRouter API client: models, endpoints, chat completions
+│   └── venice.js        — Venice.ai API client: models, synthetic endpoints, chat
+├── sse-parser.js        — shared SSE stream parser (consumed by both providers)
+├── config.js            — API key lookup (env), preferences load/save (~/.communicator.json)
 ├── constants.js         — shared constants (paths, labels, SSE markers) and formatCost
-├── openrouter.js        — OpenRouter API client: models, endpoints, streaming chat completions
 ├── prompts.js           — interactive TUI pickers using @inquirer/prompts (model, provider, reasoning)
 ├── sessions.js          — session persistence: save, load, list, resolve (~/.communicator/sessions/)
 ├── session-picker.js    — interactive session selector for --resume and --export
@@ -290,6 +345,21 @@ cli (index.js)           — commander argument parsing, delegates to command mo
 ```
 
 Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing and [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) for the interactive search/select UI.
+
+### Provider contract
+
+Adding a new provider requires implementing the following exports:
+
+```js
+export const meta = { name, baseURL, apiKeyEnv, hasEndpoints }
+export async function fetchModels(apiKey) → [{id, name, provider, contextLength, description, reasoning}]
+export async function fetchEndpoints(apiKey, modelId, allModels?) → [{name, providerName, tag, status, uptime30m, pricing, ...}]
+export async function chatCompletion({apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning}) → {content, reasoning, usage}
+export function normalizePricing(rawPricing) → {prompt, completion}
+export function handleHttpError(status, body) → throws
+```
+
+See `src/providers/openrouter.js` and `src/providers/venice.js` for reference implementations.
 
 ## Uninstall
 

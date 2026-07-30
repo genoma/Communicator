@@ -3,8 +3,6 @@ import { join } from "node:path"
 
 export const THIN_SEP = "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
 
-export const OPENROUTER_BASE = "https://openrouter.ai/api/v1"
-
 export const SESSIONS_DIR = join(homedir(), ".communicator", "sessions")
 
 export const DEFAULT_CONFIG_FILE = join(homedir(), ".communicator.json")
@@ -24,8 +22,6 @@ export const EFFORT_LABELS = {
 export const SSE_DATA_PREFIX = "data: "
 
 export const SSE_DONE = "[DONE]"
-
-export const CACHE_HEADER = "x-openrouter-cache-status"
 
 export function formatCost(cost) {
   if (cost === null || cost === undefined) return "N/A"

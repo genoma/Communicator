@@ -2,6 +2,7 @@
 
 import { Command } from "commander"
 import { getApiKey, loadPreferences, loadSystemPrompt, savePreferences } from "./src/config.js"
+import { getProvider } from "./src/providers/index.js"
 import { listModelsCmd } from "./src/commands/list-models.js"
 import { listEndpointsCmd } from "./src/commands/list-endpoints.js"
 import { listSessionsCmd } from "./src/commands/list-sessions.js"
@@ -12,9 +13,9 @@ const program = new Command()
 
 program
   .name("communicator")
-  .description("OpenRouter CLI chat with interactive model & provider selection")
+  .description("AI CLI chat with interactive model & provider selection")
   .option("-m, --model <id>", "skip model picker, use this model ID directly")
-  .option("-p, --provider <name>", "skip provider picker, use this provider name directly")
+  .option("-p, --provider <name>", "AI provider backend: openrouter or venice", "openrouter")
   .option("--lm, --list-models", "list available models and exit")
   .option("--le, --list-endpoints <model>", "list providers/endpoints for a model and exit")
   .option("-r, --resume [session-id]", "resume a saved session (optional session ID)")
@@ -29,15 +30,23 @@ program
 program.parse()
 const opts = program.opts()
 
-const apiKey = getApiKey()
+const providerType = opts.provider || "openrouter"
+
+function getApiKeyForStaticCmd() {
+  const envVar = { openrouter: "OPENROUTER_API_KEY", venice: "VENICE_API_KEY" }[providerType]
+  return process.env[envVar]?.trim() || ""
+}
+
+const apiKeyOptional = getApiKeyForStaticCmd()
+const provider = getProvider(providerType)
 
 if (opts.listModels) {
-  await listModelsCmd(apiKey)
+  await listModelsCmd(provider, apiKeyOptional)
   process.exit(0)
 }
 
 if (opts.listEndpoints) {
-  await listEndpointsCmd(apiKey, opts.listEndpoints)
+  await listEndpointsCmd(provider, apiKeyOptional, opts.listEndpoints)
   process.exit(0)
 }
 
@@ -57,7 +66,8 @@ if (opts.export !== undefined) {
   process.exit(0)
 }
 
+const apiKey = getApiKey(providerType)
 const prefs = await loadPreferences(opts.config)
 const systemPrompt = await loadSystemPrompt(opts.systemPrompt)
 
-await chatStart({ apiKey, opts, prefs, systemPrompt })
+await chatStart({ apiKey, opts, prefs, systemPrompt, providerType })

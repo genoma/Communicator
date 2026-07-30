@@ -10,6 +10,7 @@ export async function resumeCmd(partialId) {
     modelId: sessionData.model,
     modelName: sessionData.model,
     providerName: sessionData.providerName || null,
+    providerType: sessionData.providerType || "openrouter",
     reasoningEffort: sessionData.reasoningEffort,
     pricing: sessionData.pricing || null,
     initialMessages: sessionData.messages,

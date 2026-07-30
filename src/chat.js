@@ -1,5 +1,4 @@
 import { createInterface } from "node:readline"
-import { chatCompletion } from "./openrouter.js"
 import { UsageTracker } from "./tracker.js"
 import { ensureSessionsDir, saveSession } from "./sessions.js"
 import { THIN_SEP } from "./constants.js"
@@ -28,11 +27,12 @@ function renderHistory(messages) {
   process.stdout.write(`\x1b[90m${THIN_SEP}\x1b[0m\n\n`)
 }
 
-export async function startChat(apiKey, model, providerName, reasoningEffort, pricing, {
+export async function startChat(apiKey, model, endpointProviderName, reasoningEffort, pricing, provider, {
   systemPrompt = null,
   initialMessages = null,
   sessionId = null,
   createdAt = null,
+  supportsReasoning = true,
 } = {}) {
   let messages
   if (initialMessages) {
@@ -52,7 +52,7 @@ export async function startChat(apiKey, model, providerName, reasoningEffort, pr
     }
   }
 
-  const label = providerName ? `${providerName} / ${model}` : model
+  const label = endpointProviderName ? `${endpointProviderName} / ${model}` : model
   if (reasoningEffort) {
     console.log(`\nConnected to ${label}  [thinking: ${getEffortLabel(reasoningEffort)}]`)
   } else {
@@ -99,7 +99,7 @@ export async function startChat(apiKey, model, providerName, reasoningEffort, pr
 
     try {
       process.stdout.write("\n")
-      result = await chatCompletion({ apiKey, model, messages, onToken: (token, type) => {
+      result = await provider.chatCompletion({ apiKey, model, messages, onToken: (token, type) => {
         if (type === "start_reasoning") {
           shownThinkingBanner = true
           process.stdout.write("\x1b[90m[Thinking]\x1b[0m\n")
@@ -111,7 +111,7 @@ export async function startChat(apiKey, model, providerName, reasoningEffort, pr
         } else if (type === "content") {
           process.stdout.write(token)
         }
-      }, provider: providerName, reasoningEffort })
+      }, provider: endpointProviderName, reasoningEffort, supportsReasoning })
       process.stdout.write("\n\n")
 
       if (result.usage) {
@@ -143,7 +143,8 @@ export async function startChat(apiKey, model, providerName, reasoningEffort, pr
         const dir = await ensureSessionsDir()
         await saveSession(dir, sessionId, {
           model,
-          providerName,
+          providerName: endpointProviderName,
+          providerType: provider.meta.name,
           reasoningEffort: reasoningEffort ?? null,
           pricing: pricing ?? null,
           createdAt: createdAt || new Date().toISOString(),

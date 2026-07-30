@@ -1,13 +1,23 @@
 import { readFile, writeFile, access } from "node:fs/promises"
 import { DEFAULT_CONFIG_FILE, DEFAULT_SYSTEM_PROMPT_FILE } from "./constants.js"
 
-export function getApiKey() {
-  const key = process.env.OPENROUTER_API_KEY?.trim();
-  if (!key) {
-    console.error("OPENROUTER_API_KEY environment variable is not set.");
-    process.exit(1);
+const KEY_ENV_MAP = {
+  openrouter: "OPENROUTER_API_KEY",
+  venice: "VENICE_API_KEY",
+}
+
+export function getApiKey(providerName = "openrouter") {
+  const envVar = KEY_ENV_MAP[providerName]
+  if (!envVar) {
+    console.error(`Unknown provider: ${providerName}`)
+    process.exit(1)
   }
-  return key;
+  const key = process.env[envVar]?.trim()
+  if (!key) {
+    console.error(`${envVar} environment variable is not set.`)
+    process.exit(1)
+  }
+  return key
 }
 
 export async function loadPreferences(customPath) {

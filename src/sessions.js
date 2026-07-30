@@ -71,6 +71,7 @@ export async function listSessions(dir, { withPreview = false } = {}) {
         id,
         model: parsed.model || "unknown",
         providerName: parsed.providerName || "unknown",
+        providerType: parsed.providerType || "openrouter",
         createdAt: parsed.createdAt || null,
         updatedAt: parsed.updatedAt || null,
         messageCount: msgCount,
