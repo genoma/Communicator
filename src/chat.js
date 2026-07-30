@@ -3,6 +3,31 @@ import { chatCompletion } from "./openrouter.js"
 import { UsageTracker } from "./tracker.js"
 import { ensureSessionsDir, saveSession } from "./sessions.js"
 
+const THIN_SEP = "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+
+function renderHistory(messages) {
+  if (!messages || messages.length <= 1) return
+
+  const hasVisible = messages.some((m) => m.role !== "system")
+  if (!hasVisible) return
+
+  process.stdout.write("\n")
+  for (const msg of messages) {
+    if (msg.role === "user") {
+      process.stdout.write(`> ${msg.content}\n\n`)
+    } else if (msg.role === "assistant") {
+      if (msg.reasoning) {
+        process.stdout.write("\x1b[90m[Thinking]\x1b[0m\n")
+        process.stdout.write(`\x1b[90m${msg.reasoning}\x1b[0m\n`)
+        process.stdout.write("\n\x1b[1m[Answer]\x1b[0m\n\n")
+      }
+      process.stdout.write(`${msg.content}\n\n`)
+    }
+  }
+
+  process.stdout.write(`\x1b[90m${THIN_SEP}\x1b[0m\n\n`)
+}
+
 export async function startChat(apiKey, model, providerName, reasoningEffort, pricing, {
   systemPrompt = null,
   initialMessages = null,
@@ -27,6 +52,10 @@ export async function startChat(apiKey, model, providerName, reasoningEffort, pr
     console.log(`\nConnected to ${label}`)
   }
   console.log('Type your message and press Enter. "/quit" or Cmd+C/Ctrl+C to exit.\n')
+
+  if (initialMessages) {
+    renderHistory(messages)
+  }
 
   const rl = createInterface({
     input: process.stdin,
@@ -102,6 +131,7 @@ export async function startChat(apiKey, model, providerName, reasoningEffort, pr
           model,
           providerName,
           reasoningEffort: reasoningEffort ?? null,
+          pricing: pricing ?? null,
           createdAt: createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           messages,

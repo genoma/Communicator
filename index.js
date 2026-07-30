@@ -121,6 +121,7 @@ if (opts.resume !== undefined) {
   modelName = modelId
   providerName = sessionData.providerName || null
   reasoningEffort = sessionData.reasoningEffort
+  pricing = sessionData.pricing || null
   initialMessages = sessionData.messages
   sessionId = matchedId
   sessionCreatedAt = sessionData.createdAt
@@ -204,6 +205,7 @@ if (sessionId && finalMessages && finalMessages.length > 1) {
       model: modelId,
       providerName,
       reasoningEffort: reasoningEffort ?? null,
+      pricing: pricing ?? null,
       createdAt: sessionCreatedAt,
       updatedAt: new Date().toISOString(),
       messages: finalMessages,
