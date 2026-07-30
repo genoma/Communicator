@@ -44,6 +44,14 @@ export async function startChat(apiKey, model, providerName, reasoningEffort, pr
 
   const tracker = new UsageTracker()
 
+  if (initialMessages) {
+    for (const msg of initialMessages) {
+      if (msg.role === "assistant" && msg.usage) {
+        tracker.record(msg.usage, pricing)
+      }
+    }
+  }
+
   const label = providerName ? `${providerName} / ${model}` : model
   if (reasoningEffort) {
     console.log(`\nConnected to ${label}  [thinking: ${getEffortLabel(reasoningEffort)}]`)
@@ -54,6 +62,10 @@ export async function startChat(apiKey, model, providerName, reasoningEffort, pr
 
   if (initialMessages) {
     renderHistory(messages)
+  }
+
+  if (initialMessages && tracker.requests > 0) {
+    console.log(`\x1b[90mPrevious session:\x1b[0m ${tracker.summary()}\n`)
   }
 
   const rl = createInterface({
