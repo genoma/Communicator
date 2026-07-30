@@ -73,6 +73,7 @@ Add that line to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make it 
 | `--ls`| `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, preview) and exit              |
 | `-r`  | `--resume`            | `[id]`   | Resume a saved session. No arg = picker, partial ID = prefix match                   |
 | `-e`  | `--export`            | `[id]`   | Export a session to markdown. Same ID matching as `--resume`                         |
+| `--od`| `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences)                       |
 | `--cfg`| `--config`           | `<path>` | Custom path for the preferences JSON file (default: `~/.communicator.json`)          |
 | `--sp`| `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
 
@@ -85,6 +86,8 @@ communicator                                         # full interactive flow
 communicator -m "openai/gpt-4o" -p "OpenAI"          # skip pickers
 communicator --ls                                    # list saved sessions
 communicator --resume                                # resume a saved session
+communicator --export                                # export a session to cwd
+communicator --export --output-dir ~/Documents       # export to custom directory
 ```
 
 ## Usage
@@ -191,9 +194,12 @@ communicator --export 2026-07-30
 
 # Full session ID — exports the exact session
 communicator --export 2026-07-30T19-11-45
+
+# Export to a custom directory (persisted in preferences)
+communicator --export --output-dir ~/Documents/CommunicatorExports
 ```
 
-The exported markdown file is saved in the current working directory as `session-{id}.md` and includes:
+The exported markdown file is saved as `session-{id}.md` in the current working directory by default. Use `--output-dir` to set a custom directory — once set, it's saved in your preferences and used for all future exports (omit the flag to revert to cwd).
 
 - **Header** — timestamp, model, provider, message count, reasoning effort, and accumulated cost
 - **User messages** — blockquoted under a `## You` heading
@@ -254,7 +260,8 @@ Stored in `~/.communicator.json` (customizable with `--config`):
   "lastProvider": "OpenAI",
   "reasoningEffort": {
     "openai/o1-pro": "high"
-  }
+  },
+  "outputDir": "/home/user/Documents/CommunicatorExports"
 }
 ```
 

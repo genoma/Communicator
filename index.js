@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander"
-import { getApiKey, loadPreferences, loadSystemPrompt } from "./src/config.js"
+import { getApiKey, loadPreferences, loadSystemPrompt, savePreferences } from "./src/config.js"
 import { listModelsCmd } from "./src/commands/list-models.js"
 import { listEndpointsCmd } from "./src/commands/list-endpoints.js"
 import { listSessionsCmd } from "./src/commands/list-sessions.js"
@@ -19,6 +19,7 @@ program
   .option("--le, --list-endpoints <model>", "list providers/endpoints for a model and exit")
   .option("-r, --resume [session-id]", "resume a saved session (optional session ID)")
   .option("-e, --export [session-id]", "export a saved session as markdown")
+  .option("--od, --output-dir <path>", "custom directory for exported markdown files")
   .option("--ls, --list-sessions", "list saved sessions and exit")
   .option("--cfg, --config <path>", "path to preferences config file")
   .option("--sp, --system-prompt <path>", "path to a custom system prompt file")
@@ -46,7 +47,13 @@ if (opts.listSessions) {
 }
 
 if (opts.export !== undefined) {
-  await exportCmd(typeof opts.export === "string" ? opts.export : null)
+  const prefs = await loadPreferences(opts.config)
+  const outputDir = opts.outputDir || prefs.outputDir || null
+  const partialId = typeof opts.export === "string" ? opts.export : null
+  await exportCmd(partialId, outputDir)
+  if (opts.outputDir && opts.outputDir !== prefs.outputDir) {
+    await savePreferences({ ...prefs, outputDir: opts.outputDir }, opts.config)
+  }
   process.exit(0)
 }
 
