@@ -1,8 +1,8 @@
-import { createInterface } from "node:readline"
 import { UsageTracker } from "./tracker.js"
 import { ensureSessionsDir, saveSession } from "./sessions.js"
 import { THIN_SEP } from "./constants.js"
 import { getEffortLabel } from "./prompts.js"
+import { readInput } from "./input.js"
 
 function renderHistory(messages) {
   if (!messages || messages.length <= 1) return
@@ -58,7 +58,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
   } else {
     console.log(`\nConnected to ${label}`)
   }
-  console.log('Type your message and press Enter. "/quit" or Cmd+C/Ctrl+C to exit.\n')
+  console.log(`Send with Enter  |  Newline: Ctrl+J  |  /quit to exit\n`)
 
   if (initialMessages) {
     renderHistory(messages)
@@ -68,38 +68,30 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     console.log(`\x1b[90mPrevious session:\x1b[0m ${tracker.summary()}\n`)
   }
 
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    prompt: "> ",
-  })
+  while (true) {
+    const result = await readInput()
 
-  rl.prompt()
-
-  process.once("SIGINT", () => {
-    rl.close()
-  })
-
-  for await (const line of rl) {
-    const input = line.trim()
-    if (!input) {
-      rl.prompt()
-      continue
-    }
-
-    if (input === "/quit") {
-      rl.close()
+    if (result.quit) {
+      process.stdout.write("\n")
       return messages
     }
 
+    if (result.cancelled) {
+      process.stdout.write("\n")
+      return messages
+    }
+
+    const input = result.value.trim()
+    if (!input) continue
+
     messages.push({ role: "user", content: input })
 
-    let result
+    let apiResult
     let shownThinkingBanner = false
 
     try {
       process.stdout.write("\n")
-      result = await provider.chatCompletion({ apiKey, model, messages, onToken: (token, type) => {
+      apiResult = await provider.chatCompletion({ apiKey, model, messages, onToken: (token, type) => {
         if (type === "start_reasoning") {
           shownThinkingBanner = true
           process.stdout.write("\x1b[90m[Thinking]\x1b[0m\n")
@@ -114,26 +106,25 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       }, provider: endpointProviderName, reasoningEffort, supportsReasoning, sessionId })
       process.stdout.write("\n\n")
 
-      if (result.usage) {
-        tracker.record(result.usage, pricing)
-        tracker.printTurn(result.usage, pricing)
+      if (apiResult.usage) {
+        tracker.record(apiResult.usage, pricing)
+        tracker.printTurn(apiResult.usage, pricing)
       }
     } catch (err) {
       console.error(`\nError: ${err.message}\n`)
       if (err.message.includes("Rate limited")) {
         messages.pop()
       }
-      rl.prompt()
       continue
     }
 
-    if (result.content) {
-      const msg = { role: "assistant", content: result.content }
-      if (result.reasoning) {
-        msg.reasoning = result.reasoning
+    if (apiResult.content) {
+      const msg = { role: "assistant", content: apiResult.content }
+      if (apiResult.reasoning) {
+        msg.reasoning = apiResult.reasoning
       }
-      if (result.usage) {
-        msg.usage = result.usage
+      if (apiResult.usage) {
+        msg.usage = apiResult.usage
       }
       messages.push(msg)
     }
@@ -155,9 +146,5 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
         // save failures are non-fatal
       }
     }
-
-    rl.prompt()
   }
-
-  return messages
 }
