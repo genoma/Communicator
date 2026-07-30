@@ -16,21 +16,26 @@ program
   .description("AI CLI chat with interactive model & provider selection")
   .option("-m, --model <id>", "skip model picker, use this model ID directly")
   .option("-p, --provider <name>", "AI provider backend: openrouter or venice", "openrouter")
-  .option("--lm, --list-models", "list available models and exit")
-  .option("--le, --list-endpoints <model>", "list providers/endpoints for a model and exit")
+  .option("--list-models", "list available models and exit")
+  .option("--list-endpoints <model>", "list providers/endpoints for a model and exit")
   .option("-r, --resume [session-id]", "resume a saved session (optional session ID)")
-  .option("-e, --export [session-id]", "export a saved session as markdown")
-  .option("--od, --output-dir <path>", "custom directory for exported markdown files")
-  .option("--ls, --list-sessions", "list saved sessions and exit")
-  .option("--cfg, --config <path>", "path to preferences config file")
-  .option("--sp, --system-prompt <path>", "path to a custom system prompt file")
-  .option("--re, --reasoning-effort <level>", "reasoning effort: max, xhigh, high, medium, low, minimal, none")
-  .option("--nr, --no-reasoning", "disable reasoning entirely")
+  .option("-x, --export [session-id]", "export a saved session as markdown")
+  .option("--output-dir <path>", "custom directory for exported markdown files")
+  .option("--list-sessions", "list saved sessions and exit")
+  .option("--config <path>", "path to preferences config file")
+  .option("--system-prompt <path>", "path to a custom system prompt file")
+  .option("--reasoning-effort <level>", "reasoning effort: max, xhigh, high, medium, low, minimal, none")
+  .option("--no-reasoning", "disable reasoning entirely")
 
 program.parse()
 const opts = program.opts()
 
 const providerType = opts.provider || "openrouter"
+
+if (opts.resume !== undefined && opts.export !== undefined) {
+  console.error("Cannot use --resume and --export together. Use one at a time.")
+  process.exit(1)
+}
 
 function getApiKeyForStaticCmd() {
   const envVar = { openrouter: "OPENROUTER_API_KEY", venice: "VENICE_API_KEY" }[providerType]

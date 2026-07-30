@@ -2,7 +2,7 @@ import { ensureSessionsDir, resolveSessionInteractive, loadSession } from "../se
 
 export async function resumeCmd(partialId) {
   const dir = await ensureSessionsDir()
-  const matchedId = await resolveSessionInteractive(dir, partialId)
+  const matchedId = await resolveSessionInteractive(dir, partialId, { message: "Select a session to resume" })
   if (!matchedId) return null
 
   const sessionData = await loadSession(dir, matchedId)

@@ -5,7 +5,7 @@ import { exportSession } from "../export.js"
 
 export async function exportCmd(partialId, outputDir) {
   const dir = await ensureSessionsDir()
-  const matchedId = await resolveSessionInteractive(dir, partialId)
+  const matchedId = await resolveSessionInteractive(dir, partialId, { message: "Select a session to export" })
   if (!matchedId) return
 
   const sessionData = await loadSession(dir, matchedId)

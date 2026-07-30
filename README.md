@@ -80,16 +80,16 @@ Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make t
 |-------|-----------------------|----------|--------------------------------------------------------------------------------------|
 | `-m`  | `--model`             | `<id>`   | Skip the model picker and use this model directly                                    |
 | `-p`  | `--provider`          | `<name>` | Select the API backend: `openrouter` (default) or `venice`                           |
-| `--re`| `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`   |
-| `--nr`| `--no-reasoning`      | —        | Disable reasoning entirely                                                           |
-| `--lm`| `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
-| `--le`| `--list-endpoints`    | `<model>`| List providers for a model (pricing, uptime) and exit                                |
-| `--ls`| `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, preview) and exit              |
+|       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`   |
+|       | `--no-reasoning`      | —        | Disable reasoning entirely                                                           |
+|       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
+|       | `--list-endpoints`    | `<model>`| List providers for a model (pricing, uptime) and exit                                |
+|       | `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, preview) and exit              |
 | `-r`  | `--resume`            | `[id]`   | Resume a saved session. No arg = picker, partial ID = prefix match                   |
-| `-e`  | `--export`            | `[id]`   | Export a session to markdown. Same ID matching as `--resume`                         |
-| `--od`| `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences)                       |
-| `--cfg`| `--config`           | `<path>` | Custom path for the preferences JSON file (default: `~/.communicator.json`)          |
-| `--sp`| `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
+| `-x`  | `--export`            | `[id]`   | Export a session to markdown. Same ID matching as `--resume`                         |
+|       | `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences)                       |
+|       | `--config`            | `<path>` | Custom path for the preferences JSON file (default: `~/.communicator.json`)          |
+|       | `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
 
 `--reasoning-effort` and `--no-reasoning` are mutually exclusive — the last one on the command line wins.
 
@@ -99,25 +99,25 @@ Quick start:
 # OpenRouter (default)
 communicator                                            # full interactive flow
 communicator -m "openai/gpt-4o"                         # skip model picker
-communicator --lm                                       # list OpenRouter models
-communicator --le "anthropic/claude-sonnet-4-20250514"  # list endpoints for a model
+communicator --list-models                                       # list OpenRouter models
+communicator --list-endpoints "anthropic/claude-sonnet-4-20250514"  # list endpoints for a model
 
 # Venice.ai
 communicator -p venice                                  # Venice interactive flow
 communicator -p venice -m "qwen-3-7-max"                # skip model picker
-communicator -p venice --lm                             # list Venice models (no API key needed)
-communicator -p venice --le "qwen-3-7-max"              # show Venice endpoint info
+communicator -p venice --list-models                             # list Venice models (no API key needed)
+communicator -p venice --list-endpoints "qwen-3-7-max"           # show Venice endpoint info
 
 # Session management
-communicator --ls                                       # list saved sessions
+communicator --list-sessions                                   # list saved sessions
 communicator --resume                                   # resume a saved session
 communicator --export                                   # export a session to cwd
 communicator --export --output-dir ~/Documents          # export to custom directory
 
 # Reasoning
-communicator -m "deepseek/deepseek-v4-flash" --re high  # force high reasoning effort
-communicator --nr                                       # disable reasoning
-communicator -p venice -m "deepseek-v4-flash" --re high # Venice with reasoning
+communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort high  # force high reasoning effort
+communicator --no-reasoning                                              # disable reasoning
+communicator -p venice -m "deepseek-v4-flash" --reasoning-effort high    # Venice with reasoning
 ```
 
 ## Usage
@@ -193,7 +193,7 @@ Every chat session is automatically saved to `~/.communicator/sessions/<timestam
 ### Listing sessions
 
 ```bash
-communicator --ls
+communicator --list-sessions
 communicator --list-sessions
 ```
 
@@ -323,10 +323,10 @@ The last model and provider become defaults in the interactive pickers. Reasonin
 ```
 cli (index.js)           — commander argument parsing, delegates to command modules
 ├── commands/
-│   ├── list-models.js   — --lm handler
-│   ├── list-endpoints.js — --le handler
-│   ├── list-sessions.js — --ls handler
-│   ├── export-cmd.js    — --export handler
+│   ├── list-models.js   — --list-models handler
+│   ├── list-endpoints.js — --list-endpoints handler
+│   ├── list-sessions.js  — --list-sessions handler
+│   ├── export-cmd.js     — --export handler
 │   ├── resume.js        — --resume handler (load session, return params)
 │   └── chat-start.js    — main interactive flow: model/endpoint pickers, chat, save
 ├── providers/

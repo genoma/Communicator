@@ -13,7 +13,8 @@ export async function resolveSession(dir, partialId) {
   return sessions.filter((s) => s.id.startsWith(partialId))
 }
 
-export async function resolveSessionInteractive(dir, partialId) {
+export async function resolveSessionInteractive(dir, partialId, opts = {}) {
+  const { message } = opts
   if (partialId && typeof partialId === "string") {
     const matches = await resolveSession(dir, partialId)
     if (matches.length === 0) {
@@ -23,7 +24,7 @@ export async function resolveSessionInteractive(dir, partialId) {
     if (matches.length === 1) {
       return matches[0].id
     }
-    return selectSession(matches)
+    return selectSession(matches, { message })
   }
 
   const sessions = await listSessions(dir, { withPreview: true })
@@ -31,7 +32,7 @@ export async function resolveSessionInteractive(dir, partialId) {
     console.log("No saved sessions found.")
     process.exit(0)
   }
-  return selectSession(sessions)
+  return selectSession(sessions, { message })
 }
 
 export async function listSessions(dir, { withPreview = false } = {}) {
