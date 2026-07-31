@@ -1,5 +1,4 @@
-import { THIN_SEP } from '../constants.js'
-import { dim, thinking, answer } from './style.js'
+import { dim, you, thinking, answer } from './style.js'
 
 export function createStreamRenderer() {
   return (token, type) => {
@@ -25,7 +24,7 @@ export function renderHistory(messages) {
   process.stdout.write('\n')
   for (const msg of messages) {
     if (msg.role === 'user') {
-      process.stdout.write(`> ${msg.content}\n\n`)
+      process.stdout.write(`${you()}\n${msg.content}\n\n`)
     } else if (msg.role === 'assistant') {
       if (msg.reasoning) {
         process.stdout.write(`${thinking()}\n\n`)
@@ -35,6 +34,4 @@ export function renderHistory(messages) {
       process.stdout.write(`${msg.content}\n\n`)
     }
   }
-
-  process.stdout.write(`${dim(THIN_SEP)}\n\n`)
 }

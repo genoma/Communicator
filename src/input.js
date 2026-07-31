@@ -6,7 +6,8 @@ const HISTORY_PATH = join(homedir(), '.communicator', 'history.json')
 
 export async function readInput() {
   const [value, error] = await readMultiline('', {
-    prefix: '> ',
+    prefix: '',
+    linePrefix: '❯ ',
     helpFooter: true,
     maxLines: 50,
     history: {
@@ -15,6 +16,7 @@ export async function readInput() {
       shouldPersist: (v) => v.trim() !== '',
     },
     theme: {
+      linePrefix: { pending: 'cyan', submitted: 'dim', cancelled: 'dim' },
       submitRender: 'preserve',
     },
   })

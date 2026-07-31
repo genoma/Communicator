@@ -1,23 +1,19 @@
+import { styleText } from 'node:util'
 import { THIN_SEP } from '../constants.js'
 
-const DIM_OPEN = '\x1b[90m'
-const BOLD_OPEN = '\x1b[1m'
-const RESET = '\x1b[0m'
+export const dim = (text) => styleText('dim', text)
+export const bold = (text) => styleText('bold', text)
 
-export function dim(text) {
-  return text ? `${DIM_OPEN}${text}${RESET}` : ''
-}
-
-export function bold(text) {
-  return `${BOLD_OPEN}${text}${RESET}`
+export function you() {
+  return styleText(['bold', 'cyan'], '❯ You')
 }
 
 export function thinking() {
-  return dim('[Thinking]')
+  return styleText(['dim', 'yellow'], '[Thinking]')
 }
 
 export function answer() {
-  return bold('[Answer]')
+  return styleText(['bold', 'green'], '[Answer]')
 }
 
 export function sep() {

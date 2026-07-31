@@ -73,8 +73,6 @@ export class UsageTracker {
       const sessionPart = formatCost(this.cost)
       console.log(`  Cost    ${turnPart} this turn  |  ${sessionPart} session`)
     }
-
-    console.log(sep())
   }
 
   summary() {

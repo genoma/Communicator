@@ -146,7 +146,8 @@ Passing `-m <id>` skips **all** pickers: the reasoning effort is restored from y
 Once connected, responses stream token by token. Reasoning tokens appear in gray with a `[Thinking]` label. After the final answer, a usage summary is printed automatically:
 
 ```
-> What is the capital of France?
+❯ You
+What is the capital of France?
 
 [Thinking]
 The user is asking about the capital of France...
