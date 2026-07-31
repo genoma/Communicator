@@ -69,18 +69,20 @@ function cheapestEndpoint(endpoints) {
   return best
 }
 
-export async function selectModelNonInteractive({ provider, apiKey, prefs, modelId }) {
+export async function selectModelNonInteractive({ provider, apiKey, prefs, modelId, forcedEffort }) {
   const models = await provider.fetchModels(apiKey)
   const modelData = models.find((m) => m.id === modelId)
   const reasoning = modelData?.reasoning || null
 
-  let effort
-  if (reasoning?.supportsEffort === false) {
-    effort = undefined
-  } else if (reasoning) {
-    const saved = prefs.reasoningEffort?.[modelId]
-    effort = saved !== undefined ? saved : reasoning.default_effort ?? undefined
-    if (effort === 'none') effort = null
+  let effort = forcedEffort
+  if (effort === undefined) {
+    if (reasoning?.supportsEffort === false) {
+      effort = undefined
+    } else if (reasoning) {
+      const saved = prefs.reasoningEffort?.[modelId]
+      effort = saved !== undefined ? saved : reasoning.default_effort ?? undefined
+      if (effort === 'none') effort = null
+    }
   }
 
   const endpoints = await provider.fetchEndpoints(apiKey, modelId, models)

@@ -17,17 +17,18 @@ Chat from your terminal with streaming responses, interactive model/provider sel
 - **Provider selection** — compare pricing, uptime %, and routing tags before starting a chat. Single-provider models skip this step automatically. Navigate back to the model picker at any time. Venice models are directly available (no multi-provider routing)
 - **Reasoning effort control** — per-model effort level persisted across sessions. Only shown for models that support reasoning. OpenRouter uses its native reasoning format; Venice uses standard OpenAI `reasoning_effort`
 - **Streaming responses** — tokens appear as they arrive, with reasoning tokens shown in gray under a `[Thinking]` banner and a `[Answer]` separator before the final response
-- **Usage & cost tracking** — after each turn: prompt / completion / total token counts, cache hit detection (OpenRouter), and a dollar-cost breakdown (per turn + cumulative session total)
-- **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/`. Each turn writes atomically; `/quit` and `Ctrl+C` trigger a final save
+- **Usage & cost tracking** — after each turn: prompt / completion / total token counts, cache hit detection (OpenRouter), and a dollar-cost breakdown (per turn + cumulative session total). Check anytime with `/cost`
+- **Slash commands** — `/new` starts a fresh session, `/model` switches models mid-chat, `/reasoning` re-picks the reasoning effort, `/cost` shows the running total, `/quit` exits
+- **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/`. Sessions are saved when you quit, switch models, start a new session, or interrupt with `Ctrl+C`, so the last exchange is never lost
 - **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, and reasoning effort. Automatically detects and uses the correct API backend. Supports prefix matching and an interactive picker
 - **Markdown export** — export any saved session as a clean markdown file with `--export`, with collapsible reasoning blocks and cost summary
 - **Session persistence** — last model, provider, and per-model reasoning effort are saved to `~/.communicator.json` and restored on next launch
-- **CLI flags to skip pickers** — pass `-m`, `--reasoning-effort`, or `--no-reasoning` to bypass interactive prompts
-- **Lightweight** — two runtime dependencies, pure Node.js ESM
+- **CLI flags to skip pickers** — pass `-m`, `--reasoning-effort`, or `--no-reasoning` to bypass interactive prompts. `-m` skips *all* pickers (model, reasoning, endpoint) for fully non-interactive use
+- **Lightweight** — three runtime dependencies, pure Node.js ESM
 
 ## Requirements
 
-- **Node.js** >= 18
+- **Node.js** >= 22
 
 ### API Keys
 
@@ -78,10 +79,11 @@ Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make t
 
 | Short | Flag                  | Args     | Description                                                                          |
 |-------|-----------------------|----------|--------------------------------------------------------------------------------------|
-| `-m`  | `--model`             | `<id>`   | Skip the model picker and use this model directly                                    |
+| `-m`  | `--model`             | `<id>`   | Skip all pickers and use this model ID directly (non-interactive)                    |
 | `-p`  | `--provider`          | `<name>` | Select the API backend: `openrouter` (default) or `venice`                           |
 |       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`   |
 |       | `--no-reasoning`      | —        | Disable reasoning entirely                                                           |
+| `-V`  | `--version`           | —        | Print the version and exit                                                           |
 |       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
 |       | `--list-endpoints`    | `<model>`| List providers for a model (pricing, uptime) and exit                                |
 |       | `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, preview) and exit              |
@@ -98,13 +100,13 @@ Quick start:
 ```bash
 # OpenRouter (default)
 communicator                                            # full interactive flow
-communicator -m "openai/gpt-4o"                         # skip model picker
+communicator -m "openai/gpt-4o"                         # skip all pickers (non-interactive)
 communicator --list-models                                       # list OpenRouter models
 communicator --list-endpoints "anthropic/claude-sonnet-4-20250514"  # list endpoints for a model
 
 # Venice.ai
 communicator -p venice                                  # Venice interactive flow
-communicator -p venice -m "qwen-3-7-max"                # skip model picker
+communicator -p venice -m "qwen-3-7-max"                # skip all pickers (non-interactive)
 communicator -p venice --list-models                             # list Venice models (no API key needed)
 communicator -p venice --list-endpoints "qwen-3-7-max"           # show Venice endpoint info
 
@@ -138,6 +140,8 @@ The provider is saved in each session, so resuming a Venice session automaticall
 2. **Reasoning effort** — shown only when the selected model supports reasoning. The chosen level is saved per model and restored as default next time. Venice uses the standard OpenAI `reasoning_effort` parameter; OpenRouter uses its native reasoning format.
 3. **Provider selection** (OpenRouter only) — displays pricing, 30-minute uptime %, and routing tags. Navigate ← back to the model picker to change your selection. Models with a single provider skip this step entirely. Venice models go straight to chat.
 
+Passing `-m <id>` skips **all** pickers: the reasoning effort is restored from your saved per-model preference (or the model default), and the OpenRouter endpoint is auto-selected (cheapest provider with pricing, otherwise the first one). Venice always goes straight to chat. `--reasoning-effort` / `--no-reasoning` still override the effort when given.
+
 ### Chat session
 
 Once connected, responses stream token by token. Reasoning tokens appear in gray with a `[Thinking]` label. After the final answer, a usage summary is printed automatically:
@@ -161,12 +165,18 @@ The capital of France is Paris.
 
 Cache hits are detected and shown when OpenRouter serves a cached response. The session cost accumulates across turns within the same chat. Venice pricing is normalized from per-1M-token rates to per-token for consistent cost display.
 
-Special commands:
+### Slash commands
 
-| Input             | Action               |
-|-------------------|----------------------|
-| `/quit`           | Exit the chat        |
-| `Cmd+C` / `Ctrl+C` | Interrupt and exit  |
+| Input          | Action                                                                              |
+|----------------|-------------------------------------------------------------------------------------|
+| `/quit`        | Save the session and exit the chat                                                  |
+| `/new`         | Save the current session and start a fresh one (same model and reasoning effort)    |
+| `/model`       | Save, then switch models mid-chat — re-picks reasoning effort and endpoint          |
+| `/reasoning`   | Re-run the reasoning effort picker for the current model                            |
+| `/cost`        | Print the running session cost/token totals and current reasoning effort            |
+| `Cmd+C` / `Ctrl+C` | During streaming: abort, save the partial response, and exit. At the prompt: cancel and exit |
+
+Unknown slash commands (anything starting with `/`) print a hint listing the available commands instead of being sent to the model.
 
 ## System Prompt
 
@@ -188,7 +198,7 @@ communicator --system-prompt /path/to/custom-prompt.md
 
 ## Session Persistence & Resume
 
-Every chat session is automatically saved to `~/.communicator/sessions/<timestamp>.json`. Sessions are saved after each turn and on exit, so you never lose conversation history even on crashes.
+Every chat session is automatically saved to `~/.communicator/sessions/<timestamp>.json`. Sessions are saved when you quit (`/quit` or `Ctrl+C`), when you switch models or start a new session, and on interrupt during streaming (including the partial response). A metadata index at `~/.communicator/sessions/.index.json` powers `--list-sessions` and the resume/export pickers so listing never has to parse full session files. If the index is missing or stale (e.g. sessions from an older version), it is rebuilt automatically from the session files.
 
 ### Listing sessions
 
@@ -328,23 +338,30 @@ cli (index.js)           — commander argument parsing, delegates to command mo
 │   ├── list-sessions.js  — --list-sessions handler
 │   ├── export-cmd.js     — --export handler
 │   ├── resume.js        — --resume handler (load session, return params)
-│   └── chat-start.js    — main interactive flow: model/endpoint pickers, chat, save
+│   └── chat-start.js    — session context setup, chat start, end-of-chat persist
 ├── providers/
 │   ├── index.js         — factory: getProvider(name) → provider module
 │   ├── openrouter.js    — OpenRouter API client: models, endpoints, chat completions
 │   └── venice.js        — Venice.ai API client: models, synthetic endpoints, chat
+├── model-selection.js   — interactive and non-interactive (-m) selection flows
+├── http.js              — fetchWithTimeout (30s) + fetchWithRetry (backoff, stream-safe)
+├── errors.js            — ApiError (status/provider/retryable) and formatError
 ├── sse-parser.js        — shared SSE stream parser (consumed by both providers)
-├── config.js            — API key lookup (env), preferences load/save (~/.communicator.json)
+├── config.js            — API key lookup (provider meta), preferences load/save (~/.communicator.json)
 ├── constants.js         — shared constants (paths, labels, SSE markers) and formatCost
 ├── prompts.js           — interactive TUI pickers using @inquirer/prompts (model, provider, reasoning)
-├── sessions.js          — session persistence: save, load, list, resolve (~/.communicator/sessions/)
+├── sessions.js          — session persistence: save, load, list, sidecar index, resolve
 ├── session-picker.js    — interactive session selector for --resume and --export
 ├── export.js            — markdown exporter: format session data, write to file
 ├── tracker.js           — per-turn + cumulative token/cost accounting with cache detection
-└── chat.js              — readline loop, token streaming display, usage tracking integration, auto-save
+├── ui/
+│   ├── style.js         — ANSI helpers (dim, bold, sep, thinking, answer)
+│   ├── format.js        — price formatting (formatModelPrice, formatPricePerM)
+│   └── stream.js        — stream renderer + history replay
+└── chat.js              — chat loop, slash commands, save-on-exit, SIGINT handling
 ```
 
-Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing and [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) for the interactive search/select UI.
+Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing, [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) for the interactive search/select UI, and [`@toiroakr/read-multiline`](https://www.npmjs.com/package/@toiroakr/read-multiline) for paste-safe multiline input.
 
 ### Provider contract
 
@@ -352,12 +369,16 @@ Adding a new provider requires implementing the following exports:
 
 ```js
 export const meta = { name, baseURL, apiKeyEnv, hasEndpoints }
-export async function fetchModels(apiKey) → [{id, name, provider, contextLength, description, reasoning}]
+export async function fetchModels(apiKey) → [{id, name, provider, contextLength, description, reasoning, pricing, capabilities}]
 export async function fetchEndpoints(apiKey, modelId, allModels?) → [{name, providerName, tag, status, uptime30m, pricing, ...}]
-export async function chatCompletion({apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning}) → {content, reasoning, usage}
+export async function chatCompletion({apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning, sessionId, signal}) → {content, reasoning, usage}
 export function normalizePricing(rawPricing) → {prompt, completion}
-export function handleHttpError(status, body) → throws
+export function handleHttpError(status, body) → throws ApiError
 ```
+
+- `pricing` is `{ prompt, completion }` USD per token (or `null`) — use `normalizePricing` and the helpers in `src/ui/format.js` for display
+- `chatCompletion` receives `signal` (AbortController) for SIGINT cancellation and `sessionId` for server-side prompt caching (OpenRouter currently ignores it; Venice maps it to `prompt_cache_key`)
+- HTTP calls should go through `fetchWithRetry` from `src/http.js`; errors must be thrown as `ApiError`, never `process.exit`
 
 See `src/providers/openrouter.js` and `src/providers/venice.js` for reference implementations.
 

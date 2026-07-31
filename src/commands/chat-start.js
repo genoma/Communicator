@@ -32,7 +32,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
 
   let selection
   if (opts.model) {
-    selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model })
+    selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort })
   } else {
     selection = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: forcedEffort })
   }
