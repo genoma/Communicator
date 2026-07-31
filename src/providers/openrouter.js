@@ -1,4 +1,6 @@
 import { parseSSEStream } from "../sse-parser.js"
+import { fetchWithRetry } from "../http.js"
+import { ApiError } from "../errors.js"
 
 const OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 const CACHE_HEADER = "x-openrouter-cache-status"
@@ -21,24 +23,18 @@ export function normalizePricing(raw) {
 
 export function handleHttpError(status, body) {
   if (status === 401) {
-    console.error("Invalid API key. Check your OPENROUTER_API_KEY environment variable.")
-    process.exit(1)
+    throw new ApiError("Invalid API key. Check your OPENROUTER_API_KEY environment variable.", { status, provider: "openrouter", retryable: false })
   }
   if (status === 429) {
-    throw new Error("Rate limited by OpenRouter. Wait a moment and try again.")
+    throw new ApiError("Rate limited by OpenRouter. Wait a moment and try again.", { status, provider: "openrouter", retryable: true })
   }
-  throw new Error(`OpenRouter request failed (${status}): ${body}`)
+  throw new ApiError(`OpenRouter request failed (${status}): ${body}`, { status, provider: "openrouter", retryable: status >= 500 })
 }
 
 export async function fetchModels(apiKey) {
-  const res = await fetch(`${OPENROUTER_BASE}/models`, {
+  const res = await fetchWithRetry(`${OPENROUTER_BASE}/models`, {
     headers: { Authorization: `Bearer ${apiKey}` },
-  })
-
-  if (!res.ok) {
-    const body = await res.text()
-    handleHttpError(res.status, body)
-  }
+  }, { errorResponse: handleHttpError })
 
   const { data } = await res.json()
   return data.map((m) => ({
@@ -48,18 +44,14 @@ export async function fetchModels(apiKey) {
     contextLength: m.context_length,
     description: m.description,
     reasoning: m.reasoning || null,
+    pricing: null,
   }))
 }
 
 export async function fetchEndpoints(apiKey, modelId) {
-  const res = await fetch(`${OPENROUTER_BASE}/models/${modelId}/endpoints`, {
+  const res = await fetchWithRetry(`${OPENROUTER_BASE}/models/${modelId}/endpoints`, {
     headers: { Authorization: `Bearer ${apiKey}` },
-  })
-
-  if (!res.ok) {
-    const body = await res.text()
-    handleHttpError(res.status, body)
-  }
+  }, { errorResponse: handleHttpError })
 
   const { data } = await res.json()
   if (!data?.endpoints?.length) {
@@ -79,7 +71,7 @@ export async function fetchEndpoints(apiKey, modelId) {
   }))
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning, sessionId, signal }) {
   const body = {
     model,
     messages,
@@ -100,19 +92,14 @@ export async function chatCompletion({ apiKey, model, messages, onToken, provide
     body.reasoning = { enabled: false }
   }
 
-  const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
+  const res = await fetchWithRetry(`${OPENROUTER_BASE}/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
-  })
-
-  if (!res.ok) {
-    const bodyText = await res.text()
-    handleHttpError(res.status, bodyText)
-  }
+  }, { errorResponse: handleHttpError, signal })
 
   const cacheStatus = res.headers.get(CACHE_HEADER)
   const reader = res.body.getReader()

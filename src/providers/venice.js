@@ -1,4 +1,7 @@
 import { parseSSEStream } from "../sse-parser.js"
+import { fetchWithRetry } from "../http.js"
+import { ApiError } from "../errors.js"
+import { formatPricePerM } from "../ui/format.js"
 
 const VENICE_BASE = "https://api.venice.ai/api/v1"
 
@@ -21,13 +24,12 @@ export function normalizePricing(raw) {
 
 export function handleHttpError(status, body) {
   if (status === 401) {
-    console.error("Invalid API key. Check your VENICE_API_KEY environment variable.")
-    process.exit(1)
+    throw new ApiError("Invalid API key. Check your VENICE_API_KEY environment variable.", { status, provider: "venice", retryable: false })
   }
   if (status === 429) {
-    throw new Error("Rate limited by Venice. Wait a moment and try again.")
+    throw new ApiError("Rate limited by Venice. Wait a moment and try again.", { status, provider: "venice", retryable: true })
   }
-  throw new Error(`Venice request failed (${status}): ${body}`)
+  throw new ApiError(`Venice request failed (${status}): ${body}`, { status, provider: "venice", retryable: status >= 500 })
 }
 
 export async function fetchModels(apiKey) {
@@ -36,12 +38,7 @@ export async function fetchModels(apiKey) {
     headers.Authorization = `Bearer ${apiKey}`
   }
 
-  const res = await fetch(`${VENICE_BASE}/models?type=text`, { headers })
-
-  if (!res.ok) {
-    const body = await res.text()
-    handleHttpError(res.status, body)
-  }
+  const res = await fetchWithRetry(`${VENICE_BASE}/models?type=text`, { headers }, { errorResponse: handleHttpError })
 
   const { data } = await res.json()
 
@@ -52,17 +49,11 @@ export async function fetchModels(apiKey) {
     const ctxStr = spec.availableContextTokens
       ? `${spec.availableContextTokens.toLocaleString()} ctx`
       : "? ctx"
-    const inPrice = pricing.prompt != null
-      ? `$${(pricing.prompt * 1_000_000).toFixed(2)}`
-      : "?"
-    const outPrice = pricing.completion != null
-      ? `$${(pricing.completion * 1_000_000).toFixed(2)}`
-      : "?"
     const privacy = spec.privacy || null
     const modelDesc = spec.description || null
 
     const metaParts = [ctxStr]
-    metaParts.push(`in ${inPrice} / out ${outPrice} per 1M`)
+    metaParts.push(formatPricePerM(pricing))
     if (caps.supportsReasoningEffort) metaParts.push("reasoning")
     else if (caps.supportsReasoning) metaParts.push("auto-reasoning")
     if (privacy) metaParts.push(privacy)
@@ -83,9 +74,8 @@ export async function fetchModels(apiKey) {
             mandatory: caps.reasoningEffortOptions ? !caps.reasoningEffortOptions.includes("none") : true,
           }
         : null,
-      _rawPricing: spec.pricing || null,
-      privacy,
-      capabilities: caps,
+      pricing,
+      capabilities: { ...caps, privacy },
       maxCompletionTokens: spec.constraints?.max_tokens || null,
     }
   })
@@ -96,22 +86,20 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   const model = models.find((m) => m.id === modelId)
   if (!model) return []
 
-  const pricing = normalizePricing(model._rawPricing)
-
   return [{
     name: model.name,
     providerName: "venice",
     tag: model.id,
     status: "available",
     uptime30m: null,
-    pricing,
+    pricing: model.pricing,
     contextLength: model.contextLength,
     maxCompletionTokens: model.maxCompletionTokens,
     supportedParameters: model.capabilities,
   }]
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning, sessionId }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning, sessionId, signal }) {
   const body = {
     model,
     messages,
@@ -131,19 +119,14 @@ export async function chatCompletion({ apiKey, model, messages, onToken, provide
     body.reasoning_effort = "none"
   }
 
-  const res = await fetch(`${VENICE_BASE}/chat/completions`, {
+  const res = await fetchWithRetry(`${VENICE_BASE}/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
-  })
-
-  if (!res.ok) {
-    const bodyText = await res.text()
-    handleHttpError(res.status, bodyText)
-  }
+  }, { errorResponse: handleHttpError, signal })
 
   const reader = res.body.getReader()
   const { fullText, fullReasoning, finalUsage } = await parseSSEStream(reader, onToken)

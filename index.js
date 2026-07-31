@@ -37,13 +37,8 @@ if (opts.resume !== undefined && opts.export !== undefined) {
   process.exit(1)
 }
 
-function getApiKeyForStaticCmd() {
-  const envVar = { openrouter: "OPENROUTER_API_KEY", venice: "VENICE_API_KEY" }[providerType]
-  return process.env[envVar]?.trim() || ""
-}
-
-const apiKeyOptional = getApiKeyForStaticCmd()
 const provider = getProvider(providerType)
+const apiKeyOptional = process.env[provider.meta.apiKeyEnv]?.trim() || ""
 
 if (opts.listModels) {
   await listModelsCmd(provider, apiKeyOptional)

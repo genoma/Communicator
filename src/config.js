@@ -1,52 +1,47 @@
-import { readFile, writeFile, access } from "node:fs/promises"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { dirname } from "node:path"
+import { getProvider } from "./providers/index.js"
 import { DEFAULT_CONFIG_FILE, DEFAULT_SYSTEM_PROMPT_FILE } from "./constants.js"
 
-const KEY_ENV_MAP = {
-  openrouter: "OPENROUTER_API_KEY",
-  venice: "VENICE_API_KEY",
-}
-
-export function getApiKey(providerName = "openrouter") {
-  const envVar = KEY_ENV_MAP[providerName]
-  if (!envVar) {
-    console.error(`Unknown provider: ${providerName}`)
-    process.exit(1)
-  }
-  const key = process.env[envVar]?.trim()
+export function getApiKey(providerType = "openrouter") {
+  const { meta } = getProvider(providerType)
+  const key = process.env[meta.apiKeyEnv]?.trim()
   if (!key) {
-    console.error(`${envVar} environment variable is not set.`)
+    console.error(`${meta.apiKeyEnv} environment variable is not set.`)
     process.exit(1)
   }
   return key
 }
 
 export async function loadPreferences(customPath) {
-  const configFile = customPath || DEFAULT_CONFIG_FILE;
+  const configFile = customPath || DEFAULT_CONFIG_FILE
   try {
-    await access(configFile);
-    const data = await readFile(configFile, "utf-8");
-    return JSON.parse(data);
-  } catch {
-    return {};
+    const data = await readFile(configFile, "utf-8")
+    return JSON.parse(data)
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      console.error(`Warning: could not read preferences ${configFile}: ${err.message}`)
+    }
+    return {}
   }
 }
 
 export async function loadSystemPrompt(customPath) {
-  const promptFile = customPath || DEFAULT_SYSTEM_PROMPT_FILE;
+  const promptFile = customPath || DEFAULT_SYSTEM_PROMPT_FILE
   try {
-    await access(promptFile);
-    const content = await readFile(promptFile, "utf-8");
-    const trimmed = content.trim();
-    return trimmed || null;
+    const content = await readFile(promptFile, "utf-8")
+    const trimmed = content.trim()
+    return trimmed || null
   } catch (err) {
     if (err.code !== "ENOENT") {
-      console.error(`Warning: could not read ${promptFile}: ${err.message}`);
+      console.error(`Warning: could not read ${promptFile}: ${err.message}`)
     }
-    return null;
+    return null
   }
 }
 
 export async function savePreferences(prefs, customPath) {
-  const configFile = customPath || DEFAULT_CONFIG_FILE;
-  await writeFile(configFile, JSON.stringify(prefs, null, 2) + "\n", "utf-8");
+  const configFile = customPath || DEFAULT_CONFIG_FILE
+  await mkdir(dirname(configFile), { recursive: true })
+  await writeFile(configFile, JSON.stringify(prefs, null, 2) + "\n", "utf-8")
 }

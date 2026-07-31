@@ -1,31 +1,9 @@
 import { UsageTracker } from "./tracker.js"
-import { ensureSessionsDir, saveSession } from "./sessions.js"
-import { THIN_SEP } from "./constants.js"
 import { getEffortLabel } from "./prompts.js"
 import { readInput } from "./input.js"
-
-function renderHistory(messages) {
-  if (!messages || messages.length <= 1) return
-
-  const hasVisible = messages.some((m) => m.role !== "system")
-  if (!hasVisible) return
-
-  process.stdout.write("\n")
-  for (const msg of messages) {
-    if (msg.role === "user") {
-      process.stdout.write(`> ${msg.content}\n\n`)
-    } else if (msg.role === "assistant") {
-      if (msg.reasoning) {
-        process.stdout.write("\x1b[90m[Thinking]\x1b[0m\n\n")
-        process.stdout.write(`\x1b[90m${msg.reasoning}\x1b[0m\n`)
-        process.stdout.write("\n\x1b[1m[Answer]\x1b[0m\n\n")
-      }
-      process.stdout.write(`${msg.content}\n\n`)
-    }
-  }
-
-  process.stdout.write(`\x1b[90m${THIN_SEP}\x1b[0m\n\n`)
-}
+import { createStreamRenderer, renderHistory } from "./ui/stream.js"
+import { formatError, ApiError } from "./errors.js"
+import { dim } from "./ui/style.js"
 
 export async function startChat(apiKey, model, endpointProviderName, reasoningEffort, pricing, provider, {
   systemPrompt = null,
@@ -65,8 +43,10 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
   }
 
   if (initialMessages && tracker.requests > 0) {
-    console.log(`\x1b[90mPrevious session:\x1b[0m ${tracker.summary()}\n`)
+    console.log(`${dim("Previous session:")} ${tracker.summary()}\n`)
   }
+
+  const render = createStreamRenderer()
 
   while (true) {
     const result = await readInput()
@@ -87,23 +67,10 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     messages.push({ role: "user", content: input })
 
     let apiResult
-    let shownThinkingBanner = false
 
     try {
       process.stdout.write("\n")
-      apiResult = await provider.chatCompletion({ apiKey, model, messages, onToken: (token, type) => {
-        if (type === "start_reasoning") {
-          shownThinkingBanner = true
-          process.stdout.write("\x1b[90m[Thinking]\x1b[0m\n")
-          process.stdout.write(token)
-        } else if (type === "reasoning") {
-          process.stdout.write(`\x1b[90m${token}\x1b[0m`)
-        } else if (type === "end_reasoning") {
-          process.stdout.write("\n\n\x1b[1m[Answer]\x1b[0m\n\n")
-        } else if (type === "content") {
-          process.stdout.write(token)
-        }
-      }, provider: endpointProviderName, reasoningEffort, supportsReasoning, sessionId })
+      apiResult = await provider.chatCompletion({ apiKey, model, messages, onToken: render, provider: endpointProviderName, reasoningEffort, supportsReasoning, sessionId })
       process.stdout.write("\n\n")
 
       if (apiResult.usage) {
@@ -111,8 +78,8 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
         tracker.printTurn(apiResult.usage, pricing)
       }
     } catch (err) {
-      console.error(`\nError: ${err.message}\n`)
-      if (err.message.includes("Rate limited")) {
+      console.error(`\nError: ${formatError(err)}\n`)
+      if (err instanceof ApiError && err.retryable) {
         messages.pop()
       }
       continue
@@ -127,24 +94,6 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
         msg.usage = apiResult.usage
       }
       messages.push(msg)
-    }
-
-    if (sessionId) {
-      try {
-        const dir = await ensureSessionsDir()
-        await saveSession(dir, sessionId, {
-          model,
-          providerName: endpointProviderName,
-          providerType: provider.meta.name,
-          reasoningEffort: reasoningEffort ?? null,
-          pricing: pricing ?? null,
-          createdAt: createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          messages,
-        })
-      } catch {
-        // save failures are non-fatal
-      }
     }
   }
 }
