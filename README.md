@@ -16,13 +16,18 @@ Chat from your terminal with streaming responses, interactive model/provider sel
 - **Interactive model picker** — searchable and filterable by name or model ID, with context-length display
 - **Provider selection** — compare pricing, uptime %, and routing tags before starting a chat. Single-provider models skip this step automatically. Navigate back to the model picker at any time. Venice models are directly available (no multi-provider routing)
 - **Reasoning effort control** — per-model effort level persisted across sessions. Only shown for models that support reasoning. OpenRouter uses its native reasoning format; Venice uses standard OpenAI `reasoning_effort`
+- **Temperature control** — `--temperature <0-2>` flag, `/temp` command, per-model default persisted in preferences
+- **One-shot mode** — pass a prompt argument or pipe input via stdin for a single non-interactive answer. TTY-aware output: styled with usage footer on a terminal, plain answer text only when piped
+- **Per-session budget caps** — `--budget <usd>` or `/budget <usd>` limits accumulated session cost; warns at 80% used and refuses turns at 100%
+- **Terminal markdown rendering** — responses are styled in the terminal (headers, bold/italic, code blocks, lists, quotes, links) with a `/markdown` toggle
 - **Streaming responses** — tokens appear as they arrive, with reasoning tokens shown in gray under a `[Thinking]` banner and a `[Answer]` separator before the final response
 - **Usage & cost tracking** — after each turn: prompt / completion / total token counts, cache hit detection (OpenRouter), and a dollar-cost breakdown (per turn + cumulative session total). Check anytime with `/cost`
-- **Slash commands** — `/new` starts a fresh session, `/model` switches models mid-chat, `/reasoning` re-picks the reasoning effort, `/cost` shows the running total, `/quit` exits
-- **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/`. Sessions are saved when you quit, switch models, start a new session, or interrupt with `Ctrl+C`, so the last exchange is never lost
-- **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, and reasoning effort. Automatically detects and uses the correct API backend. Supports prefix matching and an interactive picker
+- **Slash commands** — `/new` starts a fresh session, `/model` switches models mid-chat, `/reasoning` re-picks the reasoning effort, `/temp` sets temperature, `/budget` sets/shows the budget, `/retry` re-runs the last turn, `/copy` copies the last response, `/markdown` toggles rendering, `/cost` shows the running total, `/quit` exits
+- **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/`, with an auto-generated title from the first user message. Sessions are saved when you quit, switch models, start a new session, or interrupt with `Ctrl+C`, so the last exchange is never lost
+- **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, reasoning effort, temperature, and budget. Automatically detects and uses the correct API backend. Supports prefix matching and an interactive picker
+- **Session deletion** — remove saved sessions with `--delete` (with confirmation)
 - **Markdown export** — export any saved session as a clean markdown file with `--export`, with collapsible reasoning blocks and cost summary
-- **Session persistence** — last model, provider, and per-model reasoning effort are saved to `~/.communicator.json` and restored on next launch
+- **Session persistence** — last model, provider, and per-model reasoning effort and temperature are saved to `~/.communicator.json` and restored on next launch
 - **CLI flags to skip pickers** — pass `-m`, `--reasoning-effort`, or `--reasoning-effort none` to bypass interactive prompts. `-m` skips *all* pickers (model, reasoning, endpoint) for fully non-interactive use
 - **Lightweight** — three runtime dependencies, pure Node.js ESM
 
@@ -82,12 +87,15 @@ Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make t
 | `-m`  | `--model`             | `<id>`   | Skip all pickers and use this model ID directly (non-interactive)                    |
 | `-p`  | `--provider`          | `<name>` | Select the API backend: `openrouter` (default) or `venice`                           |
 |       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`. `none` disables reasoning |
+|       | `--temperature`       | `<0-2>`  | Temperature override for the session (default: per-model preference, then 0.7)       |
+|       | `--budget`            | `<usd>`  | Per-session budget cap in USD. Warns at 80% used, refuses turns at 100%              |
 | `-V`  | `--version`           | —        | Print the version and exit                                                           |
 |       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
 |       | `--list-endpoints`    | `<model>`| List providers for a model (pricing, uptime) and exit                                |
-|       | `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, preview) and exit              |
+|       | `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, title) and exit                |
 | `-r`  | `--resume`            | `[id]`   | Resume a saved session. No arg = picker, partial ID = prefix match                   |
 | `-x`  | `--export`            | `[id]`   | Export a session to markdown. Same ID matching as `--resume`                         |
+|       | `--delete`            | `[id]`   | Delete a saved session (asks for confirmation). Same ID matching as `--resume`       |
 |       | `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences)                       |
 |       | `--config`            | `<path>` | Custom path for the preferences JSON file (default: `~/.communicator.json`)          |
 |       | `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
@@ -109,11 +117,19 @@ communicator -p venice -m "qwen-3-7-max"                # skip all pickers (non-
 communicator -p venice --list-models                             # list Venice models (no API key needed)
 communicator -p venice --list-endpoints "qwen-3-7-max"           # show Venice endpoint info
 
+# One-shot mode (non-interactive, no chat loop)
+communicator -m "openai/gpt-4o" "What is the capital of France?"     # positional prompt
+echo "Summarize this: ..." | communicator -m "openai/gpt-4o"          # piped stdin
+communicator -m "openai/gpt-4o" --temperature 0.2 "Write a haiku"     # with temperature
+cat notes.md | communicator -m "openai/gpt-4o" --budget 0.5 "Fix typos:" # with budget cap
+
 # Session management
 communicator --list-sessions                                   # list saved sessions
 communicator --resume                                   # resume a saved session
 communicator --export                                   # export a session to cwd
 communicator --export --output-dir ~/Documents          # export to custom directory
+communicator --delete                                   # delete a session (with confirmation)
+communicator --delete 2026-07-30T19-11-45               # delete a specific session
 
 # Reasoning
 communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort high  # force high reasoning effort
@@ -141,6 +157,23 @@ The provider is saved in each session, so resuming a Venice session automaticall
 
 Passing `-m <id>` skips **all** pickers: the reasoning effort is restored from your saved per-model preference (or the model default), and the OpenRouter endpoint is auto-selected (cheapest provider with pricing, otherwise the first one). Venice always goes straight to chat. `--reasoning-effort` still overrides the effort when given; `--reasoning-effort none` disables reasoning. Models that are disabled by default (`default_enabled: false`) restore as disabled.
 
+### One-shot mode
+
+Pass a prompt as a positional argument, or pipe input via stdin, to get a single answer without entering the chat loop:
+
+```bash
+communicator -m "openai/gpt-4o" "What is the capital of France?"
+echo "Summarize the README" | communicator -m "openai/gpt-4o"
+cat notes.md | communicator -m "openai/gpt-4o" --system-prompt ~/reviewer.md
+```
+
+- Without `-m`, the model pickers run first (they need a TTY), then the one-shot answer is sent.
+- Piped stdin is read up to a 10MB sanity limit. Piping input without `-m` is an error — pickers can't run without a TTY.
+- Output is TTY-aware: on a terminal you get the streaming response with reasoning labels and the usage/cost footer; when stdout is piped you get **only** the plain answer text (no banners, no usage) — ideal for scripting: `communicator -m ... "hi" | jq`.
+- The answer is saved as a regular session (title, temperature, budget, usage) and the model/temperature preferences are persisted, exactly like an interactive chat.
+- Exit codes: `0` success, `1` API/validation error (message on stderr), `130` interrupted with `Ctrl+C`.
+- A prompt argument or piped stdin cannot be combined with `--resume`, `--export`, `--delete`, or `--list-*` flags (error + exit 1).
+
 ### Chat session
 
 Once connected, responses stream token by token. Reasoning tokens appear in gray with a `[Thinking]` label. After the final answer, a usage summary is printed automatically:
@@ -165,6 +198,16 @@ The capital of France is Paris.
 
 Cache hits are detected and shown when OpenRouter serves a cached response. The session cost accumulates across turns within the same chat. Venice pricing is normalized from per-1M-token rates to per-token for consistent cost display.
 
+### Markdown rendering
+
+By default, assistant responses are rendered as markdown in the terminal: `#` headers bold, `**bold**` / `*italic*` styled inline, `` `code` `` in cyan, fenced code blocks dimmed, lists and blockquotes styled, horizontal rules as a thin separator, and `[text](url)` links shown in cyan (URL hidden). Reasoning text is never restyled.
+
+Streaming is line-buffered: completed lines are styled as they arrive, and the current in-flight line is styled once it completes (at the next newline or the end of the response) — so the last line of a response can render a moment later than it streams. Toggle with `/markdown` (default on); history replay on `--resume` uses the same styling.
+
+### Budget caps
+
+`--budget <usd>` (or `/budget <usd>` mid-chat) sets a per-session spending cap based on accumulated tracked cost. When 80% is crossed, the usage footer shows a budget line (`Budget  83% used ($0.0005 of $0.0006), $0.0001 remaining`). At 100% the next turn is refused with `Budget exhausted ($X of $Y). /new to start fresh or /quit.`. `/budget` with no value prints used/remaining. Budgets are stored in the session file and restored on `--resume`; `/new` clears the budget for the fresh session.
+
 ### Slash commands
 
 | Input          | Action                                                                              |
@@ -173,6 +216,11 @@ Cache hits are detected and shown when OpenRouter serves a cached response. The 
 | `/new`         | Save the current session and start a fresh one (same model and reasoning effort)    |
 | `/model`       | Save, then switch models mid-chat — re-picks reasoning effort and endpoint          |
 | `/reasoning`   | Re-run the reasoning effort picker for the current model                            |
+| `/temp`        | Set the session temperature (`/temp 0.4`), or show the current value with no args    |
+| `/budget`      | Show used/remaining budget, or set one with `/budget <usd>`                          |
+| `/retry`       | Re-run the last user turn (regenerates the last answer)                             |
+| `/copy`        | Copy the last assistant response to the clipboard                                   |
+| `/markdown`    | Toggle terminal markdown rendering (default on)                                     |
 | `/cost`        | Print the running session cost/token totals and current reasoning effort            |
 | `Cmd+C` / `Ctrl+C` | During streaming: abort, save the partial response, and exit. At the prompt: cancel and exit |
 
@@ -198,16 +246,15 @@ communicator --system-prompt /path/to/custom-prompt.md
 
 ## Session Persistence & Resume
 
-Every chat session is automatically saved to `~/.communicator/sessions/<timestamp>.json`. Sessions are saved when you quit (`/quit` or `Ctrl+C`), when you switch models or start a new session, and on interrupt during streaming (including the partial response). A metadata index at `~/.communicator/sessions/.index.json` powers `--list-sessions` and the resume/export pickers so listing never has to parse full session files. If the index is missing or stale (e.g. sessions from an older version), it is rebuilt automatically from the session files.
+Every chat session is automatically saved to `~/.communicator/sessions/<timestamp>.json`, with a `title` auto-generated from the first user message (whitespace collapsed, truncated to 50 chars). Sessions are saved when you quit (`/quit` or `Ctrl+C`), when you switch models or start a new session, and on interrupt during streaming (including the partial response). A metadata index at `~/.communicator/sessions/.index.json` powers `--list-sessions` and the resume/export/delete pickers so listing never has to parse full session files. If the index is missing or stale (e.g. sessions from an older version), it is rebuilt automatically from the session files.
 
 ### Listing sessions
 
 ```bash
 communicator --list-sessions
-communicator --list-sessions
 ```
 
-Output shows each session's timestamp, model, message count, and a preview of the first message:
+Output shows each session's timestamp, model, message count, and the session title:
 
 ```
 3 saved session(s):
@@ -230,9 +277,24 @@ communicator --resume 2026-07-30
 communicator --resume 2026-07-30T19-11-45
 ```
 
-When resuming, the original model, provider backend (OpenRouter or Venice), endpoint provider, and reasoning effort are restored automatically. The conversation picks up right where you left off — all previous messages are preserved. `--resume` takes precedence over `-m` and `-p` flags (they are silently ignored).
+When resuming, the original model, provider backend (OpenRouter or Venice), endpoint provider, reasoning effort, temperature, and budget are restored automatically. The conversation picks up right where you left off — all previous messages are preserved. `--resume` takes precedence over `-m` and `-p` flags (they are silently ignored).
 
 Older sessions saved without a `providerType` field default to OpenRouter for backward compatibility.
+
+### Deleting sessions
+
+```bash
+# Interactive picker — browse and select from all saved sessions
+communicator --delete
+
+# Prefix match — deletes if exactly one session starts with "2026-07-30"
+communicator --delete 2026-07-30
+
+# Full session ID — deletes the exact session
+communicator --delete 2026-07-30T19-11-45
+```
+
+`--delete` always asks for confirmation before removing the session file (and its sidecar entry). It cannot be combined with `--resume`, `--export`, or a prompt argument, and needs a TTY for the confirmation prompt.
 
 ### Exporting sessions
 
@@ -254,7 +316,7 @@ communicator --export --output-dir ~/Documents/CommunicatorExports
 
 The exported markdown file is saved as `session-{id}.md` in the current working directory by default. Use `--output-dir` to set a custom directory — once set, it's saved in your preferences and used for all future exports (omit the flag to revert to cwd).
 
-- **Header** — timestamp, model, provider, message count, reasoning effort, and accumulated cost
+- **Header** — timestamp, title, model, provider, message count, reasoning effort, and accumulated cost
 - **User messages** — blockquoted under a `## You` heading
 - **Assistant responses** — reasoning shown under `### thinking`, final answer under `### Answer`
 - **Cost** — calculated from token usage and provider pricing (shows "N/A" if pricing is unavailable)
@@ -263,6 +325,7 @@ Example output:
 
 ```markdown
 # Chat Session — 2026-07-30 19:11:45 UTC
+**Title:** What is the capital of France?
 **Model:** `openai/gpt-4o` | **Provider:** OpenAI | **Messages:** 4 | **Cost:** $0.000124
 
 ---
@@ -290,6 +353,9 @@ Each session is stored as a JSON file:
   "providerName": "OpenAI",
   "providerType": "openrouter",
   "reasoningEffort": "high",
+  "temperature": 0.7,
+  "budget": 0.5,
+  "title": "What is the capital of France?",
   "pricing": {
     "prompt": 0.0000025,
     "completion": 0.00001
@@ -307,9 +373,12 @@ Each session is stored as a JSON file:
 - `providerName` is the endpoint provider (e.g., `"OpenAI"` for OpenRouter, `"venice"` for Venice)
 - `providerType` is the API backend (`"openrouter"` or `"venice"`). Older sessions without this field default to `"openrouter"` on resume
 - `reasoningEffort` is `null` when reasoning is explicitly disabled
+- `temperature` is the resolved session temperature (0–2); `budget` is the per-session cap in USD (`null` when unset)
+- `title` is auto-generated from the first user message
 - `pricing` stores per-token dollar amounts used for cost calculation
 - `updatedAt` is bumped on every auto-save
 - Empty sessions (no user messages) are never saved
+- Older sessions without `temperature`/`budget`/`title` fall back to `0.7` / no cap / no title
 
 ## Preferences
 
@@ -322,11 +391,14 @@ Stored in `~/.communicator.json` (customizable with `--config`):
   "reasoningEffort": {
     "openai/o1-pro": "high"
   },
+  "temperature": {
+    "openai/gpt-4o": 0.2
+  },
   "outputDir": "/home/user/Documents/CommunicatorExports"
 }
 ```
 
-The last model and provider become defaults in the interactive pickers. Reasoning effort is saved per model ID and restored automatically. Preferences are currently scoped across both API backends — your last OpenRouter model will show as the favorite even when using Venice (this will be improved in a future release).
+The last model and provider become defaults in the interactive pickers. Reasoning effort and temperature are saved per model ID and restored automatically. Preferences are currently scoped across both API backends — your last OpenRouter model will show as the favorite even when using Venice (this will be improved in a future release).
 
 ## How it works
 
@@ -337,6 +409,8 @@ cli (index.js)           — commander argument parsing, delegates to command mo
 │   ├── list-endpoints.js — --list-endpoints handler
 │   ├── list-sessions.js  — --list-sessions handler
 │   ├── export-cmd.js     — --export handler
+│   ├── delete-cmd.js    — --delete handler (confirm + remove session)
+│   ├── one-shot.js      — one-shot mode: prompt argument / stdin piping
 │   ├── resume.js        — --resume handler (load session, return params)
 │   └── chat-start.js    — session context setup, chat start, end-of-chat persist
 ├── providers/
@@ -348,15 +422,17 @@ cli (index.js)           — commander argument parsing, delegates to command mo
 ├── errors.js            — ApiError (status/provider/retryable) and formatError
 ├── sse-parser.js        — shared SSE stream parser (consumed by both providers)
 ├── config.js            — API key lookup (provider meta), preferences load/save (~/.communicator.json)
-├── constants.js         — shared constants (paths, labels, SSE markers) and formatCost
-├── prompts.js           — interactive TUI pickers using @inquirer/prompts (model, provider, reasoning)
-├── sessions.js          — session persistence: save, load, list, sidecar index, resolve
-├── session-picker.js    — interactive session selector for --resume and --export
+├── constants.js         — shared constants (paths, labels, temperature bounds, SSE markers) and formatCost
+├── prompts.js           — interactive TUI pickers using @inquirer/prompts (model, provider, reasoning, temperature helpers)
+├── sessions.js          — session persistence: save, load, list, title generation, delete, sidecar index, resolve
+├── session-picker.js    — interactive session selector for --resume, --export, and --delete
 ├── export.js            — markdown exporter: format session data, write to file
-├── tracker.js           — per-turn + cumulative token/cost accounting with cache detection
+├── tracker.js           — per-turn + cumulative token/cost accounting with cache detection, budget status helpers
+├── clipboard.js         — clipboard copy via pbcopy/clip/wl-copy/xclip/xsel
 ├── ui/
 │   ├── style.js         — ANSI helpers (dim, bold, sep, thinking, answer)
 │   ├── format.js        — price formatting (formatModelPrice, formatPricePerM)
+│   ├── markdown.js      — line-buffered terminal markdown renderer
 │   └── stream.js        — stream renderer + history replay
 └── chat.js              — chat loop, slash commands, save-on-exit, SIGINT handling
 ```
@@ -371,13 +447,13 @@ Adding a new provider requires implementing the following exports:
 export const meta = { name, baseURL, apiKeyEnv, hasEndpoints }
 export async function fetchModels(apiKey) → [{id, name, provider, contextLength, description, reasoning, pricing, capabilities}]
 export async function fetchEndpoints(apiKey, modelId, allModels?) → [{name, providerName, tag, status, uptime30m, pricing, ...}]
-export async function chatCompletion({apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning, sessionId, signal}) → {content, reasoning, usage}
+export async function chatCompletion({apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning, sessionId, temperature, signal}) → {content, reasoning, usage}
 export function normalizePricing(rawPricing) → {prompt, completion}
 export function handleHttpError(status, body) → throws ApiError
 ```
 
 - `pricing` is `{ prompt, completion }` USD per token (or `null`) — use `normalizePricing` and the helpers in `src/ui/format.js` for display
-- `chatCompletion` receives `signal` (AbortController) for SIGINT cancellation and `sessionId` for server-side prompt caching (OpenRouter currently ignores it; Venice maps it to `prompt_cache_key`)
+- `chatCompletion` receives `signal` (AbortController) for SIGINT cancellation, `sessionId` for server-side prompt caching (OpenRouter currently ignores it; Venice maps it to `prompt_cache_key`), and `temperature` (default `0.7`, must be set in the request body)
 - HTTP calls should go through `fetchWithRetry` from `src/http.js`; errors must be thrown as `ApiError`, never `process.exit`
 
 See `src/providers/openrouter.js` and `src/providers/venice.js` for reference implementations.
