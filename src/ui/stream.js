@@ -1,7 +1,10 @@
 import { dim, you, thinking, answer } from './style.js'
+import { createMarkdownRenderer, renderText } from './markdown.js'
 
-export function createStreamRenderer() {
-  return (token, type) => {
+export function createStreamRenderer({ markdown = false } = {}) {
+  const md = createMarkdownRenderer()
+
+  const render = (token, type) => {
     if (type === 'start_reasoning') {
       process.stdout.write(`${thinking()}\n`)
       process.stdout.write(token)
@@ -10,12 +13,19 @@ export function createStreamRenderer() {
     } else if (type === 'end_reasoning') {
       process.stdout.write(`\n\n${answer()}\n\n`)
     } else if (type === 'content') {
-      process.stdout.write(token)
+      if (render.markdown) md.write(token)
+      else process.stdout.write(token)
     }
   }
+  render.markdown = markdown
+  render.flush = () => {
+    if (render.markdown) md.flush()
+  }
+
+  return render
 }
 
-export function renderHistory(messages) {
+export function renderHistory(messages, { markdown = false } = {}) {
   if (!messages || messages.length <= 1) return
 
   const hasVisible = messages.some((m) => m.role !== 'system')
@@ -24,14 +34,14 @@ export function renderHistory(messages) {
   process.stdout.write('\n')
   for (const msg of messages) {
     if (msg.role === 'user') {
-      process.stdout.write(`${you()}\n${msg.content}\n\n`)
+      process.stdout.write(`${you()}\n${markdown ? renderText(msg.content) : msg.content}\n\n`)
     } else if (msg.role === 'assistant') {
       if (msg.reasoning) {
         process.stdout.write(`${thinking()}\n\n`)
         process.stdout.write(`${dim(msg.reasoning)}\n`)
         process.stdout.write(`\n${answer()}\n\n`)
       }
-      process.stdout.write(`${msg.content}\n\n`)
+      process.stdout.write(`${markdown ? renderText(msg.content) : msg.content}\n\n`)
     }
   }
 }
