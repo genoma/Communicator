@@ -2,7 +2,7 @@ import { getProvider } from '../providers/index.js'
 import { resolveReasoningFlag, resolveTemperatureFlag } from '../prompts.js'
 import { DEFAULT_TEMPERATURE } from '../constants.js'
 import { startChat } from '../chat.js'
-import { ensureSessionsDir, generateSessionId, saveSession } from '../sessions.js'
+import { ensureSessionsDir, generateSessionId, generateTitle, saveSession } from '../sessions.js'
 import { resumeCmd } from './resume.js'
 import { getApiKey, savePreferences } from '../config.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
@@ -94,6 +94,7 @@ async function persistSessionEnd({ finalState, opts, prefs }) {
         pricing: finalState.pricing ?? null,
         createdAt: finalState.createdAt,
         updatedAt: new Date().toISOString(),
+        title: generateTitle(finalState.messages),
         messages: finalState.messages,
       })
     } catch {

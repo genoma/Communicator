@@ -6,7 +6,7 @@ import { createStreamRenderer, renderHistory } from './ui/stream.js'
 import { formatError, ApiError } from './errors.js'
 import { extractPartialToken } from './sse-parser.js'
 import { dim, sep } from './ui/style.js'
-import { ensureSessionsDir, generateSessionId, saveSession } from './sessions.js'
+import { ensureSessionsDir, generateSessionId, generateTitle, saveSession } from './sessions.js'
 import { savePreferences } from './config.js'
 import { selectModelAndEndpoint } from './model-selection.js'
 
@@ -98,6 +98,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
         pricing: state.pricing ?? null,
         createdAt: state.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        title: generateTitle(state.messages),
         messages: state.messages,
       })
     } catch {

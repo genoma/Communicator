@@ -2,7 +2,7 @@ import { getProvider } from '../providers/index.js'
 import { DEFAULT_TEMPERATURE, formatCost } from '../constants.js'
 import { resolveReasoningFlag, resolveTemperatureFlag } from '../prompts.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
-import { ensureSessionsDir, generateSessionId, saveSession } from '../sessions.js'
+import { ensureSessionsDir, generateSessionId, generateTitle, saveSession } from '../sessions.js'
 import { savePreferences } from '../config.js'
 import { createStreamRenderer } from '../ui/stream.js'
 import { UsageTracker, budgetLine } from '../tracker.js'
@@ -161,6 +161,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     pricing: selection.pricing ?? null,
     createdAt,
     updatedAt: new Date().toISOString(),
+    title: generateTitle(messages),
     messages,
   })
 

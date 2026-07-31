@@ -8,7 +8,7 @@ export async function selectSession(sessions, { message = 'Select a session to r
     return {
       name: line,
       value: s.id,
-      description: `${s.providerName}${s.providerType && s.providerType !== 'openrouter' ? ` (${s.providerType})` : ''}  •  ${s.messageCount} messages`,
+      description: `${s.title ? `"${s.title}"  •  ` : ''}${s.providerName}${s.providerType && s.providerType !== 'openrouter' ? ` (${s.providerType})` : ''}  •  ${s.messageCount} messages`,
     }
   })
 

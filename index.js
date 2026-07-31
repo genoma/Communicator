@@ -9,6 +9,7 @@ import { listEndpointsCmd } from './src/commands/list-endpoints.js'
 import { listSessionsCmd } from './src/commands/list-sessions.js'
 import { exportCmd } from './src/commands/export-cmd.js'
 import { oneShotCmd } from './src/commands/one-shot.js'
+import { deleteCmd } from './src/commands/delete-cmd.js'
 import { chatStart } from './src/commands/chat-start.js'
 
 const program = new Command()
@@ -31,13 +32,14 @@ program
   .option('--reasoning-effort <level>', 'reasoning effort: max, xhigh, high, medium, low, minimal, none')
   .option('--temperature <0-2>', 'temperature override (0 to 2)')
   .option('--budget <usd>', 'per-session budget cap in USD')
+  .option('--delete [session-id]', 'delete a saved session (with confirmation)')
 
 program.parse()
 const opts = program.opts()
 
 const providerType = opts.provider || 'openrouter'
 const promptArg = program.args[0]
-const interactiveFlags = opts.resume !== undefined || opts.export !== undefined
+const interactiveFlags = opts.resume !== undefined || opts.export !== undefined || opts.delete !== undefined
 const exitModeFlags = opts.listModels || opts.listEndpoints || opts.listSessions
 
 if (opts.resume !== undefined && opts.export !== undefined) {
@@ -45,13 +47,18 @@ if (opts.resume !== undefined && opts.export !== undefined) {
   process.exit(1)
 }
 
+if (opts.delete !== undefined && (opts.resume !== undefined || opts.export !== undefined)) {
+  console.error('Cannot use --delete with --resume or --export. Use one at a time.')
+  process.exit(1)
+}
+
 if (promptArg && (interactiveFlags || exitModeFlags)) {
-  console.error('Cannot combine a prompt argument with --resume, --export, or --list-* flags.')
+  console.error('Cannot combine a prompt argument with --resume, --export, --delete, or --list-* flags.')
   process.exit(1)
 }
 
 if (!process.stdin.isTTY && interactiveFlags) {
-  console.error('Cannot use --resume or --export with piped stdin (interactive pickers need a TTY).')
+  console.error('Cannot use --resume, --export, or --delete with piped stdin (interactive pickers need a TTY).')
   process.exit(1)
 }
 
@@ -81,6 +88,12 @@ if (opts.export !== undefined) {
   if (opts.outputDir && opts.outputDir !== prefs.outputDir) {
     await savePreferences({ ...prefs, outputDir: opts.outputDir }, opts.config)
   }
+  process.exit(0)
+}
+
+if (opts.delete !== undefined) {
+  const partialId = typeof opts.delete === 'string' ? opts.delete : null
+  await deleteCmd(partialId)
   process.exit(0)
 }
 

@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join, basename, extname } from 'node:path'
 import { SESSIONS_DIR } from './constants.js'
 import { selectSession } from './session-picker.js'
@@ -46,6 +46,14 @@ function firstUserPreview(messages) {
   return ''
 }
 
+export function generateTitle(messages) {
+  const first = (messages || []).find((m) => m.role === 'user')
+  if (!first) return ''
+  const collapsed = String(first.content || '').replace(/\s+/g, ' ').trim()
+  if (!collapsed) return ''
+  return collapsed.length > 50 ? collapsed.slice(0, 50) + '...' : collapsed
+}
+
 async function readSidecar(dir) {
   try {
     return JSON.parse(await readFile(join(dir, SIDECAR_FILE), 'utf-8'))
@@ -88,6 +96,7 @@ function toSessionItem(id, meta) {
     updatedAt: meta.updatedAt || null,
     messageCount: meta.messageCount || 0,
     preview: meta.preview || '',
+    title: meta.title || '',
   }
 }
 
@@ -110,6 +119,7 @@ async function parseSessionFiles(dir, jsonFiles) {
         updatedAt: parsed.updatedAt || null,
         messageCount: msgCount,
         preview: firstUserPreview(parsed.messages),
+        title: parsed.title || '',
       })
     } catch {
       // skip corrupt session files
@@ -168,6 +178,7 @@ async function updateSidecar(dir, id, data) {
       updatedAt: data.updatedAt || null,
       messageCount: data.messages.length,
       preview: firstUserPreview(data.messages),
+      title: data.title || '',
     }
     await writeSidecar(dir, index)
   } catch {
@@ -203,7 +214,17 @@ export function formatSessionItem(s) {
   const time = s.id.replace('T', ' ')
   const model = s.model.length > 35 ? s.model.slice(0, 32) + '...' : s.model
   const count = `${s.messageCount} msg${s.messageCount !== 1 ? 's' : ''}`
-  const preview = s.preview ? `"${s.preview}${s.preview.length >= 60 ? '...' : ''}"` : ''
-  const line = `${time}  ${model.padEnd(37)} ${count.padEnd(12)} ${preview}`
+  const preview = s.title || s.preview || ''
+  const previewText = preview ? `"${preview}${preview.length >= 60 ? '...' : ''}"` : ''
+  const line = `${time}  ${model.padEnd(37)} ${count.padEnd(12)} ${previewText}`
   return { time, model, count, preview, line }
+}
+
+export async function deleteSession(dir, id) {
+  await rm(join(dir, `${id}.json`), { force: true })
+  const index = await readSidecar(dir)
+  if (index && index[id]) {
+    delete index[id]
+    await writeSidecar(dir, index)
+  }
 }

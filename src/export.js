@@ -25,7 +25,7 @@ function calculateCost(pricing, messages) {
 }
 
 export function formatMarkdown(sessionData) {
-  const { model, providerName, reasoningEffort, pricing, createdAt, messages } = sessionData
+  const { model, providerName, reasoningEffort, pricing, createdAt, messages, title } = sessionData
   const visibleMessages = (messages || []).filter((m) => m.role !== 'system')
   const cost = calculateCost(pricing, messages)
 
@@ -33,6 +33,7 @@ export function formatMarkdown(sessionData) {
 
   const time = formatTimestamp(createdAt)
   md += `# Chat Session — ${time}\n\n`
+  if (title) md += `**Title:** ${title}\n\n`
   md += `**Model:** \`${model || 'unknown'}\``
   if (providerName) md += ` | **Provider:** ${providerName}`
   md += ` | **Messages:** ${visibleMessages.length}`
