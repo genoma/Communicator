@@ -27,7 +27,6 @@ program
   .option('--config <path>', 'path to preferences config file')
   .option('--system-prompt <path>', 'path to a custom system prompt file')
   .option('--reasoning-effort <level>', 'reasoning effort: max, xhigh, high, medium, low, minimal, none')
-  .option('--no-reasoning', 'disable reasoning entirely')
 
 program.parse()
 const opts = program.opts()

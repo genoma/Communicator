@@ -37,15 +37,27 @@ export async function fetchModels(apiKey) {
   }, { errorResponse: handleHttpError })
 
   const { data } = await res.json()
-  return data.map((m) => ({
-    id: m.id,
-    name: m.name,
-    provider: m.id.split('/')[0],
-    contextLength: m.context_length,
-    description: m.description,
-    reasoning: m.reasoning || null,
-    pricing: null,
-  }))
+  return data.map((m) => {
+    const r = m.reasoning
+    return {
+      id: m.id,
+      name: m.name,
+      provider: m.id.split('/')[0],
+      contextLength: m.context_length,
+      description: m.description,
+      reasoning: r
+        ? {
+            supported: true,
+            supportsEffort: Array.isArray(r.supported_efforts) && r.supported_efforts.length > 0,
+            supported_efforts: Array.isArray(r.supported_efforts) && r.supported_efforts.length > 0 ? r.supported_efforts : null,
+            default_effort: r.default_effort || null,
+            mandatory: r.mandatory === true,
+            default_enabled: r.default_enabled !== false,
+          }
+        : null,
+      pricing: null,
+    }
+  })
 }
 
 export async function fetchEndpoints(apiKey, modelId) {

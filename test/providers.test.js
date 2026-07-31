@@ -28,7 +28,7 @@ function sseEvent(data) {
 test('openrouter fetchModels maps API models with pricing: null', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => jsonResponse({
     data: [
-      { id: 'org/model', name: 'Model', context_length: 1000, description: 'desc', reasoning: { effort: true } },
+      { id: 'org/model', name: 'Model', context_length: 1000, description: 'desc' },
     ],
   }))
 
@@ -38,6 +38,59 @@ test('openrouter fetchModels maps API models with pricing: null', async (t) => {
   assert.equal(models[0].provider, 'org')
   assert.equal(models[0].contextLength, 1000)
   assert.equal(models[0].pricing, null)
+  assert.equal(models[0].reasoning, null)
+})
+
+test('openrouter fetchModels normalizes reasoning metadata', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => jsonResponse({
+    data: [
+      {
+        id: 'effort-model',
+        reasoning: {
+          supported_efforts: ['high', 'medium', 'low'],
+          default_effort: 'medium',
+          default_enabled: true,
+          mandatory: false,
+        },
+      },
+      {
+        id: 'auto-model',
+        reasoning: { mandatory: false },
+      },
+      {
+        id: 'mandatory-model',
+        reasoning: { supported_efforts: ['high'], default_effort: 'high', mandatory: true },
+      },
+      {
+        id: 'off-by-default',
+        reasoning: { supported_efforts: ['high'], default_effort: 'high', default_enabled: false },
+      },
+    ],
+  }))
+
+  const models = await openrouter.fetchModels('key')
+
+  const effort = models.find((m) => m.id === 'effort-model').reasoning
+  assert.equal(effort.supported, true)
+  assert.equal(effort.supportsEffort, true)
+  assert.deepEqual(effort.supported_efforts, ['high', 'medium', 'low'])
+  assert.equal(effort.default_effort, 'medium')
+  assert.equal(effort.mandatory, false)
+  assert.equal(effort.default_enabled, true)
+
+  const auto = models.find((m) => m.id === 'auto-model').reasoning
+  assert.equal(auto.supported, true)
+  assert.equal(auto.supportsEffort, false)
+  assert.equal(auto.supported_efforts, null)
+  assert.equal(auto.default_effort, null)
+  assert.equal(auto.default_enabled, true)
+
+  const mandatory = models.find((m) => m.id === 'mandatory-model').reasoning
+  assert.equal(mandatory.mandatory, true)
+  assert.equal(mandatory.default_enabled, true)
+
+  const offByDefault = models.find((m) => m.id === 'off-by-default').reasoning
+  assert.equal(offByDefault.default_enabled, false)
 })
 
 test('venice fetchModels normalizes pricing and hides raw fields', async (t) => {
@@ -183,6 +236,42 @@ test('openrouter cache HIT zeroes usage and marks cacheHit', async (t) => {
 
   assert.equal(result.content, 'cached')
   assert.deepEqual(result.usage, { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cacheHit: true })
+})
+
+test('chatCompletion maps null reasoningEffort to reasoning disabled body', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'org/model',
+    messages: [],
+    onToken: () => {},
+    reasoningEffort: null,
+  })
+
+  assert.deepEqual(sentBody.reasoning, { enabled: false })
+})
+
+test('chatCompletion maps truthy reasoningEffort to reasoning effort body', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'org/model',
+    messages: [],
+    onToken: () => {},
+    reasoningEffort: 'high',
+  })
+
+  assert.deepEqual(sentBody.reasoning, { effort: 'high', exclude: false })
 })
 
 test('chatCompletion maps venice sessionId to prompt_cache_key', async (t) => {

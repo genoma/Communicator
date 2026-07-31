@@ -51,6 +51,22 @@ test('non-interactive selection falls back to model default effort', async () =>
   assert.equal(sel.reasoningEffort, 'low')
 })
 
+test('non-interactive selection defaults to null when model reasoning is disabled by default', async () => {
+  const provider = fakeProvider({
+    async fetchModels() {
+      return [
+        {
+          id: 'off-by-default',
+          reasoning: { supported: true, supportsEffort: true, default_enabled: false, default_effort: 'high' },
+          pricing: { prompt: 0.000002, completion: 0.000004 },
+        },
+      ]
+    },
+  })
+  const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'off-by-default' })
+  assert.equal(sel.reasoningEffort, null)
+})
+
 test('forced effort flag wins over prefs', async () => {
   const sel = await selectModelNonInteractive({
     provider: fakeProvider(),

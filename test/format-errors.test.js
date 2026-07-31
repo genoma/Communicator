@@ -22,11 +22,10 @@ test('formatError returns ApiError message and falls back gracefully', () => {
   assert.equal(formatError('string error'), 'string error')
 })
 
-test('resolveReasoningFlag maps flags to effort semantics', () => {
-  assert.equal(resolveReasoningFlag({ reasoning: false, reasoningEffort: undefined }), null)
-  assert.equal(resolveReasoningFlag({ reasoning: false, reasoningEffort: 'high' }), null)
-  assert.equal(resolveReasoningFlag({ reasoning: undefined, reasoningEffort: 'high' }), 'high')
-  assert.equal(resolveReasoningFlag({ reasoning: undefined, reasoningEffort: undefined }), undefined)
+test('resolveReasoningFlag normalizes effort semantics', () => {
+  assert.equal(resolveReasoningFlag({ reasoningEffort: 'none' }), null)
+  assert.equal(resolveReasoningFlag({ reasoningEffort: 'high' }), 'high')
+  assert.equal(resolveReasoningFlag({ reasoningEffort: undefined }), undefined)
 })
 
 test('formatModelPrice renders per-1M prices with fallbacks', () => {

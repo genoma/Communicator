@@ -80,7 +80,13 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
       effort = undefined
     } else if (reasoning) {
       const saved = prefs.reasoningEffort?.[modelId]
-      effort = saved !== undefined ? saved : reasoning.default_effort ?? undefined
+      if (saved !== undefined) {
+        effort = saved
+      } else if (reasoning.default_enabled === false) {
+        effort = null
+      } else {
+        effort = reasoning.default_effort ?? undefined
+      }
       if (effort === 'none') effort = null
     }
   }

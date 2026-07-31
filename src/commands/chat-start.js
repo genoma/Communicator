@@ -28,7 +28,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
   }
 
   const provider = getProvider(providerType)
-  const forcedEffort = resolveReasoningFlag({ reasoning: opts.reasoning, reasoningEffort: opts.reasoningEffort })
+  const forcedEffort = resolveReasoningFlag({ reasoningEffort: opts.reasoningEffort })
 
   let selection
   if (opts.model) {

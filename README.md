@@ -23,7 +23,7 @@ Chat from your terminal with streaming responses, interactive model/provider sel
 - **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, and reasoning effort. Automatically detects and uses the correct API backend. Supports prefix matching and an interactive picker
 - **Markdown export** — export any saved session as a clean markdown file with `--export`, with collapsible reasoning blocks and cost summary
 - **Session persistence** — last model, provider, and per-model reasoning effort are saved to `~/.communicator.json` and restored on next launch
-- **CLI flags to skip pickers** — pass `-m`, `--reasoning-effort`, or `--no-reasoning` to bypass interactive prompts. `-m` skips *all* pickers (model, reasoning, endpoint) for fully non-interactive use
+- **CLI flags to skip pickers** — pass `-m`, `--reasoning-effort`, or `--reasoning-effort none` to bypass interactive prompts. `-m` skips *all* pickers (model, reasoning, endpoint) for fully non-interactive use
 - **Lightweight** — three runtime dependencies, pure Node.js ESM
 
 ## Requirements
@@ -81,8 +81,7 @@ Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make t
 |-------|-----------------------|----------|--------------------------------------------------------------------------------------|
 | `-m`  | `--model`             | `<id>`   | Skip all pickers and use this model ID directly (non-interactive)                    |
 | `-p`  | `--provider`          | `<name>` | Select the API backend: `openrouter` (default) or `venice`                           |
-|       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`   |
-|       | `--no-reasoning`      | —        | Disable reasoning entirely                                                           |
+|       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`. `none` disables reasoning |
 | `-V`  | `--version`           | —        | Print the version and exit                                                           |
 |       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
 |       | `--list-endpoints`    | `<model>`| List providers for a model (pricing, uptime) and exit                                |
@@ -93,7 +92,7 @@ Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make t
 |       | `--config`            | `<path>` | Custom path for the preferences JSON file (default: `~/.communicator.json`)          |
 |       | `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
 
-`--reasoning-effort` and `--no-reasoning` are mutually exclusive — the last one on the command line wins.
+Pass `--reasoning-effort none` to disable reasoning entirely.
 
 Quick start:
 
@@ -118,7 +117,7 @@ communicator --export --output-dir ~/Documents          # export to custom direc
 
 # Reasoning
 communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort high  # force high reasoning effort
-communicator --no-reasoning                                              # disable reasoning
+communicator --reasoning-effort none                                             # disable reasoning
 communicator -p venice -m "deepseek-v4-flash" --reasoning-effort high    # Venice with reasoning
 ```
 
@@ -137,10 +136,10 @@ The provider is saved in each session, so resuming a Venice session automaticall
 ### Interactive flow
 
 1. **Model selection** — searchable picker with fuzzy filtering by name or ID. Your last-used model appears first. Venice models show names as listed on the Venice dashboard (e.g., `Qwen 3.7 Max`); OpenRouter models include the org prefix (e.g., `Google: Gemini 3.6 Flash`).
-2. **Reasoning effort** — shown only when the selected model supports reasoning. The chosen level is saved per model and restored as default next time. Venice uses the standard OpenAI `reasoning_effort` parameter; OpenRouter uses its native reasoning format.
+2. **Reasoning effort** — shown only when the selected model supports reasoning effort control. A `Disabled` ("none") option is offered whenever the model allows turning reasoning off; models that reason automatically (no effort control) skip this step entirely. The chosen level is saved per model and restored as default next time. Venice uses the standard OpenAI `reasoning_effort` parameter; OpenRouter uses its native reasoning format.
 3. **Provider selection** (OpenRouter only) — displays pricing, 30-minute uptime %, and routing tags. Navigate ← back to the model picker to change your selection. Models with a single provider skip this step entirely. Venice models go straight to chat.
 
-Passing `-m <id>` skips **all** pickers: the reasoning effort is restored from your saved per-model preference (or the model default), and the OpenRouter endpoint is auto-selected (cheapest provider with pricing, otherwise the first one). Venice always goes straight to chat. `--reasoning-effort` / `--no-reasoning` still override the effort when given.
+Passing `-m <id>` skips **all** pickers: the reasoning effort is restored from your saved per-model preference (or the model default), and the OpenRouter endpoint is auto-selected (cheapest provider with pricing, otherwise the first one). Venice always goes straight to chat. `--reasoning-effort` still overrides the effort when given; `--reasoning-effort none` disables reasoning. Models that are disabled by default (`default_enabled: false`) restore as disabled.
 
 ### Chat session
 

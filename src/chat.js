@@ -46,7 +46,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
   }
 
   const label = endpointProviderName ? `${endpointProviderName} / ${model}` : model
-  if (reasoningEffort) {
+  if (reasoningEffort != null) {
     console.log(`\nConnected to ${label}  [thinking: ${getEffortLabel(reasoningEffort)}]`)
   } else {
     console.log(`\nConnected to ${label}`)
@@ -200,20 +200,20 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
           continue
         }
       }
-      const newEffort = await selectReasoningEffort(reasoning, state.reasoningEffort ?? undefined)
+      const newEffort = await selectReasoningEffort(reasoning, state.reasoningEffort)
       if (newEffort === undefined) {
         console.log('This model does not support reasoning effort control.\n')
         continue
       }
       state.reasoningEffort = newEffort
       await savePrefs({ reasoningEffort: { ...prefs.reasoningEffort, [state.modelId]: newEffort } })
-      console.log(`Reasoning effort set to ${getEffortLabel(newEffort) || newEffort}\n`)
+      console.log(`Reasoning effort set to ${getEffortLabel(newEffort)}\n`)
       continue
     }
 
     if (input === '/cost') {
       console.log(`${dim('Current session:')} ${tracker.summary()}`)
-      console.log(`${dim('Reasoning:')} ${state.reasoningEffort ? getEffortLabel(state.reasoningEffort) : 'auto'}\n`)
+      console.log(`${dim('Reasoning:')} ${state.reasoningEffort === undefined ? 'auto' : getEffortLabel(state.reasoningEffort)}\n`)
       continue
     }
 

@@ -92,50 +92,49 @@ export async function selectProvider(endpoints) {
 const FULL_EFFORT_LIST = ['max', 'xhigh', 'high', 'medium', 'low', 'minimal', 'none']
 
 export function getEffortLabel(effort) {
+  if (effort == null) return EFFORT_LABELS.none
   return EFFORT_LABELS[effort] || effort
 }
 
 export async function selectReasoningEffort(reasoning, lastEffort) {
-  if (!reasoning) return undefined
+  if (!reasoning || reasoning.supportsEffort === false) return undefined
 
-  const efforts = reasoning.supported_efforts || FULL_EFFORT_LIST
   const mandatory = reasoning.mandatory === true
+  const efforts = mandatory
+    ? (reasoning.supported_efforts || FULL_EFFORT_LIST).filter((e) => e !== 'none')
+    : [...(reasoning.supported_efforts || FULL_EFFORT_LIST)]
 
-  const filteredEfforts = mandatory
-    ? efforts.filter((e) => e !== 'none')
-    : efforts
-
-  const noneIdx = filteredEfforts.indexOf('none')
-  if (noneIdx > 0) {
-    filteredEfforts.splice(noneIdx, 1)
-    filteredEfforts.unshift('none')
+  if (!mandatory && !efforts.includes('none')) {
+    efforts.push('none')
   }
 
-  if (filteredEfforts.length === 0) return undefined
+  const noneIdx = efforts.indexOf('none')
+  if (noneIdx > 0) {
+    efforts.splice(noneIdx, 1)
+    efforts.unshift('none')
+  }
 
-  const defaultEffort =
-    lastEffort ||
-    (reasoning.default_effort && reasoning.default_effort !== 'none'
-      ? reasoning.default_effort
-      : null) ||
+  if (efforts.length === 0) return undefined
+
+  let defaultEffort =
+    lastEffort ??
+    (reasoning.default_enabled === false ? null : reasoning.default_effort) ??
     'medium'
-
-  const defaultIdx = filteredEfforts.indexOf(defaultEffort)
+  if (defaultEffort === 'none') defaultEffort = null
 
   const answer = await select({
     message: 'Select reasoning effort:',
-    choices: filteredEfforts.map((e) => ({
+    choices: efforts.map((e) => ({
       name: getEffortLabel(e),
       value: e === 'none' ? null : e,
     })),
-    default: defaultIdx >= 0 ? filteredEfforts[defaultIdx] : undefined,
+    default: defaultEffort,
   })
 
   return answer
 }
 
-export function resolveReasoningFlag({ reasoning, reasoningEffort }) {
-  if (reasoning === false) return null
-  if (reasoningEffort) return reasoningEffort
-  return undefined
+export function resolveReasoningFlag({ reasoningEffort }) {
+  if (reasoningEffort === 'none') return null
+  return reasoningEffort
 }
