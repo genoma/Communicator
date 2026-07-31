@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { UsageTracker, computeTurnCost } from '../src/tracker.js'
+import { UsageTracker, budgetLine, budgetStatus, computeTurnCost } from '../src/tracker.js'
 
 const PRICING = { prompt: 0.0000015, completion: 0.000006 }
 
@@ -48,4 +48,37 @@ test('summary includes cost only when pricing produced a cost', () => {
   const noPricing = new UsageTracker()
   noPricing.record({ prompt_tokens: 10, completion_tokens: 5 })
   assert.doesNotMatch(noPricing.summary(), /cost/)
+})
+
+test('budgetStatus computes pct and remaining with 80/100 boundaries', () => {
+  const low = budgetStatus(0.4, 1)
+  assert.ok(Math.abs(low.pct - 40) < 1e-9)
+  assert.ok(Math.abs(low.remaining - 0.6) < 1e-9)
+
+  const eighty = budgetStatus(0.8, 1)
+  assert.ok(Math.abs(eighty.pct - 80) < 1e-9)
+  assert.ok(Math.abs(eighty.remaining - 0.2) < 1e-9)
+
+  const at = budgetStatus(1, 1)
+  assert.equal(at.pct, 100)
+  assert.equal(at.remaining, 0)
+
+  const over = budgetStatus(2, 1)
+  assert.equal(over.pct, 100)
+  assert.equal(over.remaining, 0)
+})
+
+test('budgetStatus returns null for unset or invalid budgets', () => {
+  assert.equal(budgetStatus(0, null), null)
+  assert.equal(budgetStatus(0, undefined), null)
+  assert.equal(budgetStatus(0, 0), null)
+  assert.equal(budgetStatus(0, -1), null)
+})
+
+test('budgetLine warns at 80% and omits below', () => {
+  assert.equal(budgetLine(0.5, 1), null)
+  assert.match(budgetLine(0.9, 1), /90% used/)
+  assert.match(budgetLine(0.9, 1), /\$0\.900000 of \$1\.000000/)
+  assert.match(budgetLine(1.2, 1), /100% used/)
+  assert.equal(budgetLine(0.5, null), null)
 })

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { listSessions, saveSession, loadSession, generateSessionId } from '../src/sessions.js'
+import { deleteSession, formatSessionItem, generateTitle, listSessions, saveSession, loadSession, generateSessionId } from '../src/sessions.js'
 
 async function tempDir(t) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-test-'))
@@ -114,6 +114,60 @@ test('missing dir yields empty listing', async (t) => {
   const dir = join(await mkdtemp(join(tmpdir(), 'communicator-test-')), 'nested', 'missing')
   await mkdir(dir, { recursive: true })
   t.after(() => rm(dir, { recursive: true, force: true }))
+  const sessions = await listSessions(dir)
+  assert.deepEqual(sessions, [])
+})
+
+test('generateTitle collapses whitespace and truncates to 50 chars', () => {
+  assert.equal(generateTitle([{ role: 'system' }, { role: 'user', content: '  Hello\n   world  ' }]), 'Hello world')
+  const long = 'a'.repeat(80)
+  const titled = generateTitle([{ role: 'user', content: long }])
+  assert.equal(titled, 'a'.repeat(50) + '...')
+  assert.equal(generateTitle([{ role: 'system', content: 'x' }]), '')
+  assert.equal(generateTitle([]), '')
+  assert.equal(generateTitle([{ role: 'user', content: '   \n  ' }]), '')
+})
+
+test('sidecar stores title and formatSessionItem prefers it over preview', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData({ title: 'My custom title' }))
+
+  const index = JSON.parse(await readFile(join(dir, '.index.json'), 'utf-8'))
+  assert.equal(index['2026-01-01T00-00-00'].title, 'My custom title')
+
+  const sessions = await listSessions(dir)
+  assert.equal(sessions[0].title, 'My custom title')
+  assert.match(formatSessionItem(sessions[0]).line, /"My custom title"/)
+})
+
+test('legacy session files without title fall back to empty string', async (t) => {
+  const dir = await tempDir(t)
+  await writeFile(join(dir, 'legacy-1.json'), JSON.stringify(sessionData()))
+  const sessions = await listSessions(dir)
+  assert.equal(sessions[0].title, '')
+  assert.match(formatSessionItem(sessions[0]).line, /"First question"/)
+})
+
+test('deleteSession removes the session file and sidecar entry', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  await saveSession(dir, '2026-01-02T00-00-00', sessionData())
+
+  await deleteSession(dir, '2026-01-01T00-00-00')
+
+  await assert.rejects(readFile(join(dir, '2026-01-01T00-00-00.json')))
+  const index = JSON.parse(await readFile(join(dir, '.index.json'), 'utf-8'))
+  assert.deepEqual(Object.keys(index), ['2026-01-02T00-00-00'])
+  const sessions = await listSessions(dir)
+  assert.deepEqual(sessions.map((s) => s.id), ['2026-01-02T00-00-00'])
+})
+
+test('deleteSession tolerates missing files and unknown ids', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  await deleteSession(dir, '2026-01-01T00-00-00')
+  await deleteSession(dir, '2026-01-01T00-00-00')
+  await deleteSession(dir, 'never-existed')
   const sessions = await listSessions(dir)
   assert.deepEqual(sessions, [])
 })

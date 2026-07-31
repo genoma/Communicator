@@ -256,6 +256,56 @@ test('chatCompletion maps null reasoningEffort to reasoning disabled body', asyn
   assert.deepEqual(sentBody.reasoning, { enabled: false })
 })
 
+test('chatCompletion sends temperature in the request body for openrouter', async (t) => {
+  const sentBodies = []
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBodies.push(JSON.parse(opts.body))
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'org/model',
+    messages: [],
+    onToken: () => {},
+    temperature: 1.3,
+  })
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'org/model',
+    messages: [],
+    onToken: () => {},
+  })
+
+  assert.equal(sentBodies[0].temperature, 1.3)
+  assert.equal(sentBodies[1].temperature, 0.7)
+})
+
+test('chatCompletion sends temperature in the request body for venice', async (t) => {
+  const sentBodies = []
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBodies.push(JSON.parse(opts.body))
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await venice.chatCompletion({
+    apiKey: 'key',
+    model: 'm',
+    messages: [],
+    onToken: () => {},
+    temperature: 0.2,
+  })
+  await venice.chatCompletion({
+    apiKey: 'key',
+    model: 'm',
+    messages: [],
+    onToken: () => {},
+  })
+
+  assert.equal(sentBodies[0].temperature, 0.2)
+  assert.equal(sentBodies[1].temperature, 0.7)
+})
+
 test('chatCompletion maps truthy reasoningEffort to reasoning effort body', async (t) => {
   let sentBody
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
