@@ -11,6 +11,18 @@ export function computeTurnCost(usage, pricing) {
   return pt * promptPrice + ct * completionPrice
 }
 
+export function budgetStatus(cost, budget) {
+  if (budget == null || !(budget > 0)) return null
+  const pct = Math.min(100, (cost / budget) * 100)
+  return { pct, remaining: Math.max(0, budget - cost) }
+}
+
+export function budgetLine(cost, budget) {
+  const status = budgetStatus(cost, budget)
+  if (!status || status.pct < 80) return null
+  return `  Budget  ${status.pct.toFixed(0)}% used (${formatCost(cost)} of ${formatCost(budget)}), ${formatCost(status.remaining)} remaining`
+}
+
 function computeMetrics(usage, pricing) {
   const pt = usage.prompt_tokens ?? 0
   const ct = usage.completion_tokens ?? 0

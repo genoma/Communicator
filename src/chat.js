@@ -1,6 +1,6 @@
-import { UsageTracker } from './tracker.js'
+import { UsageTracker, budgetLine, budgetStatus } from './tracker.js'
 import { getEffortLabel, resolveTemperatureFlag, selectReasoningEffort } from './prompts.js'
-import { DEFAULT_TEMPERATURE } from './constants.js'
+import { DEFAULT_TEMPERATURE, formatCost } from './constants.js'
 import { readInput } from './input.js'
 import { createStreamRenderer, renderHistory } from './ui/stream.js'
 import { formatError, ApiError } from './errors.js'
@@ -40,6 +40,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
   }
 
   let tracker = new UsageTracker()
+  let budgetWarned = false
 
   if (initialMessages) {
     for (const msg of initialMessages) {
@@ -169,6 +170,8 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       state.createdAt = new Date().toISOString()
       state.messages = [{ role: 'system', content: systemContent }]
       tracker = new UsageTracker()
+      state.budget = null
+      budgetWarned = false
       console.log('\nNew session started.\n')
       continue
     }
@@ -243,6 +246,28 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       continue
     }
 
+    if (input.startsWith('/budget')) {
+      const value = input.slice('/budget'.length).trim()
+      if (value) {
+        const parsed = Number(value)
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          console.error('Error: budget must be a positive number (USD).\n')
+          continue
+        }
+        state.budget = parsed
+        budgetWarned = false
+        console.log(`Budget set to ${formatCost(parsed)} for this session.\n`)
+        continue
+      }
+      if (state.budget == null) {
+        console.log('No budget set. Use /budget <usd> to cap this session.\n')
+        continue
+      }
+      const { pct, remaining } = budgetStatus(tracker.cost, state.budget)
+      console.log(`Budget: ${formatCost(tracker.cost)} of ${formatCost(state.budget)} used (${pct.toFixed(0)}%). ${formatCost(remaining)} remaining.\n`)
+      continue
+    }
+
     if (input === '/cost') {
       console.log(`${dim('Current session:')} ${tracker.summary()}`)
       console.log(`${dim('Reasoning:')} ${state.reasoningEffort === undefined ? 'auto' : getEffortLabel(state.reasoningEffort)}\n`)
@@ -251,6 +276,11 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
 
     if (input.startsWith('/')) {
       console.log(`Unknown command "${input}". Available: ${AVAILABLE_COMMANDS}\n`)
+      continue
+    }
+
+    if (state.budget != null && tracker.cost >= state.budget) {
+      console.log(`Budget exhausted (${formatCost(tracker.cost)} of ${formatCost(state.budget)}). /new to start fresh or /quit.\n`)
       continue
     }
 
@@ -287,6 +317,13 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       if (apiResult.usage) {
         tracker.record(apiResult.usage, state.pricing)
         tracker.printTurn(apiResult.usage, state.pricing)
+        if (state.budget != null && !budgetWarned) {
+          const line = budgetLine(tracker.cost, state.budget)
+          if (line) {
+            budgetWarned = true
+            console.log(line)
+          }
+        }
       }
     } catch (err) {
       if (interrupted) {

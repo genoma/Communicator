@@ -1,11 +1,11 @@
 import { getProvider } from '../providers/index.js'
-import { DEFAULT_TEMPERATURE } from '../constants.js'
+import { DEFAULT_TEMPERATURE, formatCost } from '../constants.js'
 import { resolveReasoningFlag, resolveTemperatureFlag } from '../prompts.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
 import { ensureSessionsDir, generateSessionId, saveSession } from '../sessions.js'
 import { savePreferences } from '../config.js'
 import { createStreamRenderer } from '../ui/stream.js'
-import { UsageTracker } from '../tracker.js'
+import { UsageTracker, budgetLine } from '../tracker.js'
 import { formatError } from '../errors.js'
 
 const MAX_STDIN_BYTES = 10 * 1024 * 1024
@@ -24,16 +24,14 @@ async function readStdin() {
   return Buffer.concat(chunks).toString('utf-8').trim()
 }
 
-function resolveTemperature(opts, prefs, modelId) {
-  if (opts.temperature !== undefined && opts.temperature !== '') {
-    try {
-      return resolveTemperatureFlag({ temperature: opts.temperature })
-    } catch (err) {
-      console.error(`Error: ${err.message}`)
-      process.exit(1)
-    }
+function resolveBudget(value) {
+  if (value === undefined || value === null || value === '') return null
+  const budget = Number(value)
+  if (!Number.isFinite(budget) || budget <= 0) {
+    console.error('Error: --budget must be a positive number (USD).')
+    process.exit(1)
   }
-  return prefs.temperature?.[modelId] ?? DEFAULT_TEMPERATURE
+  return budget
 }
 
 export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt }) {
@@ -50,18 +48,33 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   }
 
   const forcedEffort = resolveReasoningFlag({ reasoningEffort: opts.reasoningEffort })
-
-  let selection
-  if (opts.model) {
-    selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort })
-  } else if (stdinPiped) {
-    console.error('Error: interactive model selection needs a TTY. Use -m <model-id> when piping input.')
-    process.exit(1)
-  } else {
-    selection = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: forcedEffort })
+  const budget = resolveBudget(opts.budget)
+  let forcedTemperature
+  if (opts.temperature !== undefined && opts.temperature !== '') {
+    try {
+      forcedTemperature = resolveTemperatureFlag({ temperature: opts.temperature })
+    } catch (err) {
+      console.error(`Error: ${err.message}`)
+      process.exit(1)
+    }
   }
 
-  const temperature = resolveTemperature(opts, prefs, selection.modelId)
+  let selection
+  let temperature
+  try {
+    if (opts.model) {
+      selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort })
+    } else if (stdinPiped) {
+      console.error('Error: interactive model selection needs a TTY. Use -m <model-id> when piping input.')
+      process.exit(1)
+    } else {
+      selection = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: forcedEffort })
+    }
+    temperature = forcedTemperature ?? prefs.temperature?.[selection.modelId] ?? DEFAULT_TEMPERATURE
+  } catch (err) {
+    console.error(`Error: ${formatError(err)}`)
+    process.exit(1)
+  }
 
   const dir = await ensureSessionsDir()
   const sessionId = await generateSessionId(dir)
@@ -72,6 +85,10 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   ]
 
   const tracker = new UsageTracker()
+  if (budget != null && tracker.cost >= budget) {
+    console.error(`Error: budget exhausted (${formatCost(tracker.cost)} of ${formatCost(budget)}).`)
+    process.exit(1)
+  }
   const ttyOut = process.stdout.isTTY === true
   const controller = new AbortController()
   const onSigint = () => controller.abort()
@@ -123,6 +140,10 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     if (result.usage) {
       tracker.record(result.usage, selection.pricing)
       tracker.printTurn(result.usage, selection.pricing)
+      if (budget != null) {
+        const line = budgetLine(tracker.cost, budget)
+        if (line) console.log(line)
+      }
     }
   } else {
     const content = result.content || ''
@@ -136,6 +157,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     providerType: provider.meta.name,
     reasoningEffort: selection.reasoningEffort ?? null,
     temperature,
+    budget: budget ?? null,
     pricing: selection.pricing ?? null,
     createdAt,
     updatedAt: new Date().toISOString(),
