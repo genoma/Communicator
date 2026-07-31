@@ -8,6 +8,7 @@ import { listModelsCmd } from './src/commands/list-models.js'
 import { listEndpointsCmd } from './src/commands/list-endpoints.js'
 import { listSessionsCmd } from './src/commands/list-sessions.js'
 import { exportCmd } from './src/commands/export-cmd.js'
+import { oneShotCmd } from './src/commands/one-shot.js'
 import { chatStart } from './src/commands/chat-start.js'
 
 const program = new Command()
@@ -16,6 +17,7 @@ program
   .name('communicator')
   .description('AI CLI chat with interactive model & provider selection')
   .version(pkg.version)
+  .argument('[prompt]', 'message to send in one-shot mode')
   .option('-m, --model <id>', 'skip all pickers, use this model ID directly')
   .option('-p, --provider <name>', 'AI provider backend: openrouter or venice', 'openrouter')
   .option('--list-models', 'list available models and exit')
@@ -27,14 +29,29 @@ program
   .option('--config <path>', 'path to preferences config file')
   .option('--system-prompt <path>', 'path to a custom system prompt file')
   .option('--reasoning-effort <level>', 'reasoning effort: max, xhigh, high, medium, low, minimal, none')
+  .option('--temperature <0-2>', 'temperature override (0 to 2)')
+  .option('--budget <usd>', 'per-session budget cap in USD')
 
 program.parse()
 const opts = program.opts()
 
 const providerType = opts.provider || 'openrouter'
+const promptArg = program.args[0]
+const interactiveFlags = opts.resume !== undefined || opts.export !== undefined
+const exitModeFlags = opts.listModels || opts.listEndpoints || opts.listSessions
 
 if (opts.resume !== undefined && opts.export !== undefined) {
   console.error('Cannot use --resume and --export together. Use one at a time.')
+  process.exit(1)
+}
+
+if (promptArg && (interactiveFlags || exitModeFlags)) {
+  console.error('Cannot combine a prompt argument with --resume, --export, or --list-* flags.')
+  process.exit(1)
+}
+
+if (!process.stdin.isTTY && interactiveFlags) {
+  console.error('Cannot use --resume or --export with piped stdin (interactive pickers need a TTY).')
   process.exit(1)
 }
 
@@ -67,8 +84,18 @@ if (opts.export !== undefined) {
   process.exit(0)
 }
 
+if (!process.stdin.isTTY && !opts.model) {
+  console.error('Interactive selection needs a TTY. Use -m <model-id> when piping input.')
+  process.exit(1)
+}
+
 const apiKey = getApiKey(providerType)
 const prefs = await loadPreferences(opts.config)
 const systemPrompt = await loadSystemPrompt(opts.systemPrompt)
+
+if (promptArg || !process.stdin.isTTY) {
+  await oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt: promptArg })
+  process.exit(0)
+}
 
 await chatStart({ apiKey, opts, prefs, systemPrompt, providerType })
