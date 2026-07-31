@@ -16,7 +16,7 @@ program
   .name('communicator')
   .description('AI CLI chat with interactive model & provider selection')
   .version(pkg.version)
-  .option('-m, --model <id>', 'skip model picker, use this model ID directly')
+  .option('-m, --model <id>', 'skip all pickers, use this model ID directly')
   .option('-p, --provider <name>', 'AI provider backend: openrouter or venice', 'openrouter')
   .option('--list-models', 'list available models and exit')
   .option('--list-endpoints <model>', 'list providers/endpoints for a model and exit')
