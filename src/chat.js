@@ -163,7 +163,13 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
 
     if (input === '/model') {
       await saveCurrentSession()
-      const sel = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: undefined })
+      let sel
+      try {
+        sel = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: undefined })
+      } catch (err) {
+        console.error(`\nError: ${formatError(err)}\n`)
+        continue
+      }
       state.modelId = sel.modelId
       state.endpointProviderName = sel.endpointProviderName
       state.pricing = sel.pricing

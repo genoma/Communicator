@@ -5,7 +5,7 @@ export function createStreamRenderer() {
   return (token, type) => {
     if (type === 'start_reasoning') {
       process.stdout.write(`${thinking()}\n`)
-      process.stdout.write(dim(token))
+      process.stdout.write(token)
     } else if (type === 'reasoning') {
       process.stdout.write(dim(token))
     } else if (type === 'end_reasoning') {
