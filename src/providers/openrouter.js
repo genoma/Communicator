@@ -1,14 +1,14 @@
-import { parseSSEStream } from "../sse-parser.js"
-import { fetchWithRetry } from "../http.js"
-import { ApiError } from "../errors.js"
+import { parseSSEStream } from '../sse-parser.js'
+import { fetchWithRetry } from '../http.js'
+import { ApiError } from '../errors.js'
 
-const OPENROUTER_BASE = "https://openrouter.ai/api/v1"
-const CACHE_HEADER = "x-openrouter-cache-status"
+const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
+const CACHE_HEADER = 'x-openrouter-cache-status'
 
 export const meta = {
-  name: "openrouter",
+  name: 'openrouter',
   baseURL: OPENROUTER_BASE,
-  apiKeyEnv: "OPENROUTER_API_KEY",
+  apiKeyEnv: 'OPENROUTER_API_KEY',
   hasEndpoints: true,
 }
 
@@ -23,12 +23,12 @@ export function normalizePricing(raw) {
 
 export function handleHttpError(status, body) {
   if (status === 401) {
-    throw new ApiError("Invalid API key. Check your OPENROUTER_API_KEY environment variable.", { status, provider: "openrouter", retryable: false })
+    throw new ApiError('Invalid API key. Check your OPENROUTER_API_KEY environment variable.', { status, provider: 'openrouter', retryable: false })
   }
   if (status === 429) {
-    throw new ApiError("Rate limited by OpenRouter. Wait a moment and try again.", { status, provider: "openrouter", retryable: true })
+    throw new ApiError('Rate limited by OpenRouter. Wait a moment and try again.', { status, provider: 'openrouter', retryable: true })
   }
-  throw new ApiError(`OpenRouter request failed (${status}): ${body}`, { status, provider: "openrouter", retryable: status >= 500 })
+  throw new ApiError(`OpenRouter request failed (${status}): ${body}`, { status, provider: 'openrouter', retryable: status >= 500 })
 }
 
 export async function fetchModels(apiKey) {
@@ -40,7 +40,7 @@ export async function fetchModels(apiKey) {
   return data.map((m) => ({
     id: m.id,
     name: m.name,
-    provider: m.id.split("/")[0],
+    provider: m.id.split('/')[0],
     contextLength: m.context_length,
     description: m.description,
     reasoning: m.reasoning || null,
@@ -71,7 +71,7 @@ export async function fetchEndpoints(apiKey, modelId) {
   }))
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning, sessionId, signal }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, _supportsReasoning, _sessionId, signal }) {
   const body = {
     model,
     messages,
@@ -93,10 +93,10 @@ export async function chatCompletion({ apiKey, model, messages, onToken, provide
   }
 
   const res = await fetchWithRetry(`${OPENROUTER_BASE}/chat/completions`, {
-    method: "POST",
+    method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
   }, { errorResponse: handleHttpError, signal })
@@ -108,7 +108,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, provide
 
   const usage = finalUsage
 
-  if (cacheStatus === "HIT" && !usage) {
+  if (cacheStatus === 'HIT' && !usage) {
     return {
       content: fullText,
       reasoning: fullReasoning || undefined,
@@ -116,7 +116,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, provide
     }
   }
 
-  if (cacheStatus === "HIT" && usage) {
+  if (cacheStatus === 'HIT' && usage) {
     usage.cacheHit = true
   }
 

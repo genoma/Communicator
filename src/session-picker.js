@@ -1,14 +1,14 @@
-import { search } from "@inquirer/prompts"
-import { formatSessionItem } from "./sessions.js"
+import { search } from '@inquirer/prompts'
+import { formatSessionItem } from './sessions.js'
 
-export async function selectSession(sessions, { message = "Select a session to resume" } = {}) {
+export async function selectSession(sessions, { message = 'Select a session to resume' } = {}) {
   const choices = sessions.map((s) => {
     const { line } = formatSessionItem(s)
 
     return {
       name: line,
       value: s.id,
-      description: `${s.providerName}${s.providerType && s.providerType !== "openrouter" ? ` (${s.providerType})` : ""}  •  ${s.messageCount} messages`,
+      description: `${s.providerName}${s.providerType && s.providerType !== 'openrouter' ? ` (${s.providerType})` : ''}  •  ${s.messageCount} messages`,
     }
   })
 

@@ -1,9 +1,9 @@
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
-import { join, basename, extname } from "node:path"
-import { SESSIONS_DIR } from "./constants.js"
-import { selectSession } from "./session-picker.js"
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { join, basename, extname } from 'node:path'
+import { SESSIONS_DIR } from './constants.js'
+import { selectSession } from './session-picker.js'
 
-const SIDECAR_FILE = ".index.json"
+const SIDECAR_FILE = '.index.json'
 
 export async function ensureSessionsDir() {
   await mkdir(SESSIONS_DIR, { recursive: true })
@@ -17,7 +17,7 @@ export async function resolveSession(dir, partialId) {
 
 export async function resolveSessionInteractive(dir, partialId, opts = {}) {
   const { message } = opts
-  if (partialId && typeof partialId === "string") {
+  if (partialId && typeof partialId === 'string') {
     const matches = await resolveSession(dir, partialId)
     if (matches.length === 0) {
       console.error(`No session found matching "${partialId}"`)
@@ -29,9 +29,9 @@ export async function resolveSessionInteractive(dir, partialId, opts = {}) {
     return selectSession(matches, { message })
   }
 
-  const sessions = await listSessions(dir, { withPreview: true })
+  const sessions = await listSessions(dir)
   if (!sessions.length) {
-    console.log("No saved sessions found.")
+    console.log('No saved sessions found.')
     process.exit(0)
   }
   return selectSession(sessions, { message })
@@ -39,16 +39,16 @@ export async function resolveSessionInteractive(dir, partialId, opts = {}) {
 
 function firstUserPreview(messages) {
   for (let i = 1; i < messages.length; i++) {
-    if (messages[i].role === "user") {
-      return String(messages[i].content || "").slice(0, 60)
+    if (messages[i].role === 'user') {
+      return String(messages[i].content || '').slice(0, 60)
     }
   }
-  return ""
+  return ''
 }
 
 async function readSidecar(dir) {
   try {
-    return JSON.parse(await readFile(join(dir, SIDECAR_FILE), "utf-8"))
+    return JSON.parse(await readFile(join(dir, SIDECAR_FILE), 'utf-8'))
   } catch {
     return null
   }
@@ -56,7 +56,7 @@ async function readSidecar(dir) {
 
 async function writeSidecar(dir, index) {
   try {
-    await writeFile(join(dir, SIDECAR_FILE), JSON.stringify(index, null, 2) + "\n")
+    await writeFile(join(dir, SIDECAR_FILE), JSON.stringify(index, null, 2) + '\n')
   } catch {
     // sidecar failures are non-fatal
   }
@@ -67,7 +67,7 @@ async function sidecarStale(dir, sidecarPath) {
     const sidecarStat = await stat(sidecarPath)
     const entries = await readdir(dir)
     for (const file of entries) {
-      if (!file.startsWith(".") && extname(file) === ".json") {
+      if (!file.startsWith('.') && extname(file) === '.json') {
         const fileStat = await stat(join(dir, file))
         if (fileStat.mtimeMs > sidecarStat.mtimeMs) return true
       }
@@ -81,31 +81,31 @@ async function sidecarStale(dir, sidecarPath) {
 function toSessionItem(id, meta) {
   return {
     id,
-    model: meta.model || "unknown",
-    providerName: meta.providerName || "unknown",
-    providerType: meta.providerType || "openrouter",
+    model: meta.model || 'unknown',
+    providerName: meta.providerName || 'unknown',
+    providerType: meta.providerType || 'openrouter',
     createdAt: meta.createdAt || null,
     updatedAt: meta.updatedAt || null,
     messageCount: meta.messageCount || 0,
-    preview: meta.preview || "",
+    preview: meta.preview || '',
   }
 }
 
 async function parseSessionFiles(dir, jsonFiles) {
   const sessions = []
   for (const file of jsonFiles) {
-    const id = basename(file, ".json")
+    const id = basename(file, '.json')
 
     try {
-      const parsed = JSON.parse(await readFile(join(dir, file), "utf-8"))
+      const parsed = JSON.parse(await readFile(join(dir, file), 'utf-8'))
       const msgCount = Array.isArray(parsed.messages) ? parsed.messages.length : 0
       if (msgCount <= 1) continue
 
       sessions.push({
         id,
-        model: parsed.model || "unknown",
-        providerName: parsed.providerName || "unknown",
-        providerType: parsed.providerType || "openrouter",
+        model: parsed.model || 'unknown',
+        providerName: parsed.providerName || 'unknown',
+        providerType: parsed.providerType || 'openrouter',
         createdAt: parsed.createdAt || null,
         updatedAt: parsed.updatedAt || null,
         messageCount: msgCount,
@@ -118,7 +118,7 @@ async function parseSessionFiles(dir, jsonFiles) {
   return sessions.sort((a, b) => b.id.localeCompare(a.id))
 }
 
-export async function listSessions(dir, { withPreview = false } = {}) {
+export async function listSessions(dir) {
   let entries
   try {
     entries = await readdir(dir)
@@ -126,7 +126,7 @@ export async function listSessions(dir, { withPreview = false } = {}) {
     return []
   }
 
-  const jsonFiles = entries.filter((f) => !f.startsWith(".") && extname(f) === ".json")
+  const jsonFiles = entries.filter((f) => !f.startsWith('.') && extname(f) === '.json')
   const sidecarPath = join(dir, SIDECAR_FILE)
   const index = await readSidecar(dir)
 
@@ -146,11 +146,11 @@ export async function saveSession(dir, id, data) {
 
   const filePath = join(dir, `${id}.json`)
   try {
-    await writeFile(filePath, JSON.stringify(data, null, 2) + "\n")
+    await writeFile(filePath, JSON.stringify(data, null, 2) + '\n')
     await updateSidecar(dir, id, data)
   } catch (err) {
-    if (err.code === "ENOSPC") {
-      console.error("Warning: disk full, could not save session")
+    if (err.code === 'ENOSPC') {
+      console.error('Warning: disk full, could not save session')
       return
     }
     console.error(`Warning: could not save session: ${err.message}`)
@@ -161,9 +161,9 @@ async function updateSidecar(dir, id, data) {
   try {
     const index = (await readSidecar(dir)) || {}
     index[id] = {
-      model: data.model || "unknown",
-      providerName: data.providerName || "unknown",
-      providerType: data.providerType || "openrouter",
+      model: data.model || 'unknown',
+      providerName: data.providerName || 'unknown',
+      providerType: data.providerType || 'openrouter',
       createdAt: data.createdAt || null,
       updatedAt: data.updatedAt || null,
       messageCount: data.messages.length,
@@ -176,7 +176,7 @@ async function updateSidecar(dir, id, data) {
 }
 
 export async function generateSessionId(dir) {
-  const baseId = new Date().toISOString().replace(/:/g, "-").replace(/\..+/, "")
+  const baseId = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '')
   let sessionId = baseId
   let suffix = 1
   const existing = (await listSessions(dir)).map((s) => s.id)
@@ -189,7 +189,7 @@ export async function generateSessionId(dir) {
 
 export async function loadSession(dir, id) {
   const filePath = join(dir, `${id}.json`)
-  const raw = await readFile(filePath, "utf-8")
+  const raw = await readFile(filePath, 'utf-8')
   const data = JSON.parse(raw)
 
   if (!data.model || !Array.isArray(data.messages)) {
@@ -200,10 +200,10 @@ export async function loadSession(dir, id) {
 }
 
 export function formatSessionItem(s) {
-  const time = s.id.replace("T", " ")
-  const model = s.model.length > 35 ? s.model.slice(0, 32) + "..." : s.model
-  const count = `${s.messageCount} msg${s.messageCount !== 1 ? "s" : ""}`
-  const preview = s.preview ? `"${s.preview}${s.preview.length >= 60 ? "..." : ""}"` : ""
+  const time = s.id.replace('T', ' ')
+  const model = s.model.length > 35 ? s.model.slice(0, 32) + '...' : s.model
+  const count = `${s.messageCount} msg${s.messageCount !== 1 ? 's' : ''}`
+  const preview = s.preview ? `"${s.preview}${s.preview.length >= 60 ? '...' : ''}"` : ''
   const line = `${time}  ${model.padEnd(37)} ${count.padEnd(12)} ${preview}`
   return { time, model, count, preview, line }
 }

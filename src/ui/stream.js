@@ -1,16 +1,16 @@
-import { THIN_SEP } from "../constants.js"
-import { dim, bold, thinking, answer } from "./style.js"
+import { THIN_SEP } from '../constants.js'
+import { dim, thinking, answer } from './style.js'
 
 export function createStreamRenderer() {
   return (token, type) => {
-    if (type === "start_reasoning") {
+    if (type === 'start_reasoning') {
       process.stdout.write(`${thinking()}\n`)
       process.stdout.write(dim(token))
-    } else if (type === "reasoning") {
+    } else if (type === 'reasoning') {
       process.stdout.write(dim(token))
-    } else if (type === "end_reasoning") {
+    } else if (type === 'end_reasoning') {
       process.stdout.write(`\n\n${answer()}\n\n`)
-    } else if (type === "content") {
+    } else if (type === 'content') {
       process.stdout.write(token)
     }
   }
@@ -19,14 +19,14 @@ export function createStreamRenderer() {
 export function renderHistory(messages) {
   if (!messages || messages.length <= 1) return
 
-  const hasVisible = messages.some((m) => m.role !== "system")
+  const hasVisible = messages.some((m) => m.role !== 'system')
   if (!hasVisible) return
 
-  process.stdout.write("\n")
+  process.stdout.write('\n')
   for (const msg of messages) {
-    if (msg.role === "user") {
+    if (msg.role === 'user') {
       process.stdout.write(`> ${msg.content}\n\n`)
-    } else if (msg.role === "assistant") {
+    } else if (msg.role === 'assistant') {
       if (msg.reasoning) {
         process.stdout.write(`${thinking()}\n\n`)
         process.stdout.write(`${dim(msg.reasoning)}\n`)

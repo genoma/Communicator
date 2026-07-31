@@ -1,4 +1,4 @@
-import { selectModel, selectProvider, selectReasoningEffort, BACK_SENTINEL } from "./prompts.js"
+import { selectModel, selectProvider, selectReasoningEffort, BACK_SENTINEL } from './prompts.js'
 
 export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort }) {
   const models = await provider.fetchModels(apiKey)
@@ -80,7 +80,7 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
   } else if (reasoning) {
     const saved = prefs.reasoningEffort?.[modelId]
     effort = saved !== undefined ? saved : reasoning.default_effort ?? undefined
-    if (effort === "none") effort = null
+    if (effort === 'none') effort = null
   }
 
   const endpoints = await provider.fetchEndpoints(apiKey, modelId, models)

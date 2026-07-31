@@ -1,11 +1,11 @@
-import { THIN_SEP } from "../constants.js"
+import { THIN_SEP } from '../constants.js'
 
-const DIM_OPEN = "\x1b[90m"
-const BOLD_OPEN = "\x1b[1m"
-const RESET = "\x1b[0m"
+const DIM_OPEN = '\x1b[90m'
+const BOLD_OPEN = '\x1b[1m'
+const RESET = '\x1b[0m'
 
 export function dim(text) {
-  return text ? `${DIM_OPEN}${text}${RESET}` : ""
+  return text ? `${DIM_OPEN}${text}${RESET}` : ''
 }
 
 export function bold(text) {
@@ -13,11 +13,11 @@ export function bold(text) {
 }
 
 export function thinking() {
-  return dim("[Thinking]")
+  return dim('[Thinking]')
 }
 
 export function answer() {
-  return bold("[Answer]")
+  return bold('[Answer]')
 }
 
 export function sep() {

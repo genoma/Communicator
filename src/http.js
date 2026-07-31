@@ -1,4 +1,4 @@
-import { ApiError } from "./errors.js"
+import { ApiError } from './errors.js'
 
 const DEFAULT_TIMEOUT_MS = 30_000
 const RETRY_DELAYS = [500, 1000]
@@ -6,9 +6,9 @@ const RETRY_DELAYS = [500, 1000]
 export function sleep(ms, signal) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(resolve, ms)
-    signal?.addEventListener("abort", () => {
+    signal?.addEventListener('abort', () => {
       clearTimeout(timer)
-      reject(signal.reason || new Error("Aborted"))
+      reject(signal.reason || new Error('Aborted'))
     }, { once: true })
   })
 }
@@ -29,7 +29,7 @@ export async function fetchWithTimeout(url, opts = {}, { timeoutMs = DEFAULT_TIM
   }
 }
 
-export async function fetchWithRetry(url, opts = {}, { timeoutMs = DEFAULT_TIMEOUT_MS, attempts = 3, signal, errorResponse } = {}) {
+export async function fetchWithRetry(url, opts = {}, { timeoutMs = DEFAULT_TIMEOUT_MS, attempts = 3, signal, errorResponse, retryDelays = RETRY_DELAYS } = {}) {
   let lastError
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
@@ -43,7 +43,7 @@ export async function fetchWithRetry(url, opts = {}, { timeoutMs = DEFAULT_TIMEO
           err = thrown
         }
         if (attempt < attempts && err?.retryable) {
-          await sleep(RETRY_DELAYS[attempt - 1], signal)
+          await sleep(retryDelays[attempt - 1] ?? retryDelays[retryDelays.length - 1], signal)
           continue
         }
         throw err
@@ -54,10 +54,10 @@ export async function fetchWithRetry(url, opts = {}, { timeoutMs = DEFAULT_TIMEO
       if (err instanceof ApiError) throw err
       lastError = err
       if (attempt < attempts) {
-        await sleep(RETRY_DELAYS[attempt - 1], signal)
+        await sleep(retryDelays[attempt - 1] ?? retryDelays[retryDelays.length - 1], signal)
         continue
       }
     }
   }
-  throw new ApiError(`Network request failed: ${lastError?.message || "unknown error"}`, { retryable: true, cause: lastError })
+  throw new ApiError(`Network request failed: ${lastError?.message || 'unknown error'}`, { retryable: true, cause: lastError })
 }

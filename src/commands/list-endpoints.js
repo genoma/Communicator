@@ -1,4 +1,4 @@
-import { formatModelPrice } from "../ui/format.js"
+import { formatModelPrice } from '../ui/format.js'
 
 export async function listEndpointsCmd(provider, apiKey, modelId) {
   const endpoints = await provider.fetchEndpoints(apiKey, modelId)
@@ -13,7 +13,7 @@ export async function listEndpointsCmd(provider, apiKey, modelId) {
   console.log(`${endpoints.length} provider(s) for ${modelId}:\n`)
   for (const ep of endpoints) {
     const priceText = formatModelPrice(ep.pricing?.prompt, ep.pricing?.completion)
-    const uptime = ep.uptime30m != null ? `${ep.uptime30m.toFixed(0)}%` : "?"
+    const uptime = ep.uptime30m != null ? `${ep.uptime30m.toFixed(0)}%` : '?'
     console.log(
       `${ep.providerName.padEnd(20)} | ${priceText.padEnd(26)} | uptime ${uptime} | tag ${ep.tag}`
     )

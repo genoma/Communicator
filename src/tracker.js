@@ -1,5 +1,5 @@
-import { formatCost } from "./constants.js"
-import { sep } from "./ui/style.js"
+import { formatCost } from './constants.js'
+import { sep } from './ui/style.js'
 
 export function computeTurnCost(usage, pricing) {
   if (!usage || pricing?.prompt == null || pricing?.completion == null) return 0
@@ -53,9 +53,9 @@ export class UsageTracker {
 
     console.log(sep())
 
-    const arrowUp = "\u2191"
-    const arrowDown = "\u2193"
-    const eq = "\u003d"
+    const arrowUp = '\u2191'
+    const arrowDown = '\u2193'
+    const eq = '\u003d'
 
     console.log(
       `  Tokens  ${arrowUp} ${pt.toLocaleString()} prompt  ${arrowDown} ${ct.toLocaleString()} completion  ${eq} ${tt.toLocaleString()} total`
@@ -64,8 +64,8 @@ export class UsageTracker {
     if (hit) {
       const parts = []
       if (cached > 0) parts.push(`${cached.toLocaleString()} cached tokens`)
-      if (usage.cacheHit) parts.push("response cache hit")
-      console.log(`  Cache   ${parts.join(", ")}`)
+      if (usage.cacheHit) parts.push('response cache hit')
+      console.log(`  Cache   ${parts.join(', ')}`)
     }
 
     if (pricing) {
@@ -78,9 +78,9 @@ export class UsageTracker {
   }
 
   summary() {
-    const arrowUp = "\u2191"
-    const arrowDown = "\u2193"
-    const eq = "\u003d"
+    const arrowUp = '\u2191'
+    const arrowDown = '\u2193'
+    const eq = '\u003d'
 
     let s = `${arrowUp} ${this.promptTokens.toLocaleString()} prompt  ${arrowDown} ${this.completionTokens.toLocaleString()} completion  ${eq} ${this.totalTokens.toLocaleString()} total  |  ${this.requests} request(s)`
     if (this.cacheHits > 0) {

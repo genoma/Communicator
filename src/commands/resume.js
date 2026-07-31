@@ -1,8 +1,8 @@
-import { ensureSessionsDir, resolveSessionInteractive, loadSession } from "../sessions.js"
+import { ensureSessionsDir, resolveSessionInteractive, loadSession } from '../sessions.js'
 
 export async function resumeCmd(partialId) {
   const dir = await ensureSessionsDir()
-  const matchedId = await resolveSessionInteractive(dir, partialId, { message: "Select a session to resume" })
+  const matchedId = await resolveSessionInteractive(dir, partialId, { message: 'Select a session to resume' })
   if (!matchedId) return null
 
   const sessionData = await loadSession(dir, matchedId)
@@ -10,7 +10,7 @@ export async function resumeCmd(partialId) {
     modelId: sessionData.model,
     modelName: sessionData.model,
     providerName: sessionData.providerName || null,
-    providerType: sessionData.providerType || "openrouter",
+    providerType: sessionData.providerType || 'openrouter',
     reasoningEffort: sessionData.reasoningEffort,
     pricing: sessionData.pricing || null,
     initialMessages: sessionData.messages,

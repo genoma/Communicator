@@ -1,10 +1,10 @@
-import { getProvider } from "../providers/index.js"
-import { resolveReasoningFlag } from "../prompts.js"
-import { startChat } from "../chat.js"
-import { ensureSessionsDir, generateSessionId, saveSession } from "../sessions.js"
-import { resumeCmd } from "./resume.js"
-import { getApiKey, savePreferences } from "../config.js"
-import { selectModelAndEndpoint, selectModelNonInteractive } from "../model-selection.js"
+import { getProvider } from '../providers/index.js'
+import { resolveReasoningFlag } from '../prompts.js'
+import { startChat } from '../chat.js'
+import { ensureSessionsDir, generateSessionId, saveSession } from '../sessions.js'
+import { resumeCmd } from './resume.js'
+import { getApiKey, savePreferences } from '../config.js'
+import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
 
 async function createSessionContext({ apiKey, opts, prefs, providerType }) {
   if (opts.resume !== undefined) {

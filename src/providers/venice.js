@@ -1,14 +1,14 @@
-import { parseSSEStream } from "../sse-parser.js"
-import { fetchWithRetry } from "../http.js"
-import { ApiError } from "../errors.js"
-import { formatPricePerM } from "../ui/format.js"
+import { parseSSEStream } from '../sse-parser.js'
+import { fetchWithRetry } from '../http.js'
+import { ApiError } from '../errors.js'
+import { formatPricePerM } from '../ui/format.js'
 
-const VENICE_BASE = "https://api.venice.ai/api/v1"
+const VENICE_BASE = 'https://api.venice.ai/api/v1'
 
 export const meta = {
-  name: "venice",
+  name: 'venice',
   baseURL: VENICE_BASE,
-  apiKeyEnv: "VENICE_API_KEY",
+  apiKeyEnv: 'VENICE_API_KEY',
   hasEndpoints: false,
 }
 
@@ -24,12 +24,12 @@ export function normalizePricing(raw) {
 
 export function handleHttpError(status, body) {
   if (status === 401) {
-    throw new ApiError("Invalid API key. Check your VENICE_API_KEY environment variable.", { status, provider: "venice", retryable: false })
+    throw new ApiError('Invalid API key. Check your VENICE_API_KEY environment variable.', { status, provider: 'venice', retryable: false })
   }
   if (status === 429) {
-    throw new ApiError("Rate limited by Venice. Wait a moment and try again.", { status, provider: "venice", retryable: true })
+    throw new ApiError('Rate limited by Venice. Wait a moment and try again.', { status, provider: 'venice', retryable: true })
   }
-  throw new ApiError(`Venice request failed (${status}): ${body}`, { status, provider: "venice", retryable: status >= 500 })
+  throw new ApiError(`Venice request failed (${status}): ${body}`, { status, provider: 'venice', retryable: status >= 500 })
 }
 
 export async function fetchModels(apiKey) {
@@ -48,21 +48,21 @@ export async function fetchModels(apiKey) {
     const pricing = normalizePricing(spec.pricing || null)
     const ctxStr = spec.availableContextTokens
       ? `${spec.availableContextTokens.toLocaleString()} ctx`
-      : "? ctx"
+      : '? ctx'
     const privacy = spec.privacy || null
     const modelDesc = spec.description || null
 
     const metaParts = [ctxStr]
     metaParts.push(formatPricePerM(pricing))
-    if (caps.supportsReasoningEffort) metaParts.push("reasoning")
-    else if (caps.supportsReasoning) metaParts.push("auto-reasoning")
+    if (caps.supportsReasoningEffort) metaParts.push('reasoning')
+    else if (caps.supportsReasoning) metaParts.push('auto-reasoning')
     if (privacy) metaParts.push(privacy)
-    const metaStr = metaParts.join("  |  ")
+    const metaStr = metaParts.join('  |  ')
 
     return {
       id: m.id,
       name: spec.name || m.id,
-      provider: "venice",
+      provider: 'venice',
       contextLength: spec.availableContextTokens || null,
       description: modelDesc ? `${metaStr}\n${modelDesc}` : metaStr,
       reasoning: caps.supportsReasoning
@@ -71,7 +71,7 @@ export async function fetchModels(apiKey) {
             supportsEffort: caps.supportsReasoningEffort,
             supported_efforts: caps.reasoningEffortOptions,
             default_effort: caps.defaultReasoningEffort,
-            mandatory: caps.reasoningEffortOptions ? !caps.reasoningEffortOptions.includes("none") : true,
+            mandatory: caps.reasoningEffortOptions ? !caps.reasoningEffortOptions.includes('none') : true,
           }
         : null,
       pricing,
@@ -88,9 +88,9 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
 
   return [{
     name: model.name,
-    providerName: "venice",
+    providerName: 'venice',
     tag: model.id,
-    status: "available",
+    status: 'available',
     uptime30m: null,
     pricing: model.pricing,
     contextLength: model.contextLength,
@@ -99,7 +99,7 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   }]
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning, sessionId, signal }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, _provider, reasoningEffort, supportsReasoning, sessionId, signal }) {
   const body = {
     model,
     messages,
@@ -116,14 +116,14 @@ export async function chatCompletion({ apiKey, model, messages, onToken, provide
   if (reasoningEffort && supportsReasoning !== false) {
     body.reasoning_effort = reasoningEffort
   } else if (reasoningEffort === null && supportsReasoning !== false) {
-    body.reasoning_effort = "none"
+    body.reasoning_effort = 'none'
   }
 
   const res = await fetchWithRetry(`${VENICE_BASE}/chat/completions`, {
-    method: "POST",
+    method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
   }, { errorResponse: handleHttpError, signal })

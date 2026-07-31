@@ -1,19 +1,19 @@
-import { search, select } from "@inquirer/prompts"
-import { Separator } from "@inquirer/core"
-import { EFFORT_LABELS } from "./constants.js"
-import { formatModelPrice } from "./ui/format.js"
+import { search, select } from '@inquirer/prompts'
+import { Separator } from '@inquirer/core'
+import { EFFORT_LABELS } from './constants.js'
+import { formatModelPrice } from './ui/format.js'
 
-export const BACK_SENTINEL = Symbol("back")
+export const BACK_SENTINEL = Symbol('back')
 
 export async function selectModel(models, lastModel) {
   const choices = models.map((m) => ({
     name: `${m.name}  (${m.id})`,
     value: { id: m.id, name: m.name },
-    description: m.description || `${m.contextLength?.toLocaleString() || "?"} context`,
+    description: m.description || `${m.contextLength?.toLocaleString() || '?'} context`,
   }))
 
   const answer = await search({
-    message: "Select a model",
+    message: 'Select a model',
     source: async (input) => {
       if (!input) {
         if (lastModel) {
@@ -46,14 +46,14 @@ export async function selectProvider(endpoints) {
   }
 
   const backChoice = {
-    name: "← Back to model selection",
+    name: '← Back to model selection',
     value: BACK_SENTINEL,
-    description: "Return to the model picker",
+    description: 'Return to the model picker',
   }
 
   const providerChoices = endpoints.map((ep) => {
     const priceText = formatModelPrice(ep.pricing?.prompt, ep.pricing?.completion)
-    const uptime = ep.uptime30m != null ? `${ep.uptime30m.toFixed(0)}% uptime` : "?"
+    const uptime = ep.uptime30m != null ? `${ep.uptime30m.toFixed(0)}% uptime` : '?'
     const label = `${ep.providerName}  —  ${priceText}  ${uptime}`
 
     return {
@@ -78,8 +78,8 @@ export async function selectProvider(endpoints) {
       )
       if (filtered.length === 0) {
         const backMatch =
-          "← back to model selection".includes(q) ||
-          "back".includes(q)
+          '← back to model selection'.includes(q) ||
+          'back'.includes(q)
         return backMatch ? [backChoice] : []
       }
       return filtered
@@ -89,7 +89,7 @@ export async function selectProvider(endpoints) {
   return answer
 }
 
-const FULL_EFFORT_LIST = ["max", "xhigh", "high", "medium", "low", "minimal", "none"]
+const FULL_EFFORT_LIST = ['max', 'xhigh', 'high', 'medium', 'low', 'minimal', 'none']
 
 export function getEffortLabel(effort) {
   return EFFORT_LABELS[effort] || effort
@@ -102,31 +102,31 @@ export async function selectReasoningEffort(reasoning, lastEffort) {
   const mandatory = reasoning.mandatory === true
 
   const filteredEfforts = mandatory
-    ? efforts.filter((e) => e !== "none")
+    ? efforts.filter((e) => e !== 'none')
     : efforts
 
-  const noneIdx = filteredEfforts.indexOf("none")
+  const noneIdx = filteredEfforts.indexOf('none')
   if (noneIdx > 0) {
     filteredEfforts.splice(noneIdx, 1)
-    filteredEfforts.unshift("none")
+    filteredEfforts.unshift('none')
   }
 
   if (filteredEfforts.length === 0) return undefined
 
   const defaultEffort =
     lastEffort ||
-    (reasoning.default_effort && reasoning.default_effort !== "none"
+    (reasoning.default_effort && reasoning.default_effort !== 'none'
       ? reasoning.default_effort
       : null) ||
-    "medium"
+    'medium'
 
   const defaultIdx = filteredEfforts.indexOf(defaultEffort)
 
   const answer = await select({
-    message: "Select reasoning effort:",
+    message: 'Select reasoning effort:',
     choices: filteredEfforts.map((e) => ({
       name: getEffortLabel(e),
-      value: e === "none" ? null : e,
+      value: e === 'none' ? null : e,
     })),
     default: defaultIdx >= 0 ? filteredEfforts[defaultIdx] : undefined,
   })

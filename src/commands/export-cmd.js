@@ -1,11 +1,11 @@
-import { join } from "node:path"
-import { mkdir } from "node:fs/promises"
-import { ensureSessionsDir, resolveSessionInteractive, loadSession } from "../sessions.js"
-import { exportSession } from "../export.js"
+import { join } from 'node:path'
+import { mkdir } from 'node:fs/promises'
+import { ensureSessionsDir, resolveSessionInteractive, loadSession } from '../sessions.js'
+import { exportSession } from '../export.js'
 
 export async function exportCmd(partialId, outputDir) {
   const dir = await ensureSessionsDir()
-  const matchedId = await resolveSessionInteractive(dir, partialId, { message: "Select a session to export" })
+  const matchedId = await resolveSessionInteractive(dir, partialId, { message: 'Select a session to export' })
   if (!matchedId) return
 
   const sessionData = await loadSession(dir, matchedId)

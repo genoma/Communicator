@@ -1,30 +1,30 @@
-import { SSE_DATA_PREFIX, SSE_DONE } from "./constants.js"
+import { SSE_DATA_PREFIX, SSE_DONE } from './constants.js'
 
 function unescapeJson(s) {
   try {
     return JSON.parse(`"${s}"`)
   } catch {
-    return s.replace(/\\n/g, "\n").replace(/\\t/g, "\t")
+    return s.replace(/\\n/g, '\n').replace(/\\t/g, '\t')
   }
 }
 
 export function extractPartialToken(buffer) {
   const reasoningMatch = buffer.match(/"reasoning_content":"((?:[^"\\]|\\.)*)/)
   if (reasoningMatch) {
-    return { type: "reasoning", text: unescapeJson(reasoningMatch[1]) }
+    return { type: 'reasoning', text: unescapeJson(reasoningMatch[1]) }
   }
   const contentMatch = buffer.match(/"content":"((?:[^"\\]|\\.)*)/)
   if (contentMatch) {
-    return { type: "content", text: unescapeJson(contentMatch[1]) }
+    return { type: 'content', text: unescapeJson(contentMatch[1]) }
   }
   return null
 }
 
 export async function parseSSEStream(reader, onToken) {
   const decoder = new TextDecoder()
-  let fullText = ""
-  let fullReasoning = ""
-  let buffer = ""
+  let fullText = ''
+  let fullReasoning = ''
+  let buffer = ''
   let inThinking = false
   let finalUsage = null
 
@@ -40,8 +40,8 @@ export async function parseSSEStream(reader, onToken) {
     if (done) break
 
     buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split("\n")
-    buffer = lines.pop() || ""
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
 
     for (const line of lines) {
       const trimmed = line.trim()
@@ -59,14 +59,14 @@ export async function parseSSEStream(reader, onToken) {
         const delta = parsed.choices?.[0]?.delta
         if (!delta) continue
 
-        const reasoningToken = delta.reasoning_content ?? (typeof delta.reasoning === "string" ? delta.reasoning : undefined)
+        const reasoningToken = delta.reasoning_content ?? (typeof delta.reasoning === 'string' ? delta.reasoning : undefined)
         if (reasoningToken) {
           fullReasoning += reasoningToken
           if (!inThinking) {
             inThinking = true
-            onToken("\n", "start_reasoning")
+            onToken('\n', 'start_reasoning')
           }
-          onToken(reasoningToken, "reasoning")
+          onToken(reasoningToken, 'reasoning')
           continue
         }
 
@@ -74,10 +74,10 @@ export async function parseSSEStream(reader, onToken) {
         if (contentToken) {
           if (inThinking) {
             inThinking = false
-            onToken(null, "end_reasoning")
+            onToken(null, 'end_reasoning')
           }
           fullText += contentToken
-          onToken(contentToken, "content")
+          onToken(contentToken, 'content')
         }
       } catch {
         // skip unparseable chunks

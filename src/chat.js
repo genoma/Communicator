@@ -1,15 +1,15 @@
-import { UsageTracker } from "./tracker.js"
-import { getEffortLabel, selectReasoningEffort } from "./prompts.js"
-import { readInput } from "./input.js"
-import { createStreamRenderer, renderHistory } from "./ui/stream.js"
-import { formatError, ApiError } from "./errors.js"
-import { extractPartialToken } from "./sse-parser.js"
-import { dim } from "./ui/style.js"
-import { ensureSessionsDir, generateSessionId, saveSession } from "./sessions.js"
-import { savePreferences } from "./config.js"
-import { selectModelAndEndpoint } from "./model-selection.js"
+import { UsageTracker } from './tracker.js'
+import { getEffortLabel, selectReasoningEffort } from './prompts.js'
+import { readInput } from './input.js'
+import { createStreamRenderer, renderHistory } from './ui/stream.js'
+import { formatError, ApiError } from './errors.js'
+import { extractPartialToken } from './sse-parser.js'
+import { dim } from './ui/style.js'
+import { ensureSessionsDir, generateSessionId, saveSession } from './sessions.js'
+import { savePreferences } from './config.js'
+import { selectModelAndEndpoint } from './model-selection.js'
 
-const AVAILABLE_COMMANDS = "/quit, /new, /model, /reasoning, /cost"
+const AVAILABLE_COMMANDS = '/quit, /new, /model, /reasoning, /cost'
 
 export async function startChat(apiKey, model, endpointProviderName, reasoningEffort, pricing, provider, {
   systemPrompt = null,
@@ -21,7 +21,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
   prefs = {},
   configPath = null,
 } = {}) {
-  const systemContent = systemPrompt || "You are a helpful assistant."
+  const systemContent = systemPrompt || 'You are a helpful assistant.'
 
   const state = {
     modelId: model,
@@ -32,14 +32,14 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     sessionId,
     createdAt,
     modelReasoning,
-    messages: initialMessages || [{ role: "system", content: systemContent }],
+    messages: initialMessages || [{ role: 'system', content: systemContent }],
   }
 
   let tracker = new UsageTracker()
 
   if (initialMessages) {
     for (const msg of initialMessages) {
-      if (msg.role === "assistant" && msg.usage) {
+      if (msg.role === 'assistant' && msg.usage) {
         tracker.record(msg.usage, pricing)
       }
     }
@@ -51,14 +51,14 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
   } else {
     console.log(`\nConnected to ${label}`)
   }
-  console.log(`Send with Enter  |  Newline: Ctrl+J  |  /quit to exit\n`)
+  console.log('Send with Enter  |  Newline: Ctrl+J  |  /quit to exit\n')
 
   if (initialMessages) {
     renderHistory(state.messages)
   }
 
   if (initialMessages && tracker.requests > 0) {
-    console.log(`${dim("Previous session:")} ${tracker.summary()}\n`)
+    console.log(`${dim('Previous session:')} ${tracker.summary()}\n`)
   }
 
   const render = createStreamRenderer()
@@ -111,8 +111,8 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
   const onBeforeExit = () => {
     void bestEffortSave()
   }
-  process.on("beforeExit", onBeforeExit)
-  process.on("uncaughtException", (err) => {
+  process.on('beforeExit', onBeforeExit)
+  process.on('uncaughtException', (err) => {
     console.error(`\nUnhandled error: ${err?.message || err}`)
     void bestEffortSave().finally(() => process.exit(1))
   })
@@ -121,7 +121,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
   let streamController = null
   let interrupted = false
 
-  process.on("SIGINT", () => {
+  process.on('SIGINT', () => {
     if (!streaming) {
       void bestEffortSave().finally(() => process.exit(130))
       return
@@ -131,8 +131,8 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
   })
 
   const exitCleanly = () => {
-    process.off("beforeExit", onBeforeExit)
-    process.stdout.write("\n")
+    process.off('beforeExit', onBeforeExit)
+    process.stdout.write('\n')
     return finalState()
   }
 
@@ -146,22 +146,22 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     const input = result.value.trim()
     if (!input) continue
 
-    if (input === "/quit") {
+    if (input === '/quit') {
       return exitCleanly()
     }
 
-    if (input === "/new") {
+    if (input === '/new') {
       await saveCurrentSession()
       const dir = await ensureSessionsDir()
       state.sessionId = await generateSessionId(dir)
       state.createdAt = new Date().toISOString()
-      state.messages = [{ role: "system", content: systemContent }]
+      state.messages = [{ role: 'system', content: systemContent }]
       tracker = new UsageTracker()
-      console.log("\nNew session started.\n")
+      console.log('\nNew session started.\n')
       continue
     }
 
-    if (input === "/model") {
+    if (input === '/model') {
       await saveCurrentSession()
       const sel = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: undefined })
       state.modelId = sel.modelId
@@ -182,7 +182,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       continue
     }
 
-    if (input === "/reasoning") {
+    if (input === '/reasoning') {
       let reasoning = state.modelReasoning
       if (!reasoning) {
         try {
@@ -196,7 +196,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       }
       const newEffort = await selectReasoningEffort(reasoning, state.reasoningEffort ?? undefined)
       if (newEffort === undefined) {
-        console.log("This model does not support reasoning effort control.\n")
+        console.log('This model does not support reasoning effort control.\n')
         continue
       }
       state.reasoningEffort = newEffort
@@ -205,36 +205,36 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       continue
     }
 
-    if (input === "/cost") {
-      console.log(`${dim("Current session:")} ${tracker.summary()}`)
-      console.log(`${dim("Reasoning:")} ${state.reasoningEffort ? getEffortLabel(state.reasoningEffort) : "auto"}\n`)
+    if (input === '/cost') {
+      console.log(`${dim('Current session:')} ${tracker.summary()}`)
+      console.log(`${dim('Reasoning:')} ${state.reasoningEffort ? getEffortLabel(state.reasoningEffort) : 'auto'}\n`)
       continue
     }
 
-    if (input.startsWith("/")) {
+    if (input.startsWith('/')) {
       console.log(`Unknown command "${input}". Available: ${AVAILABLE_COMMANDS}\n`)
       continue
     }
 
-    state.messages.push({ role: "user", content: input })
+    state.messages.push({ role: 'user', content: input })
 
     let apiResult
-    let streamedContent = ""
-    let streamedReasoning = ""
+    let streamedContent = ''
+    let streamedReasoning = ''
 
     streaming = true
     streamController = new AbortController()
     interrupted = false
 
     try {
-      process.stdout.write("\n")
+      process.stdout.write('\n')
       apiResult = await provider.chatCompletion({
         apiKey,
         model: state.modelId,
         messages: state.messages,
         onToken: (token, type) => {
-          if (type === "reasoning") streamedReasoning += token
-          else if (type === "content") streamedContent += token
+          if (type === 'reasoning') streamedReasoning += token
+          else if (type === 'content') streamedContent += token
           render(token, type)
         },
         provider: state.endpointProviderName,
@@ -243,7 +243,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
         sessionId: state.sessionId,
         signal: streamController.signal,
       })
-      process.stdout.write("\n\n")
+      process.stdout.write('\n\n')
 
       if (apiResult.usage) {
         tracker.record(apiResult.usage, state.pricing)
@@ -251,13 +251,13 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       }
     } catch (err) {
       if (interrupted) {
-        process.stdout.write("\n")
-        const partial = { role: "assistant", content: streamedContent }
+        process.stdout.write('\n')
+        const partial = { role: 'assistant', content: streamedContent }
         if (streamedReasoning) partial.reasoning = streamedReasoning
         if (!partial.content && !partial.reasoning && err.pendingBuffer) {
           const pending = extractPartialToken(err.pendingBuffer)
           if (pending) {
-            if (pending.type === "reasoning") partial.reasoning = pending.text
+            if (pending.type === 'reasoning') partial.reasoning = pending.text
             else partial.content = pending.text
           }
         }
@@ -278,7 +278,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     }
 
     if (apiResult.content) {
-      const msg = { role: "assistant", content: apiResult.content }
+      const msg = { role: 'assistant', content: apiResult.content }
       if (apiResult.reasoning) {
         msg.reasoning = apiResult.reasoning
       }
