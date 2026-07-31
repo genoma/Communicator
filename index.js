@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander"
+import pkg from "./package.json" with { type: "json" }
 import { getApiKey, loadPreferences, loadSystemPrompt, savePreferences } from "./src/config.js"
 import { getProvider } from "./src/providers/index.js"
 import { listModelsCmd } from "./src/commands/list-models.js"
@@ -14,6 +15,7 @@ const program = new Command()
 program
   .name("communicator")
   .description("AI CLI chat with interactive model & provider selection")
+  .version(pkg.version)
   .option("-m, --model <id>", "skip model picker, use this model ID directly")
   .option("-p, --provider <name>", "AI provider backend: openrouter or venice", "openrouter")
   .option("--list-models", "list available models and exit")

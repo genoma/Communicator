@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "OpenRouter CLI chat client with interactive model/provider selection",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "bin": {
     "communicator": "./index.js"
   },

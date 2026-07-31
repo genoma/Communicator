@@ -25,7 +25,5 @@ export async function readInput() {
     return { cancelled: true }
   }
 
-  if (value === "/quit") return { quit: true }
-
   return { value }
 }

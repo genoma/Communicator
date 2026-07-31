@@ -1,5 +1,25 @@
 import { SSE_DATA_PREFIX, SSE_DONE } from "./constants.js"
 
+function unescapeJson(s) {
+  try {
+    return JSON.parse(`"${s}"`)
+  } catch {
+    return s.replace(/\\n/g, "\n").replace(/\\t/g, "\t")
+  }
+}
+
+export function extractPartialToken(buffer) {
+  const reasoningMatch = buffer.match(/"reasoning_content":"((?:[^"\\]|\\.)*)/)
+  if (reasoningMatch) {
+    return { type: "reasoning", text: unescapeJson(reasoningMatch[1]) }
+  }
+  const contentMatch = buffer.match(/"content":"((?:[^"\\]|\\.)*)/)
+  if (contentMatch) {
+    return { type: "content", text: unescapeJson(contentMatch[1]) }
+  }
+  return null
+}
+
 export async function parseSSEStream(reader, onToken) {
   const decoder = new TextDecoder()
   let fullText = ""
@@ -9,7 +29,14 @@ export async function parseSSEStream(reader, onToken) {
   let finalUsage = null
 
   while (true) {
-    const { done, value } = await reader.read()
+    let chunk
+    try {
+      chunk = await reader.read()
+    } catch (err) {
+      err.pendingBuffer = buffer
+      throw err
+    }
+    const { done, value } = chunk
     if (done) break
 
     buffer += decoder.decode(value, { stream: true })
