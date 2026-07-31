@@ -1,6 +1,6 @@
 import { search, select } from '@inquirer/prompts'
 import { Separator } from '@inquirer/core'
-import { EFFORT_LABELS } from './constants.js'
+import { EFFORT_LABELS, MAX_TEMPERATURE } from './constants.js'
 import { formatModelPrice } from './ui/format.js'
 
 export const BACK_SENTINEL = Symbol('back')
@@ -137,4 +137,17 @@ export async function selectReasoningEffort(reasoning, lastEffort) {
 export function resolveReasoningFlag({ reasoningEffort }) {
   if (reasoningEffort === 'none') return null
   return reasoningEffort
+}
+
+export function validateTemperature(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_TEMPERATURE
+}
+
+export function resolveTemperatureFlag({ temperature } = {}) {
+  if (temperature === undefined || temperature === null || temperature === '') return undefined
+  const num = Number(temperature)
+  if (!Number.isFinite(num) || num < 0 || num > MAX_TEMPERATURE) {
+    throw new Error(`Temperature must be a number between 0 and ${MAX_TEMPERATURE}.`)
+  }
+  return num
 }

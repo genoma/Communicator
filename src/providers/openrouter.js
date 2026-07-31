@@ -1,6 +1,7 @@
 import { parseSSEStream } from '../sse-parser.js'
 import { fetchWithRetry } from '../http.js'
 import { ApiError } from '../errors.js'
+import { DEFAULT_TEMPERATURE } from '../constants.js'
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 const CACHE_HEADER = 'x-openrouter-cache-status'
@@ -83,12 +84,12 @@ export async function fetchEndpoints(apiKey, modelId) {
   }))
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, _supportsReasoning, _sessionId, signal }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, _supportsReasoning, _sessionId, temperature = DEFAULT_TEMPERATURE, signal }) {
   const body = {
     model,
     messages,
     stream: true,
-    temperature: 0.7,
+    temperature,
   }
 
   if (provider) {

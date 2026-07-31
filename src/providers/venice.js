@@ -2,6 +2,7 @@ import { parseSSEStream } from '../sse-parser.js'
 import { fetchWithRetry } from '../http.js'
 import { ApiError } from '../errors.js'
 import { formatPricePerM } from '../ui/format.js'
+import { DEFAULT_TEMPERATURE } from '../constants.js'
 
 const VENICE_BASE = 'https://api.venice.ai/api/v1'
 
@@ -99,13 +100,13 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   }]
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, _provider, reasoningEffort, supportsReasoning, sessionId, signal }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, _provider, reasoningEffort, supportsReasoning, sessionId, temperature = DEFAULT_TEMPERATURE, signal }) {
   const body = {
     model,
     messages,
     stream: true,
     stream_options: { include_usage: true },
-    temperature: 0.7,
+    temperature,
     venice_parameters: { include_venice_system_prompt: false },
   }
 

@@ -1,4 +1,5 @@
 import { ensureSessionsDir, resolveSessionInteractive, loadSession } from '../sessions.js'
+import { DEFAULT_TEMPERATURE } from '../constants.js'
 
 export async function resumeCmd(partialId) {
   const dir = await ensureSessionsDir()
@@ -12,6 +13,8 @@ export async function resumeCmd(partialId) {
     providerName: sessionData.providerName || null,
     providerType: sessionData.providerType || 'openrouter',
     reasoningEffort: sessionData.reasoningEffort,
+    temperature: sessionData.temperature ?? DEFAULT_TEMPERATURE,
+    budget: sessionData.budget ?? null,
     pricing: sessionData.pricing || null,
     initialMessages: sessionData.messages,
     sessionId: matchedId,

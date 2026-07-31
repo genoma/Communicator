@@ -9,6 +9,10 @@ export const DEFAULT_CONFIG_FILE = join(homedir(), '.communicator.json')
 
 export const DEFAULT_SYSTEM_PROMPT_FILE = join(homedir(), '.communicator-system-prompt.md')
 
+export const DEFAULT_TEMPERATURE = 0.7
+
+export const MAX_TEMPERATURE = 2
+
 export const EFFORT_LABELS = {
   max: 'X-High (max)',
   xhigh: 'X-High',

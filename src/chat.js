@@ -1,5 +1,6 @@
 import { UsageTracker } from './tracker.js'
-import { getEffortLabel, selectReasoningEffort } from './prompts.js'
+import { getEffortLabel, resolveTemperatureFlag, selectReasoningEffort } from './prompts.js'
+import { DEFAULT_TEMPERATURE } from './constants.js'
 import { readInput } from './input.js'
 import { createStreamRenderer, renderHistory } from './ui/stream.js'
 import { formatError, ApiError } from './errors.js'
@@ -11,13 +12,14 @@ import { selectModelAndEndpoint } from './model-selection.js'
 
 const AVAILABLE_COMMANDS = '/quit, /new, /model, /reasoning, /cost'
 
-export async function startChat(apiKey, model, endpointProviderName, reasoningEffort, pricing, provider, {
+export async function startChat(apiKey, model, endpointProviderName, reasoningEffort, temperature, pricing, provider, {
   systemPrompt = null,
   initialMessages = null,
   sessionId = null,
   createdAt = null,
   supportsReasoning = true,
   modelReasoning = null,
+  budget = null,
   prefs = {},
   configPath = null,
 } = {}) {
@@ -27,6 +29,8 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     modelId: model,
     endpointProviderName,
     reasoningEffort,
+    temperature,
+    budget,
     pricing,
     supportsReasoning,
     sessionId,
@@ -46,8 +50,11 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
   }
 
   const label = endpointProviderName ? `${endpointProviderName} / ${model}` : model
-  if (reasoningEffort != null) {
-    console.log(`\nConnected to ${label}  [thinking: ${getEffortLabel(reasoningEffort)}]`)
+  const bannerParts = []
+  if (reasoningEffort != null) bannerParts.push(`[thinking: ${getEffortLabel(reasoningEffort)}]`)
+  if (temperature !== DEFAULT_TEMPERATURE) bannerParts.push(`[temp: ${temperature}]`)
+  if (bannerParts.length > 0) {
+    console.log(`\nConnected to ${label}  ${bannerParts.join('  ')}`)
   } else {
     console.log(`\nConnected to ${label}`)
   }
@@ -70,6 +77,8 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     modelId: state.modelId,
     endpointProviderName: state.endpointProviderName,
     reasoningEffort: state.reasoningEffort,
+    temperature: state.temperature,
+    budget: state.budget,
     pricing: state.pricing,
     providerType: provider.meta.name,
   })
@@ -83,6 +92,8 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
         providerName: state.endpointProviderName,
         providerType: provider.meta.name,
         reasoningEffort: state.reasoningEffort ?? null,
+        temperature: state.temperature,
+        budget: state.budget ?? null,
         pricing: state.pricing ?? null,
         createdAt: state.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -177,6 +188,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       state.reasoningEffort = sel.reasoningEffort
       state.supportsReasoning = sel.supportsReasoning
       state.modelReasoning = sel.modelReasoning
+      state.temperature = prefs.temperature?.[sel.modelId] ?? DEFAULT_TEMPERATURE
 
       const prefsChanges = { lastModel: sel.modelId, lastProvider: sel.endpointProviderName }
       if (sel.reasoningEffort !== undefined) {
@@ -209,6 +221,25 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       state.reasoningEffort = newEffort
       await savePrefs({ reasoningEffort: { ...prefs.reasoningEffort, [state.modelId]: newEffort } })
       console.log(`Reasoning effort set to ${getEffortLabel(newEffort)}\n`)
+      continue
+    }
+
+    if (input.startsWith('/temp')) {
+      const value = input.slice('/temp'.length).trim()
+      if (!value) {
+        console.log(`Current temperature: ${state.temperature}\n`)
+        continue
+      }
+      let parsed
+      try {
+        parsed = resolveTemperatureFlag({ temperature: value })
+      } catch (err) {
+        console.error(`\nError: ${err.message}\n`)
+        continue
+      }
+      state.temperature = parsed
+      await savePrefs({ temperature: { ...prefs.temperature, [state.modelId]: parsed } })
+      console.log(`Temperature set to ${parsed}\n`)
       continue
     }
 
@@ -248,6 +279,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
         reasoningEffort: state.reasoningEffort,
         supportsReasoning: state.supportsReasoning,
         sessionId: state.sessionId,
+        temperature: state.temperature,
         signal: streamController.signal,
       })
       process.stdout.write('\n\n')
