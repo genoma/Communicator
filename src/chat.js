@@ -312,7 +312,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       continue
     }
 
-    if (input.startsWith('/temp')) {
+    if (input === '/temp' || input.startsWith('/temp ')) {
       const value = input.slice('/temp'.length).trim()
       if (!value) {
         console.log(`Current temperature: ${state.temperature}\n`)
@@ -331,7 +331,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       continue
     }
 
-    if (input.startsWith('/budget')) {
+    if (input === '/budget' || input.startsWith('/budget ')) {
       const value = input.slice('/budget'.length).trim()
       if (value) {
         const parsed = Number(value)
