@@ -67,6 +67,7 @@ $RECYCLE.BIN/
 # --- Kilo ---
 .kilo
 MEMORY.md
+AGENTS.md
 
 # --- Node / OS ---
 lib-cov/
