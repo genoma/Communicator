@@ -148,6 +148,86 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     return finalState()
   }
 
+  const runTurn = async () => {
+    let apiResult
+    let streamedContent = ''
+    let streamedReasoning = ''
+
+    streaming = true
+    streamController = new AbortController()
+    interrupted = false
+
+    try {
+      process.stdout.write('\n')
+      apiResult = await provider.chatCompletion({
+        apiKey,
+        model: state.modelId,
+        messages: state.messages,
+        onToken: (token, type) => {
+          if (type === 'reasoning') streamedReasoning += token
+          else if (type === 'content') streamedContent += token
+          render(token, type)
+        },
+        provider: state.endpointProviderName,
+        reasoningEffort: state.reasoningEffort,
+        supportsReasoning: state.supportsReasoning,
+        sessionId: state.sessionId,
+        temperature: state.temperature,
+        signal: streamController.signal,
+      })
+      process.stdout.write('\n\n')
+
+      if (apiResult.usage) {
+        tracker.record(apiResult.usage, state.pricing)
+        tracker.printTurn(apiResult.usage, state.pricing)
+        if (state.budget != null && !budgetWarned) {
+          const line = budgetLine(tracker.cost, state.budget)
+          if (line) {
+            budgetWarned = true
+            console.log(line)
+          }
+        }
+      }
+    } catch (err) {
+      if (interrupted) {
+        process.stdout.write('\n')
+        const partial = { role: 'assistant', content: streamedContent }
+        if (streamedReasoning) partial.reasoning = streamedReasoning
+        if (!partial.content && !partial.reasoning && err.pendingBuffer) {
+          const pending = extractPartialToken(err.pendingBuffer)
+          if (pending) {
+            if (pending.type === 'reasoning') partial.reasoning = pending.text
+            else partial.content = pending.text
+          }
+        }
+        if (partial.content || partial.reasoning) {
+          state.messages.push(partial)
+        }
+        await saveCurrentSession()
+        process.exit(130)
+      }
+      console.error(`\nError: ${formatError(err)}\n`)
+      if (err instanceof ApiError && err.retryable) {
+        state.messages.pop()
+      }
+      return
+    } finally {
+      streaming = false
+      streamController = null
+    }
+
+    if (apiResult.content) {
+      const msg = { role: 'assistant', content: apiResult.content }
+      if (apiResult.reasoning) {
+        msg.reasoning = apiResult.reasoning
+      }
+      if (apiResult.usage) {
+        msg.usage = apiResult.usage
+      }
+      state.messages.push(msg)
+    }
+  }
+
   while (true) {
     console.log(sep())
     const result = await readInput()
@@ -274,6 +354,23 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       continue
     }
 
+    if (input === '/retry') {
+      if (state.budget != null && tracker.cost >= state.budget) {
+        console.log(`Budget exhausted (${formatCost(tracker.cost)} of ${formatCost(state.budget)}). /new to start fresh or /quit.\n`)
+        continue
+      }
+      const last = state.messages[state.messages.length - 1]
+      if (last?.role === 'assistant') {
+        state.messages.pop()
+        await runTurn()
+      } else if (last?.role === 'user') {
+        await runTurn()
+      } else {
+        console.log('Nothing to retry yet.\n')
+      }
+      continue
+    }
+
     if (input.startsWith('/')) {
       console.log(`Unknown command "${input}". Available: ${AVAILABLE_COMMANDS}\n`)
       continue
@@ -285,83 +382,6 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     }
 
     state.messages.push({ role: 'user', content: input })
-
-    let apiResult
-    let streamedContent = ''
-    let streamedReasoning = ''
-
-    streaming = true
-    streamController = new AbortController()
-    interrupted = false
-
-    try {
-      process.stdout.write('\n')
-      apiResult = await provider.chatCompletion({
-        apiKey,
-        model: state.modelId,
-        messages: state.messages,
-        onToken: (token, type) => {
-          if (type === 'reasoning') streamedReasoning += token
-          else if (type === 'content') streamedContent += token
-          render(token, type)
-        },
-        provider: state.endpointProviderName,
-        reasoningEffort: state.reasoningEffort,
-        supportsReasoning: state.supportsReasoning,
-        sessionId: state.sessionId,
-        temperature: state.temperature,
-        signal: streamController.signal,
-      })
-      process.stdout.write('\n\n')
-
-      if (apiResult.usage) {
-        tracker.record(apiResult.usage, state.pricing)
-        tracker.printTurn(apiResult.usage, state.pricing)
-        if (state.budget != null && !budgetWarned) {
-          const line = budgetLine(tracker.cost, state.budget)
-          if (line) {
-            budgetWarned = true
-            console.log(line)
-          }
-        }
-      }
-    } catch (err) {
-      if (interrupted) {
-        process.stdout.write('\n')
-        const partial = { role: 'assistant', content: streamedContent }
-        if (streamedReasoning) partial.reasoning = streamedReasoning
-        if (!partial.content && !partial.reasoning && err.pendingBuffer) {
-          const pending = extractPartialToken(err.pendingBuffer)
-          if (pending) {
-            if (pending.type === 'reasoning') partial.reasoning = pending.text
-            else partial.content = pending.text
-          }
-        }
-        if (partial.content || partial.reasoning) {
-          state.messages.push(partial)
-        }
-        await saveCurrentSession()
-        process.exit(130)
-      }
-      console.error(`\nError: ${formatError(err)}\n`)
-      if (err instanceof ApiError && err.retryable) {
-        state.messages.pop()
-      }
-      continue
-    } finally {
-      streaming = false
-      streamController = null
-    }
-
-    if (apiResult.content) {
-      const msg = { role: 'assistant', content: apiResult.content }
-      if (apiResult.reasoning) {
-        msg.reasoning = apiResult.reasoning
-      }
-      if (apiResult.usage) {
-        msg.usage = apiResult.usage
-      }
-      state.messages.push(msg)
-    }
+    await runTurn()
   }
 }
