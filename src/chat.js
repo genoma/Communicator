@@ -9,8 +9,9 @@ import { dim, sep } from './ui/style.js'
 import { ensureSessionsDir, generateSessionId, generateTitle, saveSession } from './sessions.js'
 import { savePreferences } from './config.js'
 import { selectModelAndEndpoint } from './model-selection.js'
+import { copyText } from './clipboard.js'
 
-const AVAILABLE_COMMANDS = '/quit, /new, /model, /reasoning, /cost'
+const AVAILABLE_COMMANDS = '/quit, /new, /model, /reasoning, /temp, /budget, /retry, /copy, /markdown, /cost'
 
 export async function startChat(apiKey, model, endpointProviderName, reasoningEffort, temperature, pricing, provider, {
   systemPrompt = null,
@@ -36,6 +37,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     sessionId,
     createdAt,
     modelReasoning,
+    markdown: true,
     messages: initialMessages || [{ role: 'system', content: systemContent }],
   }
 
@@ -62,14 +64,14 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
   console.log('Send with Enter  |  Newline: Ctrl+J  |  /quit to exit\n')
 
   if (initialMessages) {
-    renderHistory(state.messages)
+    renderHistory(state.messages, { markdown: state.markdown })
   }
 
   if (initialMessages && tracker.requests > 0) {
     console.log(`${dim('Previous session:')} ${tracker.summary()}\n`)
   }
 
-  const render = createStreamRenderer()
+  const render = createStreamRenderer({ markdown: state.markdown })
 
   const finalState = () => ({
     messages: state.messages,
@@ -176,6 +178,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
         temperature: state.temperature,
         signal: streamController.signal,
       })
+      render.flush()
       process.stdout.write('\n\n')
 
       if (apiResult.usage) {
@@ -191,6 +194,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       }
     } catch (err) {
       if (interrupted) {
+        render.flush()
         process.stdout.write('\n')
         const partial = { role: 'assistant', content: streamedContent }
         if (streamedReasoning) partial.reasoning = streamedReasoning
@@ -369,6 +373,24 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       } else {
         console.log('Nothing to retry yet.\n')
       }
+      continue
+    }
+
+    if (input === '/copy') {
+      const last = [...state.messages].reverse().find((m) => m.role === 'assistant' && m.content)
+      if (!last) {
+        console.log('No assistant response to copy.\n')
+        continue
+      }
+      const result = await copyText(last.content)
+      console.log(result.ok ? 'Copied last response to clipboard.\n' : `Copy failed: ${result.error}\n`)
+      continue
+    }
+
+    if (input === '/markdown') {
+      state.markdown = !state.markdown
+      render.markdown = state.markdown
+      console.log(`Markdown rendering ${state.markdown ? 'enabled' : 'disabled'}. The current line is styled once it completes.\n`)
       continue
     }
 
