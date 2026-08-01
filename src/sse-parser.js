@@ -21,9 +21,10 @@ export function extractPartialToken(buffer) {
 }
 
 function collectSources(parsed, fullSources, seenUrls, onSources) {
+  const choices = parsed.choices?.[0]
   const citations = parsed.venice_parameters?.web_search_citations
-  const annotations = parsed.choices?.[0]?.delta?.annotations
-    ?? parsed.choices?.[0]?.message?.annotations
+  const annotations = choices?.delta?.annotations ?? choices?.message?.annotations
+  if (!citations && !annotations) return
   let found = false
 
   for (const citation of citations || []) {
