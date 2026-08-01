@@ -37,7 +37,7 @@ test('renderText styles inline elements and drops link urls', (t) => {
   assert.match(out, /\x1b\[1mbold\x1b\[22m/)
   assert.match(out, /\x1b\[3mitalic\x1b\[23m/)
   assert.match(out, /\x1b\[36mcode\x1b\[39m/)
-  assert.match(out, /\x1b\]8;;https:\/\/x\.com\x1b\\link\x1b\]8;;\x1b\\/)
+  assert.match(out, /\x1b\[3m\x1b\]8;;https:\/\/x\.com\x1b\\link\x1b\]8;;\x1b\\\x1b\[23m/)
   assert.match(out, /\x1b\[2malt\x1b\[22m/)
 })
 
@@ -48,10 +48,29 @@ test('renderText resolves venice citation markers against sources', (t) => {
     { title: 'Two', url: 'https://two.example' },
   ]
   const out = renderText('See ^1^ and ^2^ and ^1,2^ together', sources)
-  assert.match(out, /\x1b\]8;;https:\/\/one\.example\x1b\\\[1\]\x1b\]8;;\x1b\\/)
-  assert.match(out, /\x1b\]8;;https:\/\/two\.example\x1b\\\[2\]\x1b\]8;;\x1b\\/)
-  assert.match(out, /\x1b\]8;;https:\/\/two\.example\x1b\\\[2\]\x1b\]8;;\x1b\\ /)
+  assert.match(out, /\x1b\[3m\x1b\]8;;https:\/\/one\.example\x1b\\\[1\]\x1b\]8;;\x1b\\\x1b\[23m/)
+  assert.match(out, /\x1b\[3m\x1b\]8;;https:\/\/two\.example\x1b\\\[2\]\x1b\]8;;\x1b\\\x1b\[23m/)
+  assert.match(out, /\x1b\]8;;https:\/\/two\.example\x1b\\\[2\]\x1b\]8;;\x1b\\\x1b\[23m /)
   assert.equal(out.replace(ANSI, '').replace(OSC8, ''), 'See [1] and [2] and [1] [2] together')
+})
+
+test('renderText keeps styled link labels from leaking escape remnants', (t) => {
+  enableAnsi(t)
+  const out = renderText('[*ital*](https://x.com)')
+  const plain = out.replace(ANSI, '').replace(OSC8, '')
+  assert.equal(plain, 'ital')
+  assert.match(out, /\x1b\[3m\x1b\]8;;https:\/\/x\.com\x1b\\ital\x1b\]8;;\x1b\\\x1b\[23m/)
+})
+
+test('renderText does not leak SGR remnants into link labels after bold', (t) => {
+  enableAnsi(t)
+  const out = renderText('- **AirPods 4 with ANC ($179)** – middle [cnet.com](https://cnet.example/x)')
+  const plain = out.replace(ANSI, '').replace(OSC8, '')
+  assert.equal(plain, '- AirPods 4 with ANC ($179) – middle cnet.com')
+  assert.match(out, /\x1b\[1mAirPods 4 with ANC \(\$179\)\x1b\[22m/)
+  assert.match(out, /\x1b\[3m\x1b\]8;;https:\/\/cnet\.example\/x\x1b\\cnet\.com\x1b\]8;;\x1b\\\x1b\[23m/)
+  assert.doesNotMatch(out, /\x1b\]8;;https:\/\/cnet\.example\/x\x1b\\1m/)
+  assert.doesNotMatch(out, /\x1b\]8;;[^\x1b]*\[cnet/)
 })
 
 test('renderText renders out-of-range markers plain and leaves markers alone without sources', (t) => {
