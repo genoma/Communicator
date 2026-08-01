@@ -1,6 +1,6 @@
 {
   "name": "communicator",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "OpenRouter CLI chat client with interactive model/provider selection",
   "type": "module",
   "engines": {
