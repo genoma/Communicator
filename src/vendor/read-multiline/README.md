@@ -12,18 +12,27 @@ version **0.4.1** (MIT license, zero runtime dependencies).
 ## Patch: `suggest` option
 
 The upstream library has no suggestion/autocomplete support. A minimal patch adds a
-`suggest` option to `readMultiline`:
+`suggest` option to `readMultiline` plus a session-based suggestion list:
 
 - `index.js` — reads `suggest` from options and stores it on `state`; stores the initial
-  styled footer as `state.baseFooterText`.
-- `input.js` — binds Tab (`\t`) and Shift+Tab (`\x1b[Z`) to cycle through the suggestion
-  list when one is active, in both legacy and kitty-protocol (CSI u) encodings
-  (`\x1b[9u` / `\x1b[9;1u` for Tab, `\x1b[9;2u` / `\x1b[1;2Z` for Shift+Tab) — with the
-  kitty keyboard protocol enabled, terminals report Tab as `CSI 9 u` instead of `\t`.
+  styled footer as `state.baseFooterText`; initializes `state.suggestSession` to `null`.
+- `input.js` — binds Tab/Shift+Tab and Up/Down arrows to navigate the suggestion list,
+  and Escape to dismiss it, in both legacy and kitty-protocol (CSI u) encodings.
+  - Tab: `\t` / `\x1b[9u` / `\x1b[9;1u`; Shift+Tab: `\x1b[Z` / `\x1b[9;2u` / `\x1b[1;2Z`
+    (with the kitty keyboard protocol enabled, terminals report Tab as `CSI 9 u`
+    instead of `\t`).
+  - Up/Down (`\x1b[A` / `\x1b[B`) navigate the suggestion list while a session is
+    active and fall back to history navigation otherwise.
+  - Escape: `\x1b` / `\x1b[27u` / `\x1b[27;1u` restores the typed prefix.
 - `editing.js` — calls `refreshSuggestions` at the end of `onContentChanged`; adds
-  `cycleSuggestion`.
-- `rendering.js` — adds `refreshSuggestions`, which renders matching suggestions into the
-  footer slot (reusing `setFooter`/`drawBelowEditor`).
+  `suggestMove` (fills the line with the next/prev match within the session),
+  `nextSuggestionMove`, `dismissSuggestions`, and keeps `cycleSuggestion` as an alias
+  for Tab/Shift+Tab.
+- `rendering.js` — adds `updateSuggestionSession` (tracks `{ prefix, matches, index }`
+  so cycling never dead-ends on the filled match) and `restoreFooter`; `refreshSuggestions`
+  renders the matches into the footer slot (reusing `setFooter`/`drawBelowEditor`), keeps
+  the list visible while a session is active, highlights the selected entry, and scrolls
+  the window around the selection.
 
 Diff with upstream:
 

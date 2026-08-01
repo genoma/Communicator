@@ -1,4 +1,4 @@
-import { cycleSuggestion, deleteToLineEnd, deleteToLineStart, deleteWordBack, handleBackspace, handleDelete, insertChar, insertNewline, redo, saveUndo, undo, } from "./editing.js";
+import { cycleSuggestion, deleteToLineEnd, deleteToLineStart, deleteWordBack, dismissSuggestions, handleBackspace, handleDelete, insertChar, insertNewline, redo, saveUndo, suggestMove, undo, } from "./editing.js";
 import { bufferEnd, bufferStart, historyNext, historyPrev, lineEnd, lineStart, moveDownOrHistory, moveLeft, moveRight, moveUpOrHistory, wordLeft, wordRight, } from "./navigation.js";
 import { clearScreen } from "./rendering.js";
 const PASTE_START = "\x1b[200~";
@@ -58,9 +58,9 @@ export function buildKeyMap(state, submit, cancel, handleEOF) {
     // Clear screen
     keyMap["\x0c"] = () => clearScreen(state); // Ctrl+L
     keyMap["\x1b[108;5u"] = () => clearScreen(state); // kitty Ctrl+L
-    // Arrow keys (with history support)
-    keyMap["\x1b[A"] = () => moveUpOrHistory(state);
-    keyMap["\x1b[B"] = () => moveDownOrHistory(state);
+    // Arrow keys (history navigation, or suggestion navigation when a list is active)
+    keyMap["\x1b[A"] = () => { if (!suggestMove(state, -1)) moveUpOrHistory(state); };
+    keyMap["\x1b[B"] = () => { if (!suggestMove(state, 1)) moveDownOrHistory(state); };
     keyMap["\x1b[C"] = () => moveRight(state);
     keyMap["\x1b[D"] = () => moveLeft(state);
     // Alt+Arrow
@@ -108,6 +108,10 @@ export function buildKeyMap(state, submit, cancel, handleEOF) {
         keyMap["\x1b[Z"] = () => cycleSuggestion(state, -1); // legacy Shift+Tab
         keyMap["\x1b[9;2u"] = () => cycleSuggestion(state, -1); // kitty Shift+Tab
         keyMap["\x1b[1;2Z"] = () => cycleSuggestion(state, -1); // xterm Shift+Tab
+        // Escape: dismiss the suggestion list, restoring the typed prefix
+        keyMap["\x1b"] = () => dismissSuggestions(state); // legacy Escape
+        keyMap["\x1b[27u"] = () => dismissSuggestions(state); // kitty Escape
+        keyMap["\x1b[27;1u"] = () => dismissSuggestions(state); // kitty Escape (explicit no modifier)
     }
 }
 // --- Paste handling ---

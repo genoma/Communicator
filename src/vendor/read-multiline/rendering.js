@@ -225,46 +225,79 @@ export function setFooter(state, text) {
     drawBelowEditor(state);
 }
 const MAX_SUGGESTIONS = 8;
+/** Restore the base footer (help text) after the suggestion list is dismissed */
+export function restoreFooter(state) {
+    setFooter(state, state.rebuildFooter
+        ? state.rebuildFooter(state.output?.columns ?? 80)
+        : state.baseFooterText);
+}
 /**
- * Render the suggestion list into the footer slot (or restore the help footer).
- * Trigger rule: single-line buffer, cursor at end of line, line starts with "/",
- * and the line is a non-exact-match prefix of at least one suggestion.
+ * Track the active suggestion session from the current editor content.
+ * A session exists while the buffer is a single line starting with "/" with the
+ * cursor at the end, and the line is either a non-exact prefix of at least one
+ * suggestion, or an exact match within the already-active session's matches
+ * (keeps the list visible while navigating).
  */
-export function refreshSuggestions(state) {
-    if (state.validationActive)
-        return;
-    const restoreFooter = () => {
-        setFooter(state, state.rebuildFooter
-            ? state.rebuildFooter(state.output?.columns ?? 80)
-            : state.baseFooterText);
-    };
-    if (!state.suggest)
-        return;
+export function updateSuggestionSession(state) {
     if (state.lines.length !== 1) {
-        restoreFooter();
+        state.suggestSession = null;
         return;
     }
     const value = state.lines[0];
     if (!value.startsWith("/") || state.col !== value.length) {
-        restoreFooter();
+        state.suggestSession = null;
         return;
     }
     const items = state.suggest({ value, cursor: state.col });
-    const matches = Array.isArray(items) ? items.filter((item) => typeof item === "string" && item.startsWith(value)) : [];
-    if (matches.length === 0 || matches.includes(value)) {
-        restoreFooter();
+    const matches = Array.isArray(items)
+        ? items.filter((item) => typeof item === "string" && item.startsWith(value))
+        : [];
+    if (matches.length === 0) {
+        state.suggestSession = null;
         return;
     }
-    const shown = matches.slice(0, MAX_SUGGESTIONS);
-    const selectedIndex = matches.indexOf(value);
-    const selected = selectedIndex !== -1 ? selectedIndex : 0;
-    const footerLines = shown.map((item, index) => {
-        const marker = index === selected ? "› " : "  ";
-        const styled = index === selected ? applyStyle(item, ["bold", "cyan"]) : applyStyle(item, "dim");
+    if (!matches.includes(value)) {
+        state.suggestSession = { prefix: value, matches, index: 0 };
+        return;
+    }
+    const session = state.suggestSession;
+    if (session && session.matches.includes(value)) {
+        state.suggestSession = { ...session, index: session.matches.indexOf(value) };
+        return;
+    }
+    state.suggestSession = null;
+}
+/**
+ * Render the suggestion list into the footer slot (or restore the help footer).
+ * While a session is active the list stays visible even when the line holds an
+ * exact match, with the selected entry highlighted and the window scrolled
+ * around the selection.
+ */
+export function refreshSuggestions(state) {
+    if (state.validationActive)
+        return;
+    if (!state.suggest)
+        return;
+    updateSuggestionSession(state);
+    const session = state.suggestSession;
+    if (!session) {
+        restoreFooter(state);
+        return;
+    }
+    const total = session.matches.length;
+    const windowStart = Math.min(
+        Math.max(0, session.index - Math.floor(MAX_SUGGESTIONS / 2)),
+        Math.max(0, total - MAX_SUGGESTIONS)
+    );
+    const shown = session.matches.slice(windowStart, windowStart + MAX_SUGGESTIONS);
+    const footerLines = shown.map((item, offset) => {
+        const isSelected = windowStart + offset === session.index;
+        const marker = isSelected ? "› " : "  ";
+        const styled = isSelected ? applyStyle(item, ["bold", "cyan"]) : applyStyle(item, "dim");
         return marker + styled;
     });
-    if (matches.length > shown.length) {
-        footerLines.push(applyStyle(`… ${matches.length - shown.length} more`, "dim"));
+    if (total > shown.length) {
+        footerLines.push(applyStyle(`… ${total - shown.length} more`, "dim"));
     }
     setFooter(state, footerLines.join("\n"));
 }

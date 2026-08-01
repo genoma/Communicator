@@ -147,6 +147,7 @@ function readFromTTY(input, output, prompt, options) {
             transform,
             inlinePrompt,
             suggest,
+            suggestSession: null,
             keyMap: {},
             buffering: false,
             writeBuffer: "",
@@ -160,6 +161,9 @@ function readFromTTY(input, output, prompt, options) {
                     state.footerText = state.rebuildFooter(ttyOutput.columns);
                 }
                 clearScreen(state);
+                if (state.suggest) {
+                    refreshSuggestions(state);
+                }
             };
             ttyOutput.on("resize", resizeHandler);
         }
