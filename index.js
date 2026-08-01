@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander'
+import { ExitPromptError } from '@inquirer/core'
 import pkg from './package.json' with { type: 'json' }
 import { getApiKey, loadPreferences, loadSystemPrompt, savePreferences } from './src/config.js'
 import { getProvider } from './src/providers/index.js'
@@ -39,78 +40,90 @@ program
 program.parse()
 const opts = program.opts()
 
-const providerType = opts.provider || 'openrouter'
-const promptArg = program.args[0]
-const interactiveFlags = opts.resume !== undefined || opts.export !== undefined || opts.delete !== undefined
-const exitModeFlags = opts.listModels || opts.listEndpoints || opts.listSessions
-
-if (opts.resume !== undefined && opts.export !== undefined) {
-  console.error('Cannot use --resume and --export together. Use one at a time.')
-  process.exit(1)
-}
-
-if (opts.delete !== undefined && (opts.resume !== undefined || opts.export !== undefined)) {
-  console.error('Cannot use --delete with --resume or --export. Use one at a time.')
-  process.exit(1)
-}
-
-if (promptArg && (interactiveFlags || exitModeFlags)) {
-  console.error('Cannot combine a prompt argument with --resume, --export, --delete, or --list-* flags.')
-  process.exit(1)
-}
-
-if (!process.stdin.isTTY && interactiveFlags) {
-  console.error('Cannot use --resume, --export, or --delete with piped stdin (interactive pickers need a TTY).')
-  process.exit(1)
-}
-
-const provider = getProvider(providerType)
-const apiKeyOptional = process.env[provider.meta.apiKeyEnv]?.trim() || ''
-
-if (opts.listModels) {
-  await listModelsCmd(provider, apiKeyOptional)
-  process.exit(0)
-}
-
-if (opts.listEndpoints) {
-  await listEndpointsCmd(provider, apiKeyOptional, opts.listEndpoints)
-  process.exit(0)
-}
-
-if (opts.listSessions) {
-  await listSessionsCmd()
-  process.exit(0)
-}
-
-if (opts.export !== undefined) {
-  const prefs = await loadPreferences(opts.config)
-  const outputDir = opts.outputDir || prefs.outputDir || null
-  const partialId = typeof opts.export === 'string' ? opts.export : null
-  await exportCmd(partialId, outputDir)
-  if (opts.outputDir && opts.outputDir !== prefs.outputDir) {
-    await savePreferences({ ...prefs, outputDir: opts.outputDir }, opts.config)
+try {
+  await main(opts)
+} catch (error) {
+  if (error instanceof ExitPromptError) {
+    console.log('Aborted.')
+    process.exit(0)
   }
-  process.exit(0)
+  throw error
 }
 
-if (opts.delete !== undefined) {
-  const partialId = typeof opts.delete === 'string' ? opts.delete : null
-  await deleteCmd(partialId)
-  process.exit(0)
+async function main(opts) {
+  const providerType = opts.provider || 'openrouter'
+  const promptArg = program.args[0]
+  const interactiveFlags = opts.resume !== undefined || opts.export !== undefined || opts.delete !== undefined
+  const exitModeFlags = opts.listModels || opts.listEndpoints || opts.listSessions
+
+  if (opts.resume !== undefined && opts.export !== undefined) {
+    console.error('Cannot use --resume and --export together. Use one at a time.')
+    process.exit(1)
+  }
+
+  if (opts.delete !== undefined && (opts.resume !== undefined || opts.export !== undefined)) {
+    console.error('Cannot use --delete with --resume or --export. Use one at a time.')
+    process.exit(1)
+  }
+
+  if (promptArg && (interactiveFlags || exitModeFlags)) {
+    console.error('Cannot combine a prompt argument with --resume, --export, --delete, or --list-* flags.')
+    process.exit(1)
+  }
+
+  if (!process.stdin.isTTY && interactiveFlags) {
+    console.error('Cannot use --resume, --export, or --delete with piped stdin (interactive pickers need a TTY).')
+    process.exit(1)
+  }
+
+  const provider = getProvider(providerType)
+  const apiKeyOptional = process.env[provider.meta.apiKeyEnv]?.trim() || ''
+
+  if (opts.listModels) {
+    await listModelsCmd(provider, apiKeyOptional)
+    process.exit(0)
+  }
+
+  if (opts.listEndpoints) {
+    await listEndpointsCmd(provider, apiKeyOptional, opts.listEndpoints)
+    process.exit(0)
+  }
+
+  if (opts.listSessions) {
+    await listSessionsCmd()
+    process.exit(0)
+  }
+
+  if (opts.export !== undefined) {
+    const prefs = await loadPreferences(opts.config)
+    const outputDir = opts.outputDir || prefs.outputDir || null
+    const partialId = typeof opts.export === 'string' ? opts.export : null
+    await exportCmd(partialId, outputDir)
+    if (opts.outputDir && opts.outputDir !== prefs.outputDir) {
+      await savePreferences({ ...prefs, outputDir: opts.outputDir }, opts.config)
+    }
+    process.exit(0)
+  }
+
+  if (opts.delete !== undefined) {
+    const partialId = typeof opts.delete === 'string' ? opts.delete : null
+    await deleteCmd(partialId)
+    process.exit(0)
+  }
+
+  if (!process.stdin.isTTY && !opts.model) {
+    console.error('Interactive selection needs a TTY. Use -m <model-id> when piping input.')
+    process.exit(1)
+  }
+
+  const apiKey = getApiKey(providerType)
+  const prefs = await loadPreferences(opts.config)
+  const systemPrompt = await loadSystemPrompt(opts.systemPrompt)
+
+  if (promptArg || !process.stdin.isTTY) {
+    await oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt: promptArg })
+    process.exit(0)
+  }
+
+  await chatStart({ apiKey, opts, prefs, systemPrompt, providerType })
 }
-
-if (!process.stdin.isTTY && !opts.model) {
-  console.error('Interactive selection needs a TTY. Use -m <model-id> when piping input.')
-  process.exit(1)
-}
-
-const apiKey = getApiKey(providerType)
-const prefs = await loadPreferences(opts.config)
-const systemPrompt = await loadSystemPrompt(opts.systemPrompt)
-
-if (promptArg || !process.stdin.isTTY) {
-  await oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt: promptArg })
-  process.exit(0)
-}
-
-await chatStart({ apiKey, opts, prefs, systemPrompt, providerType })
