@@ -1,5 +1,8 @@
 function sanitize(text) {
-  return String(text ?? '').replace(/[\x1b\n\r]/g, '')
+  return String(text ?? '')
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+    .replace(/\x1b\][^\x1b]*(?:\x1b\\)?/g, '')
+    .replace(/[\x1b\n\r]/g, '')
 }
 
 export function hyperlink(url, label) {

@@ -208,7 +208,7 @@ Cache hits are detected and shown when OpenRouter serves a cached response. The 
 
 ### Markdown rendering
 
-By default, assistant responses are rendered as markdown in the terminal: `#` headers bold, `**bold**` / `*italic*` styled inline, `` `code` `` in cyan, fenced code blocks dimmed, lists and blockquotes styled, horizontal rules as a thin separator, and `[text](url)` links shown in cyan (URL hidden). Reasoning text is never restyled.
+By default, assistant responses are rendered as markdown in the terminal: `#` headers bold, `**bold**` / `*italic*` styled inline, `` `code` `` in cyan, fenced code blocks dimmed, lists and blockquotes styled, horizontal rules as a thin separator, and `[text](url)` links shown in italics (URL hidden, clickable in supporting terminals). Reasoning text is never restyled.
 
 Streaming is line-buffered: completed lines are styled as they arrive, and the current in-flight line is styled once it completes (at the next newline or the end of the response) — so the last line of a response can render a moment later than it streams. Toggle with `/markdown` (default on); history replay on `--resume` uses the same styling.
 
@@ -222,7 +222,7 @@ Web search is a per-model toggle, persisted in `~/.communicator.json` under `web
 
 - **OpenRouter** — the `web` plugin works on *any* model (native engines for major providers, Exa fallback). The result count defaults to 10 — the pricing sweet spot: the base $0.005/request covers up to 10 results, and each result beyond 10 costs $0.001 extra. Override it per session with `--web-results <n>` or `/web-results <n>` (the banner then shows `[web: N]`). `--web-results` implies web search is on for that invocation; `/web-results` only sets the count, it does not toggle the flag. Validation accepts any positive integer — larger counts work but cost more (see pricing above).
 - **Venice** — web search is on/off only (`venice_parameters.enable_web_search`); there is no result-count knob, so `--web-results`/`/web-results` have no effect there. Venice gates on the model's `supportsWebSearch` capability: enabling it for a model that doesn't support web search refuses with a message (interactive) or exits with an error (CLI flags). Venice web search is billed per usage.
-- **Sources** — when web search is enabled, a numbered `Sources` section is printed after each answer (clickable OSC 8 hyperlinks in supporting terminals, plain text otherwise). Inline citations are also clickable: OpenRouter models emit markdown links `[domain](url)`, Venice models emit `^n^` markers that map to the sources list. Sources are display-only: they are not saved to session files, not shown on `--resume`, and not included in markdown export.
+- **Sources** — when web search is enabled, a numbered `Sources` section is printed after each answer (italic clickable OSC 8 hyperlinks in supporting terminals, plain text otherwise). Inline citations are also clickable and italic: OpenRouter models emit markdown links `[domain](url)`, Venice models emit `^n^` markers that map to the sources list. Sources are display-only: they are not saved to session files, not shown on `--resume`, and not included in markdown export.
 - Web search state is stored in the session file (`webSearch`/`webResults`) and restored on `--resume`.
 
 ### Slash commands

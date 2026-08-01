@@ -1,4 +1,4 @@
-import { dim, you, thinking, answer } from './style.js'
+import { dim, italic, you, thinking, answer } from './style.js'
 import { createMarkdownRenderer, renderText } from './markdown.js'
 import { hyperlink } from './hyperlink.js'
 
@@ -41,7 +41,7 @@ export function printSources(sources, stdout = process.stdout) {
       }
     }
     const link = label ? hyperlink(source.url, label) : null
-    stdout.write(`[${i + 1}] ${link || dim(source.url)}\n`)
+    stdout.write(`[${i + 1}] ${italic(link || label || dim(source.url))}\n`)
   })
 }
 

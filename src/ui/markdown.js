@@ -1,13 +1,14 @@
 import { styleText } from 'node:util'
 import { THIN_SEP } from '../constants.js'
-import { bold, dim } from './style.js'
+import { bold, dim, italic } from './style.js'
 import { hyperlink } from './hyperlink.js'
 
 function citationMarkers(text, sources) {
   return text.replace(/\^(\d+(?:,\d+)*)\^/g, (_, indices) => (
     indices.split(',').map((n) => {
       const source = sources[Number(n) - 1]
-      return source ? hyperlink(source.url, `[${n}]`) || `[${n}]` : `[${n}]`
+      const marker = `[${n}]`
+      return italic(source ? hyperlink(source.url, marker) || marker : marker)
     }).join(' ')
   ))
 }
@@ -21,7 +22,7 @@ function inlineStyles(text, sources) {
         .replace(/\*\*([^*]+)\*\*/g, (_, m) => bold(m))
         .replace(/\*([^*]+)\*/g, (_, m) => styleText('italic', m))
         .replace(/!\[([^\]]*)\]\([^)]*\)/g, (_, alt) => dim(alt))
-        .replace(/\[([^\]]+)\]\(([^)]*)\)/g, (_, t, url) => hyperlink(url, t) || styleText('cyan', t))
+        .replace(/(?<!\x1b)\[([^\]]+)\]\(([^)]*)\)/g, (_, t, url) => italic(hyperlink(url, t) || t))
       if (sources.length > 0) {
         styled = citationMarkers(styled, sources)
       }
