@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CHAT_COMMANDS } from '../src/commands.js'
+import { CHAT_COMMANDS } from '../src/commands/chat/index.js'
 import { matchCommands, nextMatchIndex, shouldSuggest } from '../src/suggest.js'
 import { updateSuggestionSession } from '../src/vendor/read-multiline/rendering.js'
 import { nextSuggestionMove } from '../src/vendor/read-multiline/editing.js'

@@ -1,0 +1,506 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { chatCommands, budgetGuard, CHAT_COMMANDS } from '../src/commands/chat/index.js'
+import { ChatState } from '../src/chat-state.js'
+import { UsageTracker } from '../src/tracker.js'
+
+function fakeProvider(overrides = {}) {
+  return {
+    meta: { name: 'openrouter', supportsWebSearchOnAll: true },
+    async fetchModels() {
+      return [
+        { id: 'org/model', reasoning: null, pricing: null },
+        { id: 'effort-model', reasoning: { supported: true, supportsEffort: true, default_effort: 'low' }, pricing: null },
+      ]
+    },
+    async fetchEndpoints() {
+      return []
+    },
+    ...overrides,
+  }
+}
+
+function makeCtx(overrides = {}) {
+  const state = new ChatState({
+    modelId: 'org/model',
+    endpointProviderName: 'Provider',
+    reasoningEffort: 'high',
+    temperature: 0.7,
+    budget: null,
+    pricing: { prompt: 0.000001, completion: 0.000002 },
+    supportsReasoning: true,
+    webSearch: false,
+    webResults: null,
+    webSearchSupported: true,
+    sessionId: '2026-01-01T00-00-00',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    modelReasoning: null,
+  })
+  const savedSessions = []
+  const prefsUpdates = []
+  let turnCount = 0
+  let copied = null
+
+  const ctx = {
+    state,
+    tracker: new UsageTracker(),
+    provider: fakeProvider(),
+    apiKey: 'test-key',
+    prefs: {},
+    systemContent: 'You are a helpful assistant.',
+    saveSession: async () => { savedSessions.push(state.messages.length) },
+    savePrefs: async (updates) => { prefsUpdates.push(updates) },
+    runTurn: async () => { turnCount++ },
+    render: { markdown: true },
+    newSessionId: async () => '2026-01-02T00-00-00',
+    copyText: async (text) => { copied = text; return { ok: true } },
+    selectModelAndEndpoint: undefined,
+    selectReasoningEffort: undefined,
+    ...overrides,
+  }
+
+  return {
+    ctx,
+    savedSessions,
+    prefsUpdates,
+    get turnCount() { return turnCount },
+    get copied() { return copied },
+  }
+}
+
+function mockConsole(t) {
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', () => {})
+  return {
+    log: (i) => console.log.mock.calls[i]?.arguments[0],
+    error: (i) => console.error.mock.calls[i]?.arguments[0],
+  }
+}
+
+test('/quit returns the exit signal', async (t) => {
+  mockConsole(t)
+  const { ctx } = makeCtx()
+  const outcome = await chatCommands['/quit'](ctx)
+  assert.deepEqual(outcome, { exit: true })
+})
+
+test('/new saves the session, requests a fresh id, resets state', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx(); const { ctx, savedSessions } = harness; const { prefsUpdates } = harness
+  ctx.state.appendUser('hello')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'hi there' })
+
+  const outcome = await chatCommands['/new'](ctx)
+
+  assert.deepEqual(outcome, { reset: true })
+  assert.deepEqual(savedSessions, [3])
+  assert.equal(ctx.state.sessionId, '2026-01-02T00-00-00')
+  assert.ok(ctx.state.createdAt)
+  assert.deepEqual(ctx.state.messages, [{ role: 'system', content: 'You are a helpful assistant.' }])
+  assert.equal(ctx.state.budget, null)
+  assert.equal(ctx.state.webResults, null)
+  assert.deepEqual(prefsUpdates, [])
+  assert.equal(consoleSpy.log(0), '\nNew session started.\n')
+})
+
+test('/model switches state and saves prefs', async (t) => {
+  mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx({
+    prefs: { temperature: { 'new/model': 0.3 }, webSearch: { 'new/model': true } },
+    selectModelAndEndpoint: async () => ({
+      modelId: 'new/model',
+      endpointProviderName: 'NewProvider',
+      pricing: { prompt: 0.000002, completion: 0.000003 },
+      reasoningEffort: 'low',
+      supportsReasoning: true,
+      modelReasoning: { supported: true, supportsEffort: true },
+      webSearchSupported: true,
+    }),
+  })
+
+  await chatCommands['/model'](ctx)
+
+  assert.equal(ctx.state.modelId, 'new/model')
+  assert.equal(ctx.state.endpointProviderName, 'NewProvider')
+  assert.deepEqual(ctx.state.pricing, { prompt: 0.000002, completion: 0.000003 })
+  assert.equal(ctx.state.reasoningEffort, 'low')
+  assert.equal(ctx.state.supportsReasoning, true)
+  assert.deepEqual(ctx.state.modelReasoning, { supported: true, supportsEffort: true })
+  assert.equal(ctx.state.temperature, 0.3)
+  assert.equal(ctx.state.webSearch, true)
+  assert.deepEqual(prefsUpdates, [{
+    modelId: 'new/model',
+    lastModel: 'new/model',
+    lastProvider: 'NewProvider',
+    reasoningEffort: 'low',
+  }])
+})
+
+test('/model gates web search off when the model is unsupported', async (t) => {
+  mockConsole(t)
+  const { ctx } = makeCtx({
+    prefs: { webSearch: { 'new/model': true } },
+    selectModelAndEndpoint: async () => ({
+      modelId: 'new/model',
+      endpointProviderName: 'NewProvider',
+      pricing: null,
+      reasoningEffort: undefined,
+      supportsReasoning: false,
+      modelReasoning: null,
+      webSearchSupported: false,
+    }),
+  })
+
+  await chatCommands['/model'](ctx)
+
+  assert.equal(ctx.state.webSearch, false)
+})
+
+test('/model reports selection failures without crashing', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({
+    provider: fakeProvider({
+      async fetchModels() {
+        throw new Error('network down')
+      },
+    }),
+  })
+  const before = {
+    modelId: ctx.state.modelId,
+    endpointProviderName: ctx.state.endpointProviderName,
+    reasoningEffort: ctx.state.reasoningEffort,
+  }
+
+  await chatCommands['/model'](ctx)
+
+  assert.equal(consoleSpy.error(0), '\nError: network down\n')
+  assert.equal(ctx.state.modelId, before.modelId)
+  assert.equal(ctx.state.endpointProviderName, before.endpointProviderName)
+  assert.equal(ctx.state.reasoningEffort, before.reasoningEffort)
+})
+
+test('/reasoning sets the effort and saves the pref', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx({
+    provider: fakeProvider({
+      async fetchModels() {
+        return [
+          { id: 'org/model', reasoning: { supported: true, supportsEffort: true, default_effort: 'medium' }, pricing: null },
+        ]
+      },
+    }),
+    selectReasoningEffort: async () => 'low',
+  })
+
+  await chatCommands['/reasoning'](ctx)
+
+  assert.equal(ctx.state.reasoningEffort, 'low')
+  assert.deepEqual(ctx.state.modelReasoning, { supported: true, supportsEffort: true, default_effort: 'medium' })
+  assert.deepEqual(prefsUpdates, [{ modelId: 'org/model', reasoningEffort: 'low' }])
+  assert.equal(consoleSpy.log(0), 'Reasoning effort set to Low\n')
+})
+
+test('/reasoning reports models without effort control', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  ctx.state.modelReasoning = null
+
+  await chatCommands['/reasoning'](ctx)
+
+  assert.equal(consoleSpy.log(0), 'This model does not support reasoning effort control.\n')
+  assert.equal(ctx.state.reasoningEffort, 'high')
+  assert.deepEqual(ctx.state.modelReasoning, null)
+})
+
+test('/reasoning reports fetch failures without crashing', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({
+    provider: fakeProvider({
+      async fetchModels() {
+        throw new Error('boom')
+      },
+    }),
+  })
+
+  await chatCommands['/reasoning'](ctx)
+
+  assert.equal(consoleSpy.error(0), '\nError: boom\n')
+  assert.equal(ctx.state.reasoningEffort, 'high')
+})
+
+test('/temp shows the current temperature without args', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx()
+  await chatCommands['/temp'](ctx)
+  assert.equal(consoleSpy.log(0), 'Current temperature: 0.7\n')
+  assert.deepEqual(prefsUpdates, [])
+})
+
+test('/temp sets a valid temperature and saves the pref', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx()
+  await chatCommands['/temp']({ ...ctx, args: '1.3' })
+  assert.equal(ctx.state.temperature, 1.3)
+  assert.deepEqual(prefsUpdates, [{ modelId: 'org/model', temperature: 1.3 }])
+  assert.equal(consoleSpy.log(0), 'Temperature set to 1.3\n')
+})
+
+test('/temp rejects invalid values without changing state', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx()
+  await chatCommands['/temp']({ ...ctx, args: '2.5' })
+  assert.equal(consoleSpy.error(0), '\nError: Temperature must be a number between 0 and 2.\n')
+  assert.equal(ctx.state.temperature, 0.7)
+  assert.deepEqual(prefsUpdates, [])
+})
+
+test('/budget sets a valid budget', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  const outcome = await chatCommands['/budget']({ ...ctx, args: '5' })
+  assert.equal(ctx.state.budget, 5)
+  assert.deepEqual(outcome, { resetBudgetWarning: true })
+  assert.equal(consoleSpy.log(0), 'Budget set to $5.000000 for this session.\n')
+})
+
+test('/budget rejects non-positive and non-numeric values', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  await chatCommands['/budget']({ ...ctx, args: '0' })
+  assert.equal(consoleSpy.error(0), 'Error: budget must be a positive number (USD).\n')
+  assert.equal(ctx.state.budget, null)
+  await chatCommands['/budget']({ ...ctx, args: '-3' })
+  assert.equal(ctx.state.budget, null)
+  await chatCommands['/budget']({ ...ctx, args: 'abc' })
+  assert.equal(ctx.state.budget, null)
+})
+
+test('/budget shows the status line when a budget is set', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  ctx.state.setBudget(5)
+  ctx.tracker.cost = 1
+  await chatCommands['/budget'](ctx)
+  assert.equal(consoleSpy.log(0), 'Budget: $1.000000 of $5.000000 used (20%). $4.000000 remaining.\n')
+})
+
+test('/budget shows the no-budget line without a budget', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  await chatCommands['/budget'](ctx)
+  assert.equal(consoleSpy.log(0), 'No budget set. Use /budget <usd> to cap this session.\n')
+})
+
+test('/web-search shows status without args', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  await chatCommands['/web-search'](ctx)
+  assert.equal(consoleSpy.log(0), 'Web search is disabled.\n')
+})
+
+test('/web-search status includes the result count when set', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  ctx.state.setWebSearch(true)
+  ctx.state.setWebResults(3)
+  await chatCommands['/web-search'](ctx)
+  assert.equal(consoleSpy.log(0), 'Web search is enabled (3 results).\n')
+})
+
+test('/web-search on saves the pref', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx()
+  await chatCommands['/web-search']({ ...ctx, args: 'on' })
+  assert.equal(ctx.state.webSearch, true)
+  assert.deepEqual(prefsUpdates, [{ modelId: 'org/model', webSearch: true }])
+  assert.equal(consoleSpy.log(0), 'Web search enabled.\n')
+})
+
+test('/web-search off disables web search', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  ctx.state.setWebSearch(true)
+  await chatCommands['/web-search']({ ...ctx, args: 'off' })
+  assert.equal(ctx.state.webSearch, false)
+  assert.equal(consoleSpy.log(0), 'Web search disabled.\n')
+})
+
+test('/web-search on is rejected for unsupported models', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx()
+  ctx.state.webSearchSupported = false
+  await chatCommands['/web-search']({ ...ctx, args: 'on' })
+  assert.equal(consoleSpy.log(0), 'This model does not support web search.\n')
+  assert.equal(ctx.state.webSearch, false)
+  assert.deepEqual(prefsUpdates, [])
+})
+
+test('/web-search rejects invalid arguments', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  await chatCommands['/web-search']({ ...ctx, args: 'maybe' })
+  assert.equal(consoleSpy.error(0), 'Error: /web-search expects "on" or "off".\n')
+})
+
+test('/web-results shows the default line without args', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  await chatCommands['/web-results'](ctx)
+  assert.equal(consoleSpy.log(0), 'Web search results: default (10).\n')
+})
+
+test('/web-results shows the current count without args when set', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  ctx.state.setWebResults(3)
+  await chatCommands['/web-results'](ctx)
+  assert.equal(consoleSpy.log(0), 'Web search results: 3.\n')
+})
+
+test('/web-results sets a valid count', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  await chatCommands['/web-results']({ ...ctx, args: '5' })
+  assert.equal(ctx.state.webResults, 5)
+  assert.equal(consoleSpy.log(0), 'Web search results set to 5.\n')
+})
+
+test('/web-results rejects invalid counts', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  await chatCommands['/web-results']({ ...ctx, args: '0' })
+  assert.equal(consoleSpy.error(0), '\nError: --web-results must be a positive integer.\n')
+  assert.equal(ctx.state.webResults, null)
+})
+
+test('/cost prints the tracker summary and reasoning line', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  ctx.tracker.record({ prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 }, ctx.state.pricing)
+  await chatCommands['/cost'](ctx)
+  assert.equal(consoleSpy.log(0), 'Current session: ↑ 100 prompt  ↓ 50 completion  = 150 total  |  1 request(s)  |  $0.000200 cost')
+  assert.equal(consoleSpy.log(1), 'Reasoning: High\n')
+})
+
+test('/cost shows auto for undefined reasoning effort', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  ctx.state.setReasoningEffort(undefined)
+  await chatCommands['/cost'](ctx)
+  assert.equal(consoleSpy.log(1), 'Reasoning: auto\n')
+})
+
+test('/retry pops the last assistant message then reruns the turn', async (t) => {
+  mockConsole(t)
+  const harness = makeCtx(); const { ctx } = harness
+  ctx.state.appendUser('hello')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'first answer' })
+
+  await chatCommands['/retry'](ctx)
+
+  assert.equal(harness.turnCount, 1)
+  assert.equal(ctx.state.messages.length, 2)
+  assert.equal(ctx.state.messages[1].role, 'user')
+})
+
+test('/retry reruns directly when the last message is a user message', async (t) => {
+  mockConsole(t)
+  const harness = makeCtx(); const { ctx } = harness
+  ctx.state.appendUser('hello')
+
+  await chatCommands['/retry'](ctx)
+
+  assert.equal(harness.turnCount, 1)
+  assert.equal(ctx.state.messages.length, 2)
+})
+
+test('/retry reports nothing to retry', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx(); const { ctx } = harness
+  await chatCommands['/retry'](ctx)
+  assert.equal(consoleSpy.log(0), 'Nothing to retry yet.\n')
+  assert.equal(harness.turnCount, 0)
+})
+
+test('/retry is blocked by the budget guard', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx(); const { ctx } = harness
+  ctx.state.setBudget(5)
+  ctx.tracker.cost = 6
+  ctx.state.appendUser('hello')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'answer' })
+
+  await chatCommands['/retry'](ctx)
+
+  assert.equal(harness.turnCount, 0)
+  assert.equal(consoleSpy.log(0), 'Budget exhausted ($6.000000 of $5.000000). /new to start fresh or /quit.\n')
+})
+
+test('/copy reports no response to copy and leaves the clipboard untouched', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx(); const { ctx } = harness
+  await chatCommands['/copy'](ctx)
+  assert.equal(consoleSpy.log(0), 'No assistant response to copy.\n')
+  assert.equal(harness.copied, null)
+})
+
+test('/copy copies the last assistant response', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx(); const { ctx } = harness
+  ctx.state.appendUser('hello')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'answer text' })
+  await chatCommands['/copy'](ctx)
+  assert.equal(harness.copied, 'answer text')
+  assert.equal(consoleSpy.log(0), 'Copied last response to clipboard.\n')
+})
+
+test('/copy reports clipboard failures', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({
+    copyText: async () => ({ ok: false, error: 'pbcopy missing' }),
+  })
+  ctx.state.appendUser('hello')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'answer text' })
+  await chatCommands['/copy'](ctx)
+  assert.equal(consoleSpy.log(0), 'Copy failed: pbcopy missing\n')
+})
+
+test('/markdown toggles state and renderer flags', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  await chatCommands['/markdown'](ctx)
+  assert.equal(ctx.state.markdown, false)
+  assert.equal(ctx.render.markdown, false)
+  assert.equal(consoleSpy.log(0), 'Markdown rendering disabled. The current line is styled once it completes.\n')
+})
+
+test('budgetGuard blocks when cost meets the budget', () => {
+  const { ctx } = makeCtx()
+  ctx.state.setBudget(5)
+  ctx.tracker.cost = 5
+  assert.equal(budgetGuard(ctx), 'Budget exhausted ($5.000000 of $5.000000). /new to start fresh or /quit.\n')
+  ctx.tracker.cost = 4.99
+  assert.equal(budgetGuard(ctx), null)
+})
+
+test('budgetGuard passes when no budget is set', () => {
+  const { ctx } = makeCtx()
+  assert.equal(budgetGuard(ctx), null)
+})
+
+test('CHAT_COMMANDS keeps the 12-command order', () => {
+  assert.deepEqual(CHAT_COMMANDS, [
+    '/quit',
+    '/new',
+    '/model',
+    '/reasoning',
+    '/temp',
+    '/budget',
+    '/web-search',
+    '/web-results',
+    '/retry',
+    '/copy',
+    '/markdown',
+    '/cost',
+  ])
+})

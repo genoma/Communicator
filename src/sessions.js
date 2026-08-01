@@ -54,6 +54,24 @@ export function generateTitle(messages) {
   return collapsed.length > 50 ? collapsed.slice(0, 50) + '...' : collapsed
 }
 
+export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, budget, webSearch, webResults, pricing, createdAt }) {
+  return {
+    model: modelId,
+    providerName: endpointProviderName,
+    providerType,
+    reasoningEffort: reasoningEffort ?? null,
+    temperature,
+    budget: budget ?? null,
+    webSearch,
+    webResults: webResults ?? null,
+    pricing: pricing ?? null,
+    createdAt: createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    title: generateTitle(messages),
+    messages,
+  }
+}
+
 async function readSidecar(dir) {
   try {
     return JSON.parse(await readFile(join(dir, SIDECAR_FILE), 'utf-8'))

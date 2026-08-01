@@ -126,3 +126,34 @@ test('non-interactive selection defaults web search unsupported without meta or 
   const sel = await selectModelNonInteractive({ provider: fakeProvider(), apiKey: '', prefs: {}, modelId: 'auto-reasoner' })
   assert.equal(sel.webSearchSupported, false)
 })
+
+test('non-interactive selection keeps forced string effort over saved pref', async () => {
+  const sel = await selectModelNonInteractive({
+    provider: fakeProvider(),
+    apiKey: '',
+    prefs: { reasoningEffort: { 'effort-model': 'low' } },
+    modelId: 'effort-model',
+    forcedEffort: 'high',
+  })
+  assert.equal(sel.reasoningEffort, 'high')
+  assert.equal(sel.endpointProviderName, 'venice')
+  assert.equal(sel.supportsReasoning, true)
+  assert.equal(sel.modelReasoning.supportsEffort, true)
+  assert.equal(sel.webSearchSupported, false)
+})
+
+test('non-interactive selection normalizes a none model default to null', async () => {
+  const provider = fakeProvider({
+    async fetchModels() {
+      return [
+        {
+          id: 'none-default',
+          reasoning: { supported: true, supportsEffort: true, default_effort: 'none' },
+          pricing: { prompt: 0.000002, completion: 0.000004 },
+        },
+      ]
+    },
+  })
+  const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'none-default' })
+  assert.equal(sel.reasoningEffort, null)
+})

@@ -1,9 +1,9 @@
 import { getProvider } from '../providers/index.js'
 import { DEFAULT_TEMPERATURE, formatCost } from '../constants.js'
-import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag } from '../prompts.js'
+import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, resolveBudget } from '../flags.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
-import { ensureSessionsDir, generateSessionId, generateTitle, saveSession } from '../sessions.js'
-import { savePreferences } from '../config.js'
+import { ensureSessionsDir, generateSessionId, saveSession, buildSessionPayload } from '../sessions.js'
+import { savePreferences, applyPreferenceUpdates } from '../config.js'
 import { createStreamRenderer } from '../ui/stream.js'
 import { UsageTracker, budgetLine } from '../tracker.js'
 import { formatError } from '../errors.js'
@@ -24,14 +24,13 @@ async function readStdin() {
   return Buffer.concat(chunks).toString('utf-8').trim()
 }
 
-function resolveBudget(value) {
-  if (value === undefined || value === null || value === '') return null
-  const budget = Number(value)
-  if (!Number.isFinite(budget) || budget <= 0) {
-    console.error('Error: --budget must be a positive number (USD).')
+function resolveBudgetFlag(value) {
+  try {
+    return resolveBudget(value)
+  } catch (err) {
+    console.error(`Error: ${err.message}`)
     process.exit(1)
   }
-  return budget
 }
 
 export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt }) {
@@ -48,7 +47,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   }
 
   const forcedEffort = resolveReasoningFlag({ reasoningEffort: opts.reasoningEffort })
-  const budget = resolveBudget(opts.budget)
+  const budget = resolveBudgetFlag(opts.budget)
   let forcedTemperature
   if (opts.temperature !== undefined && opts.temperature !== '') {
     try {
@@ -167,27 +166,25 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     if (!content.endsWith('\n')) process.stdout.write('\n')
   }
 
-  await saveSession(dir, sessionId, {
-    model: selection.modelId,
-    providerName: selection.endpointProviderName,
+  await saveSession(dir, sessionId, buildSessionPayload({
+    messages,
+    modelId: selection.modelId,
+    endpointProviderName: selection.endpointProviderName,
     providerType: provider.meta.name,
-    reasoningEffort: selection.reasoningEffort ?? null,
+    reasoningEffort: selection.reasoningEffort,
     temperature,
-    budget: budget ?? null,
+    budget,
     webSearch,
     webResults,
-    pricing: selection.pricing ?? null,
+    pricing: selection.pricing,
     createdAt,
-    updatedAt: new Date().toISOString(),
-    title: generateTitle(messages),
-    messages,
-  })
+  }))
 
-  await savePreferences({
-    ...prefs,
+  await savePreferences(applyPreferenceUpdates(prefs, {
+    modelId: selection.modelId,
     lastModel: selection.modelId,
     lastProvider: selection.endpointProviderName,
-    temperature: { ...prefs.temperature, [selection.modelId]: temperature },
-    webSearch: { ...prefs.webSearch, [selection.modelId]: webSearch },
-  }, opts.config)
+    temperature,
+    webSearch,
+  }), opts.config)
 }

@@ -1,4 +1,5 @@
 import { selectModel, selectProvider, selectReasoningEffort, BACK_SENTINEL } from './prompts.js'
+import { resolveEffortDefault, isWebSearchSupported } from './reasoning.js'
 
 export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort }) {
   const models = await provider.fetchModels(apiKey)
@@ -29,7 +30,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
         pricing: ep?.pricing || null,
         supportsReasoning: !!ep?.supportedParameters?.supportsReasoningEffort,
         modelReasoning: modelData?.reasoning || null,
-        webSearchSupported: provider.meta.supportsWebSearchOnAll === true || modelData?.capabilities?.supportsWebSearch === true,
+        webSearchSupported: isWebSearchSupported(provider.meta, modelData),
       }
     }
 
@@ -51,7 +52,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
       pricing: ep.pricing,
       supportsReasoning: !!ep.supportedParameters?.supportsReasoningEffort,
       modelReasoning: modelData?.reasoning || null,
-      webSearchSupported: provider.meta.supportsWebSearchOnAll === true || modelData?.capabilities?.supportsWebSearch === true,
+      webSearchSupported: isWebSearchSupported(provider.meta, modelData),
     }
   }
 }
@@ -76,22 +77,7 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
   const modelData = models.find((m) => m.id === modelId)
   const reasoning = modelData?.reasoning || null
 
-  let effort = forcedEffort
-  if (effort === undefined) {
-    if (reasoning?.supportsEffort === false) {
-      effort = undefined
-    } else if (reasoning) {
-      const saved = prefs.reasoningEffort?.[modelId]
-      if (saved !== undefined) {
-        effort = saved
-      } else if (reasoning.default_enabled === false) {
-        effort = null
-      } else {
-        effort = reasoning.default_effort ?? undefined
-      }
-      if (effort === 'none') effort = null
-    }
-  }
+  const effort = resolveEffortDefault({ reasoning, forcedEffort, prefs, modelId })
 
   const endpoints = await provider.fetchEndpoints(apiKey, modelId, models)
   const ep = provider.meta.hasEndpoints && endpoints.length > 1
@@ -105,6 +91,6 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
     pricing: ep?.pricing || null,
     supportsReasoning: !!ep?.supportedParameters?.supportsReasoningEffort,
     modelReasoning: reasoning,
-    webSearchSupported: provider.meta.supportsWebSearchOnAll === true || modelData?.capabilities?.supportsWebSearch === true,
+    webSearchSupported: isWebSearchSupported(provider.meta, modelData),
   }
 }

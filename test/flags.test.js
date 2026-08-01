@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, validateTemperature } from '../src/prompts.js'
+import { resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, validateTemperature, resolveBudget } from '../src/flags.js'
 
 test('resolveTemperatureFlag parses string and number values', () => {
   assert.equal(resolveTemperatureFlag({ temperature: '0.5' }), 0.5)
@@ -74,4 +74,25 @@ test('resolveWebSearchFlag: pref wins over the default off when no flag is passe
   assert.equal(resolveWebSearchFlag({ webSearch: undefined, prefValue: false }), false)
   assert.equal(resolveWebSearchFlag({ webSearch: undefined, prefValue: undefined }), false)
   assert.equal(resolveWebSearchFlag({}), false)
+})
+
+test('resolveBudget returns null for empty values', () => {
+  assert.equal(resolveBudget(undefined), null)
+  assert.equal(resolveBudget(null), null)
+  assert.equal(resolveBudget(''), null)
+})
+
+test('resolveBudget parses valid decimals', () => {
+  assert.equal(resolveBudget('5'), 5)
+  assert.equal(resolveBudget('0.5'), 0.5)
+  assert.equal(resolveBudget('2.75'), 2.75)
+  assert.equal(resolveBudget(1), 1)
+})
+
+test('resolveBudget throws for non-positive and non-finite values', () => {
+  assert.throws(() => resolveBudget('0'), /positive number \(USD\)/)
+  assert.throws(() => resolveBudget('-1'), /positive number \(USD\)/)
+  assert.throws(() => resolveBudget('abc'), /positive number \(USD\)/)
+  assert.throws(() => resolveBudget(NaN), /positive number \(USD\)/)
+  assert.throws(() => resolveBudget(Infinity), /positive number \(USD\)/)
 })
