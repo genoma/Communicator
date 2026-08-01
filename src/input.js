@@ -1,10 +1,11 @@
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { readMultiline } from '@toiroakr/read-multiline'
+import { readMultiline } from './vendor/read-multiline/index.js'
+import { matchCommands } from './suggest.js'
 
 const HISTORY_PATH = join(homedir(), '.communicator', 'history.json')
 
-export async function readInput() {
+export async function readInput({ commands } = {}) {
   const [value, error] = await readMultiline('', {
     prefix: '',
     linePrefix: '❯ ',
@@ -19,6 +20,9 @@ export async function readInput() {
       linePrefix: { pending: 'cyan', submitted: 'dim', cancelled: 'dim' },
       submitRender: 'preserve',
     },
+    suggest: commands
+      ? ({ value }) => matchCommands(value, commands)
+      : undefined,
   })
 
   if (error) {

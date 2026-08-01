@@ -226,6 +226,8 @@ Streaming is line-buffered: completed lines are styled as they arrive, and the c
 
 Unknown slash commands (anything starting with `/`) print a hint listing the available commands instead of being sent to the model.
 
+While typing at the prompt, a live list of matching commands appears below the input as soon as the line starts with `/` (single line, cursor at line end, not yet an exact match). **Tab** fills the first match, **Shift+Tab** fills the last one, and **Enter always submits**. The list hides once the line is an exact match — keep typing to refine, or backspace the `/` to dismiss it. Parameterized commands like `/temp 0.7` are typed manually after completion.
+
 ## System Prompt
 
 The system prompt sets the AI's persona and behavior. Customize it by creating a file at `~/.communicator-system-prompt.md` with your system prompt content.
@@ -429,6 +431,11 @@ cli (index.js)           — commander argument parsing, delegates to command mo
 ├── export.js            — markdown exporter: format session data, write to file
 ├── tracker.js           — per-turn + cumulative token/cost accounting with cache detection, budget status helpers
 ├── clipboard.js         — clipboard copy via pbcopy/clip/wl-copy/xclip/xsel
+├── input.js             — chat input via vendored read-multiline (with command suggestions)
+├── commands.js          — canonical slash command list (CHAT_COMMANDS)
+├── suggest.js           — pure suggestion helpers (matchCommands, shouldSuggest, nextMatchIndex)
+├── vendor/
+│   └── read-multiline/  — vendored @toiroakr/read-multiline@0.4.1 + suggest patch (see its README)
 ├── ui/
 │   ├── style.js         — ANSI helpers (dim, bold, sep, thinking, answer)
 │   ├── format.js        — price formatting (formatModelPrice, formatPricePerM)
@@ -437,7 +444,7 @@ cli (index.js)           — commander argument parsing, delegates to command mo
 └── chat.js              — chat loop, slash commands, save-on-exit, SIGINT handling
 ```
 
-Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing, [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) for the interactive search/select UI, and [`@toiroakr/read-multiline`](https://www.npmjs.com/package/@toiroakr/read-multiline) for paste-safe multiline input.
+Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing and [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) for the interactive search/select UI. Multi-line input uses a vendored copy of [`@toiroakr/read-multiline`](https://www.npmjs.com/package/@toiroakr/read-multiline) 0.4.1 (see `src/vendor/read-multiline/README.md`).
 
 ### Provider contract
 

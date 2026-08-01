@@ -37,6 +37,6 @@ export default [
     },
   },
   {
-    ignores: ['node_modules/**', '.kilo/**', 'coverage/**'],
+    ignores: ['node_modules/**', '.kilo/**', 'coverage/**', 'src/vendor/**'],
   },
 ]

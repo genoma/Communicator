@@ -1,6 +1,7 @@
 import { UsageTracker, budgetLine, budgetStatus } from './tracker.js'
 import { getEffortLabel, resolveTemperatureFlag, selectReasoningEffort } from './prompts.js'
 import { DEFAULT_TEMPERATURE, formatCost } from './constants.js'
+import { CHAT_COMMANDS } from './commands.js'
 import { readInput } from './input.js'
 import { createStreamRenderer, renderHistory } from './ui/stream.js'
 import { formatError, ApiError } from './errors.js'
@@ -10,8 +11,6 @@ import { ensureSessionsDir, generateSessionId, generateTitle, saveSession } from
 import { savePreferences } from './config.js'
 import { selectModelAndEndpoint } from './model-selection.js'
 import { copyText } from './clipboard.js'
-
-const AVAILABLE_COMMANDS = '/quit, /new, /model, /reasoning, /temp, /budget, /retry, /copy, /markdown, /cost'
 
 export async function startChat(apiKey, model, endpointProviderName, reasoningEffort, temperature, pricing, provider, {
   systemPrompt = null,
@@ -235,7 +234,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
 
   while (true) {
     console.log(sep())
-    const result = await readInput()
+    const result = await readInput({ commands: CHAT_COMMANDS })
 
     if (result.cancelled) {
       return exitCleanly()
@@ -395,7 +394,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     }
 
     if (input.startsWith('/')) {
-      console.log(`Unknown command "${input}". Available: ${AVAILABLE_COMMANDS}\n`)
+      console.log(`Unknown command "${input}". Available: ${CHAT_COMMANDS.join(', ')}\n`)
       continue
     }
 
