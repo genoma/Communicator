@@ -26,6 +26,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
       budget: budget ?? result.budget ?? null,
       webSearch: resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: result.webSearch }),
       webResults: forcedWebResults ?? result.webResults ?? null,
+      smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
       pricing: result.pricing,
       initialMessages: result.initialMessages,
       sessionId: result.sessionId,
@@ -64,6 +65,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
     budget,
     webSearch,
     webResults: forcedWebResults ?? null,
+    smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
     webSearchSupported: selection.webSearchSupported,
     pricing: selection.pricing,
     provider,
@@ -108,6 +110,7 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerTyp
     webSearch: ctx.webSearch,
     webResults: ctx.webResults,
     webSearchSupported: ctx.webSearchSupported,
+    smoothStreaming: ctx.smoothStreaming,
     prefs,
     configPath: opts.config,
   })

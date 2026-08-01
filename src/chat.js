@@ -4,6 +4,7 @@ import { DEFAULT_TEMPERATURE } from './constants.js'
 import { CHAT_COMMANDS, chatCommands, budgetGuard, commandAcceptsArgs } from './commands/chat/index.js'
 import { readInput as defaultReadInput } from './input.js'
 import { createStreamRenderer, renderHistory, printSources } from './ui/stream.js'
+import { createLoader } from './ui/loader.js'
 import { formatError, ApiError } from './errors.js'
 import { extractPartialToken } from './sse-parser.js'
 import { dim, sep } from './ui/style.js'
@@ -45,6 +46,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     webSearch = 'off',
     webResults = null,
     webSearchSupported = undefined,
+    smoothStreaming = true,
     prefs = {},
     configPath = null,
   } = ctx
@@ -84,6 +86,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     webSearch,
     webResults,
     webSearchSupported,
+    smoothStreaming,
     sessionId,
     createdAt,
     modelReasoning,
@@ -125,7 +128,10 @@ export async function runChatSession(ctx = {}, deps = {}) {
     console.log(`${dim('Previous session:')} ${tracker.summary()}\n`)
   }
 
-  const render = renderer({ markdown: state.markdown, stdout })
+  const tty = stdout.isTTY === true
+
+  const render = renderer({ markdown: state.markdown, stdout, smooth: tty && state.smoothStreaming })
+  const loader = createLoader({ stdout })
 
   const saveCurrentSession = async () => {
     if (!state.sessionId || state.messages.length <= 1) return
@@ -192,11 +198,13 @@ export async function runChatSession(ctx = {}, deps = {}) {
 
     try {
       stdout.write('\n')
+      if (tty) loader.start(state.webSearch === 'always' ? 'Searching the web' : 'Waiting for response')
       apiResult = await provider.chatCompletion({
         apiKey,
         model: state.modelId,
         messages: state.messages,
         onToken: (token, type) => {
+          if (type === 'reasoning' || type === 'content') loader.stop()
           if (type === 'reasoning') streamedReasoning += token
           else if (type === 'content') streamedContent += token
           render(token, type)
@@ -213,7 +221,8 @@ export async function runChatSession(ctx = {}, deps = {}) {
         webResults: state.webResults,
         signal: streamController.signal,
       })
-      render.flush()
+      loader.stop()
+      await render.flush()
       stdout.write('\n\n')
 
       if (apiResult.sources?.length > 0) {
@@ -232,8 +241,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
         }
       }
     } catch (err) {
+      loader.stop()
       if (interrupted) {
-        render.flush()
+        render.flush({ sync: true })
         stdout.write('\n')
         const partial = { role: 'assistant', content: streamedContent }
         if (streamedReasoning) partial.reasoning = streamedReasoning
@@ -250,6 +260,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
         await saveCurrentSession()
         exit(130)
       }
+      render.flush({ sync: true })
       console.error(`\nError: ${formatError(err)}\n`)
       if (err instanceof ApiError && err.retryable) {
         state.messages.pop()

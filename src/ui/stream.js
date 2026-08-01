@@ -1,27 +1,105 @@
 import { dim, italic, you, thinking, answer } from './style.js'
 import { createMarkdownRenderer, renderText } from './markdown.js'
 import { hyperlink } from './hyperlink.js'
+import { SMOOTH_CHARS_PER_TICK, SMOOTH_TICK_MS } from '../constants.js'
 
-export function createStreamRenderer({ markdown = false, stdout = process.stdout } = {}) {
-  const md = createMarkdownRenderer({ getSources: () => render.sources, stdout })
+export function createStreamRenderer({ markdown = false, stdout = process.stdout, smooth = false, smoothCharsPerTick = SMOOTH_CHARS_PER_TICK, smoothTickMs = SMOOTH_TICK_MS } = {}) {
+  const md = createMarkdownRenderer({
+    getSources: () => render.sources,
+    stdout,
+    partialFlushMs: smooth ? smoothTickMs : undefined,
+  })
 
-  const render = (token, type) => {
+  const queue = []
+  let pumpTimer = null
+  let drainWaiter = null
+
+  const writeSegment = (type, text) => {
     if (type === 'start_reasoning') {
       stdout.write(`${thinking()}\n`)
-      stdout.write(token)
+      stdout.write(text)
     } else if (type === 'reasoning') {
-      stdout.write(dim(token))
+      stdout.write(dim(text))
     } else if (type === 'end_reasoning') {
       stdout.write(`\n\n${answer()}\n\n`)
     } else if (type === 'content') {
-      if (render.markdown) md.write(token)
-      else stdout.write(token)
+      if (render.markdown) md.write(text)
+      else stdout.write(text)
     }
   }
+
+  const pump = () => {
+    pumpTimer = null
+    let chars = 0
+    while (queue.length > 0 && (queue[0].marker || chars < smoothCharsPerTick)) {
+      const segment = queue.shift()
+      if (segment.marker) {
+        writeSegment(segment.type, segment.text)
+        continue
+      }
+      const take = Math.min(segment.text.length, smoothCharsPerTick - chars)
+      writeSegment(segment.type, segment.text.slice(0, take))
+      chars += take
+      if (take < segment.text.length) {
+        queue.unshift({ ...segment, text: segment.text.slice(take) })
+        break
+      }
+    }
+    if (queue.length > 0) {
+      schedulePump()
+    } else if (drainWaiter) {
+      const waiter = drainWaiter
+      drainWaiter = null
+      waiter.resolve()
+    }
+  }
+
+  const schedulePump = () => {
+    if (pumpTimer === null) {
+      pumpTimer = setTimeout(pump, smoothTickMs)
+      pumpTimer.unref?.()
+    }
+  }
+
+  const render = (token, type) => {
+    if (!render.smooth) {
+      writeSegment(type, token)
+      return
+    }
+    queue.push({ type, text: token, marker: type === 'start_reasoning' || type === 'end_reasoning' })
+    schedulePump()
+  }
   render.markdown = markdown
+  render.smooth = smooth
   render.sources = []
-  render.flush = () => {
-    if (render.markdown) md.flush()
+  render.flush = ({ sync = false } = {}) => {
+    if (sync) {
+      if (pumpTimer !== null) {
+        clearTimeout(pumpTimer)
+        pumpTimer = null
+      }
+      while (queue.length > 0) {
+        const segment = queue.shift()
+        writeSegment(segment.type, segment.text)
+      }
+      if (render.markdown) md.flush()
+      return
+    }
+    if (queue.length === 0) {
+      if (render.markdown) md.flush()
+      return
+    }
+    if (drainWaiter) return drainWaiter.promise
+    let resolveDrain
+    const promise = new Promise((resolve) => { resolveDrain = resolve })
+    drainWaiter = {
+      promise,
+      resolve: () => {
+        if (render.markdown) md.flush()
+        resolveDrain()
+      },
+    }
+    return promise
   }
 
   return render

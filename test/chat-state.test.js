@@ -25,7 +25,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   const s = makeState()
   assert.deepEqual(
     Object.keys(s).sort(),
-    ['budget', 'createdAt', 'endpointProviderName', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pricing', 'reasoningEffort', 'sessionId', 'supportsReasoning', 'systemContent', 'temperature', 'webResults', 'webSearch', 'webSearchSupported']
+    ['budget', 'createdAt', 'endpointProviderName', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pricing', 'reasoningEffort', 'sessionId', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'webResults', 'webSearch', 'webSearchSupported']
   )
   assert.equal(s.modelId, 'org/model')
   assert.equal(s.endpointProviderName, 'Provider')
@@ -41,6 +41,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   assert.equal(s.createdAt, '2026-01-01T00:00:00.000Z')
   assert.deepEqual(s.modelReasoning, { supported: true })
   assert.equal(s.markdown, true)
+  assert.equal(s.smoothStreaming, true)
   assert.deepEqual(s.messages, [{ role: 'system', content: 'You are a helpful assistant.' }])
 })
 
@@ -108,6 +109,7 @@ test('transitions mutate only their own fields', () => {
   s.setWebResults(7)
   s.setReasoningEffort('low')
   s.toggleMarkdown()
+  s.setSmoothStreaming(false)
 
   assert.equal(s.temperature, 0.5)
   assert.equal(s.budget, 2)
@@ -115,6 +117,7 @@ test('transitions mutate only their own fields', () => {
   assert.equal(s.webResults, 7)
   assert.equal(s.reasoningEffort, 'low')
   assert.equal(s.markdown, false)
+  assert.equal(s.smoothStreaming, false)
 
   assert.equal(s.modelId, 'org/model')
   assert.equal(s.endpointProviderName, 'Provider')

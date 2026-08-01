@@ -502,6 +502,50 @@ test('/markdown toggles state and renderer flags', async (t) => {
   assert.equal(consoleSpy.log(0), 'Markdown rendering disabled.\n')
 })
 
+test('/smooth shows the current status with no args', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  await chatCommands['/smooth'](ctx)
+  assert.equal(consoleSpy.log(0), 'Smooth streaming is on.\n')
+})
+
+test('/smooth off updates state, renderer and saves the global pref', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx()
+  const { ctx, prefsUpdates } = harness
+  ctx.render.smooth = true
+
+  await chatCommands['/smooth']({ ...ctx, args: 'off' })
+
+  assert.equal(ctx.state.smoothStreaming, false)
+  assert.equal(ctx.render.smooth, false)
+  assert.deepEqual(prefsUpdates, [{ smoothStreaming: false }])
+  assert.equal(consoleSpy.log(0), 'Smooth streaming disabled.\n')
+})
+
+test('/smooth on re-enables smooth streaming and saves the pref', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx()
+  const { ctx, prefsUpdates } = harness
+  ctx.state.setSmoothStreaming(false)
+  ctx.render.smooth = false
+
+  await chatCommands['/smooth']({ ...ctx, args: 'on' })
+
+  assert.equal(ctx.state.smoothStreaming, true)
+  assert.equal(ctx.render.smooth, true)
+  assert.deepEqual(prefsUpdates, [{ smoothStreaming: true }])
+  assert.equal(consoleSpy.log(0), 'Smooth streaming enabled.\n')
+})
+
+test('/smooth rejects invalid values', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  await chatCommands['/smooth']({ ...ctx, args: 'maybe' })
+  assert.equal(consoleSpy.error(0), 'Error: /smooth expects "on" or "off".\n')
+  assert.equal(ctx.state.smoothStreaming, true)
+})
+
 test('budgetGuard blocks when cost meets the budget', () => {
   const { ctx } = makeCtx()
   ctx.state.setBudget(5)
@@ -516,7 +560,7 @@ test('budgetGuard passes when no budget is set', () => {
   assert.equal(budgetGuard(ctx), null)
 })
 
-test('CHAT_COMMANDS keeps the 12-command order', () => {
+test('CHAT_COMMANDS keeps the 13-command order', () => {
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/new',
@@ -529,6 +573,7 @@ test('CHAT_COMMANDS keeps the 12-command order', () => {
     '/retry',
     '/copy',
     '/markdown',
+    '/smooth',
     '/cost',
   ])
 })
