@@ -46,7 +46,7 @@ export async function savePreferences(prefs, customPath) {
   await writeFile(configFile, JSON.stringify(prefs, null, 2) + '\n', 'utf-8')
 }
 
-export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastProvider, reasoningEffort, temperature, webSearch, smoothStreaming } = {}) {
+export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastProvider, reasoningEffort, temperature, webSearch, smoothStreaming, smoothSpeed } = {}) {
   const merged = { ...prefs }
   if (lastModel !== undefined) merged.lastModel = lastModel
   if (lastProvider !== undefined) merged.lastProvider = lastProvider
@@ -60,5 +60,6 @@ export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastProvider
     merged.webSearch = { ...prefs.webSearch, [modelId]: webSearch }
   }
   if (smoothStreaming !== undefined) merged.smoothStreaming = smoothStreaming
+  if (smoothSpeed !== undefined) merged.smoothSpeed = smoothSpeed
   return merged
 }

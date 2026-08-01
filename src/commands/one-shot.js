@@ -1,6 +1,6 @@
 import { getProvider } from '../providers/index.js'
-import { DEFAULT_TEMPERATURE } from '../constants.js'
-import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, resolveBudget } from '../flags.js'
+import { DEFAULT_TEMPERATURE, cpsToCharsPerTick } from '../constants.js'
+import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed } from '../flags.js'
 import { resolveFlagOrExit } from '../cli-utils.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
 import { ensureSessionsDir, generateSessionId, saveSession, buildSessionPayload } from '../sessions.js'
@@ -42,6 +42,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   const budget = resolveFlagOrExit(resolveBudget, opts.budget)
   const forcedTemperature = resolveFlagOrExit((v) => resolveTemperatureFlag({ temperature: v }), opts.temperature)
   const forcedWebResults = resolveFlagOrExit((v) => resolveWebResultsFlag({ webResults: v }), opts.webResults)
+  const smoothSpeed = resolveFlagOrExit(resolveSmoothSpeed, opts.smoothSpeed) ?? normalizeSmoothSpeed(prefs.smoothSpeed)
 
   let selection
   let temperature
@@ -100,7 +101,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     if (ttyOut) {
       const label = selection.endpointProviderName ? `${selection.endpointProviderName} / ${selection.modelId}` : selection.modelId
       console.log(`\nConnected to ${label}\n`)
-      const render = createStreamRenderer({ markdown: true, smooth: opts.smoothStreaming !== false && prefs.smoothStreaming !== false })
+      const render = createStreamRenderer({ markdown: true, smooth: opts.smoothStreaming !== false && prefs.smoothStreaming !== false, smoothCharsPerTick: cpsToCharsPerTick(smoothSpeed) })
       result = await provider.chatCompletion({
         ...completionOpts,
         onToken: render,

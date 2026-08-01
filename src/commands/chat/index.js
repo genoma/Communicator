@@ -1,8 +1,8 @@
 import { formatError } from '../../errors.js'
 import { selectModelAndEndpoint } from '../../model-selection.js'
 import { getEffortLabel, selectReasoningEffort } from '../../prompts.js'
-import { resolveTemperatureFlag, resolveWebResultsFlag } from '../../flags.js'
-import { DEFAULT_WEB_SEARCH_RESULTS, formatCost } from '../../constants.js'
+import { resolveTemperatureFlag, resolveWebResultsFlag, resolveSmoothSpeed } from '../../flags.js'
+import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed } from '../../constants.js'
 import { budgetStatus } from '../../tracker.js'
 import { dim } from '../../ui/style.js'
 
@@ -185,18 +185,31 @@ const handlers = {
   '/smooth': async (ctx) => {
     const value = ctx.args
     if (!value) {
-      console.log(`Smooth streaming is ${ctx.state.smoothStreaming ? 'on' : 'off'}.\n`)
+      const status = ctx.state.smoothStreaming ? `on (${formatSmoothSpeed(ctx.state.smoothSpeed)})` : 'off'
+      console.log(`Smooth streaming is ${status}.\n`)
       return
     }
-    if (value !== 'on' && value !== 'off') {
-      console.error('Error: /smooth expects "on" or "off".\n')
+    if (value === 'on' || value === 'off') {
+      const next = value === 'on'
+      ctx.state.setSmoothStreaming(next)
+      ctx.render.smooth = next
+      await ctx.savePrefs({ smoothStreaming: next })
+      console.log(`Smooth streaming ${next ? 'enabled' : 'disabled'}.\n`)
       return
     }
-    const next = value === 'on'
-    ctx.state.setSmoothStreaming(next)
-    ctx.render.smooth = next
-    await ctx.savePrefs({ smoothStreaming: next })
-    console.log(`Smooth streaming ${next ? 'enabled' : 'disabled'}.\n`)
+    let cps
+    try {
+      cps = resolveSmoothSpeed(value)
+    } catch (err) {
+      console.error(`\nError: ${err.message}\n`)
+      return
+    }
+    ctx.state.setSmoothStreaming(true)
+    ctx.state.setSmoothSpeed(cps)
+    ctx.render.smooth = true
+    ctx.render.smoothCharsPerTick = cpsToCharsPerTick(cps)
+    await ctx.savePrefs({ smoothStreaming: true, smoothSpeed: value })
+    console.log(`Smooth streaming enabled (${formatSmoothSpeed(cps)}).\n`)
   },
 
   '/cost': async (ctx) => {

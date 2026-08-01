@@ -51,7 +51,7 @@ function makeCtx(overrides = {}) {
     saveSession: async () => { savedSessions.push(state.messages.length) },
     savePrefs: async (updates) => { prefsUpdates.push(updates) },
     runTurn: async () => { turnCount++ },
-    render: { markdown: true },
+    render: { markdown: true, smooth: true, smoothCharsPerTick: 40 },
     newSessionId: async () => '2026-01-02T00-00-00',
     copyText: async (text) => { copied = text; return { ok: true } },
     selectModelAndEndpoint: undefined,
@@ -506,7 +506,16 @@ test('/smooth shows the current status with no args', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx } = makeCtx()
   await chatCommands['/smooth'](ctx)
-  assert.equal(consoleSpy.log(0), 'Smooth streaming is on.\n')
+  assert.equal(consoleSpy.log(0), 'Smooth streaming is on (normal, ~2000 chars/s).\n')
+})
+
+test('/smooth status shows off and the speed label', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  ctx.state.setSmoothStreaming(false)
+  ctx.state.setSmoothSpeed('fast')
+  await chatCommands['/smooth'](ctx)
+  assert.equal(consoleSpy.log(0), 'Smooth streaming is off.\n')
 })
 
 test('/smooth off updates state, renderer and saves the global pref', async (t) => {
@@ -542,8 +551,42 @@ test('/smooth rejects invalid values', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx } = makeCtx()
   await chatCommands['/smooth']({ ...ctx, args: 'maybe' })
-  assert.equal(consoleSpy.error(0), 'Error: /smooth expects "on" or "off".\n')
+  assert.equal(consoleSpy.error(0), '\nError: Smooth speed must be "slow", "normal", "fast", or a positive number of chars per second.\n')
   assert.equal(ctx.state.smoothStreaming, true)
+  assert.equal(ctx.state.smoothSpeed, 2000)
+  assert.equal(ctx.render.smoothCharsPerTick, 40)
+})
+
+test('/smooth fast enables streaming, sets the speed and saves the raw value', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx()
+  const { ctx, prefsUpdates } = harness
+  ctx.state.setSmoothStreaming(false)
+  ctx.render.smooth = false
+
+  await chatCommands['/smooth']({ ...ctx, args: 'fast' })
+
+  assert.equal(ctx.state.smoothStreaming, true)
+  assert.equal(ctx.state.smoothSpeed, 8000)
+  assert.equal(ctx.render.smooth, true)
+  assert.equal(ctx.render.smoothCharsPerTick, 160)
+  assert.deepEqual(prefsUpdates, [{ smoothStreaming: true, smoothSpeed: 'fast' }])
+  assert.equal(consoleSpy.log(0), 'Smooth streaming enabled (fast, ~8000 chars/s).\n')
+})
+
+test('/smooth with a numeric cps sets the speed and saves the raw value', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx()
+  const { ctx, prefsUpdates } = harness
+
+  await chatCommands['/smooth']({ ...ctx, args: '1500' })
+
+  assert.equal(ctx.state.smoothStreaming, true)
+  assert.equal(ctx.state.smoothSpeed, 1500)
+  assert.equal(ctx.render.smooth, true)
+  assert.equal(ctx.render.smoothCharsPerTick, 30)
+  assert.deepEqual(prefsUpdates, [{ smoothStreaming: true, smoothSpeed: '1500' }])
+  assert.equal(consoleSpy.log(0), 'Smooth streaming enabled (1500 chars/s).\n')
 })
 
 test('budgetGuard blocks when cost meets the budget', () => {

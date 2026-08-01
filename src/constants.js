@@ -19,6 +19,20 @@ export const SMOOTH_CHARS_PER_TICK = 40
 
 export const SMOOTH_TICK_MS = 20
 
+export const SMOOTH_SPEED_PRESETS = { slow: 500, normal: 2000, fast: 8000 }
+
+export const SMOOTH_DEFAULT_SPEED = 'normal'
+
+export function cpsToCharsPerTick(cps, tickMs = SMOOTH_TICK_MS) {
+  return Math.max(1, Math.round(cps * tickMs / 1000))
+}
+
+export function formatSmoothSpeed(cps) {
+  const preset = Object.entries(SMOOTH_SPEED_PRESETS).find(([, value]) => value === cps)
+  if (preset) return `${preset[0]}, ~${preset[1]} chars/s`
+  return `${cps} chars/s`
+}
+
 export const LOADER_GRACE_MS = 200
 
 export const LOADER_TICK_MS = 150

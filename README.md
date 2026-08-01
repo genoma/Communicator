@@ -86,6 +86,7 @@ Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make t
 |       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `off` (bare flag = `auto`). Per-model default is persisted in preferences |
 |       | `--web-results`       | `<n>`    | Number of web search results (OpenRouter only, default 10). Implies `auto` mode                             |
 |       | `--no-smooth-streaming` | —      | Disable smooth streaming (default: on in interactive sessions)                                              |
+|       | `--smooth-speed`      | `<level\|cps>` | Smooth streaming speed: `slow`, `normal`, `fast`, or chars per second (default: `normal` ≈ 2000) |
 | `-V`  | `--version`           | —        | Print the version and exit                                                           |
 |       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
 |       | `--list-endpoints`    | `<model>`| List providers for a model (pricing, uptime) and exit                                |
@@ -212,6 +213,8 @@ Streaming is live: the current in-flight line is written as tokens arrive and re
 
 In interactive (TTY) sessions, streaming is paced by default: tokens are buffered and rendered at a steady character rate (~40 chars per 20 ms tick) instead of being written the instant each SSE event arrives. This smooths out bursts — most notably the first content chunk after a web-search delay — while slow streams still render as fast as they arrive (pacing is a cap, not an artificial delay). When the stream ends, any remaining buffered text keeps rendering at the same paced rate rather than popping in all at once. Piped output is never paced. Disable it with `--no-smooth-streaming` at launch or `/smooth off` mid-chat (`/smooth` shows the current state, `/smooth on` re-enables; the choice is persisted in preferences).
 
+The pace is a global speed setting, persisted in preferences under `smoothSpeed` (shared by every session, like `smoothStreaming`). Set it at launch with `--smooth-speed <level|cps>` (`slow` ≈ 500 chars/s, `normal` ≈ 2000 chars/s, `fast` ≈ 8000 chars/s, or any positive chars-per-second value) or mid-chat with `/smooth slow|normal|fast|<cps>`, which also enables smooth streaming. Speed changes apply live: the very next tick of an in-flight stream uses the new pace. The speed is inert when smooth streaming is off or output is piped.
+
 While the model is working, a dim indicator appears on the response line roughly 200 ms after you send the message — `Waiting for response...` with animated dots (or `Searching the web...` when web search is forced with `always`, since that mode is guaranteed to search). The indicator is erased the moment the first token arrives, and it never shows for instant replies.
 
 ### Budget caps
@@ -242,7 +245,7 @@ Web search has three modes, persisted per model in `~/.communicator.json` under 
 | `/retry`       | Re-run the last user turn (regenerates the last answer)                             |
 | `/copy`        | Copy the last assistant response to the clipboard                                   |
 | `/markdown`    | Toggle terminal markdown rendering (default on)                                     |
-| `/smooth`      | Show smooth streaming state, or set it with `/smooth on` / `/smooth off`            |
+| `/smooth`      | Show smooth streaming state and speed, or set them with `/smooth on|off|<level>|<cps>` (a speed value implies on) |
 | `/cost`        | Print the running session cost/token totals and current reasoning effort            |
 | `Cmd+C` / `Ctrl+C` | During streaming: abort, save the partial response, and exit. At the prompt: cancel and exit |
 

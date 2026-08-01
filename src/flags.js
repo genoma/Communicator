@@ -1,4 +1,4 @@
-import { MAX_TEMPERATURE } from './constants.js'
+import { MAX_TEMPERATURE, SMOOTH_DEFAULT_SPEED, SMOOTH_SPEED_PRESETS } from './constants.js'
 
 export function resolveReasoningFlag({ reasoningEffort }) {
   if (reasoningEffort === 'none') return null
@@ -46,4 +46,23 @@ export function resolveBudget(value) {
     throw new Error('--budget must be a positive number (USD).')
   }
   return budget
+}
+
+export function resolveSmoothSpeed(value) {
+  if (value === undefined || value === null || value === '') return undefined
+  const preset = SMOOTH_SPEED_PRESETS[value]
+  if (preset !== undefined) return preset
+  const num = Number(value)
+  if (!Number.isFinite(num) || num <= 0) {
+    throw new Error('Smooth speed must be "slow", "normal", "fast", or a positive number of chars per second.')
+  }
+  return num
+}
+
+export function normalizeSmoothSpeed(value) {
+  try {
+    return resolveSmoothSpeed(value) ?? SMOOTH_SPEED_PRESETS[SMOOTH_DEFAULT_SPEED]
+  } catch {
+    return SMOOTH_SPEED_PRESETS[SMOOTH_DEFAULT_SPEED]
+  }
 }

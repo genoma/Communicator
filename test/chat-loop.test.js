@@ -466,6 +466,29 @@ test('renderer receives smooth only for TTY sessions with smoothStreaming on', a
   )
 
   assert.deepEqual(optsSeen.map((o) => o.smooth), [false, true, false])
+  assert.deepEqual(optsSeen.map((o) => o.smoothCharsPerTick), [40, 40, 40])
+})
+
+test('renderer receives smoothCharsPerTick derived from the smooth speed', async (t) => {
+  mockConsole(t)
+  const optsSeen = []
+  const renderer = (opts) => {
+    optsSeen.push(opts)
+    return fakeRenderer(opts)
+  }
+  const { provider } = fakeProvider()
+  const ttyStdout = { write() {}, isTTY: true }
+
+  await runChatSession(
+    baseCtx(provider, { smoothSpeed: 'fast' }),
+    makeDeps({ readInput: scriptedInput(['/quit']), renderer, stdout: ttyStdout }).deps
+  )
+  await runChatSession(
+    baseCtx(provider, { smoothSpeed: 500 }),
+    makeDeps({ readInput: scriptedInput(['/quit']), renderer, stdout: ttyStdout }).deps
+  )
+
+  assert.deepEqual(optsSeen.map((o) => o.smoothCharsPerTick), [160, 10])
 })
 
 test('loader shows frames during a delayed response and clears on the first token', async (t) => {
@@ -513,9 +536,28 @@ test('/smooth shows status and /smooth off saves the pref and updates the render
   await runChatSession(baseCtx(provider), harness.deps)
 
   const statusLine = consoleSpy.allLogs().find((l) => l.startsWith('Smooth streaming is'))
-  assert.equal(statusLine, 'Smooth streaming is on.\n')
+  assert.equal(statusLine, 'Smooth streaming is on (normal, ~2000 chars/s).\n')
   const disableLine = consoleSpy.allLogs().find((l) => l === 'Smooth streaming disabled.\n')
   assert.ok(disableLine)
   assert.ok(harness.prefsCalls.some((p) => p.smoothStreaming === false))
   assert.equal(liveRender.smooth, false)
+})
+
+test('/smooth with a speed enables streaming, sets the speed and saves the raw pref', async (t) => {
+  const consoleSpy = mockConsole(t)
+  let liveRender
+  const renderer = (opts) => {
+    liveRender = fakeRenderer(opts)
+    return liveRender
+  }
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/smooth fast', '/quit']), renderer })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  const enableLine = consoleSpy.allLogs().find((l) => l.startsWith('Smooth streaming enabled'))
+  assert.equal(enableLine, 'Smooth streaming enabled (fast, ~8000 chars/s).\n')
+  assert.ok(harness.prefsCalls.some((p) => p.smoothStreaming === true && p.smoothSpeed === 'fast'))
+  assert.equal(liveRender.smooth, true)
+  assert.equal(liveRender.smoothCharsPerTick, 160)
 })
