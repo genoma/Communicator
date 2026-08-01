@@ -34,8 +34,8 @@ export function normalizeWebSearchMode(value) {
 }
 
 export function resolveWebSearchFlag({ webSearch, webResults, prefValue } = {}) {
+  if (webSearch !== undefined && webSearch !== null && webSearch !== '') return normalizeWebSearchMode(webSearch)
   if (webResults != null) return 'auto'
-  if (webSearch) return normalizeWebSearchMode(webSearch)
   return normalizeWebSearchMode(prefValue)
 }
 

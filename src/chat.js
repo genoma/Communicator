@@ -107,9 +107,8 @@ export async function runChatSession(ctx = {}, deps = {}) {
   if (reasoningEffort != null) bannerParts.push(`[thinking: ${getEffortLabel(reasoningEffort)}]`)
   if (temperature !== DEFAULT_TEMPERATURE) bannerParts.push(`[temp: ${temperature}]`)
   if (state.webSearch !== 'off') {
-    const label = state.webSearch === 'always' ? 'always' : ''
-    const badge = label ? `web:${label}` : 'web'
-    bannerParts.push(state.webResults != null ? `[${badge}: ${state.webResults}]` : `[${badge}]`)
+    const results = state.webResults != null ? `: ${state.webResults}` : ''
+    bannerParts.push(`[web: ${state.webSearch}${results}]`)
   }
   if (bannerParts.length > 0) {
     console.log(`\nConnected to ${label}  ${bannerParts.join('  ')}`)
@@ -119,31 +118,19 @@ export async function runChatSession(ctx = {}, deps = {}) {
   console.log('Send with Enter  |  Newline: Ctrl+J  |  /quit to exit\n')
 
   if (initialMessages) {
-    renderHistory(state.messages, { markdown: state.markdown })
+    renderHistory(state.messages, { markdown: state.markdown, stdout })
   }
 
   if (initialMessages && tracker.requests > 0) {
     console.log(`${dim('Previous session:')} ${tracker.summary()}\n`)
   }
 
-  const render = renderer({ markdown: state.markdown })
+  const render = renderer({ markdown: state.markdown, stdout })
 
   const saveCurrentSession = async () => {
     if (!state.sessionId || state.messages.length <= 1) return
     try {
-      await saveSessionFile(state.sessionId, buildSessionPayload({
-        messages: state.messages,
-        modelId: state.modelId,
-        endpointProviderName: state.endpointProviderName,
-        providerType: provider.meta.name,
-        reasoningEffort: state.reasoningEffort,
-        temperature: state.temperature,
-        budget: state.budget,
-        webSearch: state.webSearch,
-        webResults: state.webResults,
-        pricing: state.pricing,
-        createdAt: state.createdAt,
-      }))
+      await saveSessionFile(state.sessionId, buildSessionPayload(state.toFinalState(provider.meta.name)))
     } catch {
       // save failures are non-fatal
     }

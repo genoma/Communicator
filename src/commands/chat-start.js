@@ -1,5 +1,6 @@
 import { getProvider } from '../providers/index.js'
 import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, resolveBudget } from '../flags.js'
+import { resolveFlagOrExit } from '../cli-utils.js'
 import { DEFAULT_TEMPERATURE } from '../constants.js'
 import { startChat } from '../chat.js'
 import { ensureSessionsDir, generateSessionId, saveSession, buildSessionPayload } from '../sessions.js'
@@ -7,36 +8,10 @@ import { resumeCmd } from './resume.js'
 import { getApiKey, savePreferences, applyPreferenceUpdates } from '../config.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
 
-function resolveBudgetFlag(value) {
-  try {
-    return resolveBudget(value)
-  } catch (err) {
-    console.error(`Error: ${err.message}`)
-    process.exit(1)
-  }
-}
-
-function resolveWebResults(value) {
-  try {
-    return resolveWebResultsFlag({ webResults: value })
-  } catch (err) {
-    console.error(`Error: ${err.message}`)
-    process.exit(1)
-  }
-}
-
 async function createSessionContext({ apiKey, opts, prefs, providerType }) {
-  let forcedTemperature
-  if (opts.temperature !== undefined && opts.temperature !== null && opts.temperature !== '') {
-    try {
-      forcedTemperature = resolveTemperatureFlag({ temperature: opts.temperature })
-    } catch (err) {
-      console.error(`Error: ${err.message}`)
-      process.exit(1)
-    }
-  }
-  const budget = resolveBudgetFlag(opts.budget)
-  const forcedWebResults = resolveWebResults(opts.webResults)
+  const forcedTemperature = resolveFlagOrExit((v) => resolveTemperatureFlag({ temperature: v }), opts.temperature)
+  const budget = resolveFlagOrExit(resolveBudget, opts.budget)
+  const forcedWebResults = resolveFlagOrExit((v) => resolveWebResultsFlag({ webResults: v }), opts.webResults)
 
   if (opts.resume !== undefined) {
     const result = await resumeCmd(opts.resume)
@@ -104,19 +79,7 @@ async function persistSessionEnd({ finalState, opts, prefs }) {
   if (finalState.sessionId && finalState.messages && finalState.messages.length > 1) {
     try {
       const dir = await ensureSessionsDir()
-      await saveSession(dir, finalState.sessionId, buildSessionPayload({
-        messages: finalState.messages,
-        modelId: finalState.modelId,
-        endpointProviderName: finalState.endpointProviderName,
-        providerType: finalState.providerType,
-        reasoningEffort: finalState.reasoningEffort,
-        temperature: finalState.temperature,
-        budget: finalState.budget,
-        webSearch: finalState.webSearch,
-        webResults: finalState.webResults,
-        pricing: finalState.pricing,
-        createdAt: finalState.createdAt,
-      }))
+      await saveSession(dir, finalState.sessionId, buildSessionPayload(finalState))
     } catch {
       // save failures are non-fatal
     }

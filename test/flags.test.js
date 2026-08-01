@@ -85,9 +85,10 @@ test('resolveWebSearchFlag: CLI flag wins over the saved pref', () => {
   assert.equal(resolveWebSearchFlag({ webSearch: 'off', prefValue: 'always' }), 'off')
 })
 
-test('resolveWebSearchFlag: --web-results implies auto regardless of pref', () => {
+test('resolveWebSearchFlag: --web-results implies auto unless an explicit mode is given', () => {
   assert.equal(resolveWebSearchFlag({ webResults: 5, prefValue: false }), 'auto')
-  assert.equal(resolveWebSearchFlag({ webSearch: 'off', webResults: 3, prefValue: false }), 'auto')
+  assert.equal(resolveWebSearchFlag({ webSearch: 'off', webResults: 3, prefValue: false }), 'off')
+  assert.equal(resolveWebSearchFlag({ webSearch: 'always', webResults: 5, prefValue: 'off' }), 'always')
 })
 
 test('resolveWebSearchFlag: pref wins over the default off when no flag is passed', () => {
