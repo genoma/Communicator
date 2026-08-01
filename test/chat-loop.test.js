@@ -101,7 +101,7 @@ test('happy path runs a turn and saves the final session once', async (t) => {
   assert.equal(opts.provider, 'Provider')
   assert.equal(opts.reasoningEffort, 'high')
   assert.equal(opts.temperature, 1.1)
-  assert.equal(opts.webSearch, false)
+  assert.equal(opts.webSearch, 'off')
   assert.equal(opts.webResults, null)
   assert.equal(opts.supportsReasoning, true)
   assert.equal(opts.sessionId, '2026-01-01T00-00-00')
@@ -302,7 +302,7 @@ test('banner shows reasoning and web badges when active', async (t) => {
   const harness = makeDeps({ readInput: scriptedInput(['/quit']) })
 
   await runChatSession(
-    baseCtx(provider, { reasoningEffort: 'high', temperature: 1.1, webSearch: true, webResults: 3 }),
+    baseCtx(provider, { reasoningEffort: 'high', temperature: 1.1, webSearch: 'auto', webResults: 3 }),
     harness.deps
   )
 
@@ -315,11 +315,37 @@ test('banner shows a bare web badge when results are not set', async (t) => {
   const harness = makeDeps({ readInput: scriptedInput(['/quit']) })
 
   await runChatSession(
-    baseCtx(provider, { reasoningEffort: null, temperature: 0.7, webSearch: true, webResults: null }),
+    baseCtx(provider, { reasoningEffort: null, temperature: 0.7, webSearch: 'auto', webResults: null }),
     harness.deps
   )
 
   assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [web]')
+})
+
+test('banner shows the always badge', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/quit']) })
+
+  await runChatSession(
+    baseCtx(provider, { reasoningEffort: null, temperature: 0.7, webSearch: 'always', webResults: null }),
+    harness.deps
+  )
+
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [web:always]')
+})
+
+test('banner shows the always badge with a result count', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/quit']) })
+
+  await runChatSession(
+    baseCtx(provider, { reasoningEffort: null, temperature: 0.7, webSearch: 'always', webResults: 5 }),
+    harness.deps
+  )
+
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [web:always: 5]')
 })
 
 test('retry pops the assistant message and resends the same user message', async (t) => {

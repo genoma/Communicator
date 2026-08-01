@@ -110,21 +110,21 @@ const handlers = {
     const value = ctx.args
     if (!value) {
       const results = ctx.state.webResults != null ? ` (${ctx.state.webResults} results)` : ''
-      console.log(`Web search is ${ctx.state.webSearch ? 'enabled' : 'disabled'}${results}.\n`)
+      console.log(`Web search is ${ctx.state.webSearch}${results}.\n`)
       return
     }
-    const on = value === 'on' ? true : value === 'off' ? false : undefined
-    if (on === undefined) {
-      console.error('Error: /web-search expects "on" or "off".\n')
+    const mode = value === 'on' ? 'auto' : ['auto', 'always', 'off'].includes(value) ? value : undefined
+    if (mode === undefined) {
+      console.error('Error: /web-search expects "on", "off", "auto", or "always".\n')
       return
     }
-    if (on && ctx.state.webSearchSupported === false) {
+    if (mode !== 'off' && ctx.state.webSearchSupported === false) {
       console.log('This model does not support web search.\n')
       return
     }
-    ctx.state.setWebSearch(on)
-    await ctx.savePrefs({ modelId: ctx.state.modelId, webSearch: on })
-    console.log(`Web search ${on ? 'enabled' : 'disabled'}.\n`)
+    ctx.state.setWebSearch(mode)
+    await ctx.savePrefs({ modelId: ctx.state.modelId, webSearch: mode })
+    console.log(mode === 'off' ? 'Web search disabled.\n' : `Web search set to ${mode}.\n`)
   },
 
   '/web-results': async (ctx) => {

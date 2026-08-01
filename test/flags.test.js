@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, validateTemperature, resolveBudget } from '../src/flags.js'
+import { resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, normalizeWebSearchMode, validateTemperature, resolveBudget } from '../src/flags.js'
 
 test('resolveTemperatureFlag parses string and number values', () => {
   assert.equal(resolveTemperatureFlag({ temperature: '0.5' }), 0.5)
@@ -59,21 +59,43 @@ test('resolveWebResultsFlag rejects non-positive and non-integer values', () => 
   assert.throws(() => resolveWebResultsFlag({ webResults: Infinity }), /positive integer/)
 })
 
-test('resolveWebSearchFlag: CLI flag wins over the saved pref', () => {
-  assert.equal(resolveWebSearchFlag({ webSearch: true, prefValue: false }), true)
-  assert.equal(resolveWebSearchFlag({ webSearch: true, prefValue: true }), true)
+test('normalizeWebSearchMode maps legacy on/true to auto', () => {
+  assert.equal(normalizeWebSearchMode(true), 'auto')
+  assert.equal(normalizeWebSearchMode('on'), 'auto')
 })
 
-test('resolveWebSearchFlag: --web-results implies web search on regardless of pref', () => {
-  assert.equal(resolveWebSearchFlag({ webResults: 5, prefValue: false }), true)
-  assert.equal(resolveWebSearchFlag({ webSearch: false, webResults: 3, prefValue: false }), true)
+test('normalizeWebSearchMode passes the three explicit modes through', () => {
+  assert.equal(normalizeWebSearchMode('auto'), 'auto')
+  assert.equal(normalizeWebSearchMode('always'), 'always')
+  assert.equal(normalizeWebSearchMode('off'), 'off')
+})
+
+test('normalizeWebSearchMode falls back to off for missing and unknown values', () => {
+  assert.equal(normalizeWebSearchMode(undefined), 'off')
+  assert.equal(normalizeWebSearchMode(null), 'off')
+  assert.equal(normalizeWebSearchMode(false), 'off')
+  assert.equal(normalizeWebSearchMode(''), 'off')
+  assert.equal(normalizeWebSearchMode('bogus'), 'off')
+})
+
+test('resolveWebSearchFlag: CLI flag wins over the saved pref', () => {
+  assert.equal(resolveWebSearchFlag({ webSearch: true, prefValue: false }), 'auto')
+  assert.equal(resolveWebSearchFlag({ webSearch: true, prefValue: 'always' }), 'auto')
+  assert.equal(resolveWebSearchFlag({ webSearch: 'always', prefValue: 'off' }), 'always')
+  assert.equal(resolveWebSearchFlag({ webSearch: 'off', prefValue: 'always' }), 'off')
+})
+
+test('resolveWebSearchFlag: --web-results implies auto regardless of pref', () => {
+  assert.equal(resolveWebSearchFlag({ webResults: 5, prefValue: false }), 'auto')
+  assert.equal(resolveWebSearchFlag({ webSearch: 'off', webResults: 3, prefValue: false }), 'auto')
 })
 
 test('resolveWebSearchFlag: pref wins over the default off when no flag is passed', () => {
-  assert.equal(resolveWebSearchFlag({ webSearch: undefined, prefValue: true }), true)
-  assert.equal(resolveWebSearchFlag({ webSearch: undefined, prefValue: false }), false)
-  assert.equal(resolveWebSearchFlag({ webSearch: undefined, prefValue: undefined }), false)
-  assert.equal(resolveWebSearchFlag({}), false)
+  assert.equal(resolveWebSearchFlag({ webSearch: undefined, prefValue: true }), 'auto')
+  assert.equal(resolveWebSearchFlag({ webSearch: undefined, prefValue: 'always' }), 'always')
+  assert.equal(resolveWebSearchFlag({ webSearch: undefined, prefValue: false }), 'off')
+  assert.equal(resolveWebSearchFlag({ webSearch: undefined, prefValue: undefined }), 'off')
+  assert.equal(resolveWebSearchFlag({}), 'off')
 })
 
 test('resolveBudget returns null for empty values', () => {

@@ -1,4 +1,5 @@
 import { DEFAULT_TEMPERATURE } from './constants.js'
+import { normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
   constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, supportsReasoning, webSearch, webResults, webSearchSupported, sessionId, createdAt, modelReasoning, markdown = true, messages, systemContent }) {
@@ -9,7 +10,7 @@ export class ChatState {
     this.budget = budget
     this.pricing = pricing
     this.supportsReasoning = supportsReasoning
-    this.webSearch = webSearch
+    this.webSearch = normalizeWebSearchMode(webSearch)
     this.webResults = webResults
     this.webSearchSupported = webSearchSupported
     this.sessionId = sessionId
@@ -53,7 +54,7 @@ export class ChatState {
   }
 
   setWebSearch(value) {
-    this.webSearch = value
+    this.webSearch = normalizeWebSearchMode(value)
   }
 
   setWebResults(value) {
@@ -73,7 +74,7 @@ export class ChatState {
     this.modelReasoning = sel.modelReasoning
     this.temperature = prefs.temperature?.[sel.modelId] ?? DEFAULT_TEMPERATURE
     this.webSearchSupported = sel.webSearchSupported
-    this.webSearch = sel.webSearchSupported === false ? false : (prefs.webSearch?.[sel.modelId] ?? false)
+    this.webSearch = sel.webSearchSupported === false ? 'off' : normalizeWebSearchMode(prefs.webSearch?.[sel.modelId])
   }
 
   toggleMarkdown() {

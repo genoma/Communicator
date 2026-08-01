@@ -100,7 +100,9 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
     }
   }
 
-  if (webSearch) {
+  if (webSearch === 'auto') {
+    body.tools = [{ type: 'openrouter:web_search', parameters: { max_results: webResults ?? DEFAULT_WEB_SEARCH_RESULTS } }]
+  } else if (webSearch === 'always') {
     body.plugins = [{ id: 'web', max_results: webResults ?? DEFAULT_WEB_SEARCH_RESULTS }]
   }
 

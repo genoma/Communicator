@@ -346,7 +346,7 @@ test('chatCompletion maps venice sessionId to prompt_cache_key', async (t) => {
   assert.equal(result.content, 'ok')
 })
 
-test('openrouter chatCompletion adds web plugin with default max_results when web search is on', async (t) => {
+test('openrouter chatCompletion adds the web_search server tool with default max_results in auto mode', async (t) => {
   let sentBody
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
     sentBody = JSON.parse(opts.body)
@@ -358,13 +358,52 @@ test('openrouter chatCompletion adds web plugin with default max_results when we
     model: 'm',
     messages: [],
     onToken: () => {},
-    webSearch: true,
+    webSearch: 'auto',
+  })
+
+  assert.deepEqual(sentBody.tools, [{ type: 'openrouter:web_search', parameters: { max_results: 10 } }])
+  assert.equal(sentBody.plugins, undefined)
+})
+
+test('openrouter chatCompletion uses custom max_results in the server tool when webResults is set', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'm',
+    messages: [],
+    onToken: () => {},
+    webSearch: 'auto',
+    webResults: 3,
+  })
+
+  assert.deepEqual(sentBody.tools, [{ type: 'openrouter:web_search', parameters: { max_results: 3 } }])
+})
+
+test('openrouter chatCompletion uses the deprecated web plugin with default max_results in always mode', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'm',
+    messages: [],
+    onToken: () => {},
+    webSearch: 'always',
   })
 
   assert.deepEqual(sentBody.plugins, [{ id: 'web', max_results: 10 }])
+  assert.equal(sentBody.tools, undefined)
 })
 
-test('openrouter chatCompletion uses custom max_results when webResults is set', async (t) => {
+test('openrouter chatCompletion uses custom max_results in the web plugin when webResults is set', async (t) => {
   let sentBody
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
     sentBody = JSON.parse(opts.body)
@@ -376,14 +415,14 @@ test('openrouter chatCompletion uses custom max_results when webResults is set',
     model: 'm',
     messages: [],
     onToken: () => {},
-    webSearch: true,
+    webSearch: 'always',
     webResults: 3,
   })
 
   assert.deepEqual(sentBody.plugins, [{ id: 'web', max_results: 3 }])
 })
 
-test('openrouter chatCompletion never sends plugins when web search is off', async (t) => {
+test('openrouter chatCompletion never sends tools or plugins when web search is off', async (t) => {
   let sentBody
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
     sentBody = JSON.parse(opts.body)
@@ -395,29 +434,34 @@ test('openrouter chatCompletion never sends plugins when web search is off', asy
     model: 'm',
     messages: [],
     onToken: () => {},
-    webSearch: false,
+    webSearch: 'off',
     webResults: 3,
   })
 
+  assert.equal(sentBody.tools, undefined)
   assert.equal(sentBody.plugins, undefined)
 })
 
-test('venice chatCompletion sets enable_web_search on venice_parameters only when web search is on', async (t) => {
+test('venice chatCompletion maps auto/always/off to enable_web_search', async (t) => {
   const sentBodies = []
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
     sentBodies.push(JSON.parse(opts.body))
     return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
   })
 
-  await venice.chatCompletion({ apiKey: 'key', model: 'm', messages: [], onToken: () => {}, webSearch: true })
-  await venice.chatCompletion({ apiKey: 'key', model: 'm', messages: [], onToken: () => {}, webSearch: false })
+  await venice.chatCompletion({ apiKey: 'key', model: 'm', messages: [], onToken: () => {}, webSearch: 'auto' })
+  await venice.chatCompletion({ apiKey: 'key', model: 'm', messages: [], onToken: () => {}, webSearch: 'always' })
+  await venice.chatCompletion({ apiKey: 'key', model: 'm', messages: [], onToken: () => {}, webSearch: 'off' })
   await venice.chatCompletion({ apiKey: 'key', model: 'm', messages: [], onToken: () => {} })
 
-  assert.equal(sentBodies[0].venice_parameters.enable_web_search, 'on')
+  assert.equal(sentBodies[0].venice_parameters.enable_web_search, 'auto')
   assert.equal(sentBodies[0].venice_parameters.enable_web_citations, true)
-  assert.equal(sentBodies[1].venice_parameters.enable_web_search, undefined)
-  assert.equal(sentBodies[1].venice_parameters.enable_web_citations, undefined)
-  assert.equal(sentBodies[2].venice_parameters.enable_web_search, undefined)
+  assert.equal(sentBodies[1].venice_parameters.enable_web_search, 'on')
+  assert.equal(sentBodies[1].venice_parameters.enable_web_citations, true)
+  assert.equal(sentBodies[2].venice_parameters.enable_web_search, 'off')
+  assert.equal(sentBodies[2].venice_parameters.enable_web_citations, undefined)
+  assert.equal(sentBodies[3].venice_parameters.enable_web_search, 'off')
+  assert.equal(sentBodies[3].venice_parameters.enable_web_citations, undefined)
 })
 
 test('venice chatCompletion returns sources and forwards onSources', async (t) => {
@@ -437,7 +481,7 @@ test('venice chatCompletion returns sources and forwards onSources', async (t) =
     messages: [],
     onToken: () => {},
     onSources: (sources) => seen.push(sources),
-    webSearch: true,
+    webSearch: 'auto',
   })
 
   assert.deepEqual(result.sources, citations)
@@ -458,7 +502,7 @@ test('openrouter chatCompletion returns sources on cache HIT', async (t) => {
     model: 'org/model',
     messages: [],
     onToken: () => {},
-    webSearch: true,
+    webSearch: 'auto',
   })
 
   assert.deepEqual(result.sources, [{ title: 'One', url: 'https://one.example' }])
@@ -482,7 +526,7 @@ test('both providers accept the full documented option set without throwing', as
     supportsReasoning: true,
     sessionId: '2026-01-01T00-00-00',
     temperature: 0.9,
-    webSearch: true,
+    webSearch: 'auto',
     webResults: 3,
     signal: undefined,
   }
@@ -532,12 +576,12 @@ test('venice maps sessionId to prompt_cache_key with the full option set', async
     supportsReasoning: true,
     sessionId: '2026-01-01T00-00-00',
     temperature: 0.9,
-    webSearch: true,
+    webSearch: 'auto',
     webResults: 3,
   })
 
   assert.equal(sentBody.prompt_cache_key, '2026-01-01T00-00-00')
   assert.equal(sentBody.reasoning_effort, 'high')
-  assert.equal(sentBody.venice_parameters.enable_web_search, 'on')
+  assert.equal(sentBody.venice_parameters.enable_web_search, 'auto')
   assert.equal(sentBody.temperature, 0.9)
 })

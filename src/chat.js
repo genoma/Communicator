@@ -42,7 +42,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     supportsReasoning = true,
     modelReasoning = null,
     budget = null,
-    webSearch = false,
+    webSearch = 'off',
     webResults = null,
     webSearchSupported = undefined,
     prefs = {},
@@ -106,8 +106,10 @@ export async function runChatSession(ctx = {}, deps = {}) {
   const bannerParts = []
   if (reasoningEffort != null) bannerParts.push(`[thinking: ${getEffortLabel(reasoningEffort)}]`)
   if (temperature !== DEFAULT_TEMPERATURE) bannerParts.push(`[temp: ${temperature}]`)
-  if (state.webSearch) {
-    bannerParts.push(state.webResults != null ? `[web: ${state.webResults}]` : '[web]')
+  if (state.webSearch !== 'off') {
+    const label = state.webSearch === 'always' ? 'always' : ''
+    const badge = label ? `web:${label}` : 'web'
+    bannerParts.push(state.webResults != null ? `[${badge}: ${state.webResults}]` : `[${badge}]`)
   }
   if (bannerParts.length > 0) {
     console.log(`\nConnected to ${label}  ${bannerParts.join('  ')}`)

@@ -185,7 +185,7 @@ test('buildSessionPayload returns the full save object shape', () => {
     reasoningEffort: 'high',
     temperature: 1.1,
     budget: 5,
-    webSearch: true,
+    webSearch: 'auto',
     webResults: 3,
     pricing: { prompt: 0.000001, completion: 0.000002 },
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -212,7 +212,7 @@ test('buildSessionPayload returns the full save object shape', () => {
   assert.equal(payload.reasoningEffort, 'high')
   assert.equal(payload.temperature, 1.1)
   assert.equal(payload.budget, 5)
-  assert.equal(payload.webSearch, true)
+  assert.equal(payload.webSearch, 'auto')
   assert.equal(payload.webResults, 3)
   assert.deepEqual(payload.pricing, { prompt: 0.000001, completion: 0.000002 })
   assert.equal(payload.createdAt, '2026-01-01T00:00:00.000Z')
@@ -291,7 +291,7 @@ test('buildSessionPayload output round-trips through saveSession and loadSession
     reasoningEffort: 'medium',
     temperature: 0.7,
     budget: 2.5,
-    webSearch: true,
+    webSearch: 'always',
     webResults: 5,
     pricing: { prompt: 0.000001, completion: 0.000002 },
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -303,7 +303,7 @@ test('buildSessionPayload output round-trips through saveSession and loadSession
   assert.equal(loaded.providerName, 'TestProvider')
   assert.equal(loaded.reasoningEffort, 'medium')
   assert.equal(loaded.budget, 2.5)
-  assert.equal(loaded.webSearch, true)
+  assert.equal(loaded.webSearch, 'always')
   assert.equal(loaded.webResults, 5)
   assert.deepEqual(loaded.pricing, { prompt: 0.000001, completion: 0.000002 })
   assert.equal(loaded.title, 'First question')

@@ -9,13 +9,13 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Provider selection** — compare pricing, uptime %, and routing tags before starting a chat. Single-provider models skip this step automatically. Navigate back to the model picker at any time. Venice models are directly available (no multi-provider routing)
 - **Reasoning effort control** — per-model effort level persisted across sessions. Only shown for models that support reasoning. OpenRouter uses its native reasoning format; Venice uses standard OpenAI `reasoning_effort`
 - **Temperature control** — `--temperature <0-2>` flag, `/temp` command, per-model default persisted in preferences
-- **Web search** — per-model web search toggle for both providers (`--web-search`, `/web-search`). OpenRouter lets you set the result count (`--web-results <n>`, `/web-results <n>`); Venice is on/off only
+- **Web search** — three modes per model (`off`, `auto` = model decides when to search, `always` = force a search every request) via `--web-search`/`/web-search`. OpenRouter lets you set the result count (`--web-results <n>`, `/web-results <n>`); Venice has no result-count knob
 - **One-shot mode** — pass a prompt argument or pipe input via stdin for a single non-interactive answer. TTY-aware output: styled with usage footer on a terminal, plain answer text only when piped
 - **Per-session budget caps** — `--budget <usd>` or `/budget <usd>` limits accumulated session cost; warns at 80% used and refuses turns at 100%
 - **Terminal markdown rendering** — responses are styled in the terminal (headers, bold/italic, code blocks, lists, quotes, links) with a `/markdown` toggle
 - **Streaming responses** — tokens appear as they arrive, with reasoning tokens shown in gray under a `[Thinking]` banner and a `[Answer]` separator before the final response
 - **Usage & cost tracking** — after each turn: prompt / completion / total token counts, cache hit detection (OpenRouter), and a dollar-cost breakdown (per turn + cumulative session total). Check anytime with `/cost`
-- **Slash commands** — `/new` starts a fresh session, `/model` switches models mid-chat, `/reasoning` re-picks the reasoning effort, `/temp` sets temperature, `/budget` sets/shows the budget, `/web-search` toggles web search, `/web-results` sets the result count, `/retry` re-runs the last turn, `/copy` copies the last response, `/markdown` toggles rendering, `/cost` shows the running total, `/quit` exits
+- **Slash commands** — `/new` starts a fresh session, `/model` switches models mid-chat, `/reasoning` re-picks the reasoning effort, `/temp` sets temperature, `/budget` sets/shows the budget, `/web-search` sets the web search mode, `/web-results` sets the result count, `/retry` re-runs the last turn, `/copy` copies the last response, `/markdown` toggles rendering, `/cost` shows the running total, `/quit` exits
 - **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/`, with an auto-generated title from the first user message. Sessions are saved when you quit, switch models, start a new session, or interrupt with `Ctrl+C`, so the last exchange is never lost
 - **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, reasoning effort, temperature, and budget. Automatically detects and uses the correct API backend. Supports prefix matching and an interactive picker
 - **Session deletion** — remove saved sessions with `--delete` (with confirmation)
@@ -82,8 +82,8 @@ Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make t
 |       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`. `none` disables reasoning |
 |       | `--temperature`       | `<0-2>`  | Temperature override for the session (default: per-model preference, then 0.7)       |
 |       | `--budget`            | `<usd>`  | Per-session budget cap in USD. Warns at 80% used, refuses turns at 100%              |
-|       | `--web-search`        | —        | Enable web search for the session. Per-model default is persisted in preferences    |
-|       | `--web-results`       | `<n>`    | Number of web search results (OpenRouter only, default 10). Implies `--web-search`  |
+|       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `off` (bare flag = `auto`). Per-model default is persisted in preferences |
+|       | `--web-results`       | `<n>`    | Number of web search results (OpenRouter only, default 10). Implies `auto` mode                             |
 | `-V`  | `--version`           | —        | Print the version and exit                                                           |
 |       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
 |       | `--list-endpoints`    | `<model>`| List providers for a model (pricing, uptime) and exit                                |
@@ -132,9 +132,11 @@ communicator --reasoning-effort none                                            
 communicator -p venice -m "deepseek-v4-flash" --reasoning-effort high    # Venice with reasoning
 
 # Web search
-communicator --web-search                                              # enable web search (per-model pref saved)
-communicator -m "openai/gpt-4o" --web-results 5 "Latest AI news"       # 5 results, implies web search
-communicator -p venice --web-search                                    # Venice: on/off only (no result count)
+communicator --web-search                                              # auto mode: the model decides when to search
+communicator --web-search always "Latest AI news"                      # force a web search on every request
+communicator --web-search off                                          # disable web search
+communicator -m "openai/gpt-4o" --web-results 5 "Latest AI news"       # 5 results, implies auto mode
+communicator -p venice --web-search                                    # Venice: no result count (auto/on/off only)
 ```
 
 ## Usage
@@ -210,12 +212,12 @@ Streaming is line-buffered: completed lines are styled as they arrive, and the c
 
 ### Web search
 
-Web search is a per-model toggle, persisted in `~/.communicator.json` under `webSearch` (default off). Enable it with `--web-search` at launch or `/web-search on` mid-chat (`/web-search off` disables it; bare `/web-search` shows the current state). The chat banner shows `[web]` when enabled.
+Web search has three modes, persisted per model in `~/.communicator.json` under `webSearch` (default `off`): `auto` lets the model decide when to search (recommended — searches only when useful), `always` forces a search on every request, and `off` disables it. Set the mode with `--web-search <mode>` at launch or `/web-search <mode>` mid-chat (legacy `on` maps to `auto`; bare `--web-search` means `auto`; bare `/web-search` shows the current mode). The chat banner shows `[web]` in auto mode and `[web:always]` in always mode.
 
-- **OpenRouter** — the `web` plugin works on *any* model (native engines for major providers, Exa fallback). The result count defaults to 10 — the pricing sweet spot: the base $0.005/request covers up to 10 results, and each result beyond 10 costs $0.001 extra. Override it per session with `--web-results <n>` or `/web-results <n>` (the banner then shows `[web: N]`). `--web-results` implies web search is on for that invocation; `/web-results` only sets the count, it does not toggle the flag. Validation accepts any positive integer — larger counts work but cost more (see pricing above).
-- **Venice** — web search is on/off only (`venice_parameters.enable_web_search`); there is no result-count knob, so `--web-results`/`/web-results` have no effect there. Venice gates on the model's `supportsWebSearch` capability: enabling it for a model that doesn't support web search refuses with a message (interactive) or exits with an error (CLI flags). Venice web search is billed per usage.
+- **OpenRouter** — `auto` mode uses the `openrouter:web_search` server tool (beta): the model decides whether to search, with 0–N searches per request and results surfacing as `url_citation` citations. `always` mode uses the legacy `web` plugin, which works on *any* model (native engines for major providers, Exa fallback) and forces one search per request; the plugin is deprecated by OpenRouter but functional — if it is removed, `always` will fall back to `auto` with a warning. The result count defaults to 10 — the pricing sweet spot: the base $0.005/request covers up to 10 results, and each result beyond 10 costs $0.001 extra. Override it per session with `--web-results <n>` or `/web-results <n>` (the banner then shows `[web: N]` / `[web:always: N]`). `--web-results` implies `auto` mode for that invocation; `/web-results` only sets the count, it does not change the mode. Validation accepts any positive integer — larger counts work but cost more (see pricing above).
+- **Venice** — maps to `venice_parameters.enable_web_search`: `auto` → `"auto"`, `always` → `"on"`, `off` → `"off"`; there is no result-count knob, so `--web-results`/`/web-results` have no effect there. Venice gates on the model's `supportsWebSearch` capability: enabling `auto`/`always` for a model that doesn't support web search refuses with a message (interactive) or exits with an error (CLI flags). Venice web search is billed per usage.
 - **Sources** — when web search is enabled, a numbered `Sources` section is printed after each answer (italic clickable OSC 8 hyperlinks in supporting terminals, plain text otherwise). Inline citations are also clickable and italic: OpenRouter models emit markdown links `[domain](url)`, Venice models emit `^n^` markers that map to the sources list. Sources are display-only: they are not saved to session files, not shown on `--resume`, and not included in markdown export.
-- Web search state is stored in the session file (`webSearch`/`webResults`) and restored on `--resume`.
+- Web search state is stored in the session file (`webSearch` mode / `webResults`) and restored on `--resume`. Existing `webSearch: true` prefs and sessions are read as `auto` (the smart mode), so previously-forced searches become model-decided unless you pick `always`.
 
 ### Slash commands
 
@@ -227,7 +229,7 @@ Web search is a per-model toggle, persisted in `~/.communicator.json` under `web
 | `/reasoning`   | Re-run the reasoning effort picker for the current model                            |
 | `/temp`        | Set the session temperature (`/temp 0.4`), or show the current value with no args    |
 | `/budget`      | Show used/remaining budget, or set one with `/budget <usd>`                          |
-| `/web-search`  | Toggle web search on/off (`/web-search on` / `/web-search off`), show state with no args |
+| `/web-search`  | Set the web search mode (`/web-search auto|always|off`; `on` = `auto`), show the current mode with no args |
 | `/web-results` | Set the web search result count (`/web-results <n>`, OpenRouter only), show it with no args |
 | `/retry`       | Re-run the last user turn (regenerates the last answer)                             |
 | `/copy`        | Copy the last assistant response to the clipboard                                   |
@@ -290,7 +292,7 @@ communicator --resume 2026-07-30
 communicator --resume 2026-07-30T19-11-45
 ```
 
-When resuming, the original model, provider backend (OpenRouter or Venice), endpoint provider, reasoning effort, temperature, budget, and web search state (on/off + result count) are restored automatically. The conversation picks up right where you left off — all previous messages are preserved. `--resume` takes precedence over `-m` and `-p` flags (they are silently ignored).
+When resuming, the original model, provider backend (OpenRouter or Venice), endpoint provider, reasoning effort, temperature, budget, and web search state (mode + result count) are restored automatically. The conversation picks up right where you left off — all previous messages are preserved. `--resume` takes precedence over `-m` and `-p` flags (they are silently ignored).
 
 Older sessions saved without a `providerType` field default to OpenRouter for backward compatibility.
 
@@ -368,7 +370,7 @@ Each session is stored as a JSON file:
   "reasoningEffort": "high",
   "temperature": 0.7,
   "budget": 0.5,
-  "webSearch": true,
+  "webSearch": "auto",
   "webResults": 5,
   "title": "What is the capital of France?",
   "pricing": {
@@ -389,7 +391,7 @@ Each session is stored as a JSON file:
 - `providerType` is the API backend (`"openrouter"` or `"venice"`). Older sessions without this field default to `"openrouter"` on resume
 - `reasoningEffort` is `null` when reasoning is explicitly disabled
 - `temperature` is the resolved session temperature (0–2); `budget` is the per-session cap in USD (`null` when unset)
-- `webSearch` is whether web search was enabled; `webResults` is the OpenRouter result count (`null` when default) — both restored on resume
+- `webSearch` is the web search mode (`"off"`, `"auto"`, or `"always"`); `webResults` is the OpenRouter result count (`null` when default) — both restored on resume
 - `title` is auto-generated from the first user message
 - `pricing` stores per-token dollar amounts used for cost calculation
 - `updatedAt` is bumped on every auto-save
@@ -411,13 +413,13 @@ Stored in `~/.communicator.json` (customizable with `--config`):
     "openai/gpt-4o": 0.2
   },
   "webSearch": {
-    "openai/gpt-4o": true
+    "openai/gpt-4o": "auto"
   },
   "outputDir": "/home/user/Documents/CommunicatorExports"
 }
 ```
 
-The last model and provider become defaults in the interactive pickers. Reasoning effort, temperature, and web search are saved per model ID and restored automatically. Preferences are currently scoped across both API backends — your last OpenRouter model will show as the favorite even when using Venice (this will be improved in a future release).
+The last model and provider become defaults in the interactive pickers. Reasoning effort, temperature, and web search mode are saved per model ID and restored automatically. Legacy `webSearch: true` values are read as `auto`. Preferences are currently scoped across both API backends — your last OpenRouter model will show as the favorite even when using Venice (this will be improved in a future release).
 
 ## How it works
 
@@ -493,7 +495,7 @@ export function handleHttpError(status, body) → throws ApiError
 ```
 
 - `pricing` is `{ prompt, completion }` USD per token (or `null`) — use `normalizePricing` and the helpers in `src/ui/format.js` for display
-- `chatCompletion` receives `signal` (AbortController) for SIGINT cancellation, `sessionId` for server-side prompt caching (OpenRouter currently ignores it; Venice maps it to `prompt_cache_key`), and `temperature` (default `0.7`, must be set in the request body). `webSearch`/`webResults` enable web search — providers may ignore options they do not support (see the contract doc in `src/providers/index.js`). It also receives `onSources(sources)` and returns `sources: [{ title, url }]` (empty when web search is off or the provider returned no citations)
+- `chatCompletion` receives `signal` (AbortController) for SIGINT cancellation, `sessionId` for server-side prompt caching (OpenRouter currently ignores it; Venice maps it to `prompt_cache_key`), and `temperature` (default `0.7`, must be set in the request body). `webSearch` is a mode string (`'off' | 'auto' | 'always'`); `webResults` is the OpenRouter result count — providers may ignore options they do not support (see the contract doc in `src/providers/index.js`). It also receives `onSources(sources)` and returns `sources: [{ title, url }]` (empty when web search is off or the provider returned no citations)
 - HTTP calls should go through `fetchWithRetry` from `src/http.js`; errors must be thrown as `ApiError`, never `process.exit`
 
 See `src/providers/openrouter.js` and `src/providers/venice.js` for reference implementations.
