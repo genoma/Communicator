@@ -110,8 +110,9 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
     venice_parameters: { include_venice_system_prompt: false },
   }
 
-  if (webSearch) {
-    body.venice_parameters.enable_web_search = 'on'
+  const webMode = webSearch === 'always' ? 'on' : webSearch === 'auto' ? 'auto' : 'off'
+  body.venice_parameters.enable_web_search = webMode
+  if (webMode !== 'off') {
     body.venice_parameters.enable_web_citations = true
   }
 

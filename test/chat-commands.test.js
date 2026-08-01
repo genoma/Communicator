@@ -127,7 +127,7 @@ test('/model switches state and saves prefs', async (t) => {
   assert.equal(ctx.state.supportsReasoning, true)
   assert.deepEqual(ctx.state.modelReasoning, { supported: true, supportsEffort: true })
   assert.equal(ctx.state.temperature, 0.3)
-  assert.equal(ctx.state.webSearch, true)
+  assert.equal(ctx.state.webSearch, 'auto')
   assert.deepEqual(prefsUpdates, [{
     modelId: 'new/model',
     lastModel: 'new/model',
@@ -153,7 +153,7 @@ test('/model gates web search off when the model is unsupported', async (t) => {
 
   await chatCommands['/model'](ctx)
 
-  assert.equal(ctx.state.webSearch, false)
+  assert.equal(ctx.state.webSearch, 'off')
 })
 
 test('/model reports selection failures without crashing', async (t) => {
@@ -295,25 +295,43 @@ test('/web-search shows status without args', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx } = makeCtx()
   await chatCommands['/web-search'](ctx)
-  assert.equal(consoleSpy.log(0), 'Web search is disabled.\n')
+  assert.equal(consoleSpy.log(0), 'Web search is off.\n')
 })
 
-test('/web-search status includes the result count when set', async (t) => {
+test('/web-search status includes the mode and result count when set', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx } = makeCtx()
-  ctx.state.setWebSearch(true)
+  ctx.state.setWebSearch('always')
   ctx.state.setWebResults(3)
   await chatCommands['/web-search'](ctx)
-  assert.equal(consoleSpy.log(0), 'Web search is enabled (3 results).\n')
+  assert.equal(consoleSpy.log(0), 'Web search is always (3 results).\n')
 })
 
-test('/web-search on saves the pref', async (t) => {
+test('/web-search on maps to auto and saves the pref', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx, prefsUpdates } = makeCtx()
   await chatCommands['/web-search']({ ...ctx, args: 'on' })
-  assert.equal(ctx.state.webSearch, true)
-  assert.deepEqual(prefsUpdates, [{ modelId: 'org/model', webSearch: true }])
-  assert.equal(consoleSpy.log(0), 'Web search enabled.\n')
+  assert.equal(ctx.state.webSearch, 'auto')
+  assert.deepEqual(prefsUpdates, [{ modelId: 'org/model', webSearch: 'auto' }])
+  assert.equal(consoleSpy.log(0), 'Web search set to auto.\n')
+})
+
+test('/web-search auto saves the pref', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx()
+  await chatCommands['/web-search']({ ...ctx, args: 'auto' })
+  assert.equal(ctx.state.webSearch, 'auto')
+  assert.deepEqual(prefsUpdates, [{ modelId: 'org/model', webSearch: 'auto' }])
+  assert.equal(consoleSpy.log(0), 'Web search set to auto.\n')
+})
+
+test('/web-search always saves the pref', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx()
+  await chatCommands['/web-search']({ ...ctx, args: 'always' })
+  assert.equal(ctx.state.webSearch, 'always')
+  assert.deepEqual(prefsUpdates, [{ modelId: 'org/model', webSearch: 'always' }])
+  assert.equal(consoleSpy.log(0), 'Web search set to always.\n')
 })
 
 test('/web-search off disables web search', async (t) => {
@@ -321,7 +339,7 @@ test('/web-search off disables web search', async (t) => {
   const { ctx } = makeCtx()
   ctx.state.setWebSearch(true)
   await chatCommands['/web-search']({ ...ctx, args: 'off' })
-  assert.equal(ctx.state.webSearch, false)
+  assert.equal(ctx.state.webSearch, 'off')
   assert.equal(consoleSpy.log(0), 'Web search disabled.\n')
 })
 
@@ -331,7 +349,17 @@ test('/web-search on is rejected for unsupported models', async (t) => {
   ctx.state.webSearchSupported = false
   await chatCommands['/web-search']({ ...ctx, args: 'on' })
   assert.equal(consoleSpy.log(0), 'This model does not support web search.\n')
-  assert.equal(ctx.state.webSearch, false)
+  assert.equal(ctx.state.webSearch, 'off')
+  assert.deepEqual(prefsUpdates, [])
+})
+
+test('/web-search always is rejected for unsupported models', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx()
+  ctx.state.webSearchSupported = false
+  await chatCommands['/web-search']({ ...ctx, args: 'always' })
+  assert.equal(consoleSpy.log(0), 'This model does not support web search.\n')
+  assert.equal(ctx.state.webSearch, 'off')
   assert.deepEqual(prefsUpdates, [])
 })
 
@@ -339,7 +367,7 @@ test('/web-search rejects invalid arguments', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx } = makeCtx()
   await chatCommands['/web-search']({ ...ctx, args: 'maybe' })
-  assert.equal(consoleSpy.error(0), 'Error: /web-search expects "on" or "off".\n')
+  assert.equal(consoleSpy.error(0), 'Error: /web-search expects "on", "off", "auto", or "always".\n')
 })
 
 test('/web-results shows the default line without args', async (t) => {

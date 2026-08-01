@@ -33,7 +33,7 @@ program
   .option('--reasoning-effort <level>', 'reasoning effort: max, xhigh, high, medium, low, minimal, none')
   .option('--temperature <0-2>', 'temperature override (0 to 2)')
   .option('--budget <usd>', 'per-session budget cap in USD')
-  .option('--web-search', 'enable web search for the session (per-model default persisted)')
+  .option('--web-search [mode]', 'web search mode: auto, always, off (bare flag = auto; per-model default persisted)')
   .option('--web-results <n>', 'number of web search results (OpenRouter only, default 10)')
   .option('--delete [session-id]', 'delete a saved session (with confirmation)')
 
@@ -55,6 +55,12 @@ async function main(opts) {
   const promptArg = program.args[0]
   const interactiveFlags = opts.resume !== undefined || opts.export !== undefined || opts.delete !== undefined
   const exitModeFlags = opts.listModels || opts.listEndpoints || opts.listSessions
+
+  const WEB_SEARCH_MODES = new Set(['auto', 'always', 'off'])
+  if (opts.webSearch !== undefined && opts.webSearch !== true && !WEB_SEARCH_MODES.has(opts.webSearch)) {
+    console.error('Error: --web-search expects "auto", "always", or "off" (bare flag = auto).')
+    process.exit(1)
+  }
 
   if (opts.resume !== undefined && opts.export !== undefined) {
     console.error('Cannot use --resume and --export together. Use one at a time.')

@@ -11,7 +11,7 @@ function makeState(overrides = {}) {
     budget: 5,
     pricing: { prompt: 0.000001, completion: 0.000002 },
     supportsReasoning: true,
-    webSearch: true,
+    webSearch: 'auto',
     webResults: 3,
     webSearchSupported: true,
     sessionId: '2026-01-01T00-00-00',
@@ -34,7 +34,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   assert.equal(s.budget, 5)
   assert.deepEqual(s.pricing, { prompt: 0.000001, completion: 0.000002 })
   assert.equal(s.supportsReasoning, true)
-  assert.equal(s.webSearch, true)
+  assert.equal(s.webSearch, 'auto')
   assert.equal(s.webResults, 3)
   assert.equal(s.webSearchSupported, true)
   assert.equal(s.sessionId, '2026-01-01T00-00-00')
@@ -81,7 +81,7 @@ test('toFinalState returns exactly the old finalState field list', () => {
   assert.equal(state.reasoningEffort, 'high')
   assert.equal(state.temperature, 1.1)
   assert.equal(state.budget, 5)
-  assert.equal(state.webSearch, true)
+  assert.equal(state.webSearch, 'auto')
   assert.equal(state.webResults, 3)
   assert.deepEqual(state.pricing, { prompt: 0.000001, completion: 0.000002 })
   assert.equal(state.providerType, 'openrouter')
@@ -96,7 +96,7 @@ test('resetForNewSession clears messages, budget, webResults and returns the res
   assert.equal(s.budget, null)
   assert.equal(s.webResults, null)
   assert.equal(s.temperature, 1.1)
-  assert.equal(s.webSearch, true)
+  assert.equal(s.webSearch, 'auto')
   assert.equal(s.sessionId, '2026-01-01T00-00-00')
 })
 
@@ -111,7 +111,7 @@ test('transitions mutate only their own fields', () => {
 
   assert.equal(s.temperature, 0.5)
   assert.equal(s.budget, 2)
-  assert.equal(s.webSearch, false)
+  assert.equal(s.webSearch, 'off')
   assert.equal(s.webResults, 7)
   assert.equal(s.reasoningEffort, 'low')
   assert.equal(s.markdown, false)
@@ -148,7 +148,7 @@ test('applyModelSelection switches model and reads per-model prefs', () => {
   assert.equal(s.supportsReasoning, true)
   assert.deepEqual(s.modelReasoning, { supported: true, supportsEffort: true })
   assert.equal(s.temperature, 0.3)
-  assert.equal(s.webSearch, true)
+  assert.equal(s.webSearch, 'auto')
   assert.equal(s.webSearchSupported, true)
 })
 
@@ -159,7 +159,16 @@ test('applyModelSelection falls back to default temperature and pref web search'
     { temperature: {}, webSearch: { m: true } }
   )
   assert.equal(s.temperature, 0.7)
-  assert.equal(s.webSearch, true)
+  assert.equal(s.webSearch, 'auto')
+})
+
+test('applyModelSelection reads an explicit mode string from prefs', () => {
+  const s = makeState()
+  s.applyModelSelection(
+    { modelId: 'm', endpointProviderName: 'P', pricing: null, reasoningEffort: null, supportsReasoning: false, modelReasoning: null, webSearchSupported: true },
+    { temperature: {}, webSearch: { m: 'always' } }
+  )
+  assert.equal(s.webSearch, 'always')
 })
 
 test('applyModelSelection gates web search off for unsupported models', () => {
@@ -168,7 +177,7 @@ test('applyModelSelection gates web search off for unsupported models', () => {
     { modelId: 'm', endpointProviderName: 'P', pricing: null, reasoningEffort: null, supportsReasoning: false, modelReasoning: null, webSearchSupported: false },
     { temperature: {}, webSearch: { m: true } }
   )
-  assert.equal(s.webSearch, false)
+  assert.equal(s.webSearch, 'off')
 })
 
 test('appendAssistant, popLastMessage and lastAssistantMessage round-trip', () => {

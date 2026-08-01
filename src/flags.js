@@ -27,10 +27,16 @@ export function resolveWebResultsFlag({ webResults } = {}) {
   return num
 }
 
+export function normalizeWebSearchMode(value) {
+  if (value === true || value === 'on') return 'auto'
+  if (value === 'auto' || value === 'always' || value === 'off') return value
+  return 'off'
+}
+
 export function resolveWebSearchFlag({ webSearch, webResults, prefValue } = {}) {
-  if (webResults != null) return true
-  if (webSearch === true) return true
-  return prefValue ?? false
+  if (webResults != null) return 'auto'
+  if (webSearch) return normalizeWebSearchMode(webSearch)
+  return normalizeWebSearchMode(prefValue)
 }
 
 export function resolveBudget(value) {

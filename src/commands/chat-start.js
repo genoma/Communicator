@@ -76,7 +76,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
   const sessionId = await generateSessionId(dir)
 
   const webSearch = resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: prefs.webSearch?.[selection.modelId] })
-  if (webSearch && selection.webSearchSupported === false) {
+  if (webSearch !== 'off' && selection.webSearchSupported === false) {
     console.error('Error: The selected model does not support web search.')
     process.exit(1)
   }
