@@ -306,7 +306,7 @@ test('banner shows reasoning and web badges when active', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [thinking: High]  [temp: 1.1]  [web: 3]')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [thinking: High]  [temp: 1.1]  [web: auto: 3]')
 })
 
 test('banner shows a bare web badge when results are not set', async (t) => {
@@ -319,7 +319,7 @@ test('banner shows a bare web badge when results are not set', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [web]')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [web: auto]')
 })
 
 test('banner shows the always badge', async (t) => {
@@ -332,7 +332,7 @@ test('banner shows the always badge', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [web:always]')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [web: always]')
 })
 
 test('banner shows the always badge with a result count', async (t) => {
@@ -345,7 +345,7 @@ test('banner shows the always badge with a result count', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [web:always: 5]')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [web: always: 5]')
 })
 
 test('retry pops the assistant message and resends the same user message', async (t) => {

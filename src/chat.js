@@ -107,9 +107,8 @@ export async function runChatSession(ctx = {}, deps = {}) {
   if (reasoningEffort != null) bannerParts.push(`[thinking: ${getEffortLabel(reasoningEffort)}]`)
   if (temperature !== DEFAULT_TEMPERATURE) bannerParts.push(`[temp: ${temperature}]`)
   if (state.webSearch !== 'off') {
-    const label = state.webSearch === 'always' ? 'always' : ''
-    const badge = label ? `web:${label}` : 'web'
-    bannerParts.push(state.webResults != null ? `[${badge}: ${state.webResults}]` : `[${badge}]`)
+    const results = state.webResults != null ? `: ${state.webResults}` : ''
+    bannerParts.push(`[web: ${state.webSearch}${results}]`)
   }
   if (bannerParts.length > 0) {
     console.log(`\nConnected to ${label}  ${bannerParts.join('  ')}`)
