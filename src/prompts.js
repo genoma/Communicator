@@ -160,3 +160,9 @@ export function resolveWebResultsFlag({ webResults } = {}) {
   }
   return num
 }
+
+export function resolveWebSearchFlag({ webSearch, webResults, prefValue } = {}) {
+  if (webResults != null) return true
+  if (webSearch === true) return true
+  return prefValue ?? false
+}

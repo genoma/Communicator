@@ -1,6 +1,6 @@
 import { getProvider } from '../providers/index.js'
 import { DEFAULT_TEMPERATURE, formatCost } from '../constants.js'
-import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag } from '../prompts.js'
+import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag } from '../prompts.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
 import { ensureSessionsDir, generateSessionId, generateTitle, saveSession } from '../sessions.js'
 import { savePreferences } from '../config.js'
@@ -65,7 +65,6 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     console.error(`Error: ${err.message}`)
     process.exit(1)
   }
-  const forcedWebSearch = opts.webSearch === true
 
   let selection
   let temperature
@@ -84,7 +83,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     process.exit(1)
   }
 
-  const webSearch = forcedWebResults != null ? true : (forcedWebSearch ?? prefs.webSearch?.[selection.modelId] ?? false)
+  const webSearch = resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: prefs.webSearch?.[selection.modelId] })
   if (webSearch && selection.webSearchSupported === false) {
     console.error('Error: The selected model does not support web search.')
     process.exit(1)
