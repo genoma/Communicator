@@ -17,7 +17,9 @@ The upstream library has no suggestion/autocomplete support. A minimal patch add
 - `index.js` — reads `suggest` from options and stores it on `state`; stores the initial
   styled footer as `state.baseFooterText`.
 - `input.js` — binds Tab (`\t`) and Shift+Tab (`\x1b[Z`) to cycle through the suggestion
-  list when one is active.
+  list when one is active, in both legacy and kitty-protocol (CSI u) encodings
+  (`\x1b[9u` / `\x1b[9;1u` for Tab, `\x1b[9;2u` / `\x1b[1;2Z` for Shift+Tab) — with the
+  kitty keyboard protocol enabled, terminals report Tab as `CSI 9 u` instead of `\t`.
 - `editing.js` — calls `refreshSuggestions` at the end of `onContentChanged`; adds
   `cycleSuggestion`.
 - `rendering.js` — adds `refreshSuggestions`, which renders matching suggestions into the

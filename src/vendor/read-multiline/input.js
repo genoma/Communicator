@@ -98,9 +98,16 @@ export function buildKeyMap(state, submit, cancel, handleEOF) {
     keyMap["\x1b[H"] = () => lineStart(state);
     keyMap["\x1b[F"] = () => lineEnd(state);
     // Suggestion cycling (Tab / Shift+Tab). No-op unless a suggestion list is active.
+    // Bound in both legacy and kitty-protocol (CSI u) encodings: with the kitty
+    // keyboard protocol enabled, iTerm2/kitty/WezTerm etc. report Tab as `CSI 9 u`
+    // and Shift+Tab as `CSI 9;2 u` instead of `\t` / `CSI Z`.
     if (state.suggest) {
-        keyMap["\t"] = () => cycleSuggestion(state, 1);
-        keyMap["\x1b[Z"] = () => cycleSuggestion(state, -1);
+        keyMap["\t"] = () => cycleSuggestion(state, 1); // legacy Tab
+        keyMap["\x1b[9u"] = () => cycleSuggestion(state, 1); // kitty Tab
+        keyMap["\x1b[9;1u"] = () => cycleSuggestion(state, 1); // kitty Tab (explicit no modifier)
+        keyMap["\x1b[Z"] = () => cycleSuggestion(state, -1); // legacy Shift+Tab
+        keyMap["\x1b[9;2u"] = () => cycleSuggestion(state, -1); // kitty Shift+Tab
+        keyMap["\x1b[1;2Z"] = () => cycleSuggestion(state, -1); // xterm Shift+Tab
     }
 }
 // --- Paste handling ---
