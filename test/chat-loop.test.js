@@ -365,9 +365,9 @@ test('retry pops the assistant message and resends the same user message', async
 test('resume path renders history, seeds the tracker and shows the previous session summary', async (t) => {
   const consoleSpy = mockConsole(t)
   const stdoutWrites = []
-  t.mock.method(process.stdout, 'write', (chunk) => { stdoutWrites.push(String(chunk)); return true })
+  const stdout = { write(chunk) { stdoutWrites.push(String(chunk)); return true } }
   const { provider, calls } = fakeProvider()
-  const harness = makeDeps({ readInput: scriptedInput(['next question', '/quit']) })
+  const harness = makeDeps({ readInput: scriptedInput(['next question', '/quit']), stdout })
 
   const initialMessages = [
     { role: 'system', content: 'You are a helpful assistant.' },

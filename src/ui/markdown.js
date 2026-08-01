@@ -50,7 +50,7 @@ function createLineStyler(getSources) {
   return (line) => styleLine(line, state, getSources ? getSources() : [])
 }
 
-export function createMarkdownRenderer({ getSources = null } = {}) {
+export function createMarkdownRenderer({ getSources = null, stdout = process.stdout } = {}) {
   const styler = createLineStyler(getSources)
   let buffer = ''
 
@@ -60,13 +60,13 @@ export function createMarkdownRenderer({ getSources = null } = {}) {
       for (;;) {
         const nl = buffer.indexOf('\n')
         if (nl === -1) return
-        process.stdout.write(`${styler(buffer.slice(0, nl))}\n`)
+        stdout.write(`${styler(buffer.slice(0, nl))}\n`)
         buffer = buffer.slice(nl + 1)
       }
     },
     flush() {
       if (buffer) {
-        process.stdout.write(styler(buffer))
+        stdout.write(styler(buffer))
         buffer = ''
       }
     },

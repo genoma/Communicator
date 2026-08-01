@@ -2,20 +2,20 @@ import { dim, italic, you, thinking, answer } from './style.js'
 import { createMarkdownRenderer, renderText } from './markdown.js'
 import { hyperlink } from './hyperlink.js'
 
-export function createStreamRenderer({ markdown = false } = {}) {
-  const md = createMarkdownRenderer({ getSources: () => render.sources })
+export function createStreamRenderer({ markdown = false, stdout = process.stdout } = {}) {
+  const md = createMarkdownRenderer({ getSources: () => render.sources, stdout })
 
   const render = (token, type) => {
     if (type === 'start_reasoning') {
-      process.stdout.write(`${thinking()}\n`)
-      process.stdout.write(token)
+      stdout.write(`${thinking()}\n`)
+      stdout.write(token)
     } else if (type === 'reasoning') {
-      process.stdout.write(dim(token))
+      stdout.write(dim(token))
     } else if (type === 'end_reasoning') {
-      process.stdout.write(`\n\n${answer()}\n\n`)
+      stdout.write(`\n\n${answer()}\n\n`)
     } else if (type === 'content') {
       if (render.markdown) md.write(token)
-      else process.stdout.write(token)
+      else stdout.write(token)
     }
   }
   render.markdown = markdown
@@ -45,23 +45,23 @@ export function printSources(sources, stdout = process.stdout) {
   })
 }
 
-export function renderHistory(messages, { markdown = false } = {}) {
+export function renderHistory(messages, { markdown = false, stdout = process.stdout } = {}) {
   if (!messages || messages.length <= 1) return
 
   const hasVisible = messages.some((m) => m.role !== 'system')
   if (!hasVisible) return
 
-  process.stdout.write('\n')
+  stdout.write('\n')
   for (const msg of messages) {
     if (msg.role === 'user') {
-      process.stdout.write(`${you()}\n${markdown ? renderText(msg.content) : msg.content}\n\n`)
+      stdout.write(`${you()}\n${markdown ? renderText(msg.content) : msg.content}\n\n`)
     } else if (msg.role === 'assistant') {
       if (msg.reasoning) {
-        process.stdout.write(`${thinking()}\n\n`)
-        process.stdout.write(`${dim(msg.reasoning)}\n`)
-        process.stdout.write(`\n${answer()}\n\n`)
+        stdout.write(`${thinking()}\n\n`)
+        stdout.write(`${dim(msg.reasoning)}\n`)
+        stdout.write(`\n${answer()}\n\n`)
       }
-      process.stdout.write(`${markdown ? renderText(msg.content) : msg.content}\n\n`)
+      stdout.write(`${markdown ? renderText(msg.content) : msg.content}\n\n`)
     }
   }
 }
