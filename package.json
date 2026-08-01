@@ -1,7 +1,7 @@
 {
   "name": "communicator",
   "version": "2.1.2",
-  "description": "OpenRouter CLI chat client with interactive model/provider selection",
+  "description": "Terminal-first AI chat client for OpenRouter and Venice.ai with streaming responses, session persistence, and cost tracking",
   "type": "module",
   "engines": {
     "node": ">=22"

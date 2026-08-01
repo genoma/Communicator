@@ -1,14 +1,6 @@
 # Communicator
 
-Chat from your terminal with streaming responses, interactive model/provider selection, and live cost tracking. Supports OpenRouter and Venice.ai backends.
-
-> ⚠️ **Heads up:** This is a hobby project I built for myself, shared in case it helps someone else. It works, maybe, but:
-> - Rough around the edges (minimal error handling)
-> - Text only, no vision
-> - No promises beyond "it mostly doesn't break"
-> - Minimal testing (cross your fingers and use cheap models)
->
-> Fork it, break it, fix it, disregard it, I won't take it personally.
+A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream responses with visible reasoning, pick models and providers interactively, track live usage and cost with per-session budget caps, search the web with clickable sources, and resume or export any conversation as markdown.
 
 ## Features
 
@@ -30,7 +22,7 @@ Chat from your terminal with streaming responses, interactive model/provider sel
 - **Markdown export** — export any saved session as a clean markdown file with `--export`, with collapsible reasoning blocks and cost summary
 - **Session persistence** — last model, provider, and per-model reasoning effort and temperature are saved to `~/.communicator.json` and restored on next launch
 - **CLI flags to skip pickers** — pass `-m`, `--reasoning-effort`, or `--reasoning-effort none` to bypass interactive prompts. `-m` skips *all* pickers (model, reasoning, endpoint) for fully non-interactive use
-- **Lightweight** — three runtime dependencies, pure Node.js ESM
+- **Lightweight** — two runtime dependencies, pure Node.js ESM
 
 ## Requirements
 
@@ -469,6 +461,7 @@ cli (index.js)            — commander argument parsing, delegates to command m
 │   ├── style.js          — ANSI helpers (dim, bold, sep, thinking, answer)
 │   ├── format.js         — price formatting (formatModelPrice, formatPricePerM)
 │   ├── markdown.js       — line-buffered terminal markdown renderer
+│   ├── hyperlink.js      — OSC 8 hyperlink escape helper
 │   └── stream.js         — stream renderer + history replay
 └── chat.js               — runChatSession: DI chat loop (readInput/renderer/stdout/exit/save/signals), banner, SIGINT
 ```
