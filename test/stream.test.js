@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { printSources } from '../src/ui/stream.js'
+import { createStreamRenderer, printSources } from '../src/ui/stream.js'
 
 const ANSI = /\x1b\[[0-9;]*m/g
 const OSC8 = /\x1b\]8;;[^\x1b]*\x1b\\|\x1b\]8;;\x1b\\/g
@@ -54,4 +54,115 @@ test('printSources does nothing without sources', () => {
   const { stdout, plain } = capture()
   printSources([], stdout)
   assert.equal(plain(), '')
+})
+
+test('smooth renderer defaults off and writes tokens immediately', () => {
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout })
+  assert.equal(render.smooth, false)
+  render('x', 'content')
+  render('y', 'content')
+  assert.equal(plain(), 'xy')
+})
+
+test('smooth renderer writes nothing before the first tick and paces at the char cap', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, smooth: true, smoothCharsPerTick: 10, smoothTickMs: 20 })
+  render('abcdefghij', 'content')
+  render('klmnopqrst', 'content')
+  assert.equal(plain(), '')
+  t.mock.timers.tick(19)
+  assert.equal(plain(), '')
+  t.mock.timers.tick(1)
+  assert.equal(plain(), 'abcdefghij')
+  t.mock.timers.tick(20)
+  assert.equal(plain(), 'abcdefghijklmnopqrst')
+  t.mock.timers.tick(100)
+  assert.equal(plain(), 'abcdefghijklmnopqrst')
+})
+
+test('smooth flush waits for the queue to drain at the paced rate', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, smooth: true, smoothCharsPerTick: 3, smoothTickMs: 20 })
+  render('hello ', 'content')
+  render('world', 'content')
+  const done = render.flush()
+  assert.equal(plain(), '')
+  t.mock.timers.tick(20)
+  assert.equal(plain(), 'hel')
+  t.mock.timers.tick(20)
+  assert.equal(plain(), 'hello ')
+  t.mock.timers.tick(20)
+  assert.equal(plain(), 'hello wor')
+  t.mock.timers.tick(20)
+  assert.equal(plain(), 'hello world')
+  await done
+  t.mock.timers.tick(100)
+  assert.equal(plain(), 'hello world')
+})
+
+test('smooth flush resolves immediately when the queue is empty', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, smooth: true, smoothCharsPerTick: 3, smoothTickMs: 20 })
+  const done = render.flush()
+  assert.equal(plain(), '')
+  await done
+  t.mock.timers.tick(100)
+  assert.equal(plain(), '')
+})
+
+test('smooth flush with sync drains the queue immediately', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, smooth: true, smoothCharsPerTick: 3, smoothTickMs: 20 })
+  render('hello ', 'content')
+  render('world', 'content')
+  render.flush({ sync: true })
+  assert.equal(plain(), 'hello world')
+  t.mock.timers.tick(100)
+  assert.equal(plain(), 'hello world')
+})
+
+test('smooth keeps reasoning markers ordered behind paced text', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, smooth: true, smoothCharsPerTick: 2, smoothTickMs: 20 })
+  render('', 'start_reasoning')
+  render('THINKING', 'reasoning')
+  render('', 'end_reasoning')
+  render('HELLO', 'content')
+  const pump = () => t.mock.timers.tick(20)
+
+  pump()
+  assert.equal(plain(), '[Thinking]\nTH')
+  pump()
+  pump()
+  pump()
+  assert.equal(plain(), '[Thinking]\nTHINKING\n\n[Answer]\n\n')
+  pump()
+  assert.equal(plain(), '[Thinking]\nTHINKING\n\n[Answer]\n\nHE')
+  pump()
+  pump()
+  assert.equal(plain(), '[Thinking]\nTHINKING\n\n[Answer]\n\nHELLO')
+  pump()
+  pump()
+  pump()
+  assert.equal(plain(), '[Thinking]\nTHINKING\n\n[Answer]\n\nHELLO')
+})
+
+test('toggling render.smooth off mid-stream drains the residual on the next tick', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, smooth: true, smoothCharsPerTick: 10, smoothTickMs: 20 })
+  render('pending', 'content')
+  render.smooth = false
+  t.mock.timers.tick(20)
+  assert.equal(plain(), 'pending')
+  render(' now', 'content')
+  assert.equal(plain(), 'pending now')
+  t.mock.timers.tick(100)
+  assert.equal(plain(), 'pending now')
 })

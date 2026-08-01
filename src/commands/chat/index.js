@@ -6,7 +6,7 @@ import { DEFAULT_WEB_SEARCH_RESULTS, formatCost } from '../../constants.js'
 import { budgetStatus } from '../../tracker.js'
 import { dim } from '../../ui/style.js'
 
-const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results'])
+const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth'])
 
 export function budgetGuard(ctx) {
   const { state, tracker } = ctx
@@ -180,6 +180,23 @@ const handlers = {
     ctx.render.markdown = ctx.state.markdown
     const hint = ctx.state.markdown ? ' Lines are styled and streamed live.' : ''
     console.log(`Markdown rendering ${ctx.state.markdown ? 'enabled' : 'disabled'}.${hint}\n`)
+  },
+
+  '/smooth': async (ctx) => {
+    const value = ctx.args
+    if (!value) {
+      console.log(`Smooth streaming is ${ctx.state.smoothStreaming ? 'on' : 'off'}.\n`)
+      return
+    }
+    if (value !== 'on' && value !== 'off') {
+      console.error('Error: /smooth expects "on" or "off".\n')
+      return
+    }
+    const next = value === 'on'
+    ctx.state.setSmoothStreaming(next)
+    ctx.render.smooth = next
+    await ctx.savePrefs({ smoothStreaming: next })
+    console.log(`Smooth streaming ${next ? 'enabled' : 'disabled'}.\n`)
   },
 
   '/cost': async (ctx) => {

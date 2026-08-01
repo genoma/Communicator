@@ -2,7 +2,7 @@ import { DEFAULT_TEMPERATURE } from './constants.js'
 import { normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
-  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, supportsReasoning, webSearch, webResults, webSearchSupported, sessionId, createdAt, modelReasoning, markdown = true, messages, systemContent }) {
+  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, supportsReasoning, webSearch, webResults, webSearchSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, messages, systemContent }) {
     this.modelId = modelId
     this.endpointProviderName = endpointProviderName
     this.reasoningEffort = reasoningEffort
@@ -17,6 +17,7 @@ export class ChatState {
     this.createdAt = createdAt
     this.modelReasoning = modelReasoning
     this.markdown = markdown
+    this.smoothStreaming = smoothStreaming
     this.systemContent = systemContent || 'You are a helpful assistant.'
     this.messages = messages || [{ role: 'system', content: this.systemContent }]
   }
@@ -79,6 +80,10 @@ export class ChatState {
 
   toggleMarkdown() {
     this.markdown = !this.markdown
+  }
+
+  setSmoothStreaming(value) {
+    this.smoothStreaming = value
   }
 
   appendUser(content) {

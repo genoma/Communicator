@@ -100,7 +100,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     if (ttyOut) {
       const label = selection.endpointProviderName ? `${selection.endpointProviderName} / ${selection.modelId}` : selection.modelId
       console.log(`\nConnected to ${label}\n`)
-      const render = createStreamRenderer({ markdown: true })
+      const render = createStreamRenderer({ markdown: true, smooth: opts.smoothStreaming !== false && prefs.smoothStreaming !== false })
       result = await provider.chatCompletion({
         ...completionOpts,
         onToken: render,
@@ -108,7 +108,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
           render.sources = sources
         },
       })
-      render.flush?.()
+      await render.flush?.()
       process.stdout.write('\n\n')
       if (result.sources?.length > 0) {
         printSources(result.sources, process.stdout)

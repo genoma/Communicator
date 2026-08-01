@@ -14,6 +14,7 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Per-session budget caps** — `--budget <usd>` or `/budget <usd>` limits accumulated session cost; warns at 80% used and refuses turns at 100%
 - **Terminal markdown rendering** — responses are styled in the terminal (headers, bold/italic, code blocks, lists, quotes, links) with a `/markdown` toggle
 - **Streaming responses** — tokens appear as they arrive, with reasoning tokens shown in gray under a `[Thinking]` banner and a `[Answer]` separator before the final response
+- **Smooth streaming** — in interactive sessions, incoming text is paced (default on) so answers render at a steady character rate instead of popping in bursts after a long wait; disable with `--no-smooth-streaming` or `/smooth off`. A dim waiting indicator (`Waiting for response...`, or `Searching the web...` when a search is guaranteed) shows while the model is still working
 - **Usage & cost tracking** — after each turn: prompt / completion / total token counts, cache hit detection (OpenRouter), and a dollar-cost breakdown (per turn + cumulative session total). Check anytime with `/cost`
 - **Slash commands** — `/new` starts a fresh session, `/model` switches models mid-chat, `/reasoning` re-picks the reasoning effort, `/temp` sets temperature, `/budget` sets/shows the budget, `/web-search` sets the web search mode, `/web-results` sets the result count, `/retry` re-runs the last turn, `/copy` copies the last response, `/markdown` toggles rendering, `/cost` shows the running total, `/quit` exits
 - **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/`, with an auto-generated title from the first user message. Sessions are saved when you quit, switch models, start a new session, or interrupt with `Ctrl+C`, so the last exchange is never lost
@@ -84,6 +85,7 @@ Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make t
 |       | `--budget`            | `<usd>`  | Per-session budget cap in USD. Warns at 80% used, refuses turns at 100%              |
 |       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `off` (bare flag = `auto`). Per-model default is persisted in preferences |
 |       | `--web-results`       | `<n>`    | Number of web search results (OpenRouter only, default 10). Implies `auto` mode                             |
+|       | `--no-smooth-streaming` | —      | Disable smooth streaming (default: on in interactive sessions)                                              |
 | `-V`  | `--version`           | —        | Print the version and exit                                                           |
 |       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
 |       | `--list-endpoints`    | `<model>`| List providers for a model (pricing, uptime) and exit                                |
@@ -206,6 +208,12 @@ By default, assistant responses are rendered as markdown in the terminal: `#` he
 
 Streaming is live: the current in-flight line is written as tokens arrive and redrawn in place as it grows, so even single-paragraph answers stream continuously; when a line completes, it is restyled with its final markup. Toggle with `/markdown` (default on); history replay on `--resume` uses the same styling.
 
+### Smooth streaming & waiting indicator
+
+In interactive (TTY) sessions, streaming is paced by default: tokens are buffered and rendered at a steady character rate (~40 chars per 20 ms tick) instead of being written the instant each SSE event arrives. This smooths out bursts — most notably the first content chunk after a web-search delay — while slow streams still render as fast as they arrive (pacing is a cap, not an artificial delay). When the stream ends, any remaining buffered text keeps rendering at the same paced rate rather than popping in all at once. Piped output is never paced. Disable it with `--no-smooth-streaming` at launch or `/smooth off` mid-chat (`/smooth` shows the current state, `/smooth on` re-enables; the choice is persisted in preferences).
+
+While the model is working, a dim indicator appears on the response line roughly 200 ms after you send the message — `Waiting for response...` with animated dots (or `Searching the web...` when web search is forced with `always`, since that mode is guaranteed to search). The indicator is erased the moment the first token arrives, and it never shows for instant replies.
+
 ### Budget caps
 
 `--budget <usd>` (or `/budget <usd>` mid-chat) sets a per-session spending cap based on accumulated tracked cost. When 80% is crossed, the usage footer shows a budget line (`Budget  83% used ($0.0005 of $0.0006), $0.0001 remaining`). At 100% the next turn is refused with `Budget exhausted ($X of $Y). /new to start fresh or /quit.`. `/budget` with no value prints used/remaining. Budgets are stored in the session file and restored on `--resume`; `/new` clears the budget for the fresh session.
@@ -234,6 +242,7 @@ Web search has three modes, persisted per model in `~/.communicator.json` under 
 | `/retry`       | Re-run the last user turn (regenerates the last answer)                             |
 | `/copy`        | Copy the last assistant response to the clipboard                                   |
 | `/markdown`    | Toggle terminal markdown rendering (default on)                                     |
+| `/smooth`      | Show smooth streaming state, or set it with `/smooth on` / `/smooth off`            |
 | `/cost`        | Print the running session cost/token totals and current reasoning effort            |
 | `Cmd+C` / `Ctrl+C` | During streaming: abort, save the partial response, and exit. At the prompt: cancel and exit |
 

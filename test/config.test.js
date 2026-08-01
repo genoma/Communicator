@@ -72,3 +72,17 @@ test('applyPreferenceUpdates does not mutate the input prefs', () => {
   applyPreferenceUpdates(prefs, { modelId: 'm', temperature: 1.0 })
   assert.deepEqual(prefs.temperature, { m: 0.5 })
 })
+
+test('applyPreferenceUpdates merges the global smoothStreaming key', () => {
+  const prefs = { lastModel: 'm' }
+  const updated = applyPreferenceUpdates(prefs, { modelId: 'm', smoothStreaming: false })
+
+  assert.equal(updated.smoothStreaming, false)
+  assert.equal(prefs.smoothStreaming, undefined)
+})
+
+test('applyPreferenceUpdates skips undefined smoothStreaming', () => {
+  const updated = applyPreferenceUpdates({ lastModel: 'm' }, { modelId: 'm', smoothStreaming: undefined })
+
+  assert.deepEqual(Object.keys(updated).sort(), ['lastModel'])
+})

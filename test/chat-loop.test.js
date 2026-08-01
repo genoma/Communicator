@@ -282,7 +282,7 @@ test('unknown command is rejected with the exact message and the provider is not
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /new, /model, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /cost\n'
+    'Unknown command "/nope". Available: /quit, /new, /model, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
   )
 })
 
@@ -440,4 +440,82 @@ test('onSources populates render.sources and the next turn resets it', async (t)
   await runChatSession(baseCtx(provider), harness.deps)
 
   assert.equal(firstTurn, false)
+})
+
+test('renderer receives smooth only for TTY sessions with smoothStreaming on', async (t) => {
+  mockConsole(t)
+  const optsSeen = []
+  const renderer = (opts) => {
+    optsSeen.push(opts)
+    return fakeRenderer(opts)
+  }
+  const { provider } = fakeProvider()
+  const ttyStdout = { write() {}, isTTY: true }
+
+  await runChatSession(
+    baseCtx(provider),
+    makeDeps({ readInput: scriptedInput(['/quit']), renderer }).deps
+  )
+  await runChatSession(
+    baseCtx(provider),
+    makeDeps({ readInput: scriptedInput(['/quit']), renderer, stdout: ttyStdout }).deps
+  )
+  await runChatSession(
+    baseCtx(provider, { smoothStreaming: false }),
+    makeDeps({ readInput: scriptedInput(['/quit']), renderer, stdout: ttyStdout }).deps
+  )
+
+  assert.deepEqual(optsSeen.map((o) => o.smooth), [false, true, false])
+})
+
+test('loader shows frames during a delayed response and clears on the first token', async (t) => {
+  mockConsole(t)
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const writes = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const { provider } = fakeProvider()
+  provider.chatCompletion = async (opts) => {
+    await gate
+    opts.onToken('Hi', 'content')
+    opts.onToken(' there', 'content')
+    return { content: 'Hi there' }
+  }
+  const harness = makeDeps({ readInput: scriptedInput(['hello', '/quit']), stdout })
+  const session = runChatSession(baseCtx(provider), harness.deps)
+  const step = () => new Promise((resolve) => setImmediate(resolve))
+
+  await step()
+  await step()
+  t.mock.timers.tick(199)
+  assert.ok(!writes.some((w) => w.includes('Waiting for response')))
+  t.mock.timers.tick(1)
+  assert.ok(writes.some((w) => w.includes('Waiting for response')))
+  t.mock.timers.tick(150)
+  assert.ok(writes.some((w) => w.includes('Waiting for response.')))
+
+  release()
+  await session
+  assert.ok(writes.some((w) => w === '\r\x1b[K'))
+})
+
+test('/smooth shows status and /smooth off saves the pref and updates the renderer', async (t) => {
+  const consoleSpy = mockConsole(t)
+  let liveRender
+  const renderer = (opts) => {
+    liveRender = fakeRenderer(opts)
+    return liveRender
+  }
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/smooth', '/smooth off', '/quit']), renderer })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  const statusLine = consoleSpy.allLogs().find((l) => l.startsWith('Smooth streaming is'))
+  assert.equal(statusLine, 'Smooth streaming is on.\n')
+  const disableLine = consoleSpy.allLogs().find((l) => l === 'Smooth streaming disabled.\n')
+  assert.ok(disableLine)
+  assert.ok(harness.prefsCalls.some((p) => p.smoothStreaming === false))
+  assert.equal(liveRender.smooth, false)
 })

@@ -15,6 +15,14 @@ export const MAX_TEMPERATURE = 2
 
 export const DEFAULT_WEB_SEARCH_RESULTS = 10
 
+export const SMOOTH_CHARS_PER_TICK = 40
+
+export const SMOOTH_TICK_MS = 20
+
+export const LOADER_GRACE_MS = 200
+
+export const LOADER_TICK_MS = 150
+
 export const EFFORT_LABELS = {
   max: 'X-High (max)',
   xhigh: 'X-High',
