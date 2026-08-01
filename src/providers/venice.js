@@ -100,7 +100,7 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   }]
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, _provider, reasoningEffort, supportsReasoning, sessionId, temperature = DEFAULT_TEMPERATURE, webSearch, signal }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, onSources, _provider, reasoningEffort, supportsReasoning, sessionId, temperature = DEFAULT_TEMPERATURE, webSearch, signal }) {
   const body = {
     model,
     messages,
@@ -112,6 +112,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, _provid
 
   if (webSearch) {
     body.venice_parameters.enable_web_search = 'on'
+    body.venice_parameters.enable_web_citations = true
   }
 
   if (sessionId) {
@@ -134,7 +135,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, _provid
   }, { errorResponse: handleHttpError, signal })
 
   const reader = res.body.getReader()
-  const { fullText, fullReasoning, finalUsage } = await parseSSEStream(reader, onToken)
+  const { fullText, fullReasoning, finalUsage, fullSources } = await parseSSEStream(reader, onToken, onSources)
 
-  return { content: fullText, reasoning: fullReasoning || undefined, usage: finalUsage }
+  return { content: fullText, reasoning: fullReasoning || undefined, usage: finalUsage, sources: fullSources }
 }

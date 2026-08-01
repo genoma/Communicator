@@ -20,13 +20,41 @@ export function extractPartialToken(buffer) {
   return null
 }
 
-export async function parseSSEStream(reader, onToken) {
+function collectSources(parsed, fullSources, seenUrls, onSources) {
+  const citations = parsed.venice_parameters?.web_search_citations
+  const annotations = parsed.choices?.[0]?.delta?.annotations
+    ?? parsed.choices?.[0]?.message?.annotations
+  let found = false
+
+  for (const citation of citations || []) {
+    if (citation?.url && !seenUrls.has(citation.url)) {
+      seenUrls.add(citation.url)
+      fullSources.push({ title: citation.title || null, url: citation.url })
+      found = true
+    }
+  }
+
+  for (const annotation of annotations || []) {
+    const urlCitation = annotation?.url_citation
+    if (annotation?.type === 'url_citation' && urlCitation?.url && !seenUrls.has(urlCitation.url)) {
+      seenUrls.add(urlCitation.url)
+      fullSources.push({ title: urlCitation.title || null, url: urlCitation.url })
+      found = true
+    }
+  }
+
+  if (found && onSources) onSources(fullSources)
+}
+
+export async function parseSSEStream(reader, onToken, onSources = null) {
   const decoder = new TextDecoder()
   let fullText = ''
   let fullReasoning = ''
   let buffer = ''
   let inThinking = false
   let finalUsage = null
+  const fullSources = []
+  const seenUrls = new Set()
 
   while (true) {
     let chunk
@@ -50,6 +78,8 @@ export async function parseSSEStream(reader, onToken) {
       if (data === SSE_DONE) continue
       try {
         const parsed = JSON.parse(data)
+
+        collectSources(parsed, fullSources, seenUrls, onSources)
 
         if (parsed.usage) {
           finalUsage = parsed.usage
@@ -85,5 +115,5 @@ export async function parseSSEStream(reader, onToken) {
     }
   }
 
-  return { fullText, fullReasoning, finalUsage }
+  return { fullText, fullReasoning, finalUsage, fullSources }
 }

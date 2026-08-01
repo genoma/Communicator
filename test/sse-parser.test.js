@@ -89,3 +89,100 @@ test('extractPartialToken pulls in-flight reasoning or content', () => {
   )
   assert.equal(extractPartialToken('data: {"choices":[{"delta":{}'), null)
 })
+
+test('collects venice web_search_citations and fires onSources on first sight', async () => {
+  const calls = []
+  const { fullText, fullSources } = await parseSSEStream(
+    streamReader([
+      event({
+        venice_parameters: {
+          web_search_citations: [
+            { title: 'One', url: 'https://one.example' },
+            { title: 'Two', url: 'https://two.example' },
+          ],
+        },
+        choices: [{ delta: { content: 'Answer ^1^' } }],
+      }),
+      event({ choices: [{ delta: { content: ' here' } }] }),
+    ]),
+    () => {},
+    (sources) => calls.push(sources)
+  )
+  assert.equal(fullText, 'Answer ^1^ here')
+  assert.deepEqual(fullSources, [
+    { title: 'One', url: 'https://one.example' },
+    { title: 'Two', url: 'https://two.example' },
+  ])
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0], fullSources)
+})
+
+test('collects openrouter delta annotations and dedupes by url', async () => {
+  const calls = []
+  const { fullSources } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: 'done' } }] }),
+      event({
+        choices: [{
+          delta: {
+            annotations: [
+              { type: 'url_citation', url_citation: { title: 'One', url: 'https://one.example' } },
+              { type: 'url_citation', url_citation: { title: 'One again', url: 'https://one.example' } },
+              { type: 'url_citation', url_citation: { title: 'Two', url: 'https://two.example' } },
+            ],
+          },
+        }],
+      }),
+      'data: [DONE]\n\n',
+    ]),
+    () => {},
+    (sources) => calls.push(sources)
+  )
+  assert.deepEqual(fullSources, [
+    { title: 'One', url: 'https://one.example' },
+    { title: 'Two', url: 'https://two.example' },
+  ])
+  assert.equal(calls.length, 1)
+})
+
+test('falls back to message annotations and ignores non-url_citation types', async () => {
+  const { fullSources } = await parseSSEStream(
+    streamReader([
+      event({
+        choices: [{
+          message: {
+            annotations: [
+              { type: 'other', value: 'ignored' },
+              { type: 'url_citation', url_citation: { url: 'https://three.example' } },
+            ],
+          },
+        }],
+      }),
+    ]),
+    () => {}
+  )
+  assert.deepEqual(fullSources, [{ title: null, url: 'https://three.example' }])
+})
+
+test('captures sources on a chunk that also carries usage', async () => {
+  const { fullSources, finalUsage } = await parseSSEStream(
+    streamReader([
+      event({
+        venice_parameters: { web_search_citations: [{ title: 'T', url: 'https://t.example' }] },
+        choices: [{ delta: { content: 'done' } }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }),
+    ]),
+    () => {}
+  )
+  assert.deepEqual(fullSources, [{ title: 'T', url: 'https://t.example' }])
+  assert.deepEqual(finalUsage, { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 })
+})
+
+test('returns empty sources when no citations are present', async () => {
+  const { fullSources } = await parseSSEStream(
+    streamReader([event({ choices: [{ delta: { content: 'plain' } }] })]),
+    () => {}
+  )
+  assert.deepEqual(fullSources, [])
+})

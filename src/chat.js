@@ -3,7 +3,7 @@ import { getEffortLabel } from './prompts.js'
 import { DEFAULT_TEMPERATURE } from './constants.js'
 import { CHAT_COMMANDS, chatCommands, budgetGuard, commandAcceptsArgs } from './commands/chat/index.js'
 import { readInput as defaultReadInput } from './input.js'
-import { createStreamRenderer, renderHistory } from './ui/stream.js'
+import { createStreamRenderer, renderHistory, printSources } from './ui/stream.js'
 import { formatError, ApiError } from './errors.js'
 import { extractPartialToken } from './sse-parser.js'
 import { dim, sep } from './ui/style.js'
@@ -196,6 +196,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     let streamedContent = ''
     let streamedReasoning = ''
 
+    render.sources = []
     streaming = true
     streamController = new AbortController()
     interrupted = false
@@ -211,6 +212,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
           else if (type === 'content') streamedContent += token
           render(token, type)
         },
+        onSources: (sources) => {
+          render.sources = sources
+        },
         provider: state.endpointProviderName,
         reasoningEffort: state.reasoningEffort,
         supportsReasoning: state.supportsReasoning,
@@ -222,6 +226,10 @@ export async function runChatSession(ctx = {}, deps = {}) {
       })
       render.flush()
       stdout.write('\n\n')
+
+      if (apiResult.sources?.length > 0) {
+        printSources(apiResult.sources, stdout)
+      }
 
       if (apiResult.usage) {
         tracker.record(apiResult.usage, state.pricing)
