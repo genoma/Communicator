@@ -178,7 +178,8 @@ const handlers = {
   '/markdown': async (ctx) => {
     ctx.state.toggleMarkdown()
     ctx.render.markdown = ctx.state.markdown
-    console.log(`Markdown rendering ${ctx.state.markdown ? 'enabled' : 'disabled'}. The current line is styled once it completes.\n`)
+    const hint = ctx.state.markdown ? ' Lines are styled and streamed live.' : ''
+    console.log(`Markdown rendering ${ctx.state.markdown ? 'enabled' : 'disabled'}.${hint}\n`)
   },
 
   '/cost': async (ctx) => {
