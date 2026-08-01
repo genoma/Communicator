@@ -1,6 +1,6 @@
 import { UsageTracker, budgetLine, budgetStatus } from './tracker.js'
-import { getEffortLabel, resolveTemperatureFlag, selectReasoningEffort } from './prompts.js'
-import { DEFAULT_TEMPERATURE, formatCost } from './constants.js'
+import { getEffortLabel, resolveTemperatureFlag, resolveWebResultsFlag, selectReasoningEffort } from './prompts.js'
+import { DEFAULT_TEMPERATURE, DEFAULT_WEB_SEARCH_RESULTS, formatCost } from './constants.js'
 import { CHAT_COMMANDS } from './commands.js'
 import { readInput } from './input.js'
 import { createStreamRenderer, renderHistory } from './ui/stream.js'
@@ -20,6 +20,9 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
   supportsReasoning = true,
   modelReasoning = null,
   budget = null,
+  webSearch = false,
+  webResults = null,
+  webSearchSupported = undefined,
   prefs = {},
   configPath = null,
 } = {}) {
@@ -33,6 +36,9 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     budget,
     pricing,
     supportsReasoning,
+    webSearch,
+    webResults,
+    webSearchSupported,
     sessionId,
     createdAt,
     modelReasoning,
@@ -55,6 +61,9 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
   const bannerParts = []
   if (reasoningEffort != null) bannerParts.push(`[thinking: ${getEffortLabel(reasoningEffort)}]`)
   if (temperature !== DEFAULT_TEMPERATURE) bannerParts.push(`[temp: ${temperature}]`)
+  if (state.webSearch) {
+    bannerParts.push(state.webResults != null ? `[web: ${state.webResults}]` : '[web]')
+  }
   if (bannerParts.length > 0) {
     console.log(`\nConnected to ${label}  ${bannerParts.join('  ')}`)
   } else {
@@ -81,6 +90,8 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     reasoningEffort: state.reasoningEffort,
     temperature: state.temperature,
     budget: state.budget,
+    webSearch: state.webSearch,
+    webResults: state.webResults,
     pricing: state.pricing,
     providerType: provider.meta.name,
   })
@@ -96,6 +107,8 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
         reasoningEffort: state.reasoningEffort ?? null,
         temperature: state.temperature,
         budget: state.budget ?? null,
+        webSearch: state.webSearch,
+        webResults: state.webResults ?? null,
         pricing: state.pricing ?? null,
         createdAt: state.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -175,6 +188,8 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
         supportsReasoning: state.supportsReasoning,
         sessionId: state.sessionId,
         temperature: state.temperature,
+        webSearch: state.webSearch,
+        webResults: state.webResults,
         signal: streamController.signal,
       })
       render.flush()
@@ -255,6 +270,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       state.messages = [{ role: 'system', content: systemContent }]
       tracker = new UsageTracker()
       state.budget = null
+      state.webResults = null
       budgetWarned = false
       console.log('\nNew session started.\n')
       continue
@@ -276,6 +292,8 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       state.supportsReasoning = sel.supportsReasoning
       state.modelReasoning = sel.modelReasoning
       state.temperature = prefs.temperature?.[sel.modelId] ?? DEFAULT_TEMPERATURE
+      state.webSearchSupported = sel.webSearchSupported
+      state.webSearch = sel.webSearchSupported === false ? false : (prefs.webSearch?.[sel.modelId] ?? false)
 
       const prefsChanges = { lastModel: sel.modelId, lastProvider: sel.endpointProviderName }
       if (sel.reasoningEffort !== undefined) {
@@ -349,6 +367,50 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       }
       const { pct, remaining } = budgetStatus(tracker.cost, state.budget)
       console.log(`Budget: ${formatCost(tracker.cost)} of ${formatCost(state.budget)} used (${pct.toFixed(0)}%). ${formatCost(remaining)} remaining.\n`)
+      continue
+    }
+
+    if (input === '/web-search' || input.startsWith('/web-search ')) {
+      const value = input.slice('/web-search'.length).trim()
+      if (!value) {
+        const results = state.webResults != null ? ` (${state.webResults} results)` : ''
+        console.log(`Web search is ${state.webSearch ? 'enabled' : 'disabled'}${results}.\n`)
+        continue
+      }
+      const on = value === 'on' ? true : value === 'off' ? false : undefined
+      if (on === undefined) {
+        console.error('Error: /web-search expects "on" or "off".\n')
+        continue
+      }
+      if (on && state.webSearchSupported === false) {
+        console.log('This model does not support web search.\n')
+        continue
+      }
+      state.webSearch = on
+      await savePrefs({ webSearch: { ...prefs.webSearch, [state.modelId]: on } })
+      console.log(`Web search ${on ? 'enabled' : 'disabled'}.\n`)
+      continue
+    }
+
+    if (input === '/web-results' || input.startsWith('/web-results ')) {
+      const value = input.slice('/web-results'.length).trim()
+      if (!value) {
+        if (state.webResults == null) {
+          console.log(`Web search results: default (${DEFAULT_WEB_SEARCH_RESULTS}).\n`)
+          continue
+        }
+        console.log(`Web search results: ${state.webResults}.\n`)
+        continue
+      }
+      let parsed
+      try {
+        parsed = resolveWebResultsFlag({ webResults: value })
+      } catch (err) {
+        console.error(`\nError: ${err.message}\n`)
+        continue
+      }
+      state.webResults = parsed
+      console.log(`Web search results set to ${parsed}.\n`)
       continue
     }
 

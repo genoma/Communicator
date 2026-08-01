@@ -70,8 +70,8 @@ test('nextMatchIndex returns -1 for an empty match list', () => {
   assert.equal(nextMatchIndex('/mo', [], 1), -1)
 })
 
-test('CHAT_COMMANDS has 10 commands', () => {
-  assert.equal(CHAT_COMMANDS.length, 10)
+test('CHAT_COMMANDS has 12 commands', () => {
+  assert.equal(CHAT_COMMANDS.length, 12)
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/new',
@@ -79,6 +79,8 @@ test('CHAT_COMMANDS has 10 commands', () => {
     '/reasoning',
     '/temp',
     '/budget',
+    '/web-search',
+    '/web-results',
     '/retry',
     '/copy',
     '/markdown',

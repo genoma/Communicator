@@ -151,3 +151,12 @@ export function resolveTemperatureFlag({ temperature } = {}) {
   }
   return num
 }
+
+export function resolveWebResultsFlag({ webResults } = {}) {
+  if (webResults === undefined || webResults === null || webResults === '') return undefined
+  const num = Number(webResults)
+  if (!Number.isInteger(num) || num <= 0) {
+    throw new Error('--web-results must be a positive integer.')
+  }
+  return num
+}

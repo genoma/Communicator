@@ -100,7 +100,7 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   }]
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, _provider, reasoningEffort, supportsReasoning, sessionId, temperature = DEFAULT_TEMPERATURE, signal }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, _provider, reasoningEffort, supportsReasoning, sessionId, temperature = DEFAULT_TEMPERATURE, webSearch, signal }) {
   const body = {
     model,
     messages,
@@ -108,6 +108,10 @@ export async function chatCompletion({ apiKey, model, messages, onToken, _provid
     stream_options: { include_usage: true },
     temperature,
     venice_parameters: { include_venice_system_prompt: false },
+  }
+
+  if (webSearch) {
+    body.venice_parameters.enable_web_search = 'on'
   }
 
   if (sessionId) {

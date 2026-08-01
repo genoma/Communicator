@@ -345,3 +345,75 @@ test('chatCompletion maps venice sessionId to prompt_cache_key', async (t) => {
   assert.equal(sentBody.reasoning_effort, 'high')
   assert.equal(result.content, 'ok')
 })
+
+test('openrouter chatCompletion adds web plugin with default max_results when web search is on', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'm',
+    messages: [],
+    onToken: () => {},
+    webSearch: true,
+  })
+
+  assert.deepEqual(sentBody.plugins, [{ id: 'web', max_results: 10 }])
+})
+
+test('openrouter chatCompletion uses custom max_results when webResults is set', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'm',
+    messages: [],
+    onToken: () => {},
+    webSearch: true,
+    webResults: 3,
+  })
+
+  assert.deepEqual(sentBody.plugins, [{ id: 'web', max_results: 3 }])
+})
+
+test('openrouter chatCompletion never sends plugins when web search is off', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'm',
+    messages: [],
+    onToken: () => {},
+    webSearch: false,
+    webResults: 3,
+  })
+
+  assert.equal(sentBody.plugins, undefined)
+})
+
+test('venice chatCompletion sets enable_web_search on venice_parameters only when web search is on', async (t) => {
+  const sentBodies = []
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBodies.push(JSON.parse(opts.body))
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await venice.chatCompletion({ apiKey: 'key', model: 'm', messages: [], onToken: () => {}, webSearch: true })
+  await venice.chatCompletion({ apiKey: 'key', model: 'm', messages: [], onToken: () => {}, webSearch: false })
+  await venice.chatCompletion({ apiKey: 'key', model: 'm', messages: [], onToken: () => {} })
+
+  assert.equal(sentBodies[0].venice_parameters.enable_web_search, 'on')
+  assert.equal(sentBodies[1].venice_parameters.enable_web_search, undefined)
+  assert.equal(sentBodies[2].venice_parameters.enable_web_search, undefined)
+})

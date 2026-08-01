@@ -1,6 +1,6 @@
 import { getProvider } from '../providers/index.js'
 import { DEFAULT_TEMPERATURE, formatCost } from '../constants.js'
-import { resolveReasoningFlag, resolveTemperatureFlag } from '../prompts.js'
+import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag } from '../prompts.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
 import { ensureSessionsDir, generateSessionId, generateTitle, saveSession } from '../sessions.js'
 import { savePreferences } from '../config.js'
@@ -58,6 +58,14 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
       process.exit(1)
     }
   }
+  let forcedWebResults
+  try {
+    forcedWebResults = resolveWebResultsFlag({ webResults: opts.webResults })
+  } catch (err) {
+    console.error(`Error: ${err.message}`)
+    process.exit(1)
+  }
+  const forcedWebSearch = opts.webSearch === true
 
   let selection
   let temperature
@@ -75,6 +83,13 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     console.error(`Error: ${formatError(err)}`)
     process.exit(1)
   }
+
+  const webSearch = forcedWebResults != null ? true : (forcedWebSearch ?? prefs.webSearch?.[selection.modelId] ?? false)
+  if (webSearch && selection.webSearchSupported === false) {
+    console.error('Error: The selected model does not support web search.')
+    process.exit(1)
+  }
+  const webResults = forcedWebResults ?? null
 
   const dir = await ensureSessionsDir()
   const sessionId = await generateSessionId(dir)
@@ -105,6 +120,8 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
       supportsReasoning: selection.supportsReasoning,
       sessionId,
       temperature,
+      webSearch,
+      webResults,
       signal: controller.signal,
     }
 
@@ -158,6 +175,8 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     reasoningEffort: selection.reasoningEffort ?? null,
     temperature,
     budget: budget ?? null,
+    webSearch,
+    webResults,
     pricing: selection.pricing ?? null,
     createdAt,
     updatedAt: new Date().toISOString(),
@@ -170,5 +189,6 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     lastModel: selection.modelId,
     lastProvider: selection.endpointProviderName,
     temperature: { ...prefs.temperature, [selection.modelId]: temperature },
+    webSearch: { ...prefs.webSearch, [selection.modelId]: webSearch },
   }, opts.config)
 }

@@ -1,7 +1,7 @@
 import { parseSSEStream } from '../sse-parser.js'
 import { fetchWithRetry } from '../http.js'
 import { ApiError } from '../errors.js'
-import { DEFAULT_TEMPERATURE } from '../constants.js'
+import { DEFAULT_TEMPERATURE, DEFAULT_WEB_SEARCH_RESULTS } from '../constants.js'
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 const CACHE_HEADER = 'x-openrouter-cache-status'
@@ -11,6 +11,7 @@ export const meta = {
   baseURL: OPENROUTER_BASE,
   apiKeyEnv: 'OPENROUTER_API_KEY',
   hasEndpoints: true,
+  supportsWebSearchOnAll: true,
 }
 
 export function normalizePricing(raw) {
@@ -84,7 +85,7 @@ export async function fetchEndpoints(apiKey, modelId) {
   }))
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, _supportsReasoning, _sessionId, temperature = DEFAULT_TEMPERATURE, signal }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, _supportsReasoning, _sessionId, temperature = DEFAULT_TEMPERATURE, webSearch, webResults, signal }) {
   const body = {
     model,
     messages,
@@ -97,6 +98,10 @@ export async function chatCompletion({ apiKey, model, messages, onToken, provide
       order: [provider],
       allow_fallbacks: false,
     }
+  }
+
+  if (webSearch) {
+    body.plugins = [{ id: 'web', max_results: webResults ?? DEFAULT_WEB_SEARCH_RESULTS }]
   }
 
   if (reasoningEffort) {
