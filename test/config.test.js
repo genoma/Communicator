@@ -86,3 +86,17 @@ test('applyPreferenceUpdates skips undefined smoothStreaming', () => {
 
   assert.deepEqual(Object.keys(updated).sort(), ['lastModel'])
 })
+
+test('applyPreferenceUpdates merges the global smoothSpeed key', () => {
+  const prefs = { lastModel: 'm' }
+  const updated = applyPreferenceUpdates(prefs, { modelId: 'm', smoothSpeed: 'fast' })
+
+  assert.equal(updated.smoothSpeed, 'fast')
+  assert.equal(prefs.smoothSpeed, undefined)
+})
+
+test('applyPreferenceUpdates skips undefined smoothSpeed', () => {
+  const updated = applyPreferenceUpdates({ lastModel: 'm' }, { modelId: 'm', smoothSpeed: undefined })
+
+  assert.deepEqual(Object.keys(updated).sort(), ['lastModel'])
+})

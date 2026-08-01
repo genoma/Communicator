@@ -12,6 +12,8 @@ import { exportCmd } from './src/commands/export-cmd.js'
 import { oneShotCmd } from './src/commands/one-shot.js'
 import { deleteCmd } from './src/commands/delete-cmd.js'
 import { chatStart } from './src/commands/chat-start.js'
+import { resolveSmoothSpeed } from './src/flags.js'
+import { resolveFlagOrExit } from './src/cli-utils.js'
 
 const program = new Command()
 
@@ -36,6 +38,7 @@ program
   .option('--web-search [mode]', 'web search mode: auto, always, off (bare flag = auto; per-model default persisted)')
   .option('--web-results <n>', 'number of web search results (OpenRouter only, default 10)')
   .option('--no-smooth-streaming', 'disable smooth streaming (default: on in interactive sessions)')
+  .option('--smooth-speed <level|cps>', 'smooth streaming speed: slow, normal, fast, or chars per second')
   .option('--delete [session-id]', 'delete a saved session (with confirmation)')
 
 program.parse()
@@ -62,6 +65,8 @@ async function main(opts) {
     console.error('Error: --web-search expects "auto", "always", or "off" (bare flag = auto).')
     process.exit(1)
   }
+
+  resolveFlagOrExit(resolveSmoothSpeed, opts.smoothSpeed)
 
   if (opts.resume !== undefined && opts.export !== undefined) {
     console.error('Cannot use --resume and --export together. Use one at a time.')

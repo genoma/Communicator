@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, normalizeWebSearchMode, validateTemperature, resolveBudget } from '../src/flags.js'
+import { resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, normalizeWebSearchMode, validateTemperature, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed } from '../src/flags.js'
 
 test('resolveTemperatureFlag parses string and number values', () => {
   assert.equal(resolveTemperatureFlag({ temperature: '0.5' }), 0.5)
@@ -118,4 +118,38 @@ test('resolveBudget throws for non-positive and non-finite values', () => {
   assert.throws(() => resolveBudget('abc'), /positive number \(USD\)/)
   assert.throws(() => resolveBudget(NaN), /positive number \(USD\)/)
   assert.throws(() => resolveBudget(Infinity), /positive number \(USD\)/)
+})
+
+test('resolveSmoothSpeed maps presets to chars per second', () => {
+  assert.equal(resolveSmoothSpeed('slow'), 500)
+  assert.equal(resolveSmoothSpeed('normal'), 2000)
+  assert.equal(resolveSmoothSpeed('fast'), 8000)
+})
+
+test('resolveSmoothSpeed parses numeric chars per second', () => {
+  assert.equal(resolveSmoothSpeed('1500'), 1500)
+  assert.equal(resolveSmoothSpeed(1500), 1500)
+  assert.equal(resolveSmoothSpeed('0.5'), 0.5)
+})
+
+test('resolveSmoothSpeed returns undefined when unset', () => {
+  assert.equal(resolveSmoothSpeed(undefined), undefined)
+  assert.equal(resolveSmoothSpeed(null), undefined)
+  assert.equal(resolveSmoothSpeed(''), undefined)
+})
+
+test('resolveSmoothSpeed rejects invalid values', () => {
+  assert.throws(() => resolveSmoothSpeed('bogus'), /slow.*normal.*fast/)
+  assert.throws(() => resolveSmoothSpeed('0'), /positive number of chars per second/)
+  assert.throws(() => resolveSmoothSpeed('-5'), /positive number of chars per second/)
+  assert.throws(() => resolveSmoothSpeed(NaN), /positive number of chars per second/)
+  assert.throws(() => resolveSmoothSpeed(Infinity), /positive number of chars per second/)
+})
+
+test('normalizeSmoothSpeed falls back to the normal preset', () => {
+  assert.equal(normalizeSmoothSpeed(undefined), 2000)
+  assert.equal(normalizeSmoothSpeed('fast'), 8000)
+  assert.equal(normalizeSmoothSpeed('1500'), 1500)
+  assert.equal(normalizeSmoothSpeed('bogus'), 2000)
+  assert.equal(normalizeSmoothSpeed(0), 2000)
 })

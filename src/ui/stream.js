@@ -31,13 +31,13 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   const pump = () => {
     pumpTimer = null
     let chars = 0
-    while (queue.length > 0 && (queue[0].marker || chars < smoothCharsPerTick)) {
+    while (queue.length > 0 && (queue[0].marker || chars < render.smoothCharsPerTick)) {
       const segment = queue.shift()
       if (segment.marker) {
         writeSegment(segment.type, segment.text)
         continue
       }
-      const take = Math.min(segment.text.length, smoothCharsPerTick - chars)
+      const take = Math.min(segment.text.length, render.smoothCharsPerTick - chars)
       writeSegment(segment.type, segment.text.slice(0, take))
       chars += take
       if (take < segment.text.length) {
@@ -56,7 +56,7 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
 
   const schedulePump = () => {
     if (pumpTimer === null) {
-      pumpTimer = setTimeout(pump, smoothTickMs)
+      pumpTimer = setTimeout(pump, render.smoothTickMs)
       pumpTimer.unref?.()
     }
   }
@@ -71,6 +71,8 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   }
   render.markdown = markdown
   render.smooth = smooth
+  render.smoothCharsPerTick = smoothCharsPerTick
+  render.smoothTickMs = smoothTickMs
   render.sources = []
   render.flush = ({ sync = false } = {}) => {
     if (sync) {

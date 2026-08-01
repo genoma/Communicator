@@ -25,7 +25,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   const s = makeState()
   assert.deepEqual(
     Object.keys(s).sort(),
-    ['budget', 'createdAt', 'endpointProviderName', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pricing', 'reasoningEffort', 'sessionId', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'webResults', 'webSearch', 'webSearchSupported']
+    ['budget', 'createdAt', 'endpointProviderName', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pricing', 'reasoningEffort', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'webResults', 'webSearch', 'webSearchSupported']
   )
   assert.equal(s.modelId, 'org/model')
   assert.equal(s.endpointProviderName, 'Provider')
@@ -42,6 +42,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   assert.deepEqual(s.modelReasoning, { supported: true })
   assert.equal(s.markdown, true)
   assert.equal(s.smoothStreaming, true)
+  assert.equal(s.smoothSpeed, 2000)
   assert.deepEqual(s.messages, [{ role: 'system', content: 'You are a helpful assistant.' }])
 })
 
@@ -110,6 +111,7 @@ test('transitions mutate only their own fields', () => {
   s.setReasoningEffort('low')
   s.toggleMarkdown()
   s.setSmoothStreaming(false)
+  s.setSmoothSpeed('fast')
 
   assert.equal(s.temperature, 0.5)
   assert.equal(s.budget, 2)
@@ -118,6 +120,7 @@ test('transitions mutate only their own fields', () => {
   assert.equal(s.reasoningEffort, 'low')
   assert.equal(s.markdown, false)
   assert.equal(s.smoothStreaming, false)
+  assert.equal(s.smoothSpeed, 8000)
 
   assert.equal(s.modelId, 'org/model')
   assert.equal(s.endpointProviderName, 'Provider')
@@ -181,6 +184,29 @@ test('applyModelSelection gates web search off for unsupported models', () => {
     { temperature: {}, webSearch: { m: true } }
   )
   assert.equal(s.webSearch, 'off')
+})
+
+test('constructor defaults smoothSpeed to the normal preset and normalizes values', () => {
+  const s = makeState()
+  assert.equal(s.smoothSpeed, 2000)
+  const fast = makeState({ smoothSpeed: 'fast' })
+  assert.equal(fast.smoothSpeed, 8000)
+  const numeric = makeState({ smoothSpeed: '1500' })
+  assert.equal(numeric.smoothSpeed, 1500)
+  const invalid = makeState({ smoothSpeed: 'bogus' })
+  assert.equal(invalid.smoothSpeed, 2000)
+})
+
+test('setSmoothSpeed updates the speed and falls back for invalid values', () => {
+  const s = makeState()
+  s.setSmoothSpeed(1500)
+  assert.equal(s.smoothSpeed, 1500)
+  s.setSmoothSpeed('slow')
+  assert.equal(s.smoothSpeed, 500)
+  s.setSmoothSpeed('bogus')
+  assert.equal(s.smoothSpeed, 2000)
+  s.setSmoothSpeed(undefined)
+  assert.equal(s.smoothSpeed, 2000)
 })
 
 test('appendAssistant, popLastMessage and lastAssistantMessage round-trip', () => {

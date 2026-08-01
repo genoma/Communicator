@@ -1,5 +1,5 @@
 import { getProvider } from '../providers/index.js'
-import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, resolveBudget } from '../flags.js'
+import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed } from '../flags.js'
 import { resolveFlagOrExit } from '../cli-utils.js'
 import { DEFAULT_TEMPERATURE } from '../constants.js'
 import { startChat } from '../chat.js'
@@ -12,6 +12,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
   const forcedTemperature = resolveFlagOrExit((v) => resolveTemperatureFlag({ temperature: v }), opts.temperature)
   const budget = resolveFlagOrExit(resolveBudget, opts.budget)
   const forcedWebResults = resolveFlagOrExit((v) => resolveWebResultsFlag({ webResults: v }), opts.webResults)
+  const forcedSmoothSpeed = resolveFlagOrExit(resolveSmoothSpeed, opts.smoothSpeed)
 
   if (opts.resume !== undefined) {
     const result = await resumeCmd(opts.resume)
@@ -27,6 +28,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
       webSearch: resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: result.webSearch }),
       webResults: forcedWebResults ?? result.webResults ?? null,
       smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
+      smoothSpeed: forcedSmoothSpeed ?? normalizeSmoothSpeed(prefs.smoothSpeed),
       pricing: result.pricing,
       initialMessages: result.initialMessages,
       sessionId: result.sessionId,
@@ -66,6 +68,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
     webSearch,
     webResults: forcedWebResults ?? null,
     smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
+    smoothSpeed: forcedSmoothSpeed ?? normalizeSmoothSpeed(prefs.smoothSpeed),
     webSearchSupported: selection.webSearchSupported,
     pricing: selection.pricing,
     provider,
@@ -111,6 +114,7 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerTyp
     webResults: ctx.webResults,
     webSearchSupported: ctx.webSearchSupported,
     smoothStreaming: ctx.smoothStreaming,
+    smoothSpeed: ctx.smoothSpeed,
     prefs,
     configPath: opts.config,
   })
