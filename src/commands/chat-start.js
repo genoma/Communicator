@@ -1,5 +1,5 @@
 import { getProvider } from '../providers/index.js'
-import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag } from '../prompts.js'
+import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag } from '../prompts.js'
 import { DEFAULT_TEMPERATURE } from '../constants.js'
 import { startChat } from '../chat.js'
 import { ensureSessionsDir, generateSessionId, generateTitle, saveSession } from '../sessions.js'
@@ -38,7 +38,6 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
   }
   const budget = resolveBudget(opts.budget)
   const forcedWebResults = resolveWebResults(opts.webResults)
-  const forcedWebSearch = opts.webSearch === true
 
   if (opts.resume !== undefined) {
     const result = await resumeCmd(opts.resume)
@@ -51,7 +50,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
       reasoningEffort: result.reasoningEffort,
       temperature: forcedTemperature ?? result.temperature ?? DEFAULT_TEMPERATURE,
       budget: budget ?? result.budget ?? null,
-      webSearch: forcedWebResults != null ? true : (forcedWebSearch ?? result.webSearch ?? false),
+      webSearch: resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: result.webSearch }),
       webResults: forcedWebResults ?? result.webResults ?? null,
       pricing: result.pricing,
       initialMessages: result.initialMessages,
@@ -77,7 +76,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
   const dir = await ensureSessionsDir()
   const sessionId = await generateSessionId(dir)
 
-  const webSearch = forcedWebResults != null ? true : (forcedWebSearch ?? prefs.webSearch?.[selection.modelId] ?? false)
+  const webSearch = resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: prefs.webSearch?.[selection.modelId] })
   if (webSearch && selection.webSearchSupported === false) {
     console.error('Error: The selected model does not support web search.')
     process.exit(1)
