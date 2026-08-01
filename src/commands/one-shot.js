@@ -1,6 +1,7 @@
 import { getProvider } from '../providers/index.js'
-import { DEFAULT_TEMPERATURE, formatCost } from '../constants.js'
+import { DEFAULT_TEMPERATURE } from '../constants.js'
 import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, resolveBudget } from '../flags.js'
+import { resolveFlagOrExit } from '../cli-utils.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
 import { ensureSessionsDir, generateSessionId, saveSession, buildSessionPayload } from '../sessions.js'
 import { savePreferences, applyPreferenceUpdates } from '../config.js'
@@ -24,15 +25,6 @@ async function readStdin() {
   return Buffer.concat(chunks).toString('utf-8').trim()
 }
 
-function resolveBudgetFlag(value) {
-  try {
-    return resolveBudget(value)
-  } catch (err) {
-    console.error(`Error: ${err.message}`)
-    process.exit(1)
-  }
-}
-
 export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt }) {
   const provider = getProvider(providerType)
   const stdinPiped = !process.stdin.isTTY
@@ -47,23 +39,9 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   }
 
   const forcedEffort = resolveReasoningFlag({ reasoningEffort: opts.reasoningEffort })
-  const budget = resolveBudgetFlag(opts.budget)
-  let forcedTemperature
-  if (opts.temperature !== undefined && opts.temperature !== '') {
-    try {
-      forcedTemperature = resolveTemperatureFlag({ temperature: opts.temperature })
-    } catch (err) {
-      console.error(`Error: ${err.message}`)
-      process.exit(1)
-    }
-  }
-  let forcedWebResults
-  try {
-    forcedWebResults = resolveWebResultsFlag({ webResults: opts.webResults })
-  } catch (err) {
-    console.error(`Error: ${err.message}`)
-    process.exit(1)
-  }
+  const budget = resolveFlagOrExit(resolveBudget, opts.budget)
+  const forcedTemperature = resolveFlagOrExit((v) => resolveTemperatureFlag({ temperature: v }), opts.temperature)
+  const forcedWebResults = resolveFlagOrExit((v) => resolveWebResultsFlag({ webResults: v }), opts.webResults)
 
   let selection
   let temperature
@@ -98,10 +76,6 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   ]
 
   const tracker = new UsageTracker()
-  if (budget != null && tracker.cost >= budget) {
-    console.error(`Error: budget exhausted (${formatCost(tracker.cost)} of ${formatCost(budget)}).`)
-    process.exit(1)
-  }
   const ttyOut = process.stdout.isTTY === true
   const controller = new AbortController()
   const onSigint = () => controller.abort()
@@ -175,8 +149,10 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     if (!content.endsWith('\n')) process.stdout.write('\n')
   }
 
-  await saveSession(dir, sessionId, buildSessionPayload({
+  const finalState = {
     messages,
+    sessionId,
+    createdAt,
     modelId: selection.modelId,
     endpointProviderName: selection.endpointProviderName,
     providerType: provider.meta.name,
@@ -186,8 +162,9 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     webSearch,
     webResults,
     pricing: selection.pricing,
-    createdAt,
-  }))
+  }
+
+  await saveSession(dir, sessionId, buildSessionPayload(finalState))
 
   await savePreferences(applyPreferenceUpdates(prefs, {
     modelId: selection.modelId,
