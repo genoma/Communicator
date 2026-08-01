@@ -85,7 +85,7 @@ export async function fetchEndpoints(apiKey, modelId) {
   }))
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, _supportsReasoning, _sessionId, temperature = DEFAULT_TEMPERATURE, webSearch, webResults, signal }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, temperature = DEFAULT_TEMPERATURE, webSearch, webResults, signal }) {
   const body = {
     model,
     messages,

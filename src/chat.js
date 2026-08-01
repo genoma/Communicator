@@ -1,34 +1,79 @@
-import { UsageTracker, budgetLine, budgetStatus } from './tracker.js'
-import { getEffortLabel, resolveTemperatureFlag, resolveWebResultsFlag, selectReasoningEffort } from './prompts.js'
-import { DEFAULT_TEMPERATURE, DEFAULT_WEB_SEARCH_RESULTS, formatCost } from './constants.js'
-import { CHAT_COMMANDS } from './commands.js'
-import { readInput } from './input.js'
+import { UsageTracker, budgetLine } from './tracker.js'
+import { getEffortLabel } from './prompts.js'
+import { DEFAULT_TEMPERATURE } from './constants.js'
+import { CHAT_COMMANDS, chatCommands, budgetGuard, commandAcceptsArgs } from './commands/chat/index.js'
+import { readInput as defaultReadInput } from './input.js'
 import { createStreamRenderer, renderHistory } from './ui/stream.js'
 import { formatError, ApiError } from './errors.js'
 import { extractPartialToken } from './sse-parser.js'
 import { dim, sep } from './ui/style.js'
-import { ensureSessionsDir, generateSessionId, generateTitle, saveSession } from './sessions.js'
-import { savePreferences } from './config.js'
-import { selectModelAndEndpoint } from './model-selection.js'
+import { ensureSessionsDir, generateSessionId, saveSession, buildSessionPayload } from './sessions.js'
+import { savePreferences, applyPreferenceUpdates } from './config.js'
 import { copyText } from './clipboard.js'
+import { ChatState } from './chat-state.js'
 
-export async function startChat(apiKey, model, endpointProviderName, reasoningEffort, temperature, pricing, provider, {
-  systemPrompt = null,
-  initialMessages = null,
-  sessionId = null,
-  createdAt = null,
-  supportsReasoning = true,
-  modelReasoning = null,
-  budget = null,
-  webSearch = false,
-  webResults = null,
-  webSearchSupported = undefined,
-  prefs = {},
-  configPath = null,
-} = {}) {
+function defaultOnSignal(handlers) {
+  const onSigint = () => handlers.sigint()
+  const onBeforeExit = () => handlers.beforeExit()
+  const onUncaught = (err) => handlers.uncaughtException(err)
+  process.on('SIGINT', onSigint)
+  process.on('beforeExit', onBeforeExit)
+  process.on('uncaughtException', onUncaught)
+  return () => {
+    process.off('SIGINT', onSigint)
+    process.off('beforeExit', onBeforeExit)
+    process.off('uncaughtException', onUncaught)
+  }
+}
+
+export async function runChatSession(ctx = {}, deps = {}) {
+  const {
+    apiKey,
+    model,
+    endpointProviderName,
+    reasoningEffort,
+    temperature,
+    pricing,
+    provider,
+    systemPrompt = null,
+    initialMessages = null,
+    sessionId = null,
+    createdAt = null,
+    supportsReasoning = true,
+    modelReasoning = null,
+    budget = null,
+    webSearch = false,
+    webResults = null,
+    webSearchSupported = undefined,
+    prefs = {},
+    configPath = null,
+  } = ctx
+
+  const {
+    readInput = defaultReadInput,
+    renderer = createStreamRenderer,
+    stdout = process.stdout,
+    exit = (code) => process.exit(code),
+    onSignal = defaultOnSignal,
+  } = deps
+
+  const saveSessionFile = deps.saveSession ?? (async (sessionIdToSave, payload) => {
+    const dir = await ensureSessionsDir()
+    await saveSession(dir, sessionIdToSave, payload)
+  })
+
+  const savePrefsFile = deps.savePrefs ?? (async (updates) => {
+    await savePreferences(applyPreferenceUpdates(prefs, updates), configPath)
+  })
+
+  const newSessionId = deps.newSessionId ?? (async () => {
+    const dir = await ensureSessionsDir()
+    return generateSessionId(dir)
+  })
+
   const systemContent = systemPrompt || 'You are a helpful assistant.'
 
-  const state = {
+  const state = new ChatState({
     modelId: model,
     endpointProviderName,
     reasoningEffort,
@@ -42,9 +87,9 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     sessionId,
     createdAt,
     modelReasoning,
-    markdown: true,
-    messages: initialMessages || [{ role: 'system', content: systemContent }],
-  }
+    messages: initialMessages || undefined,
+    systemContent,
+  })
 
   let tracker = new UsageTracker()
   let budgetWarned = false
@@ -79,50 +124,32 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     console.log(`${dim('Previous session:')} ${tracker.summary()}\n`)
   }
 
-  const render = createStreamRenderer({ markdown: state.markdown })
-
-  const finalState = () => ({
-    messages: state.messages,
-    sessionId: state.sessionId,
-    createdAt: state.createdAt,
-    modelId: state.modelId,
-    endpointProviderName: state.endpointProviderName,
-    reasoningEffort: state.reasoningEffort,
-    temperature: state.temperature,
-    budget: state.budget,
-    webSearch: state.webSearch,
-    webResults: state.webResults,
-    pricing: state.pricing,
-    providerType: provider.meta.name,
-  })
+  const render = renderer({ markdown: state.markdown })
 
   const saveCurrentSession = async () => {
     if (!state.sessionId || state.messages.length <= 1) return
     try {
-      const dir = await ensureSessionsDir()
-      await saveSession(dir, state.sessionId, {
-        model: state.modelId,
-        providerName: state.endpointProviderName,
-        providerType: provider.meta.name,
-        reasoningEffort: state.reasoningEffort ?? null,
-        temperature: state.temperature,
-        budget: state.budget ?? null,
-        webSearch: state.webSearch,
-        webResults: state.webResults ?? null,
-        pricing: state.pricing ?? null,
-        createdAt: state.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        title: generateTitle(state.messages),
+      await saveSessionFile(state.sessionId, buildSessionPayload({
         messages: state.messages,
-      })
+        modelId: state.modelId,
+        endpointProviderName: state.endpointProviderName,
+        providerType: provider.meta.name,
+        reasoningEffort: state.reasoningEffort,
+        temperature: state.temperature,
+        budget: state.budget,
+        webSearch: state.webSearch,
+        webResults: state.webResults,
+        pricing: state.pricing,
+        createdAt: state.createdAt,
+      }))
     } catch {
       // save failures are non-fatal
     }
   }
 
-  const savePrefs = async (changes) => {
+  const savePrefs = async (updates) => {
     try {
-      await savePreferences({ ...prefs, ...changes }, configPath)
+      await savePrefsFile(updates)
     } catch {
       // prefs save failures are non-fatal
     }
@@ -135,32 +162,33 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     await saveCurrentSession()
   }
 
-  const onBeforeExit = () => {
-    void bestEffortSave()
-  }
-  process.on('beforeExit', onBeforeExit)
-  process.on('uncaughtException', (err) => {
-    console.error(`\nUnhandled error: ${err?.message || err}`)
-    void bestEffortSave().finally(() => process.exit(1))
-  })
-
   let streaming = false
   let streamController = null
   let interrupted = false
 
-  process.on('SIGINT', () => {
-    if (!streaming) {
-      void bestEffortSave().finally(() => process.exit(130))
-      return
-    }
-    interrupted = true
-    streamController?.abort()
+  const cleanupSignals = onSignal({
+    sigint: () => {
+      if (!streaming) {
+        void bestEffortSave().finally(() => exit(130))
+        return
+      }
+      interrupted = true
+      streamController?.abort()
+    },
+    beforeExit: () => {
+      void bestEffortSave()
+    },
+    uncaughtException: (err) => {
+      console.error(`\nUnhandled error: ${err?.message || err}`)
+      void bestEffortSave().finally(() => exit(1))
+    },
   })
 
-  const exitCleanly = () => {
-    process.off('beforeExit', onBeforeExit)
-    process.stdout.write('\n')
-    return finalState()
+  const exitCleanly = async () => {
+    cleanupSignals()
+    stdout.write('\n')
+    await bestEffortSave()
+    return state.toFinalState(provider.meta.name)
   }
 
   const runTurn = async () => {
@@ -173,7 +201,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     interrupted = false
 
     try {
-      process.stdout.write('\n')
+      stdout.write('\n')
       apiResult = await provider.chatCompletion({
         apiKey,
         model: state.modelId,
@@ -193,7 +221,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
         signal: streamController.signal,
       })
       render.flush()
-      process.stdout.write('\n\n')
+      stdout.write('\n\n')
 
       if (apiResult.usage) {
         tracker.record(apiResult.usage, state.pricing)
@@ -209,7 +237,7 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     } catch (err) {
       if (interrupted) {
         render.flush()
-        process.stdout.write('\n')
+        stdout.write('\n')
         const partial = { role: 'assistant', content: streamedContent }
         if (streamedReasoning) partial.reasoning = streamedReasoning
         if (!partial.content && !partial.reasoning && err.pendingBuffer) {
@@ -220,10 +248,10 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
           }
         }
         if (partial.content || partial.reasoning) {
-          state.messages.push(partial)
+          state.appendAssistant(partial)
         }
         await saveCurrentSession()
-        process.exit(130)
+        exit(130)
       }
       console.error(`\nError: ${formatError(err)}\n`)
       if (err instanceof ApiError && err.retryable) {
@@ -243,9 +271,25 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
       if (apiResult.usage) {
         msg.usage = apiResult.usage
       }
-      state.messages.push(msg)
+      state.appendAssistant(msg)
     }
   }
+
+  const chatCtx = {
+    state,
+    provider,
+    apiKey,
+    prefs,
+    systemContent,
+    saveSession: saveCurrentSession,
+    savePrefs,
+    runTurn,
+    render,
+    newSessionId,
+    copyText,
+    exit: exitCleanly,
+  }
+  Object.defineProperty(chatCtx, 'tracker', { get: () => tracker, enumerable: true })
 
   while (true) {
     console.log(sep())
@@ -258,214 +302,35 @@ export async function startChat(apiKey, model, endpointProviderName, reasoningEf
     const input = result.value.trim()
     if (!input) continue
 
-    if (input === '/quit') {
-      return exitCleanly()
-    }
-
-    if (input === '/new') {
-      await saveCurrentSession()
-      const dir = await ensureSessionsDir()
-      state.sessionId = await generateSessionId(dir)
-      state.createdAt = new Date().toISOString()
-      state.messages = [{ role: 'system', content: systemContent }]
-      tracker = new UsageTracker()
-      state.budget = null
-      state.webResults = null
-      budgetWarned = false
-      console.log('\nNew session started.\n')
-      continue
-    }
-
-    if (input === '/model') {
-      await saveCurrentSession()
-      let sel
-      try {
-        sel = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: undefined })
-      } catch (err) {
-        console.error(`\nError: ${formatError(err)}\n`)
-        continue
-      }
-      state.modelId = sel.modelId
-      state.endpointProviderName = sel.endpointProviderName
-      state.pricing = sel.pricing
-      state.reasoningEffort = sel.reasoningEffort
-      state.supportsReasoning = sel.supportsReasoning
-      state.modelReasoning = sel.modelReasoning
-      state.temperature = prefs.temperature?.[sel.modelId] ?? DEFAULT_TEMPERATURE
-      state.webSearchSupported = sel.webSearchSupported
-      state.webSearch = sel.webSearchSupported === false ? false : (prefs.webSearch?.[sel.modelId] ?? false)
-
-      const prefsChanges = { lastModel: sel.modelId, lastProvider: sel.endpointProviderName }
-      if (sel.reasoningEffort !== undefined) {
-        prefsChanges.reasoningEffort = { ...prefs.reasoningEffort, [sel.modelId]: sel.reasoningEffort }
-      }
-      await savePrefs(prefsChanges)
-
-      const label = sel.endpointProviderName ? `${sel.endpointProviderName} / ${sel.modelId}` : sel.modelId
-      console.log(`\nSwitched to ${label}\n`)
-      continue
-    }
-
-    if (input === '/reasoning') {
-      let reasoning = state.modelReasoning
-      if (!reasoning) {
-        try {
-          const models = await provider.fetchModels(apiKey)
-          reasoning = models.find((m) => m.id === state.modelId)?.reasoning || null
-          state.modelReasoning = reasoning
-        } catch (err) {
-          console.error(`\nError: ${formatError(err)}\n`)
-          continue
-        }
-      }
-      const newEffort = await selectReasoningEffort(reasoning, state.reasoningEffort)
-      if (newEffort === undefined) {
-        console.log('This model does not support reasoning effort control.\n')
-        continue
-      }
-      state.reasoningEffort = newEffort
-      await savePrefs({ reasoningEffort: { ...prefs.reasoningEffort, [state.modelId]: newEffort } })
-      console.log(`Reasoning effort set to ${getEffortLabel(newEffort)}\n`)
-      continue
-    }
-
-    if (input === '/temp' || input.startsWith('/temp ')) {
-      const value = input.slice('/temp'.length).trim()
-      if (!value) {
-        console.log(`Current temperature: ${state.temperature}\n`)
-        continue
-      }
-      let parsed
-      try {
-        parsed = resolveTemperatureFlag({ temperature: value })
-      } catch (err) {
-        console.error(`\nError: ${err.message}\n`)
-        continue
-      }
-      state.temperature = parsed
-      await savePrefs({ temperature: { ...prefs.temperature, [state.modelId]: parsed } })
-      console.log(`Temperature set to ${parsed}\n`)
-      continue
-    }
-
-    if (input === '/budget' || input.startsWith('/budget ')) {
-      const value = input.slice('/budget'.length).trim()
-      if (value) {
-        const parsed = Number(value)
-        if (!Number.isFinite(parsed) || parsed <= 0) {
-          console.error('Error: budget must be a positive number (USD).\n')
-          continue
-        }
-        state.budget = parsed
-        budgetWarned = false
-        console.log(`Budget set to ${formatCost(parsed)} for this session.\n`)
-        continue
-      }
-      if (state.budget == null) {
-        console.log('No budget set. Use /budget <usd> to cap this session.\n')
-        continue
-      }
-      const { pct, remaining } = budgetStatus(tracker.cost, state.budget)
-      console.log(`Budget: ${formatCost(tracker.cost)} of ${formatCost(state.budget)} used (${pct.toFixed(0)}%). ${formatCost(remaining)} remaining.\n`)
-      continue
-    }
-
-    if (input === '/web-search' || input.startsWith('/web-search ')) {
-      const value = input.slice('/web-search'.length).trim()
-      if (!value) {
-        const results = state.webResults != null ? ` (${state.webResults} results)` : ''
-        console.log(`Web search is ${state.webSearch ? 'enabled' : 'disabled'}${results}.\n`)
-        continue
-      }
-      const on = value === 'on' ? true : value === 'off' ? false : undefined
-      if (on === undefined) {
-        console.error('Error: /web-search expects "on" or "off".\n')
-        continue
-      }
-      if (on && state.webSearchSupported === false) {
-        console.log('This model does not support web search.\n')
-        continue
-      }
-      state.webSearch = on
-      await savePrefs({ webSearch: { ...prefs.webSearch, [state.modelId]: on } })
-      console.log(`Web search ${on ? 'enabled' : 'disabled'}.\n`)
-      continue
-    }
-
-    if (input === '/web-results' || input.startsWith('/web-results ')) {
-      const value = input.slice('/web-results'.length).trim()
-      if (!value) {
-        if (state.webResults == null) {
-          console.log(`Web search results: default (${DEFAULT_WEB_SEARCH_RESULTS}).\n`)
-          continue
-        }
-        console.log(`Web search results: ${state.webResults}.\n`)
-        continue
-      }
-      let parsed
-      try {
-        parsed = resolveWebResultsFlag({ webResults: value })
-      } catch (err) {
-        console.error(`\nError: ${err.message}\n`)
-        continue
-      }
-      state.webResults = parsed
-      console.log(`Web search results set to ${parsed}.\n`)
-      continue
-    }
-
-    if (input === '/cost') {
-      console.log(`${dim('Current session:')} ${tracker.summary()}`)
-      console.log(`${dim('Reasoning:')} ${state.reasoningEffort === undefined ? 'auto' : getEffortLabel(state.reasoningEffort)}\n`)
-      continue
-    }
-
-    if (input === '/retry') {
-      if (state.budget != null && tracker.cost >= state.budget) {
-        console.log(`Budget exhausted (${formatCost(tracker.cost)} of ${formatCost(state.budget)}). /new to start fresh or /quit.\n`)
-        continue
-      }
-      const last = state.messages[state.messages.length - 1]
-      if (last?.role === 'assistant') {
-        state.messages.pop()
-        await runTurn()
-      } else if (last?.role === 'user') {
-        await runTurn()
-      } else {
-        console.log('Nothing to retry yet.\n')
-      }
-      continue
-    }
-
-    if (input === '/copy') {
-      const last = [...state.messages].reverse().find((m) => m.role === 'assistant' && m.content)
-      if (!last) {
-        console.log('No assistant response to copy.\n')
-        continue
-      }
-      const result = await copyText(last.content)
-      console.log(result.ok ? 'Copied last response to clipboard.\n' : `Copy failed: ${result.error}\n`)
-      continue
-    }
-
-    if (input === '/markdown') {
-      state.markdown = !state.markdown
-      render.markdown = state.markdown
-      console.log(`Markdown rendering ${state.markdown ? 'enabled' : 'disabled'}. The current line is styled once it completes.\n`)
-      continue
-    }
-
     if (input.startsWith('/')) {
-      console.log(`Unknown command "${input}". Available: ${CHAT_COMMANDS.join(', ')}\n`)
+      const spaceIdx = input.indexOf(' ')
+      const cmd = spaceIdx === -1 ? input : input.slice(0, spaceIdx)
+      const handler = chatCommands[cmd]
+      if (!handler || (spaceIdx !== -1 && !commandAcceptsArgs(cmd))) {
+        console.log(`Unknown command "${input}". Available: ${CHAT_COMMANDS.join(', ')}\n`)
+        continue
+      }
+      const outcome = await handler({ ...chatCtx, input, args: spaceIdx === -1 ? '' : input.slice(spaceIdx + 1).trim() })
+      if (outcome?.exit) return exitCleanly()
+      if (outcome?.reset) {
+        tracker = new UsageTracker()
+        budgetWarned = false
+      }
+      if (outcome?.resetBudgetWarning) budgetWarned = false
       continue
     }
 
-    if (state.budget != null && tracker.cost >= state.budget) {
-      console.log(`Budget exhausted (${formatCost(tracker.cost)} of ${formatCost(state.budget)}). /new to start fresh or /quit.\n`)
+    const guard = budgetGuard(chatCtx)
+    if (guard) {
+      console.log(guard)
       continue
     }
 
-    state.messages.push({ role: 'user', content: input })
+    state.appendUser(input)
     await runTurn()
   }
+}
+
+export function startChat(apiKey, model, endpointProviderName, reasoningEffort, temperature, pricing, provider, opts = {}) {
+  return runChatSession({ apiKey, model, endpointProviderName, reasoningEffort, temperature, pricing, provider, ...opts })
 }

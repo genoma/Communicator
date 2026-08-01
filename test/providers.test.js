@@ -417,3 +417,80 @@ test('venice chatCompletion sets enable_web_search on venice_parameters only whe
   assert.equal(sentBodies[1].venice_parameters.enable_web_search, undefined)
   assert.equal(sentBodies[2].venice_parameters.enable_web_search, undefined)
 })
+
+test('both providers accept the full documented option set without throwing', async (t) => {
+  const calls = []
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    calls.push(JSON.parse(opts.body))
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  const fullOpts = {
+    apiKey: 'key',
+    model: 'm',
+    messages: [{ role: 'user', content: 'hi' }],
+    onToken: () => {},
+    provider: 'Provider',
+    reasoningEffort: 'high',
+    supportsReasoning: true,
+    sessionId: '2026-01-01T00-00-00',
+    temperature: 0.9,
+    webSearch: true,
+    webResults: 3,
+    signal: undefined,
+  }
+
+  await openrouter.chatCompletion(fullOpts)
+  await venice.chatCompletion(fullOpts)
+  assert.equal(calls.length, 2)
+})
+
+test('openrouter ignores supportsReasoning and sessionId in the request body', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'org/model',
+    messages: [{ role: 'user', content: 'hi' }],
+    onToken: () => {},
+    reasoningEffort: 'high',
+    supportsReasoning: true,
+    sessionId: '2026-01-01T00-00-00',
+  })
+
+  assert.equal(sentBody.prompt_cache_key, undefined)
+  assert.equal(sentBody.sessionId, undefined)
+  assert.deepEqual(sentBody.reasoning, { effort: 'high', exclude: false })
+  assert.deepEqual(Object.keys(sentBody).sort(), ['messages', 'model', 'reasoning', 'stream', 'temperature'])
+})
+
+test('venice maps sessionId to prompt_cache_key with the full option set', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await venice.chatCompletion({
+    apiKey: 'key',
+    model: 'm',
+    messages: [{ role: 'user', content: 'hi' }],
+    onToken: () => {},
+    provider: 'Provider',
+    reasoningEffort: 'high',
+    supportsReasoning: true,
+    sessionId: '2026-01-01T00-00-00',
+    temperature: 0.9,
+    webSearch: true,
+    webResults: 3,
+  })
+
+  assert.equal(sentBody.prompt_cache_key, '2026-01-01T00-00-00')
+  assert.equal(sentBody.reasoning_effort, 'high')
+  assert.equal(sentBody.venice_parameters.enable_web_search, 'on')
+  assert.equal(sentBody.temperature, 0.9)
+})

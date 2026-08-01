@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { deleteSession, formatSessionItem, generateTitle, listSessions, saveSession, loadSession, generateSessionId } from '../src/sessions.js'
+import { deleteSession, formatSessionItem, generateTitle, listSessions, saveSession, loadSession, generateSessionId, buildSessionPayload } from '../src/sessions.js'
 
 async function tempDir(t) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-test-'))
@@ -170,4 +170,148 @@ test('deleteSession tolerates missing files and unknown ids', async (t) => {
   await deleteSession(dir, 'never-existed')
   const sessions = await listSessions(dir)
   assert.deepEqual(sessions, [])
+})
+
+test('buildSessionPayload returns the full save object shape', () => {
+  const messages = [
+    { role: 'system', content: 'You are helpful.' },
+    { role: 'user', content: 'Hi' },
+  ]
+  const payload = buildSessionPayload({
+    messages,
+    modelId: 'org/model',
+    endpointProviderName: 'Provider',
+    providerType: 'openrouter',
+    reasoningEffort: 'high',
+    temperature: 1.1,
+    budget: 5,
+    webSearch: true,
+    webResults: 3,
+    pricing: { prompt: 0.000001, completion: 0.000002 },
+    createdAt: '2026-01-01T00:00:00.000Z',
+  })
+
+  assert.deepEqual(Object.keys(payload).sort(), [
+    'budget',
+    'createdAt',
+    'messages',
+    'model',
+    'pricing',
+    'providerName',
+    'providerType',
+    'reasoningEffort',
+    'temperature',
+    'title',
+    'updatedAt',
+    'webResults',
+    'webSearch',
+  ])
+  assert.equal(payload.model, 'org/model')
+  assert.equal(payload.providerName, 'Provider')
+  assert.equal(payload.providerType, 'openrouter')
+  assert.equal(payload.reasoningEffort, 'high')
+  assert.equal(payload.temperature, 1.1)
+  assert.equal(payload.budget, 5)
+  assert.equal(payload.webSearch, true)
+  assert.equal(payload.webResults, 3)
+  assert.deepEqual(payload.pricing, { prompt: 0.000001, completion: 0.000002 })
+  assert.equal(payload.createdAt, '2026-01-01T00:00:00.000Z')
+  assert.equal(payload.title, 'Hi')
+  assert.deepEqual(payload.messages, messages)
+  assert.ok(payload.updatedAt)
+})
+
+test('buildSessionPayload truncates the title to 50 chars plus ellipsis', () => {
+  const long = 'a'.repeat(80)
+  const payload = buildSessionPayload({
+    messages: [{ role: 'user', content: long }],
+    modelId: 'm',
+    endpointProviderName: null,
+    providerType: 'openrouter',
+    reasoningEffort: null,
+    temperature: 0.7,
+    budget: null,
+    webSearch: false,
+    webResults: null,
+    pricing: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  })
+  assert.equal(payload.title, 'a'.repeat(50) + '...')
+})
+
+test('buildSessionPayload passes nulls through for optional fields', () => {
+  const payload = buildSessionPayload({
+    messages: [],
+    modelId: 'm',
+    endpointProviderName: null,
+    providerType: 'openrouter',
+    reasoningEffort: null,
+    temperature: 0.7,
+    budget: null,
+    webSearch: false,
+    webResults: null,
+    pricing: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  })
+  assert.equal(payload.reasoningEffort, null)
+  assert.equal(payload.budget, null)
+  assert.equal(payload.webResults, null)
+  assert.equal(payload.pricing, null)
+  assert.equal(payload.providerName, null)
+  assert.equal(payload.title, '')
+})
+
+test('buildSessionPayload fills createdAt when missing and defaults undefined fields to null', () => {
+  const payload = buildSessionPayload({
+    messages: [{ role: 'user', content: 'Hi' }],
+    modelId: 'm',
+    endpointProviderName: 'P',
+    providerType: 'venice',
+    temperature: 0.7,
+    webSearch: false,
+  })
+  assert.ok(payload.createdAt)
+  assert.equal(payload.reasoningEffort, null)
+  assert.equal(payload.budget, null)
+  assert.equal(payload.webResults, null)
+  assert.equal(payload.pricing, null)
+})
+
+test('buildSessionPayload output round-trips through saveSession and loadSession', async (t) => {
+  const dir = await tempDir(t)
+  const payload = buildSessionPayload({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'First question' },
+      { role: 'assistant', content: 'First answer' },
+    ],
+    modelId: 'test/model',
+    endpointProviderName: 'TestProvider',
+    providerType: 'openrouter',
+    reasoningEffort: 'medium',
+    temperature: 0.7,
+    budget: 2.5,
+    webSearch: true,
+    webResults: 5,
+    pricing: { prompt: 0.000001, completion: 0.000002 },
+    createdAt: '2026-01-01T00:00:00.000Z',
+  })
+
+  await saveSession(dir, '2026-01-01T00-00-00', payload)
+  const loaded = await loadSession(dir, '2026-01-01T00-00-00')
+  assert.equal(loaded.model, 'test/model')
+  assert.equal(loaded.providerName, 'TestProvider')
+  assert.equal(loaded.reasoningEffort, 'medium')
+  assert.equal(loaded.budget, 2.5)
+  assert.equal(loaded.webSearch, true)
+  assert.equal(loaded.webResults, 5)
+  assert.deepEqual(loaded.pricing, { prompt: 0.000001, completion: 0.000002 })
+  assert.equal(loaded.title, 'First question')
+  assert.equal(loaded.messages.length, 3)
+
+  const sessions = await listSessions(dir)
+  assert.equal(sessions.length, 1)
+  assert.equal(sessions[0].model, 'test/model')
+  assert.equal(sessions[0].messageCount, 3)
+  assert.equal(sessions[0].preview, 'First question')
 })

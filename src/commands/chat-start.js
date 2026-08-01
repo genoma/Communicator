@@ -1,20 +1,19 @@
 import { getProvider } from '../providers/index.js'
-import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag } from '../prompts.js'
+import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, resolveBudget } from '../flags.js'
 import { DEFAULT_TEMPERATURE } from '../constants.js'
 import { startChat } from '../chat.js'
-import { ensureSessionsDir, generateSessionId, generateTitle, saveSession } from '../sessions.js'
+import { ensureSessionsDir, generateSessionId, saveSession, buildSessionPayload } from '../sessions.js'
 import { resumeCmd } from './resume.js'
-import { getApiKey, savePreferences } from '../config.js'
+import { getApiKey, savePreferences, applyPreferenceUpdates } from '../config.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
 
-function resolveBudget(value) {
-  if (value === undefined || value === null || value === '') return null
-  const budget = Number(value)
-  if (!Number.isFinite(budget) || budget <= 0) {
-    console.error('Error: --budget must be a positive number (USD).')
+function resolveBudgetFlag(value) {
+  try {
+    return resolveBudget(value)
+  } catch (err) {
+    console.error(`Error: ${err.message}`)
     process.exit(1)
   }
-  return budget
 }
 
 function resolveWebResults(value) {
@@ -36,7 +35,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
       process.exit(1)
     }
   }
-  const budget = resolveBudget(opts.budget)
+  const budget = resolveBudgetFlag(opts.budget)
   const forcedWebResults = resolveWebResults(opts.webResults)
 
   if (opts.resume !== undefined) {
@@ -105,41 +104,32 @@ async function persistSessionEnd({ finalState, opts, prefs }) {
   if (finalState.sessionId && finalState.messages && finalState.messages.length > 1) {
     try {
       const dir = await ensureSessionsDir()
-      await saveSession(dir, finalState.sessionId, {
-        model: finalState.modelId,
-        providerName: finalState.endpointProviderName,
-        providerType: finalState.providerType,
-        reasoningEffort: finalState.reasoningEffort ?? null,
-        temperature: finalState.temperature,
-        budget: finalState.budget ?? null,
-        webSearch: finalState.webSearch,
-        webResults: finalState.webResults ?? null,
-        pricing: finalState.pricing ?? null,
-        createdAt: finalState.createdAt,
-        updatedAt: new Date().toISOString(),
-        title: generateTitle(finalState.messages),
+      await saveSession(dir, finalState.sessionId, buildSessionPayload({
         messages: finalState.messages,
-      })
+        modelId: finalState.modelId,
+        endpointProviderName: finalState.endpointProviderName,
+        providerType: finalState.providerType,
+        reasoningEffort: finalState.reasoningEffort,
+        temperature: finalState.temperature,
+        budget: finalState.budget,
+        webSearch: finalState.webSearch,
+        webResults: finalState.webResults,
+        pricing: finalState.pricing,
+        createdAt: finalState.createdAt,
+      }))
     } catch {
       // save failures are non-fatal
     }
   }
 
-  const savedPrefs = {
-    ...prefs,
+  await savePreferences(applyPreferenceUpdates(prefs, {
+    modelId: finalState.modelId,
     lastModel: finalState.modelId,
     lastProvider: finalState.endpointProviderName,
-  }
-  if (finalState.reasoningEffort !== undefined) {
-    savedPrefs.reasoningEffort = { ...prefs.reasoningEffort, [finalState.modelId]: finalState.reasoningEffort }
-  }
-  if (finalState.temperature !== undefined) {
-    savedPrefs.temperature = { ...prefs.temperature, [finalState.modelId]: finalState.temperature }
-  }
-  if (finalState.webSearch !== undefined) {
-    savedPrefs.webSearch = { ...prefs.webSearch, [finalState.modelId]: finalState.webSearch }
-  }
-  await savePreferences(savedPrefs, opts.config)
+    reasoningEffort: finalState.reasoningEffort,
+    temperature: finalState.temperature,
+    webSearch: finalState.webSearch,
+  }), opts.config)
 }
 
 export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerType }) {

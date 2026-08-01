@@ -45,3 +45,19 @@ export async function savePreferences(prefs, customPath) {
   await mkdir(dirname(configFile), { recursive: true })
   await writeFile(configFile, JSON.stringify(prefs, null, 2) + '\n', 'utf-8')
 }
+
+export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastProvider, reasoningEffort, temperature, webSearch } = {}) {
+  const merged = { ...prefs }
+  if (lastModel !== undefined) merged.lastModel = lastModel
+  if (lastProvider !== undefined) merged.lastProvider = lastProvider
+  if (reasoningEffort !== undefined) {
+    merged.reasoningEffort = { ...prefs.reasoningEffort, [modelId]: reasoningEffort }
+  }
+  if (temperature !== undefined) {
+    merged.temperature = { ...prefs.temperature, [modelId]: temperature }
+  }
+  if (webSearch !== undefined) {
+    merged.webSearch = { ...prefs.webSearch, [modelId]: webSearch }
+  }
+  return merged
+}

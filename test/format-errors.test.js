@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { ApiError, formatError } from '../src/errors.js'
-import { resolveReasoningFlag } from '../src/prompts.js'
+import { resolveReasoningFlag } from '../src/flags.js'
 import { formatModelPrice, formatPricePerM } from '../src/ui/format.js'
 import { normalizePricing as normalizeOpenrouter } from '../src/providers/openrouter.js'
 import { normalizePricing as normalizeVenice } from '../src/providers/venice.js'
