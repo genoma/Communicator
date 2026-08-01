@@ -414,8 +414,55 @@ test('venice chatCompletion sets enable_web_search on venice_parameters only whe
   await venice.chatCompletion({ apiKey: 'key', model: 'm', messages: [], onToken: () => {} })
 
   assert.equal(sentBodies[0].venice_parameters.enable_web_search, 'on')
+  assert.equal(sentBodies[0].venice_parameters.enable_web_citations, true)
   assert.equal(sentBodies[1].venice_parameters.enable_web_search, undefined)
+  assert.equal(sentBodies[1].venice_parameters.enable_web_citations, undefined)
   assert.equal(sentBodies[2].venice_parameters.enable_web_search, undefined)
+})
+
+test('venice chatCompletion returns sources and forwards onSources', async (t) => {
+  const citations = [{ title: 'One', url: 'https://one.example' }]
+  t.mock.method(globalThis, 'fetch', async () => sseResponse([
+    sseEvent({
+      venice_parameters: { web_search_citations: citations },
+      choices: [{ delta: { content: 'See ^1^' } }],
+    }),
+    'data: [DONE]\n\n',
+  ]))
+
+  const seen = []
+  const result = await venice.chatCompletion({
+    apiKey: 'key',
+    model: 'm',
+    messages: [],
+    onToken: () => {},
+    onSources: (sources) => seen.push(sources),
+    webSearch: true,
+  })
+
+  assert.deepEqual(result.sources, citations)
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0], result.sources)
+})
+
+test('openrouter chatCompletion returns sources on cache HIT', async (t) => {
+  const annotations = [{ type: 'url_citation', url_citation: { title: 'One', url: 'https://one.example' } }]
+  t.mock.method(globalThis, 'fetch', async () => sseResponse([
+    sseEvent({ choices: [{ delta: { content: 'cached' } }] }),
+    sseEvent({ choices: [{ delta: { annotations } }] }),
+    'data: [DONE]\n\n',
+  ], { 'x-openrouter-cache-status': 'HIT' }))
+
+  const result = await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'org/model',
+    messages: [],
+    onToken: () => {},
+    webSearch: true,
+  })
+
+  assert.deepEqual(result.sources, [{ title: 'One', url: 'https://one.example' }])
+  assert.deepEqual(result.usage, { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cacheHit: true })
 })
 
 test('both providers accept the full documented option set without throwing', async (t) => {

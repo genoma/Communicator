@@ -4,6 +4,7 @@ import { createMarkdownRenderer, renderText } from '../src/ui/markdown.js'
 import { THIN_SEP } from '../src/constants.js'
 
 const ANSI = /\x1b\[[0-9;]*m/g
+const OSC8 = /\x1b\]8;;[^\x1b]*\x1b\\|\x1b\]8;;\x1b\\/g
 
 function enableAnsi(t) {
   Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
@@ -31,13 +32,41 @@ function captureStdout(t) {
 test('renderText styles inline elements and drops link urls', (t) => {
   enableAnsi(t)
   const out = renderText('**bold** and *italic* and `code` and [link](https://x.com) and ![alt](img.png)')
-  const plain = out.replace(ANSI, '')
+  const plain = out.replace(ANSI, '').replace(OSC8, '')
   assert.equal(plain, 'bold and italic and code and link and alt')
   assert.match(out, /\x1b\[1mbold\x1b\[22m/)
   assert.match(out, /\x1b\[3mitalic\x1b\[23m/)
   assert.match(out, /\x1b\[36mcode\x1b\[39m/)
-  assert.match(out, /\x1b\[36mlink\x1b\[39m/)
+  assert.match(out, /\x1b\]8;;https:\/\/x\.com\x1b\\link\x1b\]8;;\x1b\\/)
   assert.match(out, /\x1b\[2malt\x1b\[22m/)
+})
+
+test('renderText resolves venice citation markers against sources', (t) => {
+  enableAnsi(t)
+  const sources = [
+    { title: 'One', url: 'https://one.example' },
+    { title: 'Two', url: 'https://two.example' },
+  ]
+  const out = renderText('See ^1^ and ^2^ and ^1,2^ together', sources)
+  assert.match(out, /\x1b\]8;;https:\/\/one\.example\x1b\\\[1\]\x1b\]8;;\x1b\\/)
+  assert.match(out, /\x1b\]8;;https:\/\/two\.example\x1b\\\[2\]\x1b\]8;;\x1b\\/)
+  assert.match(out, /\x1b\]8;;https:\/\/two\.example\x1b\\\[2\]\x1b\]8;;\x1b\\ /)
+  assert.equal(out.replace(ANSI, '').replace(OSC8, ''), 'See [1] and [2] and [1] [2] together')
+})
+
+test('renderText renders out-of-range markers plain and leaves markers alone without sources', (t) => {
+  enableAnsi(t)
+  const outOfRange = renderText('cite ^9^', [{ title: 'One', url: 'https://one.example' }])
+  assert.equal(outOfRange.replace(ANSI, '').replace(OSC8, ''), 'cite [9]')
+  const noSources = renderText('x^2^ stays literal')
+  assert.equal(noSources, 'x^2^ stays literal')
+})
+
+test('renderText keeps citation markers inside code spans literal', (t) => {
+  enableAnsi(t)
+  const sources = [{ title: 'One', url: 'https://one.example' }]
+  const out = renderText('`^1^` and ^1^', sources)
+  assert.equal(out.replace(ANSI, '').replace(OSC8, ''), '^1^ and [1]')
 })
 
 test('renderText styles headers, lists, blockquotes and hr', (t) => {

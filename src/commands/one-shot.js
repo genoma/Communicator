@@ -4,7 +4,7 @@ import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, re
 import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
 import { ensureSessionsDir, generateSessionId, saveSession, buildSessionPayload } from '../sessions.js'
 import { savePreferences, applyPreferenceUpdates } from '../config.js'
-import { createStreamRenderer } from '../ui/stream.js'
+import { createStreamRenderer, printSources } from '../ui/stream.js'
 import { UsageTracker, budgetLine } from '../tracker.js'
 import { formatError } from '../errors.js'
 
@@ -127,9 +127,18 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
       const label = selection.endpointProviderName ? `${selection.endpointProviderName} / ${selection.modelId}` : selection.modelId
       console.log(`\nConnected to ${label}\n`)
       const render = createStreamRenderer({ markdown: true })
-      result = await provider.chatCompletion({ ...completionOpts, onToken: render })
+      result = await provider.chatCompletion({
+        ...completionOpts,
+        onToken: render,
+        onSources: (sources) => {
+          render.sources = sources
+        },
+      })
       render.flush?.()
       process.stdout.write('\n\n')
+      if (result.sources?.length > 0) {
+        printSources(result.sources, process.stdout)
+      }
     } else {
       result = await provider.chatCompletion({ ...completionOpts, onToken: () => {} })
     }

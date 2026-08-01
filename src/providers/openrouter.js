@@ -85,7 +85,7 @@ export async function fetchEndpoints(apiKey, modelId) {
   }))
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, provider, reasoningEffort, temperature = DEFAULT_TEMPERATURE, webSearch, webResults, signal }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, onSources, provider, reasoningEffort, temperature = DEFAULT_TEMPERATURE, webSearch, webResults, signal }) {
   const body = {
     model,
     messages,
@@ -122,7 +122,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, provide
   const cacheStatus = res.headers.get(CACHE_HEADER)
   const reader = res.body.getReader()
 
-  const { fullText, fullReasoning, finalUsage } = await parseSSEStream(reader, onToken)
+  const { fullText, fullReasoning, finalUsage, fullSources } = await parseSSEStream(reader, onToken, onSources)
 
   const usage = finalUsage
 
@@ -131,6 +131,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, provide
       content: fullText,
       reasoning: fullReasoning || undefined,
       usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cacheHit: true },
+      sources: fullSources,
     }
   }
 
@@ -138,5 +139,5 @@ export async function chatCompletion({ apiKey, model, messages, onToken, provide
     usage.cacheHit = true
   }
 
-  return { content: fullText, reasoning: fullReasoning || undefined, usage }
+  return { content: fullText, reasoning: fullReasoning || undefined, usage, sources: fullSources }
 }

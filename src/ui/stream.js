@@ -1,8 +1,9 @@
 import { dim, you, thinking, answer } from './style.js'
 import { createMarkdownRenderer, renderText } from './markdown.js'
+import { hyperlink } from './hyperlink.js'
 
 export function createStreamRenderer({ markdown = false } = {}) {
-  const md = createMarkdownRenderer()
+  const md = createMarkdownRenderer({ getSources: () => render.sources })
 
   const render = (token, type) => {
     if (type === 'start_reasoning') {
@@ -18,11 +19,30 @@ export function createStreamRenderer({ markdown = false } = {}) {
     }
   }
   render.markdown = markdown
+  render.sources = []
   render.flush = () => {
     if (render.markdown) md.flush()
   }
 
   return render
+}
+
+export function printSources(sources, stdout = process.stdout) {
+  if (!sources?.length) return
+  stdout.write('\n')
+  stdout.write(`${dim('Sources')}\n`)
+  sources.forEach((source, i) => {
+    let label = source.title
+    if (!label) {
+      try {
+        label = new URL(source.url).hostname
+      } catch {
+        label = null
+      }
+    }
+    const link = label ? hyperlink(source.url, label) : null
+    stdout.write(`[${i + 1}] ${link || dim(source.url)}\n`)
+  })
 }
 
 export function renderHistory(messages, { markdown = false } = {}) {

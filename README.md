@@ -222,6 +222,7 @@ Web search is a per-model toggle, persisted in `~/.communicator.json` under `web
 
 - **OpenRouter** — the `web` plugin works on *any* model (native engines for major providers, Exa fallback). The result count defaults to 10 — the pricing sweet spot: the base $0.005/request covers up to 10 results, and each result beyond 10 costs $0.001 extra. Override it per session with `--web-results <n>` or `/web-results <n>` (the banner then shows `[web: N]`). `--web-results` implies web search is on for that invocation; `/web-results` only sets the count, it does not toggle the flag. Validation accepts any positive integer — larger counts work but cost more (see pricing above).
 - **Venice** — web search is on/off only (`venice_parameters.enable_web_search`); there is no result-count knob, so `--web-results`/`/web-results` have no effect there. Venice gates on the model's `supportsWebSearch` capability: enabling it for a model that doesn't support web search refuses with a message (interactive) or exits with an error (CLI flags). Venice web search is billed per usage.
+- **Sources** — when web search is enabled, a numbered `Sources` section is printed after each answer (clickable OSC 8 hyperlinks in supporting terminals, plain text otherwise). Inline citations are also clickable: OpenRouter models emit markdown links `[domain](url)`, Venice models emit `^n^` markers that map to the sources list. Sources are display-only: they are not saved to session files, not shown on `--resume`, and not included in markdown export.
 - Web search state is stored in the session file (`webSearch`/`webResults`) and restored on `--resume`.
 
 ### Slash commands
@@ -499,7 +500,7 @@ export function handleHttpError(status, body) → throws ApiError
 ```
 
 - `pricing` is `{ prompt, completion }` USD per token (or `null`) — use `normalizePricing` and the helpers in `src/ui/format.js` for display
-- `chatCompletion` receives `signal` (AbortController) for SIGINT cancellation, `sessionId` for server-side prompt caching (OpenRouter currently ignores it; Venice maps it to `prompt_cache_key`), and `temperature` (default `0.7`, must be set in the request body). `webSearch`/`webResults` enable web search — providers may ignore options they do not support (see the contract doc in `src/providers/index.js`)
+- `chatCompletion` receives `signal` (AbortController) for SIGINT cancellation, `sessionId` for server-side prompt caching (OpenRouter currently ignores it; Venice maps it to `prompt_cache_key`), and `temperature` (default `0.7`, must be set in the request body). `webSearch`/`webResults` enable web search — providers may ignore options they do not support (see the contract doc in `src/providers/index.js`). It also receives `onSources(sources)` and returns `sources: [{ title, url }]` (empty when web search is off or the provider returned no citations)
 - HTTP calls should go through `fetchWithRetry` from `src/http.js`; errors must be thrown as `ApiError`, never `process.exit`
 
 See `src/providers/openrouter.js` and `src/providers/venice.js` for reference implementations.

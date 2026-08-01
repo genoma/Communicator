@@ -388,3 +388,30 @@ test('a retryable error pops the last user message', async (t) => {
   assert.deepEqual(callRoles[0], ['system', 'user'])
   assert.deepEqual(callRoles[1], ['system', 'user'])
 })
+
+test('onSources populates render.sources and the next turn resets it', async (t) => {
+  mockConsole(t)
+  let liveRender
+  const renderer = (opts) => {
+    liveRender = fakeRenderer(opts)
+    return liveRender
+  }
+  let firstTurn = true
+  const { provider } = fakeProvider()
+  provider.chatCompletion = async (opts) => {
+    assert.ok(opts.onSources)
+    if (firstTurn) {
+      firstTurn = false
+      opts.onSources([{ title: 'One', url: 'https://one.example' }])
+      assert.equal(liveRender.sources.length, 1)
+    } else {
+      assert.equal(liveRender.sources.length, 0)
+    }
+    return { content: 'ok' }
+  }
+  const harness = makeDeps({ readInput: scriptedInput(['one', 'two', '/quit']), renderer })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  assert.equal(firstTurn, false)
+})
