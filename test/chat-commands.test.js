@@ -499,7 +499,7 @@ test('/markdown toggles state and renderer flags', async (t) => {
   await chatCommands['/markdown'](ctx)
   assert.equal(ctx.state.markdown, false)
   assert.equal(ctx.render.markdown, false)
-  assert.equal(consoleSpy.log(0), 'Markdown rendering disabled. The current line is styled once it completes.\n')
+  assert.equal(consoleSpy.log(0), 'Markdown rendering disabled.\n')
 })
 
 test('budgetGuard blocks when cost meets the budget', () => {

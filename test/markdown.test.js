@@ -5,6 +5,7 @@ import { THIN_SEP } from '../src/constants.js'
 
 const ANSI = /\x1b\[[0-9;]*m/g
 const OSC8 = /\x1b\]8;;[^\x1b]*\x1b\\|\x1b\]8;;\x1b\\/g
+const plain = (s) => s.replace(ANSI, '').replace(OSC8, '')
 
 function enableAnsi(t) {
   Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
@@ -113,20 +114,38 @@ test('renderText leaves plain text unchanged', () => {
   assert.equal(renderText(text), text)
 })
 
-test('streaming renderer holds the partial line until newline or flush', (t) => {
+test('streaming renderer shows the partial line immediately and restyles it on completion', (t) => {
   const output = captureStdout(t)
   const renderer = createMarkdownRenderer()
 
   renderer.write('**bold')
-  assert.equal(output(), '')
+  assert.equal(plain(output()), '**bold')
 
   renderer.write(' text**\n')
-  assert.equal(output().replace(ANSI, ''), 'bold text\n')
+  assert.equal(plain(output()), '**bold\r\x1b[Jbold text\n')
   assert.match(output(), /\x1b\[1mbold text\x1b\[22m/)
 
   renderer.write('tail **st')
   renderer.flush()
-  assert.equal(output().replace(ANSI, ''), 'bold text\ntail **st')
+  assert.equal(plain(output()), '**bold\r\x1b[Jbold text\ntail **st')
+})
+
+test('streaming renderer refreshes the partial line in place while it grows', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  renderer.write('hello')
+  assert.equal(plain(output()), 'hello')
+
+  renderer.write(' world')
+  assert.equal(plain(output()), 'hello')
+
+  t.mock.timers.tick(200)
+  assert.equal(plain(output()), 'hello\r\x1b[Jhello world')
+
+  renderer.flush()
+  assert.equal(plain(output()), 'hello\r\x1b[Jhello world')
 })
 
 test('streaming renderer keeps code block state across writes', (t) => {
@@ -134,12 +153,11 @@ test('streaming renderer keeps code block state across writes', (t) => {
   const renderer = createMarkdownRenderer()
 
   renderer.write('```\ncode **x**')
-  assert.equal(output().replace(ANSI, ''), '```\n')
+  assert.equal(plain(output()), '```\ncode **x**')
 
   renderer.write('\n```\nrest **y**')
   renderer.flush()
-  const plain = output().replace(ANSI, '')
-  assert.equal(plain, '```\ncode **x**\n```\nrest y')
+  assert.equal(plain(output()), '```\ncode **x**\r\x1b[Jcode **x**\n```\nrest y')
   assert.match(output(), /\x1b\[2mcode \*\*x\*\*\x1b\[22m/)
 })
 

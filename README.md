@@ -204,7 +204,7 @@ Cache hits are detected and shown when OpenRouter serves a cached response. The 
 
 By default, assistant responses are rendered as markdown in the terminal: `#` headers bold, `**bold**` / `*italic*` styled inline, `` `code` `` in cyan, fenced code blocks dimmed, lists and blockquotes styled, horizontal rules as a thin separator, and `[text](url)` links shown in italics (URL hidden, clickable in supporting terminals). Reasoning text is never restyled.
 
-Streaming is line-buffered: completed lines are styled as they arrive, and the current in-flight line is styled once it completes (at the next newline or the end of the response) — so the last line of a response can render a moment later than it streams. Toggle with `/markdown` (default on); history replay on `--resume` uses the same styling.
+Streaming is live: the current in-flight line is written as tokens arrive and redrawn in place as it grows, so even single-paragraph answers stream continuously; when a line completes, it is restyled with its final markup. Toggle with `/markdown` (default on); history replay on `--resume` uses the same styling.
 
 ### Budget caps
 
@@ -462,7 +462,7 @@ cli (index.js)            — commander argument parsing, delegates to command m
 ├── ui/
 │   ├── style.js          — ANSI helpers (dim, bold, sep, thinking, answer)
 │   ├── format.js         — price formatting (formatModelPrice, formatPricePerM)
-│   ├── markdown.js       — line-buffered terminal markdown renderer
+│   ├── markdown.js       — streaming terminal markdown renderer (in-place line redraw)
 │   ├── hyperlink.js      — OSC 8 hyperlink escape helper
 │   └── stream.js         — stream renderer + history replay
 └── chat.js               — runChatSession: DI chat loop (readInput/renderer/stdout/exit/save/signals), banner, SIGINT
