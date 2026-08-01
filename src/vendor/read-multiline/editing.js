@@ -1,5 +1,5 @@
 import { charAtIndex, charBeforeIndex, charWidth, contentLength, isWordChar, stringWidth, } from "./chars.js";
-import { beginBatch, clearStatus, cursorVisualRow, flushBatch, lastVisualRow, moveTo, pW, redrawAfterDelete, redrawFrom, refreshSuggestions, renderLine, restoreSnapshot, rewindAfterAdvance, setStatusWithVisualState, styledInput, tCol, w, } from "./rendering.js";
+import { beginBatch, clearStatus, cursorVisualRow, flushBatch, lastVisualRow, moveTo, pW, redrawAfterDelete, redrawFrom, refreshSuggestions, renderLine, restoreFooter, restoreSnapshot, rewindAfterAdvance, setStatusWithVisualState, styledInput, tCol, w, } from "./rendering.js";
 const MAX_UNDO = 200;
 // --- Undo / Redo ---
 /** Capture current editor state as a snapshot for undo/redo */
@@ -78,27 +78,59 @@ export function onContentChanged(state) {
         refreshSuggestions(state);
     }
 }
-/** Cycle the suggestion list in the given direction and fill the line with the next match */
-export function cycleSuggestion(state, dir) {
-    if (!state.suggest || state.lines.length !== 1)
-        return;
+/** Compute the next selection within the active suggestion session, or null when the line would not change */
+export function nextSuggestionMove(session, value, dir) {
+    if (!session)
+        return null;
+    const selected = session.matches.indexOf(value);
+    const start = selected !== -1 ? selected : dir > 0 ? -1 : 0;
+    const index = (start + dir + session.matches.length) % session.matches.length;
+    const nextLine = session.matches[index];
+    if (nextLine === value)
+        return null;
+    return { line: nextLine, index };
+}
+/**
+ * Navigate the active suggestion session in the given direction, filling the line
+ * with the selected match. Returns true when the key press was consumed (either by
+ * navigating or by an active single-match session), false when no session is active
+ * so callers can fall back to history navigation.
+ */
+export function suggestMove(state, dir) {
+    const session = state.suggestSession;
+    if (!session || state.lines.length !== 1)
+        return false;
     const value = state.lines[0];
     if (!value.startsWith("/") || state.col !== value.length)
-        return;
-    const items = state.suggest({ value, cursor: state.col });
-    const matches = Array.isArray(items) ? items.filter((item) => typeof item === "string" && item.startsWith(value)) : [];
-    if (matches.length < 2)
-        return;
-    const selected = matches.indexOf(value);
-    const start = selected !== -1 ? selected : dir > 0 ? -1 : 0;
-    const nextIndex = (start + dir + matches.length) % matches.length;
-    const nextLine = matches[nextIndex];
+        return false;
+    const move = nextSuggestionMove(session, value, dir);
+    if (!move)
+        return true;
     saveUndo(state);
-    state.lines[0] = nextLine;
+    state.lines[0] = move.line;
     state.row = 0;
-    state.col = nextLine.length;
-    redrawFrom(state, 0, 0, nextLine.length);
+    state.col = move.line.length;
+    state.suggestSession = { ...session, index: move.index };
+    redrawFrom(state, 0, 0, move.line.length);
     refreshSuggestions(state);
+    return true;
+}
+/** Dismiss the active suggestion session, restoring the typed prefix and the help footer */
+export function dismissSuggestions(state) {
+    const session = state.suggestSession;
+    if (!session)
+        return;
+    saveUndo(state);
+    state.lines[0] = session.prefix;
+    state.row = 0;
+    state.col = session.prefix.length;
+    state.suggestSession = null;
+    redrawFrom(state, 0, 0, session.prefix.length);
+    restoreFooter(state);
+}
+/** Cycle the suggestion list (Tab / Shift+Tab): alias of suggestMove */
+export function cycleSuggestion(state, dir) {
+    suggestMove(state, dir);
 }
 // --- Limit checks ---
 function canInsertChar(state, charCount = 1) {
