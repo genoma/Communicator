@@ -1,5 +1,5 @@
 import { getProvider } from '../providers/index.js'
-import { resolveReasoningFlag, resolveTemperatureFlag } from '../prompts.js'
+import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag } from '../prompts.js'
 import { DEFAULT_TEMPERATURE } from '../constants.js'
 import { startChat } from '../chat.js'
 import { ensureSessionsDir, generateSessionId, generateTitle, saveSession } from '../sessions.js'
@@ -17,6 +17,15 @@ function resolveBudget(value) {
   return budget
 }
 
+function resolveWebResults(value) {
+  try {
+    return resolveWebResultsFlag({ webResults: value })
+  } catch (err) {
+    console.error(`Error: ${err.message}`)
+    process.exit(1)
+  }
+}
+
 async function createSessionContext({ apiKey, opts, prefs, providerType }) {
   let forcedTemperature
   if (opts.temperature !== undefined && opts.temperature !== null && opts.temperature !== '') {
@@ -28,6 +37,8 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
     }
   }
   const budget = resolveBudget(opts.budget)
+  const forcedWebResults = resolveWebResults(opts.webResults)
+  const forcedWebSearch = opts.webSearch === true
 
   if (opts.resume !== undefined) {
     const result = await resumeCmd(opts.resume)
@@ -40,6 +51,8 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
       reasoningEffort: result.reasoningEffort,
       temperature: forcedTemperature ?? result.temperature ?? DEFAULT_TEMPERATURE,
       budget: budget ?? result.budget ?? null,
+      webSearch: forcedWebResults != null ? true : (forcedWebSearch ?? result.webSearch ?? false),
+      webResults: forcedWebResults ?? result.webResults ?? null,
       pricing: result.pricing,
       initialMessages: result.initialMessages,
       sessionId: result.sessionId,
@@ -64,12 +77,21 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
   const dir = await ensureSessionsDir()
   const sessionId = await generateSessionId(dir)
 
+  const webSearch = forcedWebResults != null ? true : (forcedWebSearch ?? prefs.webSearch?.[selection.modelId] ?? false)
+  if (webSearch && selection.webSearchSupported === false) {
+    console.error('Error: The selected model does not support web search.')
+    process.exit(1)
+  }
+
   return {
     modelId: selection.modelId,
     endpointProviderName: selection.endpointProviderName,
     reasoningEffort: selection.reasoningEffort,
     temperature: forcedTemperature ?? prefs.temperature?.[selection.modelId] ?? DEFAULT_TEMPERATURE,
     budget,
+    webSearch,
+    webResults: forcedWebResults ?? null,
+    webSearchSupported: selection.webSearchSupported,
     pricing: selection.pricing,
     provider,
     apiKey,
@@ -91,6 +113,8 @@ async function persistSessionEnd({ finalState, opts, prefs }) {
         reasoningEffort: finalState.reasoningEffort ?? null,
         temperature: finalState.temperature,
         budget: finalState.budget ?? null,
+        webSearch: finalState.webSearch,
+        webResults: finalState.webResults ?? null,
         pricing: finalState.pricing ?? null,
         createdAt: finalState.createdAt,
         updatedAt: new Date().toISOString(),
@@ -113,6 +137,9 @@ async function persistSessionEnd({ finalState, opts, prefs }) {
   if (finalState.temperature !== undefined) {
     savedPrefs.temperature = { ...prefs.temperature, [finalState.modelId]: finalState.temperature }
   }
+  if (finalState.webSearch !== undefined) {
+    savedPrefs.webSearch = { ...prefs.webSearch, [finalState.modelId]: finalState.webSearch }
+  }
   await savePreferences(savedPrefs, opts.config)
 }
 
@@ -126,6 +153,9 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerTyp
     supportsReasoning: ctx.supportsReasoning,
     modelReasoning: ctx.modelReasoning,
     budget: ctx.budget,
+    webSearch: ctx.webSearch,
+    webResults: ctx.webResults,
+    webSearchSupported: ctx.webSearchSupported,
     prefs,
     configPath: opts.config,
   })

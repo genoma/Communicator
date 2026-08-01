@@ -32,6 +32,8 @@ program
   .option('--reasoning-effort <level>', 'reasoning effort: max, xhigh, high, medium, low, minimal, none')
   .option('--temperature <0-2>', 'temperature override (0 to 2)')
   .option('--budget <usd>', 'per-session budget cap in USD')
+  .option('--web-search', 'enable web search for the session (per-model default persisted)')
+  .option('--web-results <n>', 'number of web search results (OpenRouter only, default 10)')
   .option('--delete [session-id]', 'delete a saved session (with confirmation)')
 
 program.parse()

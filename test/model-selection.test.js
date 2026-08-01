@@ -92,3 +92,37 @@ test('openrouter selects cheapest endpoint when multiple available', async () =>
   const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'effort-model' })
   assert.equal(sel.endpointProviderName, 'Cheap')
 })
+
+test('non-interactive selection reports web search supported for openrouter via meta flag', async () => {
+  const provider = fakeProvider({
+    meta: { name: 'openrouter', hasEndpoints: true, supportsWebSearchOnAll: true },
+    async fetchModels() {
+      return [{ id: 'm', reasoning: null, pricing: null, capabilities: {} }]
+    },
+    async fetchEndpoints() {
+      return [{ providerName: 'P', pricing: null, supportedParameters: {} }]
+    },
+  })
+  const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'm' })
+  assert.equal(sel.webSearchSupported, true)
+})
+
+test('non-interactive selection reports web search support from venice capabilities', async () => {
+  const provider = fakeProvider({
+    async fetchModels() {
+      return [
+        { id: 'm', reasoning: null, pricing: null, capabilities: { supportsWebSearch: true } },
+        { id: 'n', reasoning: null, pricing: null, capabilities: { supportsWebSearch: false } },
+      ]
+    },
+  })
+  const supported = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'm' })
+  const unsupported = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'n' })
+  assert.equal(supported.webSearchSupported, true)
+  assert.equal(unsupported.webSearchSupported, false)
+})
+
+test('non-interactive selection defaults web search unsupported without meta or capabilities', async () => {
+  const sel = await selectModelNonInteractive({ provider: fakeProvider(), apiKey: '', prefs: {}, modelId: 'auto-reasoner' })
+  assert.equal(sel.webSearchSupported, false)
+})

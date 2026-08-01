@@ -13,6 +13,8 @@ export const DEFAULT_TEMPERATURE = 0.7
 
 export const MAX_TEMPERATURE = 2
 
+export const DEFAULT_WEB_SEARCH_RESULTS = 10
+
 export const EFFORT_LABELS = {
   max: 'X-High (max)',
   xhigh: 'X-High',

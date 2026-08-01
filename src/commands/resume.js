@@ -15,6 +15,8 @@ export async function resumeCmd(partialId) {
     reasoningEffort: sessionData.reasoningEffort,
     temperature: sessionData.temperature ?? DEFAULT_TEMPERATURE,
     budget: sessionData.budget ?? null,
+    webSearch: sessionData.webSearch === true,
+    webResults: sessionData.webResults ?? null,
     pricing: sessionData.pricing || null,
     initialMessages: sessionData.messages,
     sessionId: matchedId,

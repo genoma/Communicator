@@ -5,6 +5,8 @@ export const CHAT_COMMANDS = [
   '/reasoning',
   '/temp',
   '/budget',
+  '/web-search',
+  '/web-results',
   '/retry',
   '/copy',
   '/markdown',

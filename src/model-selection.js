@@ -29,6 +29,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
         pricing: ep?.pricing || null,
         supportsReasoning: !!ep?.supportedParameters?.supportsReasoningEffort,
         modelReasoning: modelData?.reasoning || null,
+        webSearchSupported: provider.meta.supportsWebSearchOnAll === true || modelData?.capabilities?.supportsWebSearch === true,
       }
     }
 
@@ -50,6 +51,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
       pricing: ep.pricing,
       supportsReasoning: !!ep.supportedParameters?.supportsReasoningEffort,
       modelReasoning: modelData?.reasoning || null,
+      webSearchSupported: provider.meta.supportsWebSearchOnAll === true || modelData?.capabilities?.supportsWebSearch === true,
     }
   }
 }
@@ -103,5 +105,6 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
     pricing: ep?.pricing || null,
     supportsReasoning: !!ep?.supportedParameters?.supportsReasoningEffort,
     modelReasoning: reasoning,
+    webSearchSupported: provider.meta.supportsWebSearchOnAll === true || modelData?.capabilities?.supportsWebSearch === true,
   }
 }
