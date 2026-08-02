@@ -30,6 +30,9 @@ export function handleHttpError(status, body) {
   if (status === 429) {
     throw new ApiError('Rate limited by OpenRouter. Wait a moment and try again.', { status, provider: 'openrouter', retryable: true })
   }
+  if (status === 404) {
+    throw new ApiError('Model not found on OpenRouter. Use --list-models to list available models.', { status, provider: 'openrouter', retryable: false })
+  }
   throw new ApiError(`OpenRouter request failed (${status}): ${body}`, { status, provider: 'openrouter', retryable: status >= 500 })
 }
 

@@ -100,3 +100,27 @@ test('applyPreferenceUpdates skips undefined smoothSpeed', () => {
 
   assert.deepEqual(Object.keys(updated).sort(), ['lastModel'])
 })
+
+test('applyPreferenceUpdates merges global budget, webResults and outputDir keys', () => {
+  const updated = applyPreferenceUpdates({ lastModel: 'm' }, {
+    modelId: 'm',
+    budget: 2.5,
+    webResults: 5,
+    outputDir: '/tmp/exports',
+  })
+
+  assert.equal(updated.budget, 2.5)
+  assert.equal(updated.webResults, 5)
+  assert.equal(updated.outputDir, '/tmp/exports')
+})
+
+test('applyPreferenceUpdates skips undefined budget, webResults and outputDir', () => {
+  const updated = applyPreferenceUpdates({ lastModel: 'm' }, {
+    modelId: 'm',
+    budget: undefined,
+    webResults: undefined,
+    outputDir: undefined,
+  })
+
+  assert.deepEqual(Object.keys(updated).sort(), ['lastModel'])
+})
