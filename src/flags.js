@@ -5,10 +5,6 @@ export function resolveReasoningFlag({ reasoningEffort }) {
   return reasoningEffort
 }
 
-export function validateTemperature(value) {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_TEMPERATURE
-}
-
 export function resolveTemperatureFlag({ temperature } = {}) {
   if (temperature === undefined || temperature === null || temperature === '') return undefined
   const num = Number(temperature)
@@ -37,6 +33,13 @@ export function resolveWebSearchFlag({ webSearch, webResults, prefValue } = {}) 
   if (webSearch !== undefined && webSearch !== null && webSearch !== '') return normalizeWebSearchMode(webSearch)
   if (webResults != null) return 'auto'
   return normalizeWebSearchMode(prefValue)
+}
+
+export function webSearchGate(webSearch, webSearchSupported) {
+  if (webSearch !== 'off' && webSearchSupported === false) {
+    return 'The selected model does not support web search.'
+  }
+  return null
 }
 
 export function resolveBudget(value) {

@@ -1,7 +1,7 @@
 import { formatError } from '../../errors.js'
 import { selectModelAndEndpoint } from '../../model-selection.js'
 import { getEffortLabel, selectReasoningEffort } from '../../prompts.js'
-import { resolveTemperatureFlag, resolveWebResultsFlag, resolveSmoothSpeed } from '../../flags.js'
+import { resolveTemperatureFlag, resolveWebResultsFlag, resolveSmoothSpeed, webSearchGate } from '../../flags.js'
 import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed } from '../../constants.js'
 import { budgetStatus } from '../../tracker.js'
 import { dim } from '../../ui/style.js'
@@ -118,7 +118,7 @@ const handlers = {
       console.error('Error: /web-search expects "on", "off", "auto", or "always".\n')
       return
     }
-    if (mode !== 'off' && ctx.state.webSearchSupported === false) {
+    if (webSearchGate(mode, ctx.state.webSearchSupported)) {
       console.log('This model does not support web search.\n')
       return
     }

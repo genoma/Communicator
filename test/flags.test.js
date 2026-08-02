@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, normalizeWebSearchMode, validateTemperature, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed } from '../src/flags.js'
+import { resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, normalizeWebSearchMode, webSearchGate, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed } from '../src/flags.js'
 
 test('resolveTemperatureFlag parses string and number values', () => {
   assert.equal(resolveTemperatureFlag({ temperature: '0.5' }), 0.5)
@@ -25,15 +25,15 @@ test('resolveTemperatureFlag rejects out-of-range and non-finite values', () => 
   assert.throws(() => resolveTemperatureFlag({ temperature: Infinity }), /between 0 and 2/)
 })
 
-test('validateTemperature accepts finite values within bounds', () => {
-  assert.equal(validateTemperature(0.7), true)
-  assert.equal(validateTemperature(0), true)
-  assert.equal(validateTemperature(2), true)
-  assert.equal(validateTemperature(2.1), false)
-  assert.equal(validateTemperature(-0.1), false)
-  assert.equal(validateTemperature(NaN), false)
-  assert.equal(validateTemperature(Infinity), false)
-  assert.equal(validateTemperature('0.7'), false)
+test('webSearchGate blocks auto/always on unsupported models', () => {
+  assert.equal(webSearchGate('auto', false), 'The selected model does not support web search.')
+  assert.equal(webSearchGate('always', false), 'The selected model does not support web search.')
+})
+
+test('webSearchGate allows off, supported models, and unknown support', () => {
+  assert.equal(webSearchGate('off', false), null)
+  assert.equal(webSearchGate('auto', true), null)
+  assert.equal(webSearchGate('auto', undefined), null)
 })
 
 test('resolveWebResultsFlag parses positive integer values', () => {

@@ -1,5 +1,5 @@
 import { getProvider } from '../providers/index.js'
-import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed } from '../flags.js'
+import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, webSearchGate, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed } from '../flags.js'
 import { resolveFlagOrExit } from '../cli-utils.js'
 import { DEFAULT_TEMPERATURE } from '../constants.js'
 import { startChat } from '../chat.js'
@@ -54,8 +54,9 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
   const sessionId = await generateSessionId(dir)
 
   const webSearch = resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: prefs.webSearch?.[selection.modelId] })
-  if (webSearch !== 'off' && selection.webSearchSupported === false) {
-    console.error('Error: The selected model does not support web search.')
+  const webSearchGateError = webSearchGate(webSearch, selection.webSearchSupported)
+  if (webSearchGateError) {
+    console.error(`Error: ${webSearchGateError}`)
     process.exit(1)
   }
 
