@@ -32,9 +32,11 @@ function inlineStyles(text, sources) {
     .join('')
 }
 
-function styleLine(line, state, sources) {
+function styleLine(line, state, sources, partial = false) {
   if (/^\s*```/.test(line)) {
-    state.inCodeBlock = !state.inCodeBlock
+    // Partial lines must not toggle the fence state: the same partial buffer is
+    // re-styled on every redraw, and toggling would flip inCodeBlock repeatedly.
+    if (!partial) state.inCodeBlock = !state.inCodeBlock
     return dim(line)
   }
   if (state.inCodeBlock) return dim(line)
@@ -48,7 +50,7 @@ function styleLine(line, state, sources) {
 
 function createLineStyler(getSources) {
   const state = { inCodeBlock: false }
-  return (line) => styleLine(line, state, getSources ? getSources() : [])
+  return (line, { partial = false } = {}) => styleLine(line, state, getSources ? getSources() : [], partial)
 }
 
 const PARTIAL_FLUSH_MS = 200
@@ -57,6 +59,7 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
   const styler = createLineStyler(getSources)
   let buffer = ''
   let displayed = ''
+  let displayedWidth = 0
   let timer = null
 
   const clearTimer = () => {
@@ -77,8 +80,10 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
   }
 
   // The cursor sits at the end of the displayed partial line; rewind it to the start.
+  // displayedWidth is the visual width of the styled output on screen (markup is
+  // consumed by styling, so the raw buffer width must not be used here).
   const rewindToPartialStart = () => {
-    const rows = lineRows(stringWidth(displayed))
+    const rows = lineRows(displayedWidth)
     if (rows > 1) stdout.write(`\x1b[${rows - 1}A`)
     stdout.write('\r')
   }
@@ -88,8 +93,10 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
       rewindToPartialStart()
       stdout.write('\x1b[J')
     }
-    stdout.write(styler(buffer))
+    const styled = styler(buffer, { partial: true })
+    stdout.write(styled)
     displayed = buffer
+    displayedWidth = stringWidth(styled)
   }
 
   const flushCompleteLines = () => {
@@ -106,6 +113,7 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
       }
       stdout.write(`${styler(line)}\n`)
       displayed = ''
+      displayedWidth = 0
     }
   }
 
@@ -116,6 +124,7 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
       if (!buffer) {
         clearTimer()
         displayed = ''
+        displayedWidth = 0
       } else if (!displayed) {
         redrawPartial()
       } else if (!timer) {
@@ -132,10 +141,11 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
           rewindToPartialStart()
           stdout.write('\x1b[J')
         }
-        stdout.write(styler(buffer))
+        stdout.write(styler(buffer, { partial: true }))
       }
       buffer = ''
       displayed = ''
+      displayedWidth = 0
     },
   }
 }
