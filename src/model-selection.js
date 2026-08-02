@@ -57,7 +57,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
   }
 }
 
-function cheapestEndpoint(endpoints) {
+export function cheapestEndpoint(endpoints) {
   let best = endpoints[0]
   let bestTotal = Infinity
   for (const ep of endpoints) {

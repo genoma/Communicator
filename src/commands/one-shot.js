@@ -39,7 +39,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   }
 
   const forcedEffort = resolveReasoningFlag({ reasoningEffort: opts.reasoningEffort })
-  const budget = resolveFlagOrExit(resolveBudget, opts.budget)
+  const budget = resolveFlagOrExit(resolveBudget, opts.budget) ?? prefs.budget ?? null
   const forcedTemperature = resolveFlagOrExit((v) => resolveTemperatureFlag({ temperature: v }), opts.temperature)
   const forcedWebResults = resolveFlagOrExit((v) => resolveWebResultsFlag({ webResults: v }), opts.webResults)
   const smoothSpeed = resolveFlagOrExit(resolveSmoothSpeed, opts.smoothSpeed) ?? normalizeSmoothSpeed(prefs.smoothSpeed)
@@ -67,7 +67,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     console.error(`Error: ${webSearchGateError}`)
     process.exit(1)
   }
-  const webResults = forcedWebResults ?? null
+  const webResults = forcedWebResults ?? prefs.webResults ?? null
 
   const dir = await ensureSessionsDir()
   const sessionId = await generateSessionId(dir)

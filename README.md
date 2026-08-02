@@ -80,22 +80,22 @@ Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make t
 |-------|-----------------------|----------|--------------------------------------------------------------------------------------|
 | `-m`  | `--model`             | `<id>`   | Skip all pickers and use this model ID directly (non-interactive)                    |
 | `-p`  | `--provider`          | `<name>` | Select the API backend: `openrouter` (default) or `venice`                           |
-|       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`. `none` disables reasoning |
-|       | `--temperature`       | `<0-2>`  | Temperature override for the session (default: per-model preference, then 0.7)       |
-|       | `--budget`            | `<usd>`  | Per-session budget cap in USD. Warns at 80% used, refuses turns at 100%              |
+|       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`. `none` disables reasoning. With `--model` alone, saves the per-model default |
+|       | `--temperature`       | `<0-2>`  | Temperature override for the session (default: per-model preference, then 0.7). With `--model` alone, saves the per-model default |
+|       | `--budget`            | `<usd>`  | Per-session budget cap in USD. Warns at 80% used, refuses turns at 100%. Bare use saves the default |
 |       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `off` (bare flag = `auto`). Per-model default is persisted in preferences |
-|       | `--web-results`       | `<n>`    | Number of web search results (OpenRouter only, default 10). Implies `auto` mode                             |
-|       | `--no-smooth-streaming` | —      | Disable smooth streaming (default: on in interactive sessions)                                              |
-|       | `--smooth-speed`      | `<level\|cps>` | Smooth streaming speed: `slow`, `normal`, `fast`, or chars per second (default: `normal` ≈ 2000) |
+|       | `--web-results`       | `<n>`    | Number of web search results (OpenRouter only, default 10). Implies `auto` mode. Bare use saves the default |
+|       | `--no-smooth-streaming` | —      | Disable smooth streaming (default: on in interactive sessions). Bare use saves the default |
+|       | `--smooth-speed`      | `<level\|cps>` | Smooth streaming speed: `slow`, `normal`, `fast`, or chars per second (default: `normal` ≈ 2000). Bare use saves the default |
 | `-V`  | `--version`           | —        | Print the version and exit                                                           |
 |       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
-|       | `--list-endpoints`    | `<model>`| List providers for a model (pricing, uptime) and exit                                |
+|       | `--list-endpoints`    | `[model]`| List providers for a model (pricing, uptime). No arg = picker, partial ID = fuzzy match |
 |       | `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, title) and exit                |
 | `-r`  | `--resume`            | `[id]`   | Resume a saved session. No arg = picker, partial ID = prefix match                   |
 | `-x`  | `--export`            | `[id]`   | Export a session to markdown. Same ID matching as `--resume`                         |
 |       | `--delete`            | `[id]`   | Delete a saved session (asks for confirmation). Same ID matching as `--resume`       |
-|       | `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences)                       |
-|       | `--config`            | `<path>` | Custom path for the preferences JSON file (default: `~/.communicator.json`)          |
+|       | `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences). Bare use saves it as the default |
+|       | `--config`            | `[path]` | Custom path for the preferences JSON file (default: `~/.communicator.json`). Bare flag prints the current config |
 |       | `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
 
 Pass `--reasoning-effort none` to disable reasoning entirely.
@@ -105,13 +105,15 @@ Quick start:
 ```bash
 # OpenRouter (default)
 communicator                                            # full interactive flow
-communicator -m "openai/gpt-4o"                         # skip all pickers (non-interactive)
+communicator -m "openai/gpt-4o" "Hello there"           # one-shot chat with a fixed model
 communicator --list-models                                       # list OpenRouter models
 communicator --list-endpoints "anthropic/claude-sonnet-4-20250514"  # list endpoints for a model
+communicator --list-endpoints "inkling-small"                       # fuzzy match: unique partial IDs work
+communicator --list-endpoints                                       # no arg: interactive model picker
 
 # Venice.ai
 communicator -p venice                                  # Venice interactive flow
-communicator -p venice -m "qwen-3-7-max"                # skip all pickers (non-interactive)
+communicator -p venice -m "qwen-3-7-max" "Hello"        # one-shot chat with a fixed model
 communicator -p venice --list-models                             # list Venice models (no API key needed)
 communicator -p venice --list-endpoints "qwen-3-7-max"           # show Venice endpoint info
 
@@ -129,17 +131,29 @@ communicator --export --output-dir ~/Documents          # export to custom direc
 communicator --delete                                   # delete a session (with confirmation)
 communicator --delete 2026-07-30T19-11-45               # delete a specific session
 
-# Reasoning
-communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort high  # force high reasoning effort
-communicator --reasoning-effort none                                             # disable reasoning
-communicator -p venice -m "deepseek-v4-flash" --reasoning-effort high    # Venice with reasoning
+# Reasoning (one-shot session, or use -m alone to save the default)
+communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort high "Solve this"   # force high reasoning effort
+communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort none                # disable reasoning
+communicator -p venice -m "deepseek-v4-flash" --reasoning-effort high "Solve this"  # Venice with reasoning
 
-# Web search
-communicator --web-search                                              # auto mode: the model decides when to search
-communicator --web-search always "Latest AI news"                      # force a web search on every request
-communicator --web-search off                                          # disable web search
-communicator -m "openai/gpt-4o" --web-results 5 "Latest AI news"       # 5 results, implies auto mode
-communicator -p venice --web-search                                    # Venice: no result count (auto/on/off only)
+# Web search (one-shot session; standalone use saves the default)
+communicator -m "openai/gpt-4o" --web-search auto "Latest AI news"      # auto mode: the model decides when to search
+communicator -m "openai/gpt-4o" --web-search always "Latest AI news"    # force a web search on every request
+communicator -m "openai/gpt-4o" --web-search off "Latest AI news"       # disable web search
+communicator -m "openai/gpt-4o" --web-results 5 "Latest AI news"        # 5 results, implies auto mode
+communicator -p venice -m "qwen-3-7-max" --web-search "Latest AI news"  # Venice: no result count (auto/on/off only)
+
+# Standalone config commands (persist defaults to ~/.communicator.json and exit)
+communicator --output-dir ~/Documents                                  # save the default export directory
+communicator --config                                                  # print the current config
+communicator -m "deepseek/deepseek-v4-flash"                           # validate a model, show its details, set it as default
+communicator -m "deepseek/deepseek-v4-flash" --temperature 0.5         # set per-model temperature default
+communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort high   # set per-model reasoning default
+communicator -m "deepseek/deepseek-v4-flash" --web-search always       # set per-model web search default
+communicator --budget 2                                                # set the default budget cap for sessions
+communicator --web-results 5                                           # set the default result count (OpenRouter only)
+communicator --smooth-speed fast                                       # set the default smooth streaming speed
+communicator --no-smooth-streaming                                     # disable smooth streaming by default
 ```
 
 ## Usage

@@ -145,6 +145,20 @@ test('openrouter 401 throws ApiError with friendly message, no retry', async (t)
   assert.equal(globalThis.fetch.mock.calls.length, 1)
 })
 
+test('openrouter 404 throws friendly model-not-found message, no retry', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => jsonResponse({ error: { message: 'Not Found', code: 404 } }, 404))
+
+  await assert.rejects(
+    openrouter.fetchEndpoints('key', 'nonexistent/model'),
+    (err) => err instanceof ApiError
+      && err.status === 404
+      && err.retryable === false
+      && err.message.includes('Model not found on OpenRouter')
+      && err.message.includes('--list-models')
+  )
+  assert.equal(globalThis.fetch.mock.calls.length, 1)
+})
+
 test('venice 429 is retried twice then throws rate limited message', async (t) => {
   let calls = 0
   t.mock.method(globalThis, 'fetch', async () => {
