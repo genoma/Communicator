@@ -47,14 +47,19 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
     stdout.write(`\x1b[${lineRows(width)}A\r`)
   }
 
-  const redrawPartial = () => {
-    if (tableOpen) return
+  // The buffer's classification depends on the completed lines before it, so
+  // the whole text is re-parsed on each partial restyle.
+  const partialContext = () => {
     const e = env()
     const text = lines.length > 0 ? `${lines.join('\n')}\n${buffer}` : buffer
     const tokens = md.parse(text, e)
-    const ctxs = classifyContexts(tokens, lines.length + 1)
-    const ctx = ctxs[lines.length]
-    const styled = ctx ? styleLine(buffer, ctx, e) : styleLine(buffer, { type: 'paragraph' }, e)
+    return { e, ctx: classifyContexts(tokens, lines.length + 1)[lines.length] }
+  }
+
+  const redrawPartial = () => {
+    if (tableOpen) return
+    const { e, ctx } = partialContext()
+    const styled = styleLine(buffer, ctx ?? { type: 'paragraph' }, e)
     if (displayed) {
       rewindToPartialStart()
       stdout.write('\x1b[J')
@@ -77,11 +82,15 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
 
   const emitLine = (i, ctx, e) => {
     clearDisplayed()
-    if (ctx == null && lines[i] !== '') {
+    if (ctx == null) {
+      // Lines markdown-it leaves unmapped: whitespace-only lines still delimit
+      // paragraphs (emit them raw), while link reference definitions
+      // ([ref]: url) are consumed by markdown-it and must stay invisible.
+      if (lines[i].trim() === '') stdout.write(`${lines[i]}\n`)
       emittedWidths[i] = 0
       return
     }
-    const styled = ctx ? styleLine(lines[i], ctx, e) : lines[i]
+    const styled = styleLine(lines[i], ctx, e)
     stdout.write(`${styled}\n`)
     emittedWidths[i] = stringWidth(styled)
   }
@@ -128,12 +137,8 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
   }
 
   const finalizePartial = () => {
-    const e = env()
-    const text = lines.length > 0 ? `${lines.join('\n')}\n${buffer}` : buffer
-    const tokens = md.parse(text, e)
-    const ctxs = classifyContexts(tokens, lines.length + 1)
-    const ctx = ctxs[lines.length]
-    const styled = ctx ? styleLine(buffer, ctx, e) : buffer
+    const { e, ctx } = partialContext()
+    const styled = styleLine(buffer, ctx ?? { type: 'paragraph' }, e)
     if (displayed !== buffer || styled !== displayedStyled) {
       clearDisplayed()
       stdout.write(styled)
@@ -175,6 +180,8 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
           clearDisplayed()
           processBatch()
         }
+        // processBatch may have completed the table above; only re-emit it here
+        // when it is still open (its final row was the last line of the text).
         if (tableOpen && lastTable) {
           emitTable(lastTable.start, lastTable.end, lastTable.tokens, env())
         }

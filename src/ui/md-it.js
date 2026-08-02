@@ -216,7 +216,7 @@ export function renderText(text, sources = []) {
       i = end + 1
       continue
     }
-    if (ctx == null && lines[i] !== '') {
+    if (ctx == null && lines[i].trim() !== '') {
       i++
       continue
     }
