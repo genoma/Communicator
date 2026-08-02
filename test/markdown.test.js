@@ -170,6 +170,29 @@ test('streaming renderer processes multiple lines in one write', (t) => {
   assert.equal(output().replace(ANSI, ''), 'line1\nline2\n')
 })
 
+test('streaming renderer keeps whitespace-only lines as paragraph separators', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  renderer.write('alpha\n   \nbeta\n')
+  renderer.flush()
+  assert.equal(plain(output()), 'alpha\n   \nbeta\n')
+})
+
+test('streaming renderer still drops reference definition lines', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  renderer.write('[ref]: https://x.com\n   \ntext\n')
+  renderer.flush()
+  assert.equal(plain(output()), '   \ntext\n')
+})
+
+test('renderText keeps whitespace-only lines as paragraph separators', () => {
+  assert.equal(renderText('alpha\n   \nbeta'), 'alpha\n   \nbeta')
+  assert.equal(renderText('alpha\n\t\nbeta'), 'alpha\n\t\nbeta')
+})
+
 test('streaming renderer keeps fence state across partial redraws of the opener', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const output = captureStdout(t)
