@@ -168,3 +168,51 @@ test('streaming renderer processes multiple lines in one write', (t) => {
   renderer.write('line1\nline2\n')
   assert.equal(output().replace(ANSI, ''), 'line1\nline2\n')
 })
+
+test('streaming renderer keeps fence state across partial redraws of the opener', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  // The fence opener arrives without its newline and is redrawn while partial;
+  // repeated partial restyles must not toggle inCodeBlock (that would leave the
+  // code-block state inverted for the lines after the block).
+  renderer.write('```')
+  renderer.write('js')
+  t.mock.timers.tick(200)
+  renderer.write('\nconst x = 1\n')
+  renderer.write('```\n')
+  renderer.write('after **bold**')
+  renderer.flush()
+
+  const out = output()
+  assert.equal(plain(out), '```\r\x1b[J```js\r\x1b[J```js\nconst x = 1\n```\nafter bold')
+  assert.match(out, /\x1b\[1mbold\x1b\[22m/)
+  assert.doesNotMatch(out, /\*\*bold\*\*/)
+})
+
+test('streaming renderer rewinds by the styled width, not the raw markup width', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  enableAnsi(t)
+  const chunks = []
+  const stdout = { columns: 20, write: (chunk) => chunks.push(String(chunk)) }
+  const renderer = createMarkdownRenderer({ stdout })
+
+  // Raw partial is 23 wide (2 rows at 20 cols) but the styled text is 19 wide
+  // (1 row): the rewind must use the styled width or it overshoots a row and the
+  // erase wipes the completed line above.
+  renderer.write('aa **bold**')
+  renderer.write(' bb cc dd ee')
+  t.mock.timers.tick(200)
+  assert.equal(plain(chunks.join('')), 'aa bold\r\x1b[Jaa bold bb cc dd ee')
+
+  // The styled text still fits one row (raw is now 26): the rewind must stay put.
+  renderer.write(' ff')
+  t.mock.timers.tick(200)
+  assert.equal(plain(chunks.join('')), 'aa bold\r\x1b[Jaa bold bb cc dd ee\r\x1b[Jaa bold bb cc dd ee ff')
+
+  // Now the styled text crosses the boundary too: the rewind goes up one row.
+  renderer.write(' gg')
+  t.mock.timers.tick(200)
+  assert.equal(plain(chunks.join('')), 'aa bold\r\x1b[Jaa bold bb cc dd ee\r\x1b[Jaa bold bb cc dd ee ff\x1b[1A\r\x1b[Jaa bold bb cc dd ee ff gg')
+})
