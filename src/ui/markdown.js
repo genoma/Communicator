@@ -1,66 +1,21 @@
-import { styleText } from 'node:util'
-import { THIN_SEP } from '../constants.js'
-import { bold, dim, italic } from './style.js'
-import { hyperlink } from './hyperlink.js'
-import { stringWidth } from '../vendor/read-multiline/chars.js'
-
-function citationMarkers(text, sources) {
-  return text.replace(/\^(\d+(?:,\d+)*)\^/g, (_, indices) => (
-    indices.split(',').map((n) => {
-      const source = sources[Number(n) - 1]
-      const marker = `[${n}]`
-      return italic(source ? hyperlink(source.url, marker) || marker : marker)
-    }).join(' ')
-  ))
-}
-
-function inlineStyles(text, sources) {
-  return text
-    .split(/(`[^`]+`)/g)
-    .map((part) => {
-      if (/^`[^`]+`$/.test(part)) return styleText('cyan', part.slice(1, -1))
-      let styled = part
-        .replace(/\*\*([^*]+)\*\*/g, (_, m) => bold(m))
-        .replace(/\*([^*]+)\*/g, (_, m) => styleText('italic', m))
-        .replace(/!\[([^\]]*)\]\([^)]*\)/g, (_, alt) => dim(alt))
-        .replace(/(?<!\x1b)\[([^\]]+)\]\(([^)]*)\)/g, (_, t, url) => italic(hyperlink(url, t) || t))
-      if (sources.length > 0) {
-        styled = citationMarkers(styled, sources)
-      }
-      return styled
-    })
-    .join('')
-}
-
-function styleLine(line, state, sources, partial = false) {
-  if (/^\s*```/.test(line)) {
-    // Partial lines must not toggle the fence state: the same partial buffer is
-    // re-styled on every redraw, and toggling would flip inCodeBlock repeatedly.
-    if (!partial) state.inCodeBlock = !state.inCodeBlock
-    return dim(line)
-  }
-  if (state.inCodeBlock) return dim(line)
-  if (/^\s*#{1,6}\s+/.test(line)) return bold(line)
-  if (/^\s*[-*_]{3,}\s*$/.test(line)) return dim(THIN_SEP)
-  const list = line.match(/^(\s*(?:[-*+]|\d+[.)])\s+)(.*)$/)
-  if (list) return list[1] + inlineStyles(list[2], sources)
-  if (/^\s*>/.test(line)) return dim(line)
-  return inlineStyles(line, sources)
-}
-
-function createLineStyler(getSources) {
-  const state = { inCodeBlock: false }
-  return (line, { partial = false } = {}) => styleLine(line, state, getSources ? getSources() : [], partial)
-}
+import { classifyContexts, md, pendingTables, renderTableTokens, renderText, styleLine, tableRegionEnd } from './md-it.js'
+import stringWidth from 'string-width'
 
 const PARTIAL_FLUSH_MS = 200
 
 export function createMarkdownRenderer({ getSources = null, stdout = process.stdout, partialFlushMs = PARTIAL_FLUSH_MS } = {}) {
-  const styler = createLineStyler(getSources)
+  const lines = []
+  const emittedWidths = []
+  let emitted = 0
   let buffer = ''
   let displayed = ''
+  let displayedStyled = ''
   let displayedWidth = 0
   let timer = null
+  let tableOpen = false
+  let lastTable = null
+
+  const env = () => ({ sources: getSources ? getSources() : [] })
 
   const clearTimer = () => {
     if (timer) {
@@ -80,50 +35,127 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
   }
 
   // The cursor sits at the end of the displayed partial line; rewind it to the start.
-  // displayedWidth is the visual width of the styled output on screen (markup is
-  // consumed by styling, so the raw buffer width must not be used here).
   const rewindToPartialStart = () => {
     const rows = lineRows(displayedWidth)
     if (rows > 1) stdout.write(`\x1b[${rows - 1}A`)
     stdout.write('\r')
   }
 
+  // The cursor sits one row below the displayed line (its trailing newline was
+  // emitted); rewind it to the line start.
+  const rewindToLineStart = (width) => {
+    stdout.write(`\x1b[${lineRows(width)}A\r`)
+  }
+
   const redrawPartial = () => {
+    if (tableOpen) return
+    const e = env()
+    const text = lines.length > 0 ? `${lines.join('\n')}\n${buffer}` : buffer
+    const tokens = md.parse(text, e)
+    const ctxs = classifyContexts(tokens, lines.length + 1)
+    const ctx = ctxs[lines.length]
+    const styled = ctx ? styleLine(buffer, ctx, e) : styleLine(buffer, { type: 'paragraph' }, e)
     if (displayed) {
       rewindToPartialStart()
       stdout.write('\x1b[J')
     }
-    const styled = styler(buffer, { partial: true })
     stdout.write(styled)
     displayed = buffer
+    displayedStyled = styled
     displayedWidth = stringWidth(styled)
   }
 
-  const flushCompleteLines = () => {
-    for (;;) {
-      const nl = buffer.indexOf('\n')
-      if (nl === -1) break
-      const line = buffer.slice(0, nl)
-      buffer = buffer.slice(nl + 1)
-      if (displayed) {
-        // The completed line is already on screen as a partial; replace it with its
-        // final styling (markup may have changed while the line was incomplete).
-        rewindToPartialStart()
-        stdout.write('\x1b[J')
+  const clearDisplayed = () => {
+    if (displayed) {
+      rewindToPartialStart()
+      stdout.write('\x1b[J')
+    }
+    displayed = ''
+    displayedStyled = ''
+    displayedWidth = 0
+  }
+
+  const emitLine = (i, ctx, e) => {
+    clearDisplayed()
+    if (ctx == null && lines[i] !== '') {
+      emittedWidths[i] = 0
+      return
+    }
+    const styled = ctx ? styleLine(lines[i], ctx, e) : lines[i]
+    stdout.write(`${styled}\n`)
+    emittedWidths[i] = stringWidth(styled)
+  }
+
+  const emitTable = (start, end, tokens, e) => {
+    const tableStr = renderTableTokens(tokens, e, start)
+    if (emitted > start) {
+      rewindToLineStart(emittedWidths[start] ?? 0)
+      stdout.write('\x1b[J')
+    }
+    stdout.write(`${tableStr}\n`)
+  }
+
+  const processBatch = () => {
+    if (emitted >= lines.length) return
+    const e = env()
+    const tokens = md.parse(lines.join('\n'), e)
+    const ctxs = classifyContexts(tokens, lines.length)
+    const tables = pendingTables(tokens, emitted)
+    tableOpen = false
+    let i = emitted
+    for (const start of tables) {
+      while (i < start) {
+        emitLine(i, ctxs[i], e)
+        emitted = i + 1
+        i++
       }
-      stdout.write(`${styler(line)}\n`)
-      displayed = ''
-      displayedWidth = 0
+      const end = tableRegionEnd(ctxs, start, lines.length)
+      if (end === lines.length - 1) {
+        tableOpen = true
+        lastTable = { tokens, start, end }
+        clearDisplayed()
+        return
+      }
+      emitTable(start, end, tokens, e)
+      emitted = end + 1
+      i = emitted
+    }
+    while (i < lines.length) {
+      emitLine(i, ctxs[i], e)
+      emitted = i + 1
+      i++
+    }
+  }
+
+  const finalizePartial = () => {
+    const e = env()
+    const text = lines.length > 0 ? `${lines.join('\n')}\n${buffer}` : buffer
+    const tokens = md.parse(text, e)
+    const ctxs = classifyContexts(tokens, lines.length + 1)
+    const ctx = ctxs[lines.length]
+    const styled = ctx ? styleLine(buffer, ctx, e) : buffer
+    if (displayed !== buffer || styled !== displayedStyled) {
+      clearDisplayed()
+      stdout.write(styled)
+      displayed = buffer
+      displayedStyled = styled
+      displayedWidth = stringWidth(styled)
     }
   }
 
   return {
     write(token) {
       buffer += token
-      flushCompleteLines()
+      let nl
+      while ((nl = buffer.indexOf('\n')) !== -1) {
+        lines.push(buffer.slice(0, nl))
+        buffer = buffer.slice(nl + 1)
+      }
+      if (lines.length > emitted) processBatch()
       if (!buffer) {
         clearTimer()
         displayed = ''
+        displayedStyled = ''
         displayedWidth = 0
       } else if (!displayed) {
         redrawPartial()
@@ -136,24 +168,30 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
     },
     flush() {
       clearTimer()
-      if (buffer && displayed !== buffer) {
-        if (displayed) {
-          rewindToPartialStart()
-          stdout.write('\x1b[J')
+      if (tableOpen && lastTable) {
+        if (buffer) {
+          lines.push(buffer)
+          buffer = ''
+          clearDisplayed()
+          processBatch()
         }
-        stdout.write(styler(buffer, { partial: true }))
+        if (tableOpen && lastTable) {
+          emitTable(lastTable.start, lastTable.end, lastTable.tokens, env())
+        }
+      } else if (buffer) {
+        finalizePartial()
       }
       buffer = ''
       displayed = ''
+      displayedStyled = ''
       displayedWidth = 0
+      lines.length = 0
+      emitted = 0
+      emittedWidths.length = 0
+      tableOpen = false
+      lastTable = null
     },
   }
 }
 
-export function renderText(text, sources = []) {
-  const styler = createLineStyler(() => sources)
-  return String(text ?? '')
-    .split('\n')
-    .map((line) => styler(line))
-    .join('\n')
-}
+export { renderText }

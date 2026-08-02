@@ -205,9 +205,9 @@ Cache hits are detected and shown when OpenRouter serves a cached response. The 
 
 ### Markdown rendering
 
-By default, assistant responses are rendered as markdown in the terminal: `#` headers bold, `**bold**` / `*italic*` styled inline, `` `code` `` in cyan, fenced code blocks dimmed, lists and blockquotes styled, horizontal rules as a thin separator, and `[text](url)` links shown in italics (URL hidden, clickable in supporting terminals). Reasoning text is never restyled.
+By default, assistant responses are rendered as markdown in the terminal: `#` headers bold, `**bold**` / `*italic*` styled inline, `~~strikethrough~~` struck through, `` `code` `` in cyan, fenced code blocks dimmed, lists and blockquotes styled, aligned tables with a bold header row and dim separator, horizontal rules as a thin separator, and `[text](url)` links shown in italics (URL hidden, clickable in supporting terminals); bare URLs and `<url>` autolinks are clickable too. Reasoning text is never restyled.
 
-Streaming is live: the current in-flight line is written as tokens arrive and redrawn in place as it grows, so even single-paragraph answers stream continuously; when a line completes, it is restyled with its final markup. Toggle with `/markdown` (default on); history replay on `--resume` uses the same styling.
+Streaming is live: the current in-flight line is written as tokens arrive and redrawn in place as it grows, so even single-paragraph answers stream continuously; when a line completes, it is restyled with its final markup. Tables are held until they close and then rendered fully aligned, so columns never shift mid-row. Toggle with `/markdown` (default on); history replay on `--resume` uses the same styling.
 
 ### Smooth streaming & waiting indicator
 
@@ -475,12 +475,13 @@ cli (index.js)            — commander argument parsing, delegates to command m
 │   ├── style.js          — ANSI helpers (dim, bold, sep, thinking, answer)
 │   ├── format.js         — price formatting (formatModelPrice, formatPricePerM)
 │   ├── markdown.js       — streaming terminal markdown renderer (in-place line redraw)
+│   ├── md-it.js          — markdown-it engine: ANSI token rendering, line classification, aligned tables
 │   ├── hyperlink.js      — OSC 8 hyperlink escape helper
 │   └── stream.js         — stream renderer + history replay
 └── chat.js               — runChatSession: DI chat loop (readInput/renderer/stdout/exit/save/signals), banner, SIGINT
 ```
 
-Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing and [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) for the interactive search/select UI. Multi-line input uses a vendored copy of [`@toiroakr/read-multiline`](https://www.npmjs.com/package/@toiroakr/read-multiline) 0.4.1 (see `src/vendor/read-multiline/README.md`).
+Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing, [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) for the interactive search/select UI, [`markdown-it`](https://www.npmjs.com/package/markdown-it) for terminal markdown rendering, and [`string-width`](https://www.npmjs.com/package/string-width) for emoji-aware column measurement (stream rewind math). Multi-line input uses a vendored copy of [`@toiroakr/read-multiline`](https://www.npmjs.com/package/@toiroakr/read-multiline) 0.4.1 (see `src/vendor/read-multiline/README.md`).
 
 ### Architecture
 

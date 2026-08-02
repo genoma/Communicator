@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createMarkdownRenderer, renderText } from '../src/ui/markdown.js'
+import { createStreamRenderer } from '../src/ui/stream.js'
 import { THIN_SEP } from '../src/constants.js'
 
 const ANSI = /\x1b\[[0-9;]*m/g
@@ -215,4 +216,208 @@ test('streaming renderer rewinds by the styled width, not the raw markup width',
   renderer.write(' gg')
   t.mock.timers.tick(200)
   assert.equal(plain(chunks.join('')), 'aa bold\r\x1b[Jaa bold bb cc dd ee\r\x1b[Jaa bold bb cc dd ee ff\x1b[1A\r\x1b[Jaa bold bb cc dd ee ff gg')
+})
+
+test('renderText renders aligned tables', (t) => {
+  enableAnsi(t)
+  const out = renderText('| a | bb |\n|---|---|\n| 1 | 2 |')
+  assert.equal(out.replace(ANSI, '').replace(OSC8, ''), 'a  bb\n---  ---\n1  2')
+  assert.match(out, /\x1b\[1ma\x1b\[22m  \x1b\[1mbb\x1b\[22m/)
+  assert.match(out, /\x1b\[2m---\x1b\[22m  \x1b\[2m---\x1b\[22m/)
+})
+
+test('renderText renders strikethrough and bare URLs as links', (t) => {
+  enableAnsi(t)
+  const out = renderText('~~gone~~ https://x.com')
+  assert.equal(out.replace(ANSI, '').replace(OSC8, ''), 'gone https://x.com')
+  assert.match(out, /\x1b\[9mgone\x1b\[29m/)
+  assert.match(out, /\x1b\[3m\x1b\]8;;https:\/\/x\.com\x1b\\https:\/\/x\.com\x1b\]8;;\x1b\\\x1b\[23m/)
+})
+
+test('renderText dims indented code blocks', (t) => {
+  enableAnsi(t)
+  const out = renderText('    const x = 1')
+  assert.match(out, /\x1b\[2m    const x = 1\x1b\[22m/)
+})
+
+test('renderText leaves raw HTML tags as literal text', (t) => {
+  enableAnsi(t)
+  const out = renderText('a <b>tag</b> here')
+  assert.equal(out.replace(ANSI, ''), 'a <b>tag</b> here')
+})
+
+test('renderText renders nested lists with their raw markers', (t) => {
+  enableAnsi(t)
+  const out = renderText('- a\n  - b')
+  assert.equal(out.replace(ANSI, ''), '- a\n  - b')
+})
+
+test('renderText resolves citations inside table cells', (t) => {
+  enableAnsi(t)
+  const sources = [{ title: 'One', url: 'https://one.example' }]
+  const out = renderText('a | b\n---|---\n^1^ | x', sources)
+  assert.equal(out.replace(ANSI, '').replace(OSC8, ''), 'a    b\n---  ---\n[1]  x')
+  assert.match(out, /\x1b\[3m\x1b\]8;;https:\/\/one\.example\x1b\\\[1\]\x1b\]8;;\x1b\\\x1b\[23m/)
+})
+
+test('renderText keeps setext underlines as plain text', (t) => {
+  enableAnsi(t)
+  const out = renderText('Title\n===')
+  assert.equal(out.replace(ANSI, ''), 'Title\n===')
+})
+
+test('renderText has no trailing newline', () => {
+  assert.equal(renderText('one\ntwo'), 'one\ntwo')
+})
+
+test('streaming renderer holds table lines and emits the aligned table when it closes', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  renderer.write('a | b\n')
+  assert.equal(plain(output()), 'a | b\n')
+
+  renderer.write('---|---\n')
+  assert.equal(plain(output()), 'a | b\n')
+
+  renderer.write('1 | 2\n')
+  assert.equal(plain(output()), 'a | b\n')
+
+  renderer.write('\n')
+  const out = output()
+  assert.equal(plain(out), 'a | b\n\x1b[1A\r\x1b[Ja  b\n---  ---\n1  2\n\n')
+  assert.match(out, /\x1b\[1ma\x1b\[22m  \x1b\[1mb\x1b\[22m/)
+  assert.match(out, /\x1b\[2m---\x1b\[22m  \x1b\[2m---\x1b\[22m/)
+})
+
+test('streaming renderer emits a held table at flush', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  renderer.write('a | b\n')
+  renderer.write('---|---\n')
+  renderer.write('1 | 2\n')
+  renderer.flush()
+  assert.equal(plain(output()), 'a | b\n\x1b[1A\r\x1b[Ja  b\n---  ---\n1  2\n')
+})
+
+test('streaming renderer leaves pipe lines without a separator as paragraphs', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  renderer.write('a | b\n')
+  renderer.write('c | d\n')
+  renderer.flush()
+  assert.equal(plain(output()), 'a | b\nc | d\n')
+})
+
+test('streaming renderer hides the partial line while the table is open', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  renderer.write('a | b\n')
+  renderer.write('---|---\n')
+  renderer.write('1 | 2')
+  assert.equal(plain(output()), 'a | b\n')
+  renderer.write('\n')
+  assert.equal(plain(output()), 'a | b\n')
+  renderer.write('\n')
+  assert.equal(plain(output()), 'a | b\n\x1b[1A\r\x1b[Ja  b\n---  ---\n1  2\n\n')
+})
+
+test('streaming renderer rewinds a wrapped table header by its display rows', () => {
+  const chunks = []
+  const stdout = { columns: 20, write: (chunk) => chunks.push(String(chunk)) }
+  const renderer = createMarkdownRenderer({ stdout })
+
+  renderer.write('aaaa bbbb cccc dddd | x\n')
+  renderer.write('---- | ---\n')
+  renderer.write('1 | 2\n')
+  renderer.write('\n')
+  const out = chunks.join('')
+  assert.ok(out.includes('\x1b[2A\r\x1b[J'))
+  assert.ok(plain(out).includes('2'))
+})
+
+test('streaming renderer resolves citation markers when sources arrive', (t) => {
+  const output = captureStdout(t)
+  let sources = []
+  const renderer = createMarkdownRenderer({ getSources: () => sources })
+
+  renderer.write('see ^1^\n')
+  renderer.write('and ^1^\n')
+  assert.equal(plain(output()), 'see ^1^\nand ^1^\n')
+
+  sources = [{ title: 'One', url: 'https://one.example' }]
+  renderer.write('more ^1^\n')
+  const out = output()
+  assert.equal(plain(out), 'see ^1^\nand ^1^\nmore [1]\n')
+  assert.match(out, /\x1b\[3m\x1b\]8;;https:\/\/one\.example\x1b\\\[1\]\x1b\]8;;\x1b\\\x1b\[23m/)
+})
+
+test('streaming renderer restyles a completed heading with the final parse', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  renderer.write('# He')
+  assert.equal(plain(output()), '# He')
+  renderer.write('ad\n')
+  assert.equal(plain(output()), '# He\r\x1b[J# Head\n')
+  assert.match(output(), /\x1b\[1m# Head\x1b\[22m/)
+})
+
+test('streaming renderer drops reference definition lines', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  renderer.write('[ref]: https://x.com\n')
+  renderer.write('text\n')
+  renderer.flush()
+  assert.equal(plain(output()), 'text\n')
+})
+
+test('streaming renderer resets between flushed responses', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  renderer.write('a | b\n')
+  renderer.write('---|---\n')
+  renderer.write('1 | 2\n')
+  renderer.flush()
+  const afterFirst = plain(output())
+  assert.equal(afterFirst, 'a | b\n\x1b[1A\r\x1b[Ja  b\n---  ---\n1  2\n')
+
+  renderer.write('second turn\n')
+  renderer.flush()
+  assert.equal(plain(output()), afterFirst + 'second turn\n')
+})
+
+test('streaming renderer rewinds rows correctly for emoji that render two columns', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { columns: 80, write: (chunk) => chunks.push(String(chunk)) }
+  const renderer = createMarkdownRenderer({ stdout })
+
+  // 79 ASCII columns + one emoji: 80 columns per a non-emoji-aware width
+  // table, 81 visually. A redraw at this exact boundary must rewind two rows
+  // or the partial's first row survives the completion restyle.
+  const line = 'a'.repeat(79) + '👋'
+  renderer.write(line.slice(0, 60))
+  renderer.write(line.slice(60))
+  t.mock.timers.tick(200)
+  renderer.write('\n')
+  renderer.flush()
+  const out = chunks.join('')
+  assert.ok(out.includes('\x1b[1A\r\x1b[J'))
+})
+
+test('stream renderer routes content through the markdown renderer when enabled', () => {
+  const chunks = []
+  const stdout = { write: (chunk) => chunks.push(String(chunk)) }
+  const render = createStreamRenderer({ stdout, markdown: true })
+  render('a | b\n', 'content')
+  render('---|---\n', 'content')
+  render('1 | 2\n', 'content')
+  render.flush()
+  assert.ok(plain(chunks.join('')).includes('\x1b[1A\r\x1b[Ja  b\n---  ---\n1  2'))
 })
