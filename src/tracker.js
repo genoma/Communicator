@@ -1,5 +1,7 @@
 import { formatCost } from './constants.js'
-import { sep } from './ui/style.js'
+import { sep, green, cyan, yellow, red } from './ui/style.js'
+
+const BAR_WIDTH = 10
 
 export function computeTurnCost(usage, pricing) {
   if (!usage || pricing?.prompt == null || pricing?.completion == null) return 0
@@ -17,10 +19,23 @@ export function budgetStatus(cost, budget) {
   return { pct, remaining: Math.max(0, budget - cost) }
 }
 
+function formatCompactCost(cost) {
+  return `$${cost.toFixed(2)}`
+}
+
+function renderBar(pct) {
+  const filled = Math.round((pct / 100) * BAR_WIDTH)
+  return '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled)
+}
+
 export function budgetLine(cost, budget) {
   const status = budgetStatus(cost, budget)
   if (!status || status.pct < 80) return null
-  return `  Budget  ${status.pct.toFixed(0)}% used (${formatCost(cost)} of ${formatCost(budget)}), ${formatCost(status.remaining)} remaining`
+  const pct = status.pct.toFixed(0)
+  const style = status.pct >= 95 ? red : yellow
+  return style(
+    `  Budget  ${renderBar(status.pct)} ${pct}% used (${formatCompactCost(cost)} of ${formatCompactCost(budget)}), ${formatCompactCost(status.remaining)} remaining`
+  )
 }
 
 function computeMetrics(usage, pricing) {
@@ -68,22 +83,27 @@ export class UsageTracker {
     const arrowUp = '\u2191'
     const arrowDown = '\u2193'
     const eq = '\u003d'
+    const label = (text) => `  ${text.padEnd(6)} `
 
     console.log(
-      `  Tokens  ${arrowUp} ${pt.toLocaleString()} prompt  ${arrowDown} ${ct.toLocaleString()} completion  ${eq} ${tt.toLocaleString()} total`
+      `${label('Tokens')}${arrowUp} ${pt.toLocaleString()} prompt  ${arrowDown} ${ct.toLocaleString()} completion  ${eq} ${tt.toLocaleString()} total`
     )
 
     if (hit) {
       const parts = []
-      if (cached > 0) parts.push(`${cached.toLocaleString()} cached tokens`)
+      if (cached > 0) {
+        const pct = pt > 0 ? Math.round((cached / pt) * 100) : null
+        const ratio = pct != null ? ` (${pct}% of prompt)` : ''
+        parts.push(`${cached.toLocaleString()} cached tokens${ratio}`)
+      }
       if (usage.cacheHit) parts.push('response cache hit')
-      console.log(`  Cache   ${parts.join(', ')}`)
+      console.log(green(`${label('Cache')}⚡ ${parts.join(', ')}`))
     }
 
     if (pricing) {
       const turnPart = formatCost(turnCost)
       const sessionPart = formatCost(this.cost)
-      console.log(`  Cost    ${turnPart} this turn  |  ${sessionPart} session`)
+      console.log(cyan(`${label('Cost')}${turnPart} this turn  |  ${sessionPart} session`))
     }
   }
 

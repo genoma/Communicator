@@ -2,8 +2,18 @@ import { search, select } from '@inquirer/prompts'
 import { Separator } from '@inquirer/core'
 import { EFFORT_LABELS } from './constants.js'
 import { formatModelPrice } from './ui/format.js'
+import { bold, dim } from './ui/style.js'
 
 export const BACK_SENTINEL = Symbol('back')
+
+export const pickerTheme = {
+  style: {
+    keysHelpTip: (keys) =>
+      keys
+        .map(([key, action]) => `${bold(key.replaceAll('↑↓', '↑ ↓'))} ${dim(action)}`)
+        .join(dim(' • ')),
+  },
+}
 
 export async function selectModel(models, lastModel) {
   const choices = models.map((m) => ({
@@ -14,6 +24,7 @@ export async function selectModel(models, lastModel) {
 
   const answer = await search({
     message: 'Select a model',
+    theme: pickerTheme,
     source: async (input) => {
       if (!input) {
         if (lastModel) {
@@ -67,6 +78,7 @@ export async function selectProvider(endpoints) {
 
   const answer = await search({
     message: `Select a provider (${endpoints.length} available)`,
+    theme: pickerTheme,
     source: async (input) => {
       if (!input) return fullChoices
       const q = input.toLowerCase()
@@ -124,6 +136,7 @@ export async function selectReasoningEffort(reasoning, lastEffort) {
 
   const answer = await select({
     message: 'Select reasoning effort:',
+    theme: pickerTheme,
     choices: efforts.map((e) => ({
       name: getEffortLabel(e),
       value: e === 'none' ? null : e,

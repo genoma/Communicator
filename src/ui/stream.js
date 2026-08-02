@@ -112,7 +112,7 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
 export function printSources(sources, stdout = process.stdout) {
   if (!sources?.length) return
   stdout.write('\n')
-  stdout.write(`${dim('Sources')}\n`)
+  stdout.write(`${dim(`Sources (${sources.length})`)}\n`)
   sources.forEach((source, i) => {
     let label = source.title
     if (!label) {
@@ -123,7 +123,7 @@ export function printSources(sources, stdout = process.stdout) {
       }
     }
     const link = label ? hyperlink(source.url, label) : null
-    stdout.write(`[${i + 1}] ${italic(link || label || dim(source.url))}\n`)
+    stdout.write(`${dim(`[${i + 1}]`)} ${italic(link || label || dim(source.url))}\n`)
   })
 }
 

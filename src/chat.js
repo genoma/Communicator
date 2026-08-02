@@ -206,7 +206,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
         model: state.modelId,
         messages: state.messages,
         onToken: (token, type) => {
-          if (type === 'reasoning' || type === 'content') loader.stop()
+          if (type === 'reasoning' || type === 'content') loader.stop({ done: true })
           if (type === 'reasoning') streamedReasoning += token
           else if (type === 'content') streamedContent += token
           render(token, type)

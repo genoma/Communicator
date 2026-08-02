@@ -516,11 +516,12 @@ test('loader shows frames during a delayed response and clears on the first toke
   t.mock.timers.tick(1)
   assert.ok(writes.some((w) => w.includes('Waiting for response')))
   t.mock.timers.tick(150)
-  assert.ok(writes.some((w) => w.includes('Waiting for response.')))
+  assert.ok(writes.some((w) => w.includes('Waiting for response ⠙')))
 
   release()
   await session
-  assert.ok(writes.some((w) => w === '\r\x1b[K'))
+  assert.ok(writes.some((w) => w.includes('✓ Waiting for response')))
+  assert.ok(!writes.some((w) => w === '\r\x1b[K'))
 })
 
 test('/smooth shows status and /smooth off saves the pref and updates the renderer', async (t) => {

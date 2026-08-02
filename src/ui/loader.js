@@ -1,5 +1,7 @@
-import { dim } from './style.js'
+import { dim, cyan, green } from './style.js'
 import { LOADER_GRACE_MS, LOADER_TICK_MS } from '../constants.js'
+
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
 export function createLoader({ stdout = process.stdout, graceMs = LOADER_GRACE_MS, tickMs = LOADER_TICK_MS } = {}) {
   let label = ''
@@ -9,7 +11,7 @@ export function createLoader({ stdout = process.stdout, graceMs = LOADER_GRACE_M
   let tickTimer = null
 
   const draw = () => {
-    stdout.write(`\r${dim(label)}${'.'.repeat(frames % 4)}\x1b[K`)
+    stdout.write(`\r${dim(label)} ${cyan(SPINNER_FRAMES[frames % SPINNER_FRAMES.length])}\x1b[K`)
   }
 
   const scheduleTick = () => {
@@ -49,12 +51,15 @@ export function createLoader({ stdout = process.stdout, graceMs = LOADER_GRACE_M
       }, graceMs)
       graceTimer.unref?.()
     },
-    stop() {
+    stop({ done = false } = {}) {
       stopTimers()
-      if (shown) {
-        stdout.write('\r\x1b[K')
-        shown = false
+      if (!shown) return
+      shown = false
+      if (done) {
+        stdout.write(`\r${green('✓')} ${label}\x1b[K\n`)
+        return
       }
+      stdout.write('\r\x1b[K')
     },
   }
 }

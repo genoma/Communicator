@@ -32,10 +32,10 @@ test('printSources renders clickable italic links with numbered entries', (t) =>
     { title: 'Mistral deal', url: 'https://msft.example/b' },
   ], stdout)
   const out = text()
-  assert.equal(plain(), '\nSources\n[1] Samsung in talks\n[2] Mistral deal\n')
-  assert.match(out, /\x1b\[2mSources\x1b\[22m/)
-  assert.match(out, /\[1\] \x1b\[3m\x1b\]8;;https:\/\/econ\.example\/a\x1b\\Samsung in talks\x1b\]8;;\x1b\\\x1b\[23m/)
-  assert.match(out, /\[2\] \x1b\[3m\x1b\]8;;https:\/\/msft\.example\/b\x1b\\Mistral deal\x1b\]8;;\x1b\\\x1b\[23m/)
+  assert.equal(plain(), '\nSources (2)\n[1] Samsung in talks\n[2] Mistral deal\n')
+  assert.match(out, /\x1b\[2mSources \(2\)\x1b\[22m/)
+  assert.match(out, /\x1b\[2m\[1\]\x1b\[22m \x1b\[3m\x1b\]8;;https:\/\/econ\.example\/a\x1b\\Samsung in talks\x1b\]8;;\x1b\\\x1b\[23m/)
+  assert.match(out, /\x1b\[2m\[2\]\x1b\[22m \x1b\[3m\x1b\]8;;https:\/\/msft\.example\/b\x1b\\Mistral deal\x1b\]8;;\x1b\\\x1b\[23m/)
 })
 
 test('printSources falls back to hostname and dimmed italic URL', (t) => {
@@ -45,9 +45,9 @@ test('printSources falls back to hostname and dimmed italic URL', (t) => {
     { title: null, url: 'https://host.example/x' },
     { title: 'No URL', url: '' },
   ], stdout)
-  assert.equal(plain(), '\nSources\n[1] host.example\n[2] No URL\n')
+  assert.equal(plain(), '\nSources (2)\n[1] host.example\n[2] No URL\n')
   const out = text()
-  assert.match(out, /\[1\] \x1b\[3m\x1b\]8;;https:\/\/host\.example\/x\x1b\\host\.example\x1b\]8;;\x1b\\\x1b\[23m/)
+  assert.match(out, /\x1b\[2m\[1\]\x1b\[22m \x1b\[3m\x1b\]8;;https:\/\/host\.example\/x\x1b\\host\.example\x1b\]8;;\x1b\\\x1b\[23m/)
 })
 
 test('printSources does nothing without sources', () => {
@@ -137,20 +137,20 @@ test('smooth keeps reasoning markers ordered behind paced text', async (t) => {
   const pump = () => t.mock.timers.tick(20)
 
   pump()
-  assert.equal(plain(), '[Thinking]\nTH')
+  assert.equal(plain(), '❯ Thinking\nTH')
   pump()
   pump()
   pump()
-  assert.equal(plain(), '[Thinking]\nTHINKING\n\n[Answer]\n\n')
+  assert.equal(plain(), '❯ Thinking\nTHINKING\n\n❯ Answer\n\n')
   pump()
-  assert.equal(plain(), '[Thinking]\nTHINKING\n\n[Answer]\n\nHE')
-  pump()
-  pump()
-  assert.equal(plain(), '[Thinking]\nTHINKING\n\n[Answer]\n\nHELLO')
+  assert.equal(plain(), '❯ Thinking\nTHINKING\n\n❯ Answer\n\nHE')
   pump()
   pump()
+  assert.equal(plain(), '❯ Thinking\nTHINKING\n\n❯ Answer\n\nHELLO')
   pump()
-  assert.equal(plain(), '[Thinking]\nTHINKING\n\n[Answer]\n\nHELLO')
+  pump()
+  pump()
+  assert.equal(plain(), '❯ Thinking\nTHINKING\n\n❯ Answer\n\nHELLO')
 })
 
 test('toggling render.smooth off mid-stream drains the residual on the next tick', async (t) => {
