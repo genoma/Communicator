@@ -456,12 +456,16 @@ test('venice chatCompletion maps auto/always/off to enable_web_search', async (t
 
   assert.equal(sentBodies[0].venice_parameters.enable_web_search, 'auto')
   assert.equal(sentBodies[0].venice_parameters.enable_web_citations, true)
+  assert.equal(sentBodies[0].venice_parameters.include_search_results_in_stream, true)
   assert.equal(sentBodies[1].venice_parameters.enable_web_search, 'on')
   assert.equal(sentBodies[1].venice_parameters.enable_web_citations, true)
+  assert.equal(sentBodies[1].venice_parameters.include_search_results_in_stream, true)
   assert.equal(sentBodies[2].venice_parameters.enable_web_search, 'off')
   assert.equal(sentBodies[2].venice_parameters.enable_web_citations, undefined)
+  assert.equal(sentBodies[2].venice_parameters.include_search_results_in_stream, undefined)
   assert.equal(sentBodies[3].venice_parameters.enable_web_search, 'off')
   assert.equal(sentBodies[3].venice_parameters.enable_web_citations, undefined)
+  assert.equal(sentBodies[3].venice_parameters.include_search_results_in_stream, undefined)
 })
 
 test('venice chatCompletion returns sources and forwards onSources', async (t) => {

@@ -114,6 +114,10 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
   body.venice_parameters.enable_web_search = webMode
   if (webMode !== 'off') {
     body.venice_parameters.enable_web_citations = true
+    // Venice only includes venice_parameters.web_search_citations in a
+    // streaming response when this experimental flag is set; without it the
+    // citations are only present in the non-streaming response.
+    body.venice_parameters.include_search_results_in_stream = true
   }
 
   if (sessionId) {
