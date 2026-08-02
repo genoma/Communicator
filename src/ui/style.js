@@ -4,17 +4,21 @@ import { THIN_SEP } from '../constants.js'
 export const dim = (text) => styleText('dim', text)
 export const bold = (text) => styleText('bold', text)
 export const italic = (text) => styleText('italic', text)
+export const green = (text) => styleText('green', text)
+export const yellow = (text) => styleText('yellow', text)
+export const red = (text) => styleText('red', text)
+export const cyan = (text) => styleText('cyan', text)
 
 export function you() {
   return styleText(['bold', 'cyan'], '❯ You')
 }
 
 export function thinking() {
-  return styleText(['dim', 'yellow'], '[Thinking]')
+  return styleText(['dim', 'yellow'], '❯ Thinking')
 }
 
 export function answer() {
-  return styleText(['bold', 'green'], '[Answer]')
+  return styleText(['bold', 'green'], '❯ Answer')
 }
 
 export function sep() {

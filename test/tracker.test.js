@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { UsageTracker, budgetLine, budgetStatus, computeTurnCost } from '../src/tracker.js'
+import { green, cyan } from '../src/ui/style.js'
 
 const PRICING = { prompt: 0.0000015, completion: 0.000006 }
 
@@ -78,7 +79,44 @@ test('budgetStatus returns null for unset or invalid budgets', () => {
 test('budgetLine warns at 80% and omits below', () => {
   assert.equal(budgetLine(0.5, 1), null)
   assert.match(budgetLine(0.9, 1), /90% used/)
-  assert.match(budgetLine(0.9, 1), /\$0\.900000 of \$1\.000000/)
+  assert.match(budgetLine(0.9, 1), /\$0\.90 of \$1\.00/)
+  assert.match(budgetLine(0.9, 1), /█████████░/)
   assert.match(budgetLine(1.2, 1), /100% used/)
+  assert.match(budgetLine(1.2, 1), /██████████/)
   assert.equal(budgetLine(0.5, null), null)
+})
+
+test('printTurn aligns labels and shows cache hits with ratio', (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+
+  const tracker = new UsageTracker()
+  tracker.record(
+    { prompt_tokens: 200, completion_tokens: 50, prompt_tokens_details: { cached_tokens: 100 } },
+    PRICING
+  )
+  tracker.printTurn(
+    { prompt_tokens: 200, completion_tokens: 50, prompt_tokens_details: { cached_tokens: 100 } },
+    PRICING
+  )
+
+  const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
+  assert.match(plain, /^  Tokens ↑ 200 prompt  ↓ 50 completion  = 250 total$/m)
+  assert.match(plain, /^  Cache  ⚡ 100 cached tokens \(50% of prompt\)$/m)
+  assert.match(plain, /^  Cost   \$0\.000600 this turn  \|  \$0\.000600 session$/m)
+  const greenCache = logs.find((l) => l.includes('⚡'))
+  assert.equal(greenCache, green('  Cache  ⚡ 100 cached tokens (50% of prompt)'))
+  const costLine = logs.find((l) => l.includes('Cost'))
+  assert.equal(costLine, cyan('  Cost   $0.000600 this turn  |  $0.000600 session'))
+})
+
+test('printTurn omits the cache line on a miss', (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+
+  new UsageTracker().printTurn({ prompt_tokens: 200, completion_tokens: 50 }, PRICING)
+
+  const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
+  assert.doesNotMatch(plain, /Cache/)
+  assert.match(plain, /^  Tokens ↑ 200 prompt  ↓ 50 completion  = 250 total$/m)
 })

@@ -1,5 +1,6 @@
 import { search } from '@inquirer/prompts'
 import { formatSessionItem } from './sessions.js'
+import { pickerTheme } from './prompts.js'
 
 export async function selectSession(sessions, { message = 'Select a session to resume' } = {}) {
   const choices = sessions.map((s) => {
@@ -14,6 +15,7 @@ export async function selectSession(sessions, { message = 'Select a session to r
 
   const answer = await search({
     message,
+    theme: pickerTheme,
     source: async (input) => {
       if (!input) return choices
       const q = input.toLowerCase()
