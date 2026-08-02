@@ -57,7 +57,7 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   const schedulePump = () => {
     if (pumpTimer === null) {
       pumpTimer = setTimeout(pump, render.smoothTickMs)
-      pumpTimer.unref?.()
+      if (drainWaiter === null) pumpTimer.unref?.()
     }
   }
 
@@ -101,6 +101,8 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
         resolveDrain()
       },
     }
+    if (pumpTimer === null) schedulePump()
+    else pumpTimer.ref?.()
     return promise
   }
 

@@ -177,12 +177,19 @@ export function processInput(state, seq) {
             state.historyArrowAttempt = 0;
         return;
     }
-    // Regular characters
+    // Regular characters. Control keys (Enter, Ctrl+C, Ctrl+D, backspace, ...)
+    // may arrive in the same chunk as typed text (fast typing, automated
+    // input): match each one against the keymap instead of dropping it.
     if (state.historyArrowAttempt > 0)
         state.historyArrowAttempt = 0;
     for (const ch of seq) {
-        if (ch.charCodeAt(0) >= 32)
+        const handler = state.keyMap[ch];
+        if (handler && (ch.charCodeAt(0) < 32 || ch === "\x7f")) {
+            handler();
+        }
+        else if (ch.charCodeAt(0) >= 32) {
             insertChar(state, ch);
+        }
     }
 }
 function flushEscBuffer(state) {
