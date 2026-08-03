@@ -299,6 +299,12 @@ export const chatCommands = handlers
 
 export const CHAT_COMMANDS = Object.keys(handlers)
 
+export function visibleChatCommands({ visionSupported }) {
+  return visionSupported === false
+    ? CHAT_COMMANDS.filter((c) => c !== '/attach' && c !== '/attachments')
+    : CHAT_COMMANDS
+}
+
 export function commandAcceptsArgs(command) {
   return ARG_COMMANDS.has(command)
 }

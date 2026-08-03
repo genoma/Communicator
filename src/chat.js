@@ -1,7 +1,7 @@
 import { UsageTracker, budgetLine } from './tracker.js'
 import { getEffortLabel } from './prompts.js'
 import { DEFAULT_TEMPERATURE, cpsToCharsPerTick } from './constants.js'
-import { CHAT_COMMANDS, chatCommands, budgetGuard, commandAcceptsArgs } from './commands/chat/index.js'
+import { chatCommands, budgetGuard, commandAcceptsArgs, visibleChatCommands } from './commands/chat/index.js'
 import { buildContent } from './attachments.js'
 import { readInput as defaultReadInput } from './input.js'
 import { createStreamRenderer, renderHistory, printSources } from './ui/stream.js'
@@ -125,7 +125,10 @@ export async function runChatSession(ctx = {}, deps = {}) {
   } else {
     console.log(`\nConnected to ${label}`)
   }
-  console.log('Send with Enter  |  Newline: Ctrl+J  |  /attach <path> to queue files  |  /quit to exit\n')
+  const hintParts = ['Send with Enter', 'Newline: Ctrl+J']
+  if (state.visionSupported !== false) hintParts.push('/attach <path> to queue files')
+  hintParts.push('/quit to exit')
+  console.log(`${hintParts.join('  |  ')}\n`)
 
   if (initialMessages) {
     renderHistory(state.messages, { markdown: state.markdown, stdout })
@@ -308,7 +311,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
 
   while (true) {
     console.log(sep())
-    const result = await readInput({ commands: CHAT_COMMANDS })
+    const result = await readInput({ commands: visibleChatCommands({ visionSupported: state.visionSupported }) })
 
     if (result.cancelled) {
       return exitCleanly()
@@ -324,7 +327,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
       const cmd = spaceIdx === -1 ? firstLine : firstLine.slice(0, spaceIdx)
       const handler = chatCommands[cmd]
       if (!handler || (spaceIdx !== -1 && !commandAcceptsArgs(cmd))) {
-        console.log(`Unknown command "${firstLine}". Available: ${CHAT_COMMANDS.join(', ')}\n`)
+        console.log(`Unknown command "${firstLine}". Available: ${visibleChatCommands({ visionSupported: state.visionSupported }).join(', ')}\n`)
         continue
       }
       const outcome = await handler({ ...chatCtx, input, args: spaceIdx === -1 ? '' : firstLine.slice(spaceIdx + 1).trim() })

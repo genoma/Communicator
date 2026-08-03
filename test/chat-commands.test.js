@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { chatCommands, budgetGuard, CHAT_COMMANDS } from '../src/commands/chat/index.js'
+import { chatCommands, budgetGuard, CHAT_COMMANDS, visibleChatCommands } from '../src/commands/chat/index.js'
 import { ChatState } from '../src/chat-state.js'
 import { UsageTracker } from '../src/tracker.js'
 
@@ -834,4 +834,15 @@ test('CHAT_COMMANDS keeps the 15-command order', () => {
     '/smooth',
     '/cost',
   ])
+})
+
+test('visibleChatCommands hides /attach and /attachments only when vision is known unsupported', () => {
+  const hidden = visibleChatCommands({ visionSupported: false })
+  assert.ok(!hidden.includes('/attach'))
+  assert.ok(!hidden.includes('/attachments'))
+  assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => c !== '/attach' && c !== '/attachments'))
+
+  assert.deepEqual(visibleChatCommands({ visionSupported: true }), CHAT_COMMANDS)
+  assert.deepEqual(visibleChatCommands({ visionSupported: undefined }), CHAT_COMMANDS)
+  assert.deepEqual(visibleChatCommands({}), CHAT_COMMANDS)
 })
