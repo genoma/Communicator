@@ -125,7 +125,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
   } else {
     console.log(`\nConnected to ${label}`)
   }
-  const hintParts = ['Send with Enter', 'Newline: Ctrl+J']
+  const hintParts = ['Send with Enter']
   if (state.visionSupported !== false) hintParts.push('/attach <path> to queue files')
   hintParts.push('/quit to exit')
   console.log(`${hintParts.join('  |  ')}\n`)

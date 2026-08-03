@@ -394,7 +394,7 @@ test('startup hint includes /attach when vision capability is unknown', async (t
   await runChatSession(baseCtx(provider), harness.deps)
 
   const hint = consoleSpy.allLogs().find((l) => l.startsWith('Send with Enter'))
-  assert.equal(hint, 'Send with Enter  |  Newline: Ctrl+J  |  /attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(hint, 'Send with Enter  |  /attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('startup hint omits /attach when the model lacks vision', async (t) => {
@@ -405,7 +405,7 @@ test('startup hint omits /attach when the model lacks vision', async (t) => {
   await runChatSession(baseCtx(provider, { visionSupported: false }), harness.deps)
 
   const hint = consoleSpy.allLogs().find((l) => l.startsWith('Send with Enter'))
-  assert.equal(hint, 'Send with Enter  |  Newline: Ctrl+J  |  /quit to exit\n')
+  assert.equal(hint, 'Send with Enter  |  /quit to exit\n')
 })
 
 test('retry pops the assistant message and resends the same user message', async (t) => {
