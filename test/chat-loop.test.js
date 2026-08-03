@@ -289,6 +289,41 @@ test('unknown command is rejected with the exact message and the provider is not
   )
 })
 
+test('unknown command list omits /attach and /attachments when the model lacks vision', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { provider, calls } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/nope', '/quit']) })
+
+  await runChatSession(baseCtx(provider, { visionSupported: false }), harness.deps)
+
+  assert.equal(calls.length, 0)
+  const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
+  assert.equal(
+    unknownLine,
+    'Unknown command "/nope". Available: /quit, /new, /model, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
+  )
+})
+
+test('autocomplete commands omit /attach and /attachments when the model lacks vision', async (t) => {
+  mockConsole(t)
+  const commandsSeen = []
+  const inner = scriptedInput(['/quit'])
+  const capturing = async (opts) => {
+    commandsSeen.push(opts?.commands)
+    return inner()
+  }
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: capturing })
+
+  await runChatSession(baseCtx(provider, { visionSupported: false }), harness.deps)
+
+  assert.ok(commandsSeen.length > 0)
+  for (const commands of commandsSeen) {
+    assert.ok(!commands.includes('/attach'))
+    assert.ok(!commands.includes('/attachments'))
+  }
+})
+
 test('banner shows no badges for default temperature without reasoning or web search', async (t) => {
   const consoleSpy = mockConsole(t)
   const { provider } = fakeProvider()
@@ -349,6 +384,28 @@ test('banner shows the always badge with a result count', async (t) => {
   )
 
   assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [web: always: 5]')
+})
+
+test('startup hint includes /attach when vision capability is unknown', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/quit']) })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  const hint = consoleSpy.allLogs().find((l) => l.startsWith('Send with Enter'))
+  assert.equal(hint, 'Send with Enter  |  Newline: Ctrl+J  |  /attach <path> to queue files  |  /quit to exit\n')
+})
+
+test('startup hint omits /attach when the model lacks vision', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/quit']) })
+
+  await runChatSession(baseCtx(provider, { visionSupported: false }), harness.deps)
+
+  const hint = consoleSpy.allLogs().find((l) => l.startsWith('Send with Enter'))
+  assert.equal(hint, 'Send with Enter  |  Newline: Ctrl+J  |  /quit to exit\n')
 })
 
 test('retry pops the assistant message and resends the same user message', async (t) => {
@@ -615,4 +672,23 @@ test('messages without attachments keep the plain string shape', async (t) => {
   await runChatSession(baseCtx(provider), harness.deps)
 
   assert.equal(calls[0].messages[1].content, 'hello')
+})
+
+test('typed /attach still works on a non-vision model while hidden from the UI', async (t) => {
+  mockConsole(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-test-'))
+  const file = join(dir, 'notes.txt')
+  await writeFile(file, 'hello')
+  t.after(() => rm(dir, { recursive: true, force: true }))
+
+  const { provider, calls } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput([`/attach ${file}`, 'read it', '/quit']) })
+
+  await runChatSession(baseCtx(provider, { visionSupported: false }), harness.deps)
+
+  assert.equal(calls.length, 1)
+  const content = calls[0].messages[1].content
+  assert.ok(Array.isArray(content))
+  assert.deepEqual(content[0], { type: 'text', text: 'read it' })
+  assert.deepEqual(content[1], { type: 'text', text: 'hello' })
 })
