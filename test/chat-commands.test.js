@@ -485,6 +485,22 @@ test('/copy copies the last assistant response', async (t) => {
   assert.equal(consoleSpy.log(0), 'Copied last response to clipboard.\n')
 })
 
+test('/copy copies only the message text from a parts-based response', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx(); const { ctx } = harness
+  ctx.state.appendUser('hello')
+  ctx.state.appendAssistant({
+    role: 'assistant',
+    content: [
+      { type: 'text', text: 'summary here' },
+      { type: 'text', text: 'inline text-file contents' },
+    ],
+  })
+  await chatCommands['/copy'](ctx)
+  assert.equal(harness.copied, 'summary here')
+  assert.equal(consoleSpy.log(0), 'Copied last response to clipboard.\n')
+})
+
 test('/copy reports clipboard failures', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx } = makeCtx({
@@ -643,6 +659,20 @@ test('/attach reports per-file errors without aborting the rest', async (t) => {
   assert.equal(ctx.state.pendingAttachments[0].filename, 'ok.txt')
   assert.equal(consoleSpy.log(0), 'attached: ok.txt (text, 4 B)\n')
   assert.equal(consoleSpy.error(0), 'Error: Unsupported file type: exe\n')
+})
+
+test('/attach ignores prose words with a single hint instead of per-word errors', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  const png = await writeFixture(t, 'a.png', 'PNGDATA')
+
+  await chatCommands['/attach']({ ...ctx, args: `${png} is this an AI image, quick test have mercy.` })
+
+  assert.equal(ctx.state.pendingAttachments.length, 1)
+  assert.equal(ctx.state.pendingAttachments[0].filename, 'a.png')
+  assert.equal(consoleSpy.log(0), 'attached: a.png (image, 7 B)\n')
+  assert.equal(consoleSpy.log(1), 'note: "is this an AI image, quick test have mercy." is not a file path — /attach takes file paths only; type your message on the next line.\n')
+  assert.equal(consoleSpy.error(0), undefined)
 })
 
 test('/attach rejects missing files', async (t) => {

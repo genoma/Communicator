@@ -142,6 +142,39 @@ test('generateTitle reads text parts from attachment messages', () => {
   assert.equal(generateTitle(messages), 'What is this')
 })
 
+test('generateTitle ignores inline text-file content', () => {
+  const messages = [
+    { role: 'system', content: 'x' },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Summarize this log' },
+        { type: 'text', text: 'huge file content line one\nline two\nline three' },
+      ],
+    },
+  ]
+  assert.equal(generateTitle(messages), 'Summarize this log')
+})
+
+test('sidecar preview ignores inline text-file content', async (t) => {
+  const dir = await tempDir(t)
+  await writeFile(join(dir, 'parts.json'), JSON.stringify(sessionData({
+    messages: [
+      { role: 'system', content: 'x' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Analyze this chart' },
+          { type: 'text', text: 'huge file contents' },
+        ],
+      },
+    ],
+  })))
+
+  const sessions = await listSessions(dir)
+  assert.equal(sessions[0].preview, 'Analyze this chart')
+})
+
 test('sidecar preview reads text parts from attachment messages', async (t) => {
   const dir = await tempDir(t)
   await writeFile(join(dir, 'parts.json'), JSON.stringify(sessionData({

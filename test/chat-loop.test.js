@@ -587,6 +587,26 @@ test('attachments queued via /attach are flushed as parts with the next message'
   assert.deepEqual(calls[0].messages.map((m) => m.role), ['system', 'user'])
 })
 
+test('multi-line input uses the first line as the command and sends the rest as a message', async (t) => {
+  mockConsole(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-test-'))
+  const file = join(dir, 'shot.png')
+  await writeFile(file, 'PNGDATA')
+  t.after(() => rm(dir, { recursive: true, force: true }))
+
+  const { provider, calls } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput([`/attach ${file}\nIs this an AI image, quick test`, '/quit']) })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  assert.equal(calls.length, 1)
+  const content = calls[0].messages[1].content
+  assert.ok(Array.isArray(content))
+  assert.deepEqual(content[0], { type: 'text', text: 'Is this an AI image, quick test' })
+  assert.equal(content[1].type, 'image_url')
+  assert.deepEqual(calls[0].messages.map((m) => m.role), ['system', 'user'])
+})
+
 test('messages without attachments keep the plain string shape', async (t) => {
   mockConsole(t)
   const { provider, calls } = fakeProvider()

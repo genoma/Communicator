@@ -263,12 +263,12 @@ Supported formats:
 
 Anything else is rejected with `Unsupported file type: <ext>`.
 
-- **Interactive** — `/attach <path>...` queues one or more files (relative paths resolve from the current directory); each file prints `attached: <name> (<kind>, <size>)` or an error line, and one failing file does not abort the rest. `/attach` with no arguments lists the queue, `/attachments` lists it too, and `/attachments clear` empties it. Queued files are sent with the very next message you type and the queue resets. `/new` also clears the queue.
+- **Interactive** — `/attach <path>...` queues one or more files (relative paths resolve from the current directory); each file prints `attached: <name> (<kind>, <size>)` or an error line, and one failing file does not abort the rest. `/attach` with no arguments lists the queue, `/attachments` lists it too, and `/attachments clear` empties it. Queued files are sent with the very next message you type and the queue resets. `/new` also clears the queue. Words without a file extension or path separator are treated as prose and ignored with a hint. Type your message on the next line, not after the paths — a multi-line submission uses the first line as the command and sends the remaining lines as your message.
 - **One-shot** — `--attach <path>` is repeatable and requires a prompt argument or piped stdin (`communicator --attach report.pdf "Summarize"`). It cannot be combined with `--resume`, `--export`, `--delete`, `--list-*`, or bare `--config`.
 - **Vision gating** — image attachments are blocked at attach time when the selected model is known to lack vision (`The selected model does not support image input.`). Unknown capability allows the attachment — API errors surface naturally. PDFs and text files work on any model. Office files are rejected on OpenRouter with a clear message (`xlsx/docx/pptx are only supported on Venice...`) and accepted on Venice, which extracts them server-side.
 - **Switching models** — `/model` re-checks the queue against the new model and drops entries it can't accept, with a warning line per dropped file.
-- **Limits** — images over 20 MB and pdf/office files over 25 MB (the Venice cap) are rejected; inline text over 256 KB warns about context usage.
-- **Display & export** — resumed sessions render `attached: <filename>` lines under the message; markdown export adds `> **Attachment:** \`<filename>\`` lines; `/copy` copies only the message text, never base64.
+- **Limits** — images over 20 MB and pdf/office files over 25 MB (the Venice cap) are rejected based on the base64-encoded size; text files over 25 MB are rejected too. Inline text over 256 KB is still accepted but warns about context usage.
+- **Display & export** — resumed sessions render `attached: <filename>` lines under the message; images show as `image.<ext>` because only the image URL is persisted (pdf/office/text keep their real filenames); markdown export adds `> **Attachment:** \`<filename>\`` lines; `/copy` copies only the message text, never file contents or base64.
 
 ### Slash commands
 
@@ -496,10 +496,11 @@ cli (index.js)            — commander argument parsing, delegates to command m
 │   ├── openrouter.js     — OpenRouter API client: models, endpoints, chat completions
 │   └── venice.js         — Venice.ai API client: models, synthetic endpoints, chat
 ├── model-selection.js    — interactive and non-interactive (-m) selection flows
+├── session-setup.js      — shared one-shot/chat-start helpers: resolveSessionFlags, attachGateOptions, persistSession
 ├── http.js               — fetchWithTimeout (30s) + fetchWithRetry (backoff, stream-safe)
 ├── errors.js             — ApiError (status/provider/retryable) and formatError
 ├── sse-parser.js         — shared SSE stream parser (consumed by both providers)
-├── attachments.js        — attachment model: classify/load files, capability gate, content parts ↔ text helpers
+├── attachments.js        — attachment model: classify/load files (size limits), capability gate, content parts ↔ text helpers (contentText/messageText)
 ├── config.js             — API key lookup (provider meta), preferences load/save (~/.communicator.json)
 ├── constants.js          — shared constants (paths, labels, temperature bounds, SSE markers) and formatCost
 ├── prompts.js            — interactive TUI pickers using @inquirer/prompts (model, provider, reasoning effort)

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runCli } from '../src/cli-main.js'
@@ -362,4 +362,17 @@ test('--attach cannot be combined with bare --config', async (t) => {
   withTTY(t, true)
   const { err } = await runAndExit(t, { attach: ['a.png'], config: true }, undefined, 1)
   assert.match(err[0], /bare --config \(config view\) cannot be combined/)
+})
+
+test('one-shot gates office attachments before reading them on openrouter', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  mockOpenRouterApi(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-test-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  await mkdir(join(dir, 'data.xlsx'))
+
+  const { err } = await runAndExit(t, { attach: [join(dir, 'data.xlsx')], model: 'test/model-a' }, 'sum', 1)
+  assert.match(err[0], /xlsx\/docx\/pptx are only supported on Venice/)
+  assert.doesNotMatch(err[0], /Cannot read attachment/)
 })

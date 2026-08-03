@@ -1,18 +1,15 @@
 import { getProvider } from '../providers/index.js'
-import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, webSearchGate, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed } from '../flags.js'
-import { resolveFlagOrExit } from '../cli-utils.js'
+import { resolveWebSearchFlag, webSearchGate } from '../flags.js'
 import { DEFAULT_TEMPERATURE } from '../constants.js'
 import { startChat } from '../chat.js'
-import { ensureSessionsDir, generateSessionId, saveSession, buildSessionPayload } from '../sessions.js'
+import { ensureSessionsDir, generateSessionId } from '../sessions.js'
 import { resumeCmd } from './resume.js'
-import { getApiKey, savePreferences, applyPreferenceUpdates } from '../config.js'
+import { getApiKey } from '../config.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
+import { resolveSessionFlags, persistSession } from '../session-setup.js'
 
 async function createSessionContext({ apiKey, opts, prefs, providerType }) {
-  const forcedTemperature = resolveFlagOrExit((v) => resolveTemperatureFlag({ temperature: v }), opts.temperature)
-  const budget = resolveFlagOrExit(resolveBudget, opts.budget)
-  const forcedWebResults = resolveFlagOrExit((v) => resolveWebResultsFlag({ webResults: v }), opts.webResults)
-  const forcedSmoothSpeed = resolveFlagOrExit(resolveSmoothSpeed, opts.smoothSpeed)
+  const { forcedEffort, forcedTemperature, forcedBudget, budget, forcedWebResults, smoothSpeed } = resolveSessionFlags(opts, prefs)
 
   if (opts.resume !== undefined) {
     const result = await resumeCmd(opts.resume)
@@ -24,11 +21,11 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
       endpointProviderName: result.providerName,
       reasoningEffort: result.reasoningEffort,
       temperature: forcedTemperature ?? result.temperature ?? DEFAULT_TEMPERATURE,
-      budget: budget ?? result.budget ?? null,
+      budget: forcedBudget ?? result.budget ?? null,
       webSearch: resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: result.webSearch }),
       webResults: forcedWebResults ?? result.webResults ?? null,
       smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
-      smoothSpeed: forcedSmoothSpeed ?? normalizeSmoothSpeed(prefs.smoothSpeed),
+      smoothSpeed,
       pricing: result.pricing,
       initialMessages: result.initialMessages,
       sessionId: result.sessionId,
@@ -41,7 +38,6 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
   }
 
   const provider = getProvider(providerType)
-  const forcedEffort = resolveReasoningFlag({ reasoningEffort: opts.reasoningEffort })
 
   let selection
   if (opts.model) {
@@ -65,11 +61,11 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
     endpointProviderName: selection.endpointProviderName,
     reasoningEffort: selection.reasoningEffort,
     temperature: forcedTemperature ?? prefs.temperature?.[selection.modelId] ?? DEFAULT_TEMPERATURE,
-    budget: budget ?? prefs.budget ?? null,
+    budget,
     webSearch,
     webResults: forcedWebResults ?? prefs.webResults ?? null,
     smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
-    smoothSpeed: forcedSmoothSpeed ?? normalizeSmoothSpeed(prefs.smoothSpeed),
+    smoothSpeed,
     webSearchSupported: selection.webSearchSupported,
     visionSupported: selection.visionSupported,
     fileSupported: selection.fileSupported,
@@ -81,26 +77,6 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
     sessionId,
     sessionCreatedAt: new Date().toISOString(),
   }
-}
-
-async function persistSessionEnd({ finalState, opts, prefs }) {
-  if (finalState.sessionId && finalState.messages && finalState.messages.length > 1) {
-    try {
-      const dir = await ensureSessionsDir()
-      await saveSession(dir, finalState.sessionId, buildSessionPayload(finalState))
-    } catch {
-      // save failures are non-fatal
-    }
-  }
-
-  await savePreferences(applyPreferenceUpdates(prefs, {
-    modelId: finalState.modelId,
-    lastModel: finalState.modelId,
-    lastProvider: finalState.endpointProviderName,
-    reasoningEffort: finalState.reasoningEffort,
-    temperature: finalState.temperature,
-    webSearch: finalState.webSearch,
-  }), opts.config)
 }
 
 export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerType }) {
@@ -123,5 +99,5 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerTyp
     prefs,
     configPath: opts.config,
   })
-  await persistSessionEnd({ finalState, opts, prefs })
+  await persistSession({ finalState, prefs, config: opts.config })
 }

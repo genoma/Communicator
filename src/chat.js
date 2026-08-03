@@ -318,20 +318,34 @@ export async function runChatSession(ctx = {}, deps = {}) {
     if (!input) continue
 
     if (input.startsWith('/')) {
-      const spaceIdx = input.indexOf(' ')
-      const cmd = spaceIdx === -1 ? input : input.slice(0, spaceIdx)
+      const lines = input.split('\n')
+      const firstLine = lines[0]
+      const spaceIdx = firstLine.indexOf(' ')
+      const cmd = spaceIdx === -1 ? firstLine : firstLine.slice(0, spaceIdx)
       const handler = chatCommands[cmd]
       if (!handler || (spaceIdx !== -1 && !commandAcceptsArgs(cmd))) {
-        console.log(`Unknown command "${input}". Available: ${CHAT_COMMANDS.join(', ')}\n`)
+        console.log(`Unknown command "${firstLine}". Available: ${CHAT_COMMANDS.join(', ')}\n`)
         continue
       }
-      const outcome = await handler({ ...chatCtx, input, args: spaceIdx === -1 ? '' : input.slice(spaceIdx + 1).trim() })
+      const outcome = await handler({ ...chatCtx, input, args: spaceIdx === -1 ? '' : firstLine.slice(spaceIdx + 1).trim() })
       if (outcome?.exit) return exitCleanly()
       if (outcome?.reset) {
         tracker = new UsageTracker()
         budgetWarned = false
       }
       if (outcome?.resetBudgetWarning) budgetWarned = false
+      const trailing = lines.slice(1).join('\n').trim()
+      if (trailing) {
+        const guard = budgetGuard(chatCtx)
+        if (guard) {
+          console.log(guard)
+          continue
+        }
+        const content = buildContent(trailing, state.pendingAttachments)
+        state.pendingAttachments = []
+        state.appendUser(content)
+        await runTurn()
+      }
       continue
     }
 
