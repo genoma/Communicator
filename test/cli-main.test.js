@@ -83,6 +83,15 @@ function withApiKey(t, value = 'test-key') {
   })
 }
 
+function withVeniceApiKey(t, value = 'venice-test-key') {
+  const previous = process.env.VENICE_API_KEY
+  process.env.VENICE_API_KEY = value
+  t.after(() => {
+    if (previous === undefined) delete process.env.VENICE_API_KEY
+    else process.env.VENICE_API_KEY = previous
+  })
+}
+
 function mockOpenRouterApi(t) {
   const models = [{ id: 'test/model-a', name: 'Model A', context_length: 1000, description: 'd', reasoning: null }]
   const endpoints = [{
@@ -308,7 +317,7 @@ test('--model with an unknown id fails gracefully', async (t) => {
 
 test('--web-search default is gated against model support', async (t) => {
   withTTY(t, true)
-  withApiKey(t)
+  withVeniceApiKey(t)
   mockVeniceApi(t)
   const file = await tempConfig(t)
   const { err } = await runAndExit(t, {
