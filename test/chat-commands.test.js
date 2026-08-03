@@ -1,5 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { chatCommands, budgetGuard, CHAT_COMMANDS } from '../src/commands/chat/index.js'
 import { ChatState } from '../src/chat-state.js'
 import { UsageTracker } from '../src/tracker.js'
@@ -603,11 +606,193 @@ test('budgetGuard passes when no budget is set', () => {
   assert.equal(budgetGuard(ctx), null)
 })
 
-test('CHAT_COMMANDS keeps the 13-command order', () => {
+async function writeFixture(t, name, bytes) {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-test-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const file = join(dir, name)
+  await writeFile(file, bytes)
+  return file
+}
+
+test('/attach queues files with per-file result lines', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  const png = await writeFixture(t, 'a.png', 'PNGDATA')
+  const txt = await writeFixture(t, 'notes.txt', 'hello')
+
+  await chatCommands['/attach']({ ...ctx, args: `${png} ${txt}` })
+
+  assert.equal(ctx.state.pendingAttachments.length, 2)
+  assert.equal(ctx.state.pendingAttachments[0].kind, 'image')
+  assert.equal(ctx.state.pendingAttachments[0].filename, 'a.png')
+  assert.match(ctx.state.pendingAttachments[0].data, /^data:image\/png;base64,/)
+  assert.equal(ctx.state.pendingAttachments[1].kind, 'text')
+  assert.equal(ctx.state.pendingAttachments[1].data, 'hello')
+  assert.equal(consoleSpy.log(0), 'attached: a.png (image, 7 B)\n')
+  assert.equal(consoleSpy.log(1), 'attached: notes.txt (text, 5 B)\n')
+})
+
+test('/attach reports per-file errors without aborting the rest', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  const txt = await writeFixture(t, 'ok.txt', 'fine')
+
+  await chatCommands['/attach']({ ...ctx, args: `${txt} missing.exe` })
+
+  assert.equal(ctx.state.pendingAttachments.length, 1)
+  assert.equal(ctx.state.pendingAttachments[0].filename, 'ok.txt')
+  assert.equal(consoleSpy.log(0), 'attached: ok.txt (text, 4 B)\n')
+  assert.equal(consoleSpy.error(0), 'Error: Unsupported file type: exe\n')
+})
+
+test('/attach rejects missing files', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+
+  await chatCommands['/attach']({ ...ctx, args: 'no-such-file.png' })
+
+  assert.deepEqual(ctx.state.pendingAttachments, [])
+  assert.equal(consoleSpy.error(0), 'Error: Cannot read attachment: no-such-file.png\n')
+})
+
+test('/attach rejects images when the model lacks vision', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  ctx.state.visionSupported = false
+  const png = await writeFixture(t, 'a.png', 'PNGDATA')
+
+  await chatCommands['/attach']({ ...ctx, args: png })
+
+  assert.deepEqual(ctx.state.pendingAttachments, [])
+  assert.equal(consoleSpy.error(0), 'Error: The selected model does not support image input.\n')
+})
+
+test('/attach rejects office files on openrouter', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  const xlsx = await writeFixture(t, 'book.xlsx', 'xlsx-bytes')
+
+  await chatCommands['/attach']({ ...ctx, args: xlsx })
+
+  assert.deepEqual(ctx.state.pendingAttachments, [])
+  assert.equal(consoleSpy.error(0), 'Error: xlsx/docx/pptx are only supported on Venice (server-side extraction). OpenRouter supports PDFs and text files.\n')
+})
+
+test('/attach allows office files on venice', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({
+    provider: fakeProvider({ meta: { name: 'venice' } }),
+  })
+  const xlsx = await writeFixture(t, 'book.xlsx', 'xlsx-bytes')
+
+  await chatCommands['/attach']({ ...ctx, args: xlsx })
+
+  assert.equal(ctx.state.pendingAttachments.length, 1)
+  assert.equal(ctx.state.pendingAttachments[0].kind, 'office')
+  assert.equal(consoleSpy.log(0), 'attached: book.xlsx (office, 10 B)\n')
+})
+
+test('/attach with no args lists the queue like /attachments', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+
+  await chatCommands['/attach'](ctx)
+
+  assert.equal(consoleSpy.log(0), 'No attachments queued. Use /attach <path> to add one.\n')
+})
+
+test('/attachments lists the queue with name, kind and size', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  ctx.state.pendingAttachments.push(
+    { kind: 'image', filename: 'a.png', size: 1536, data: 'x' },
+    { kind: 'pdf', filename: 'b.pdf', size: 2048 * 1024, data: 'y' },
+  )
+
+  await chatCommands['/attachments'](ctx)
+
+  assert.equal(consoleSpy.log(0), 'Pending attachments (2):')
+  assert.equal(consoleSpy.log(1), 'a.png  image  1.5 KB\n')
+  assert.equal(consoleSpy.log(2), 'b.pdf  pdf  2.0 MB\n')
+})
+
+test('/attachments clear empties the queue', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  ctx.state.pendingAttachments.push({ kind: 'image', filename: 'a.png', size: 1, data: 'x' })
+
+  await chatCommands['/attachments']({ ...ctx, args: 'clear' })
+
+  assert.deepEqual(ctx.state.pendingAttachments, [])
+  assert.equal(consoleSpy.log(0), 'Attachment queue cleared.\n')
+})
+
+test('/attachments rejects unknown arguments', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+
+  await chatCommands['/attachments']({ ...ctx, args: 'bogus' })
+
+  assert.equal(consoleSpy.error(0), 'Error: /attachments expects "clear" or no argument.\n')
+})
+
+test('/model drops queued attachments the new model cannot accept', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({
+    selectModelAndEndpoint: async () => ({
+      modelId: 'new/model',
+      endpointProviderName: 'NewProvider',
+      pricing: null,
+      reasoningEffort: undefined,
+      supportsReasoning: false,
+      modelReasoning: null,
+      webSearchSupported: true,
+      visionSupported: false,
+    }),
+  })
+  ctx.state.pendingAttachments.push(
+    { kind: 'image', filename: 'a.png', size: 1, data: 'x' },
+    { kind: 'text', filename: 'b.txt', size: 1, data: 'y' },
+  )
+
+  await chatCommands['/model'](ctx)
+
+  assert.equal(ctx.state.pendingAttachments.length, 1)
+  assert.equal(ctx.state.pendingAttachments[0].filename, 'b.txt')
+  assert.equal(consoleSpy.log(0), 'Dropped attachment a.png: The selected model does not support image input.\n')
+  assert.equal(consoleSpy.log(1), '\nSwitched to NewProvider / new/model\n')
+})
+
+test('/model keeps compatible attachments on switch', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({
+    selectModelAndEndpoint: async () => ({
+      modelId: 'new/model',
+      endpointProviderName: 'NewProvider',
+      pricing: null,
+      reasoningEffort: undefined,
+      supportsReasoning: false,
+      modelReasoning: null,
+      webSearchSupported: true,
+      visionSupported: true,
+    }),
+  })
+  ctx.state.pendingAttachments.push({ kind: 'image', filename: 'a.png', size: 1, data: 'x' })
+
+  await chatCommands['/model'](ctx)
+
+  assert.equal(ctx.state.pendingAttachments.length, 1)
+  assert.equal(ctx.state.pendingAttachments[0].filename, 'a.png')
+  assert.equal(consoleSpy.log(0), '\nSwitched to NewProvider / new/model\n')
+})
+
+test('CHAT_COMMANDS keeps the 15-command order', () => {
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/new',
     '/model',
+    '/attach',
+    '/attachments',
     '/reasoning',
     '/temp',
     '/budget',

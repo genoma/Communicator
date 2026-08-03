@@ -63,6 +63,8 @@ async function main(opts, promptArg) {
     process.exit(1)
   }
 
+  const hasAttachments = (opts.attach?.length ?? 0) > 0
+
   const sessionOnlyFlags =
     opts.temperature !== undefined ||
     opts.budget !== undefined ||
@@ -71,20 +73,21 @@ async function main(opts, promptArg) {
     opts.webResults !== undefined ||
     opts.smoothSpeed !== undefined ||
     opts.smoothStreaming === false ||
-    opts.systemPrompt !== undefined
+    opts.systemPrompt !== undefined ||
+    hasAttachments
 
   if (exitModeFlags && (sessionOnlyFlags || opts.model !== undefined || opts.outputDir !== undefined)) {
-    console.error('Error: --model, --output-dir, --system-prompt and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming) cannot be combined with --list-* flags.')
+    console.error('Error: --model, --output-dir, --system-prompt and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach) cannot be combined with --list-* flags.')
     process.exit(1)
   }
 
   if (opts.export !== undefined && (sessionOnlyFlags || opts.model !== undefined)) {
-    console.error('Error: --model, --system-prompt and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming) cannot be combined with --export.')
+    console.error('Error: --model, --system-prompt and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach) cannot be combined with --export.')
     process.exit(1)
   }
 
   if (opts.delete !== undefined && (sessionOnlyFlags || opts.model !== undefined || opts.outputDir !== undefined)) {
-    console.error('Error: --model, --output-dir, --system-prompt and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming) cannot be combined with --delete.')
+    console.error('Error: --model, --output-dir, --system-prompt and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach) cannot be combined with --delete.')
     process.exit(1)
   }
 
@@ -117,13 +120,19 @@ async function main(opts, promptArg) {
       opts.webResults !== undefined ||
       opts.smoothStreaming === false ||
       opts.smoothSpeed !== undefined ||
-      opts.delete !== undefined
+      opts.delete !== undefined ||
+      hasAttachments
     if (hasOther) {
       console.error('Error: bare --config (config view) cannot be combined with other flags.')
       process.exit(1)
     }
     await configViewCmd()
     process.exit(0)
+  }
+
+  if (hasAttachments && !promptArg && process.stdin.isTTY) {
+    console.error('Error: --attach requires a prompt argument or piped stdin.')
+    process.exit(1)
   }
 
   const provider = getProvider(providerType)

@@ -2,6 +2,7 @@ import { UsageTracker, budgetLine } from './tracker.js'
 import { getEffortLabel } from './prompts.js'
 import { DEFAULT_TEMPERATURE, cpsToCharsPerTick } from './constants.js'
 import { CHAT_COMMANDS, chatCommands, budgetGuard, commandAcceptsArgs } from './commands/chat/index.js'
+import { buildContent } from './attachments.js'
 import { readInput as defaultReadInput } from './input.js'
 import { createStreamRenderer, renderHistory, printSources } from './ui/stream.js'
 import { createLoader } from './ui/loader.js'
@@ -46,6 +47,8 @@ export async function runChatSession(ctx = {}, deps = {}) {
     webSearch = 'off',
     webResults = null,
     webSearchSupported = undefined,
+    visionSupported = undefined,
+    fileSupported = undefined,
     smoothStreaming = true,
     smoothSpeed,
     prefs = {},
@@ -87,6 +90,8 @@ export async function runChatSession(ctx = {}, deps = {}) {
     webSearch,
     webResults,
     webSearchSupported,
+    visionSupported,
+    fileSupported,
     smoothStreaming,
     smoothSpeed,
     sessionId,
@@ -120,7 +125,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
   } else {
     console.log(`\nConnected to ${label}`)
   }
-  console.log('Send with Enter  |  Newline: Ctrl+J  |  /quit to exit\n')
+  console.log('Send with Enter  |  Newline: Ctrl+J  |  /attach <path> to queue files  |  /quit to exit\n')
 
   if (initialMessages) {
     renderHistory(state.messages, { markdown: state.markdown, stdout })
@@ -336,7 +341,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
       continue
     }
 
-    state.appendUser(input)
+    const content = buildContent(input, state.pendingAttachments)
+    state.pendingAttachments = []
+    state.appendUser(content)
     await runTurn()
   }
 }

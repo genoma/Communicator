@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join, basename, extname } from 'node:path'
 import { SESSIONS_DIR } from './constants.js'
 import { selectSession } from './session-picker.js'
+import { contentText } from './attachments.js'
 
 const SIDECAR_FILE = '.index.json'
 
@@ -40,7 +41,7 @@ export async function resolveSessionInteractive(dir, partialId, opts = {}) {
 function firstUserPreview(messages) {
   for (let i = 1; i < messages.length; i++) {
     if (messages[i].role === 'user') {
-      return String(messages[i].content || '').slice(0, 60)
+      return String(contentText(messages[i].content) || '').slice(0, 60)
     }
   }
   return ''
@@ -49,7 +50,7 @@ function firstUserPreview(messages) {
 export function generateTitle(messages) {
   const first = (messages || []).find((m) => m.role === 'user')
   if (!first) return ''
-  const collapsed = String(first.content || '').replace(/\s+/g, ' ').trim()
+  const collapsed = String(contentText(first.content) || '').replace(/\s+/g, ' ').trim()
   if (!collapsed) return ''
   return collapsed.length > 50 ? collapsed.slice(0, 50) + '...' : collapsed
 }

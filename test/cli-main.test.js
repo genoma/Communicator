@@ -34,6 +34,7 @@ const BASE_OPTS = {
   smoothStreaming: true,
   smoothSpeed: undefined,
   delete: undefined,
+  attach: [],
 }
 
 function opts(overrides = {}) {
@@ -323,4 +324,42 @@ test('ApiError from exit-mode commands surfaces as a friendly message', async (t
   t.mock.method(globalThis, 'fetch', async () => new Response('nope', { status: 401 }))
   const { err } = await runAndExit(t, { listModels: true }, undefined, 1)
   assert.match(err[0], /Error: Invalid API key/)
+})
+
+test('--attach requires a prompt argument or piped stdin', async (t) => {
+  withTTY(t, true)
+  const { err } = await runAndExit(t, { attach: ['a.png'] }, undefined, 1)
+  assert.match(err[0], /--attach requires a prompt argument or piped stdin/)
+})
+
+test('--attach without a TTY passes the requires-prompt guard (no piped-stdin error)', async (t) => {
+  const { err } = await runAndExit(t, { attach: ['a.png'] }, undefined, 1)
+  assert.doesNotMatch(err[0], /--attach requires a prompt argument/)
+  assert.match(err[0], /Interactive selection needs a TTY/)
+})
+
+test('--attach cannot be combined with --list-* flags', async (t) => {
+  const { err } = await runAndExit(t, { attach: ['a.png'], listModels: true }, undefined, 1)
+  assert.match(err[0], /cannot be combined with --list-\* flags/)
+  assert.match(err[0], /--attach/)
+})
+
+test('--attach cannot be combined with --export', async (t) => {
+  withTTY(t, true)
+  const { err } = await runAndExit(t, { attach: ['a.png'], export: true }, undefined, 1)
+  assert.match(err[0], /cannot be combined with --export/)
+  assert.match(err[0], /--attach/)
+})
+
+test('--attach cannot be combined with --delete', async (t) => {
+  withTTY(t, true)
+  const { err } = await runAndExit(t, { attach: ['a.png'], delete: true }, undefined, 1)
+  assert.match(err[0], /cannot be combined with --delete/)
+  assert.match(err[0], /--attach/)
+})
+
+test('--attach cannot be combined with bare --config', async (t) => {
+  withTTY(t, true)
+  const { err } = await runAndExit(t, { attach: ['a.png'], config: true }, undefined, 1)
+  assert.match(err[0], /bare --config \(config view\) cannot be combined/)
 })

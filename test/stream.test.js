@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createStreamRenderer, printSources } from '../src/ui/stream.js'
+import { createStreamRenderer, printSources, renderHistory } from '../src/ui/stream.js'
 
 const ANSI = /\x1b\[[0-9;]*m/g
 const OSC8 = /\x1b\]8;;[^\x1b]*\x1b\\|\x1b\]8;;\x1b\\/g
@@ -63,6 +63,35 @@ test('smooth renderer defaults off and writes tokens immediately', () => {
   render('x', 'content')
   render('y', 'content')
   assert.equal(plain(), 'xy')
+})
+
+test('renderHistory prints attachment lines under parts-based user messages', (t) => {
+  enableAnsi(t)
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'You are helpful.' },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Look at this' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
+        { type: 'file', file: { filename: 'report.pdf', file_data: 'data:application/pdf;base64,BBBB' } },
+      ],
+    },
+  ], { markdown: false, stdout })
+  assert.match(plain(), /Look at this/)
+  assert.match(plain(), /attached: image\.png/)
+  assert.match(plain(), /attached: report\.pdf/)
+})
+
+test('renderHistory passes plain strings through unchanged', () => {
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'You are helpful.' },
+    { role: 'user', content: 'plain question' },
+  ], { markdown: false, stdout })
+  assert.match(plain(), /plain question/)
+  assert.doesNotMatch(plain(), /attached:/)
 })
 
 test('smooth renderer writes nothing before the first tick and paces at the char cap', async (t) => {

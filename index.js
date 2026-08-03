@@ -3,6 +3,7 @@
 import { Command } from 'commander'
 import pkg from './package.json' with { type: 'json' }
 import { runCli } from './src/cli-main.js'
+import { collectFlag } from './src/cli-utils.js'
 
 const program = new Command()
 
@@ -26,6 +27,7 @@ program
   .option('--budget <usd>', 'per-session budget cap in USD')
   .option('--web-search [mode]', 'web search mode: auto, always, off (bare flag = auto; per-model default persisted)')
   .option('--web-results <n>', 'number of web search results (OpenRouter only, default 10)')
+  .option('--attach <path>', 'attach a file (repeatable; images/pdf/xlsx/txt/...)', collectFlag, [])
   .option('--no-smooth-streaming', 'disable smooth streaming (default: on in interactive sessions)')
   .option('--smooth-speed <level|cps>', 'smooth streaming speed: slow, normal, fast, or chars per second')
   .option('--delete [session-id]', 'delete a saved session (with confirmation)')

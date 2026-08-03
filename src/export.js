@@ -1,6 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { formatCost } from './constants.js'
 import { computeTurnCost } from './tracker.js'
+import { contentText, contentAttachments } from './attachments.js'
 
 function formatTimestamp(iso) {
   if (!iso) return 'Unknown'
@@ -44,7 +45,10 @@ export function formatMarkdown(sessionData) {
   for (const msg of visibleMessages) {
     if (msg.role === 'user') {
       md += '## You\n\n'
-      md += `> ${msg.content}\n\n`
+      md += `> ${contentText(msg.content)}\n\n`
+      for (const att of contentAttachments(msg.content)) {
+        md += `> **Attachment:** \`${att.filename}\`\n\n`
+      }
     } else if (msg.role === 'assistant') {
       md += '## Assistant\n\n'
       if (msg.reasoning) {

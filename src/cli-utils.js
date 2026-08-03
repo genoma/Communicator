@@ -6,3 +6,8 @@ export function resolveFlagOrExit(resolve, value) {
     process.exit(1)
   }
 }
+
+export function collectFlag(value, acc) {
+  acc.push(value)
+  return acc
+}

@@ -1,5 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { runChatSession } from '../src/chat.js'
 
 function scriptedInput(values) {
@@ -282,7 +285,7 @@ test('unknown command is rejected with the exact message and the provider is not
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /new, /model, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
+    'Unknown command "/nope". Available: /quit, /new, /model, /attach, /attachments, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
   )
 })
 
@@ -561,4 +564,35 @@ test('/smooth with a speed enables streaming, sets the speed and saves the raw p
   assert.ok(harness.prefsCalls.some((p) => p.smoothStreaming === true && p.smoothSpeed === 'fast'))
   assert.equal(liveRender.smooth, true)
   assert.equal(liveRender.smoothCharsPerTick, 160)
+})
+
+test('attachments queued via /attach are flushed as parts with the next message', async (t) => {
+  mockConsole(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-test-'))
+  const file = join(dir, 'shot.png')
+  await writeFile(file, 'PNGDATA')
+  t.after(() => rm(dir, { recursive: true, force: true }))
+
+  const { provider, calls } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput([`/attach ${file}`, 'look at this', '/quit']) })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  assert.equal(calls.length, 1)
+  const content = calls[0].messages[1].content
+  assert.ok(Array.isArray(content))
+  assert.deepEqual(content[0], { type: 'text', text: 'look at this' })
+  assert.equal(content[1].type, 'image_url')
+  assert.match(content[1].image_url.url, /^data:image\/png;base64,/)
+  assert.deepEqual(calls[0].messages.map((m) => m.role), ['system', 'user'])
+})
+
+test('messages without attachments keep the plain string shape', async (t) => {
+  mockConsole(t)
+  const { provider, calls } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['hello', '/quit']) })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  assert.equal(calls[0].messages[1].content, 'hello')
 })

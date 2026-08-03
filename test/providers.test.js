@@ -199,6 +199,25 @@ test('openrouter fetchModels captures aliasTarget for tilde aliases', async (t) 
   assert.equal(models[1].aliasTarget, null)
 })
 
+test('openrouter fetchModels captures architecture and supported parameters', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => jsonResponse({
+    data: [
+      {
+        id: 'vision/model',
+        architecture: { input_modalities: ['text', 'image'] },
+        supported_parameters: ['image_url', 'temperature'],
+      },
+      { id: 'plain/model' },
+    ],
+  }))
+
+  const models = await openrouter.fetchModels('key')
+  assert.deepEqual(models[0].architecture, { input_modalities: ['text', 'image'] })
+  assert.deepEqual(models[0].supportedParameters, ['image_url', 'temperature'])
+  assert.deepEqual(models[1].architecture, { input_modalities: [] })
+  assert.equal(models[1].supportedParameters, null)
+})
+
 test('openrouter fetchEndpoints resolves tilde aliases to their target slug', async (t) => {
   const requested = []
   t.mock.method(globalThis, 'fetch', async (url) => {

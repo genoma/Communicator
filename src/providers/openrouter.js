@@ -51,6 +51,8 @@ export async function fetchModels(apiKey) {
       aliasTarget: m.alias_target?.slug || null,
       contextLength: m.context_length,
       description: m.description,
+      architecture: { input_modalities: m.architecture?.input_modalities || [] },
+      supportedParameters: Array.isArray(m.supported_parameters) ? m.supported_parameters : null,
       reasoning: r
         ? {
             supported: true,
