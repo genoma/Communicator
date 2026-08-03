@@ -9,6 +9,11 @@
   "bin": {
     "communicator": "./index.js"
   },
+  "files": [
+    "index.js",
+    "src/",
+    "docs/"
+  ],
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",

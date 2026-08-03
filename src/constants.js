@@ -43,6 +43,8 @@ export const LOADER_GRACE_MS = 200
 
 export const LOADER_TICK_MS = 150
 
+export const STREAM_IDLE_TIMEOUT_MS = 60_000
+
 export const EFFORT_LABELS = {
   max: 'X-High (max)',
   xhigh: 'X-High',

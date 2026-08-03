@@ -5,6 +5,7 @@ import { applyPreferenceUpdates, savePreferences } from '../config.js'
 import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, normalizeWebSearchMode, resolveBudget, resolveSmoothSpeed, webSearchGate } from '../flags.js'
 import { getEffortLabel } from '../prompts.js'
 import { formatModelPrice } from '../ui/format.js'
+import { CliError } from '../errors.js'
 import { DEFAULT_CONFIG_FILE, formatSmoothSpeed } from '../constants.js'
 
 const PER_MODEL_FLAGS = '--temperature, --reasoning-effort and --web-search'
@@ -26,8 +27,7 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
   const values = resolveConfigValues(opts)
 
   if (values.needsModel && opts.model === undefined) {
-    console.error(`Error: ${PER_MODEL_FLAGS} set per-model defaults and require --model <id>.`)
-    process.exit(1)
+    throw new CliError(`Error: ${PER_MODEL_FLAGS} set per-model defaults and require --model <id>.`)
   }
 
   let provider = null
@@ -39,8 +39,7 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
     const models = await provider.fetchModels(apiKey)
     modelData = models.find((m) => m.id === opts.model)
     if (!modelData) {
-      console.error(`Error: Model "${opts.model}" not found. Use --list-models to list available models.`)
-      process.exit(1)
+      throw new CliError(`Error: Model "${opts.model}" not found. Use --list-models to list available models.`)
     }
     const endpoints = await provider.fetchEndpoints(apiKey, opts.model, models)
     endpoint = provider.meta.hasEndpoints && endpoints.length > 1 ? cheapestEndpoint(endpoints) : endpoints[0]
@@ -48,8 +47,7 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
     if (values.webSearch !== undefined) {
       const gate = webSearchGate(values.webSearch, isWebSearchSupported(provider.meta, modelData))
       if (gate) {
-        console.error(`Error: ${gate}`)
-        process.exit(1)
+        throw new CliError(`Error: ${gate}`)
       }
     }
   }

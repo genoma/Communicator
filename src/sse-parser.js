@@ -1,4 +1,5 @@
-import { SSE_DATA_PREFIX, SSE_DONE } from './constants.js'
+import { SSE_DATA_PREFIX, SSE_DONE, STREAM_IDLE_TIMEOUT_MS } from './constants.js'
+import { ApiError } from './errors.js'
 
 function unescapeJson(s) {
   try {
@@ -8,6 +9,13 @@ function unescapeJson(s) {
   }
 }
 
+// Salvages the tail of an interrupted stream from the last buffered bytes.
+// Heuristic, not a parser: scans for an unclosed `"content":"` or
+// `"reasoning_content":"` JSON string and unescapes what follows. The
+// `"reasoning_content"` match runs first, and the `"content"` pattern cannot
+// match inside it (a `"` must directly precede `content`), so the two never
+// alias. `unescapeJson` only guarantees \n and \t when the tail is truncated
+// mid-escape; that is enough for the interrupted-stream salvage use case.
 export function extractPartialToken(buffer) {
   const reasoningMatch = buffer.match(/"reasoning_content":"((?:[^"\\]|\\.)*)/)
   if (reasoningMatch) {
@@ -47,22 +55,44 @@ function collectSources(parsed, fullSources, seenUrls, onSources) {
   if (found && onSources) onSources(fullSources)
 }
 
-export async function parseSSEStream(reader, onToken, onSources = null) {
+export async function parseSSEStream(reader, onToken, onSources = null, { idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS } = {}) {
   const decoder = new TextDecoder()
   let fullText = ''
   let fullReasoning = ''
   let buffer = ''
   let inThinking = false
   let finalUsage = null
+  let skippedChunks = 0
   const fullSources = []
   const seenUrls = new Set()
+
+  const readChunk = () => new Promise((resolve, reject) => {
+    let timer = null
+    const onTimeout = () => {
+      timer = null
+      const err = new ApiError(`Stream stalled after ${Math.round(idleTimeoutMs / 1000)}s`, { retryable: true })
+      err.pendingBuffer = buffer
+      reject(err)
+    }
+    reader.read().then(
+      (chunk) => {
+        if (timer !== null) clearTimeout(timer)
+        resolve(chunk)
+      },
+      (err) => {
+        if (timer !== null) clearTimeout(timer)
+        reject(err)
+      }
+    )
+    if (idleTimeoutMs > 0) timer = setTimeout(onTimeout, idleTimeoutMs)
+  })
 
   while (true) {
     let chunk
     try {
-      chunk = await reader.read()
+      chunk = await readChunk()
     } catch (err) {
-      err.pendingBuffer = buffer
+      if (!err.pendingBuffer) err.pendingBuffer = buffer
       throw err
     }
     const { done, value } = chunk
@@ -111,10 +141,10 @@ export async function parseSSEStream(reader, onToken, onSources = null) {
           onToken(contentToken, 'content')
         }
       } catch {
-        // skip unparseable chunks
+        skippedChunks++
       }
     }
   }
 
-  return { fullText, fullReasoning, finalUsage, fullSources }
+  return { fullText, fullReasoning, finalUsage, fullSources, skippedChunks }
 }

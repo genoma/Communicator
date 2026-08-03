@@ -1,32 +1,19 @@
-import { UsageTracker, budgetLine } from './tracker.js'
+import { UsageTracker } from './tracker.js'
 import { getEffortLabel } from './prompts.js'
 import { DEFAULT_TEMPERATURE, cpsToCharsPerTick } from './constants.js'
 import { chatCommands, budgetGuard, commandAcceptsArgs, visibleChatCommands } from './commands/chat/index.js'
 import { buildContent } from './attachments.js'
 import { readInput as defaultReadInput } from './input.js'
-import { createStreamRenderer, renderHistory, printSources } from './ui/stream.js'
+import { createStreamRenderer, renderHistory } from './ui/stream.js'
 import { createLoader } from './ui/loader.js'
-import { formatError, ApiError } from './errors.js'
-import { extractPartialToken } from './sse-parser.js'
 import { dim, sep } from './ui/style.js'
+import { out } from './ui/io.js'
 import { ensureSessionsDir, generateSessionId, saveSession, buildSessionPayload } from './sessions.js'
 import { savePreferences, applyPreferenceUpdates } from './config.js'
 import { copyText } from './clipboard.js'
 import { ChatState } from './chat-state.js'
-
-function defaultOnSignal(handlers) {
-  const onSigint = () => handlers.sigint()
-  const onBeforeExit = () => handlers.beforeExit()
-  const onUncaught = (err) => handlers.uncaughtException(err)
-  process.on('SIGINT', onSigint)
-  process.on('beforeExit', onBeforeExit)
-  process.on('uncaughtException', onUncaught)
-  return () => {
-    process.off('SIGINT', onSigint)
-    process.off('beforeExit', onBeforeExit)
-    process.off('uncaughtException', onUncaught)
-  }
-}
+import { registerSignalHandlers } from './signals.js'
+import { createSessionState, createTurnRunner } from './turn-runner.js'
 
 export async function runChatSession(ctx = {}, deps = {}) {
   const {
@@ -60,7 +47,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     renderer = createStreamRenderer,
     stdout = process.stdout,
     exit = (code) => process.exit(code),
-    onSignal = defaultOnSignal,
+    onSignal = registerSignalHandlers,
   } = deps
 
   const saveSessionFile = deps.saveSession ?? (async (sessionIdToSave, payload) => {
@@ -101,13 +88,12 @@ export async function runChatSession(ctx = {}, deps = {}) {
     systemContent,
   })
 
-  let tracker = new UsageTracker()
-  let budgetWarned = false
+  const sessionState = createSessionState()
 
   if (initialMessages) {
     for (const msg of initialMessages) {
       if (msg.role === 'assistant' && msg.usage) {
-        tracker.record(msg.usage, pricing)
+        sessionState.tracker.record(msg.usage, pricing)
       }
     }
   }
@@ -121,21 +107,21 @@ export async function runChatSession(ctx = {}, deps = {}) {
     bannerParts.push(`[web: ${state.webSearch}${results}]`)
   }
   if (bannerParts.length > 0) {
-    console.log(`\nConnected to ${label}  ${bannerParts.join('  ')}`)
+    out(`\nConnected to ${label}  ${bannerParts.join('  ')}`)
   } else {
-    console.log(`\nConnected to ${label}`)
+    out(`\nConnected to ${label}`)
   }
   const hintParts = ['Send with Enter']
   if (state.visionSupported !== false) hintParts.push('/attach <path> to queue files')
   hintParts.push('/quit to exit')
-  console.log(`${hintParts.join('  |  ')}\n`)
+  out(`${hintParts.join('  |  ')}\n`)
 
   if (initialMessages) {
     renderHistory(state.messages, { markdown: state.markdown, stdout })
   }
 
-  if (initialMessages && tracker.requests > 0) {
-    console.log(`${dim('Previous session:')} ${tracker.summary()}\n`)
+  if (initialMessages && sessionState.tracker.requests > 0) {
+    console.log(`${dim('Previous session:')} ${sessionState.tracker.summary()}\n`)
   }
 
   const tty = stdout.isTTY === true
@@ -167,18 +153,14 @@ export async function runChatSession(ctx = {}, deps = {}) {
     await saveCurrentSession()
   }
 
-  let streaming = false
-  let streamController = null
-  let interrupted = false
-
   const cleanupSignals = onSignal({
     sigint: () => {
-      if (!streaming) {
+      if (!sessionState.streaming) {
         void bestEffortSave().finally(() => exit(130))
         return
       }
-      interrupted = true
-      streamController?.abort()
+      sessionState.interrupted = true
+      sessionState.streamController?.abort()
     },
     beforeExit: () => {
       void bestEffortSave()
@@ -196,102 +178,19 @@ export async function runChatSession(ctx = {}, deps = {}) {
     return state.toFinalState(provider.meta.name)
   }
 
-  const runTurn = async () => {
-    let apiResult
-    let streamedContent = ''
-    let streamedReasoning = ''
-
-    render.sources = []
-    streaming = true
-    streamController = new AbortController()
-    interrupted = false
-
-    try {
-      stdout.write('\n')
-      if (tty) loader.start(state.webSearch === 'always' ? 'Searching the web' : 'Waiting for response')
-      apiResult = await provider.chatCompletion({
-        apiKey,
-        model: state.modelId,
-        messages: state.messages,
-        onToken: (token, type) => {
-          if (type === 'reasoning' || type === 'content') loader.stop({ done: true })
-          if (type === 'reasoning') streamedReasoning += token
-          else if (type === 'content') streamedContent += token
-          render(token, type)
-        },
-        onSources: (sources) => {
-          render.sources = sources
-        },
-        provider: state.endpointProviderName,
-        reasoningEffort: state.reasoningEffort,
-        supportsReasoning: state.supportsReasoning,
-        sessionId: state.sessionId,
-        temperature: state.temperature,
-        webSearch: state.webSearch,
-        webResults: state.webResults,
-        signal: streamController.signal,
-      })
-      loader.stop()
-      await render.flush()
-      stdout.write('\n\n')
-
-      if (apiResult.sources?.length > 0) {
-        printSources(apiResult.sources, stdout)
-      }
-
-      if (apiResult.usage) {
-        tracker.record(apiResult.usage, state.pricing)
-        tracker.printTurn(apiResult.usage, state.pricing)
-        if (state.budget != null && !budgetWarned) {
-          const line = budgetLine(tracker.cost, state.budget)
-          if (line) {
-            budgetWarned = true
-            console.log(line)
-          }
-        }
-      }
-    } catch (err) {
-      loader.stop()
-      if (interrupted) {
-        render.flush({ sync: true })
-        stdout.write('\n')
-        const partial = { role: 'assistant', content: streamedContent }
-        if (streamedReasoning) partial.reasoning = streamedReasoning
-        if (!partial.content && !partial.reasoning && err.pendingBuffer) {
-          const pending = extractPartialToken(err.pendingBuffer)
-          if (pending) {
-            if (pending.type === 'reasoning') partial.reasoning = pending.text
-            else partial.content = pending.text
-          }
-        }
-        if (partial.content || partial.reasoning) {
-          state.appendAssistant(partial)
-        }
-        await saveCurrentSession()
-        exit(130)
-      }
-      render.flush({ sync: true })
-      console.error(`\nError: ${formatError(err)}\n`)
-      if (err instanceof ApiError && err.retryable) {
-        state.messages.pop()
-      }
-      return
-    } finally {
-      streaming = false
-      streamController = null
-    }
-
-    if (apiResult.content) {
-      const msg = { role: 'assistant', content: apiResult.content }
-      if (apiResult.reasoning) {
-        msg.reasoning = apiResult.reasoning
-      }
-      if (apiResult.usage) {
-        msg.usage = apiResult.usage
-      }
-      state.appendAssistant(msg)
-    }
-  }
+  const runner = createTurnRunner({
+    state,
+    provider,
+    apiKey,
+    render,
+    loader,
+    stdout,
+    tty,
+    saveCurrentSession,
+    exit,
+    sessionState,
+  })
+  const runTurn = runner.runTurn
 
   const chatCtx = {
     state,
@@ -307,7 +206,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     copyText,
     exit: exitCleanly,
   }
-  Object.defineProperty(chatCtx, 'tracker', { get: () => tracker, enumerable: true })
+  Object.defineProperty(chatCtx, 'tracker', { get: () => sessionState.tracker, enumerable: true })
 
   while (true) {
     console.log(sep())
@@ -333,10 +232,10 @@ export async function runChatSession(ctx = {}, deps = {}) {
       const outcome = await handler({ ...chatCtx, input, args: spaceIdx === -1 ? '' : firstLine.slice(spaceIdx + 1).trim() })
       if (outcome?.exit) return exitCleanly()
       if (outcome?.reset) {
-        tracker = new UsageTracker()
-        budgetWarned = false
+        sessionState.tracker = new UsageTracker()
+        sessionState.budgetWarned = false
       }
-      if (outcome?.resetBudgetWarning) budgetWarned = false
+      if (outcome?.resetBudgetWarning) sessionState.budgetWarned = false
       const trailing = lines.slice(1).join('\n').trim()
       if (trailing) {
         const guard = budgetGuard(chatCtx)

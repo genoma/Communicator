@@ -1,15 +1,20 @@
-import { ApiError } from './errors.js'
+import { ApiError, TimeoutError } from './errors.js'
 
 const DEFAULT_TIMEOUT_MS = 30_000
 const RETRY_DELAYS = [500, 1000]
 
 export function sleep(ms, signal) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms)
-    signal?.addEventListener('abort', () => {
+    const onAbort = () => {
       clearTimeout(timer)
       reject(signal.reason || new Error('Aborted'))
-    }, { once: true })
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    if (signal?.aborted) onAbort()
+    else signal?.addEventListener('abort', onAbort, { once: true })
   })
 }
 
@@ -21,7 +26,7 @@ export async function fetchWithTimeout(url, opts = {}, { timeoutMs = DEFAULT_TIM
     return await fetch(url, { ...opts, signal: combined })
   } catch (err) {
     if (controller.signal.aborted && !signal?.aborted) {
-      throw new ApiError(`Request timed out after ${Math.round(timeoutMs / 1000)}s`, { retryable: true })
+      throw new TimeoutError(`Request timed out after ${Math.round(timeoutMs / 1000)}s`)
     }
     throw err
   } finally {
@@ -30,7 +35,6 @@ export async function fetchWithTimeout(url, opts = {}, { timeoutMs = DEFAULT_TIM
 }
 
 export async function fetchWithRetry(url, opts = {}, { timeoutMs = DEFAULT_TIMEOUT_MS, attempts = 3, signal, errorResponse, retryDelays = RETRY_DELAYS } = {}) {
-  let lastError
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const res = await fetchWithTimeout(url, opts, { timeoutMs, signal })
@@ -51,13 +55,13 @@ export async function fetchWithRetry(url, opts = {}, { timeoutMs = DEFAULT_TIMEO
       return res
     } catch (err) {
       if (signal?.aborted) throw err
-      if (err instanceof ApiError) throw err
-      lastError = err
+      if (err instanceof ApiError && !(err instanceof TimeoutError)) throw err
       if (attempt < attempts) {
         await sleep(retryDelays[attempt - 1] ?? retryDelays[retryDelays.length - 1], signal)
         continue
       }
+      if (err instanceof TimeoutError) throw err
+      throw new ApiError(`Network request failed: ${err?.message || 'unknown error'}`, { retryable: true, cause: err })
     }
   }
-  throw new ApiError(`Network request failed: ${lastError?.message || 'unknown error'}`, { retryable: true, cause: lastError })
 }

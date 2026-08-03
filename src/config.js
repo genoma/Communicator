@@ -1,14 +1,14 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { getProvider } from './providers/index.js'
+import { CliError } from './errors.js'
 import { DEFAULT_CONFIG_FILE, DEFAULT_SYSTEM_PROMPT_FILE } from './constants.js'
 
 export function getApiKey(providerType = 'openrouter') {
   const { meta } = getProvider(providerType)
   const key = process.env[meta.apiKeyEnv]?.trim()
   if (!key) {
-    console.error(`${meta.apiKeyEnv} environment variable is not set.`)
-    process.exit(1)
+    throw new CliError(`Error: ${meta.apiKeyEnv} environment variable is not set.`)
   }
   return key
 }

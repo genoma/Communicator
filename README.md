@@ -102,63 +102,8 @@ Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make t
 
 Pass `--reasoning-effort none` to disable reasoning entirely.
 
-Quick start:
-
-```bash
-# OpenRouter (default)
-communicator                                            # full interactive flow
-communicator -m "openai/gpt-4o" "Hello there"           # one-shot chat with a fixed model
-communicator --list-models                                       # list OpenRouter models
-communicator --list-endpoints "anthropic/claude-sonnet-4-20250514"  # list endpoints for a model
-communicator --list-endpoints "inkling-small"                       # fuzzy match: unique partial IDs work
-communicator --list-endpoints                                       # no arg: interactive model picker
-
-# Venice.ai
-communicator -p venice                                  # Venice interactive flow
-communicator -p venice -m "qwen-3-7-max" "Hello"        # one-shot chat with a fixed model
-communicator -p venice --list-models                             # list Venice models (no API key needed)
-communicator -p venice --list-endpoints "qwen-3-7-max"           # show Venice endpoint info
-
-# One-shot mode (non-interactive, no chat loop)
-communicator -m "openai/gpt-4o" "What is the capital of France?"     # positional prompt
-echo "Summarize this: ..." | communicator -m "openai/gpt-4o"          # piped stdin
-communicator -m "openai/gpt-4o" --temperature 0.2 "Write a haiku"     # with temperature
-cat notes.md | communicator -m "openai/gpt-4o" --budget 0.5 "Fix typos:" # with budget cap
-communicator -m "openai/gpt-4o" --attach screenshot.png "What is the bug?"   # vision model + image
-communicator -p venice -m "qwen-3-7-max" --attach data.xlsx "Summarize this" # Venice office file
-
-# Session management
-communicator --list-sessions                                   # list saved sessions
-communicator --resume                                   # resume a saved session
-communicator --export                                   # export a session to cwd
-communicator --export --output-dir ~/Documents          # export to custom directory
-communicator --delete                                   # delete a session (with confirmation)
-communicator --delete 2026-07-30T19-11-45               # delete a specific session
-
-# Reasoning (one-shot session, or use -m alone to save the default)
-communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort high "Solve this"   # force high reasoning effort
-communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort none                # disable reasoning
-communicator -p venice -m "deepseek-v4-flash" --reasoning-effort high "Solve this"  # Venice with reasoning
-
-# Web search (one-shot session; standalone use saves the default)
-communicator -m "openai/gpt-4o" --web-search auto "Latest AI news"      # auto mode: the model decides when to search
-communicator -m "openai/gpt-4o" --web-search always "Latest AI news"    # force a web search on every request
-communicator -m "openai/gpt-4o" --web-search off "Latest AI news"       # disable web search
-communicator -m "openai/gpt-4o" --web-results 5 "Latest AI news"        # 5 results, implies auto mode
-communicator -p venice -m "qwen-3-7-max" --web-search "Latest AI news"  # Venice: no result count (auto/on/off only)
-
-# Standalone config commands (persist defaults to ~/.communicator.json and exit)
-communicator --output-dir ~/Documents                                  # save the default export directory
-communicator --config                                                  # print the current config
-communicator -m "deepseek/deepseek-v4-flash"                           # validate a model, show its details, set it as default
-communicator -m "deepseek/deepseek-v4-flash" --temperature 0.5         # set per-model temperature default
-communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort high   # set per-model reasoning default
-communicator -m "deepseek/deepseek-v4-flash" --web-search always       # set per-model web search default
-communicator --budget 2                                                # set the default budget cap for sessions
-communicator --web-results 5                                           # set the default result count (OpenRouter only)
-communicator --smooth-speed fast                                       # set the default smooth streaming speed
-communicator --no-smooth-streaming                                     # disable smooth streaming by default
-```
+Full usage examples (one-shot mode, session management, reasoning, web search,
+standalone config commands) live in [`docs/commands.md`](docs/commands.md).
 
 ## Usage
 
@@ -318,141 +263,16 @@ communicator --system-prompt /path/to/custom-prompt.md
 
 Every chat session is automatically saved to `~/.communicator/sessions/<timestamp>.json`, with a `title` auto-generated from the first user message (whitespace collapsed, truncated to 50 chars). Sessions are saved when you quit (`/quit` or `Ctrl+C`), when you switch models or start a new session, and on interrupt during streaming (including the partial response). A metadata index at `~/.communicator/sessions/.index.json` powers `--list-sessions` and the resume/export/delete pickers so listing never has to parse full session files. If the index is missing or stale (e.g. sessions from an older version), it is rebuilt automatically from the session files.
 
-### Listing sessions
-
 ```bash
-communicator --list-sessions
+communicator --list-sessions   # list saved sessions
+communicator --resume          # resume (picker, prefix match, or full ID)
+communicator --export          # export a session to markdown
+communicator --delete          # delete a session (with confirmation)
 ```
 
-Output shows each session's timestamp, model, message count, and the session title:
-
-```
-3 saved session(s):
-
-2026-07-30 19:15:22  openai/gpt-4o                        12 msgs       "Write a Python script that..."
-2026-07-30 18:42:10  deepseek-v4-flash                     5 msgs       "Explain how garbage collection..."
-2026-07-30 17:11:45  google/gemini-2.5-pro                 23 msgs       "Compare Rust and Go for..."
-```
-
-### Resuming a session
-
-```bash
-# Interactive picker — browse and select from all saved sessions
-communicator --resume
-
-# Prefix match — resumes if exactly one session starts with "2026-07-30"
-communicator --resume 2026-07-30
-
-# Full session ID — resumes the exact session
-communicator --resume 2026-07-30T19-11-45
-```
-
-When resuming, the original model, provider backend (OpenRouter or Venice), endpoint provider, reasoning effort, temperature, budget, and web search state (mode + result count) are restored automatically. The conversation picks up right where you left off — all previous messages are preserved. Session flags override the stored values on resume (`--temperature`, `--budget`, `--web-search`, `--web-results`, `--reasoning-effort`), while `-p` is silently ignored and `-m`, `--output-dir`, and `--attach` are rejected with an error.
-
-Older sessions saved without a `providerType` field default to OpenRouter for backward compatibility.
-
-### Deleting sessions
-
-```bash
-# Interactive picker — browse and select from all saved sessions
-communicator --delete
-
-# Prefix match — deletes if exactly one session starts with "2026-07-30"
-communicator --delete 2026-07-30
-
-# Full session ID — deletes the exact session
-communicator --delete 2026-07-30T19-11-45
-```
-
-`--delete` always asks for confirmation before removing the session file (and its sidecar entry). It cannot be combined with `--resume`, `--export`, or a prompt argument, and needs a TTY for the confirmation prompt.
-
-### Exporting sessions
-
-Export any saved session as a clean, readable markdown file:
-
-```bash
-# Interactive picker — browse and select from all saved sessions
-communicator --export
-
-# Prefix match — exports if exactly one session starts with "2026-07-30"
-communicator --export 2026-07-30
-
-# Full session ID — exports the exact session
-communicator --export 2026-07-30T19-11-45
-
-# Export to a custom directory (persisted in preferences)
-communicator --export --output-dir ~/Documents/CommunicatorExports
-```
-
-The exported markdown file is saved as `session-{id}.md` in the current working directory by default. Use `--output-dir` to set a custom directory — once set, it's saved in your preferences and used for all future exports; exports keep going to the saved preference directory until you override it with `--output-dir` again.
-
-- **Header** — timestamp, title, model, provider, message count, reasoning effort, and accumulated cost
-- **User messages** — blockquoted under a `## You` heading
-- **Assistant responses** — reasoning shown under `### thinking`, final answer under `### Answer`
-- **Cost** — calculated from token usage and provider pricing (shows "N/A" if pricing is unavailable)
-
-Example output:
-
-```markdown
-# Chat Session — 2026-07-30 19:11:45 UTC
-**Title:** What is the capital of France?
-**Model:** `openai/gpt-4o` | **Provider:** OpenAI | **Messages:** 4 | **Cost:** $0.000124
-
----
-
-## You
-> What is the capital of France?
-
----
-
-## Assistant
-### thinking
-The user is asking a straightforward geography question...
-
-### Answer
-The capital of France is Paris.
-```
-
-### Session file format
-
-Each session is stored as a JSON file:
-
-```json
-{
-  "model": "openai/gpt-4o",
-  "providerName": "OpenAI",
-  "providerType": "openrouter",
-  "reasoningEffort": "high",
-  "temperature": 0.7,
-  "budget": 0.5,
-  "webSearch": "auto",
-  "webResults": 5,
-  "title": "What is the capital of France?",
-  "pricing": {
-    "prompt": 0.0000025,
-    "completion": 0.00001
-  },
-  "createdAt": "2026-07-30T19:11:45.000Z",
-  "updatedAt": "2026-07-30T19:15:22.000Z",
-  "messages": [
-    { "role": "system", "content": "You are a helpful assistant." },
-    { "role": "user", "content": "Hello" },
-    { "role": "assistant", "content": "Hi there!", "reasoning": "...", "usage": { "prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17 } }
-  ]
-}
-```
-
-- `providerName` is the endpoint provider (e.g., `"OpenAI"` for OpenRouter, `"venice"` for Venice)
-- `providerType` is the API backend (`"openrouter"` or `"venice"`). Older sessions without this field default to `"openrouter"` on resume
-- `reasoningEffort` is `null` when reasoning is explicitly disabled
-- `temperature` is the resolved session temperature (0–2); `budget` is the per-session cap in USD (`null` when unset)
-- `webSearch` is the web search mode (`"off"`, `"auto"`, or `"always"`); `webResults` is the OpenRouter result count (`null` when unset — the provider default of 10 applies) — both restored on resume
-- `title` is auto-generated from the first user message
-- User messages with attachments store `content` as an OpenAI-style parts array (`[{ type: 'text', ... }, { type: 'image_url', ... }, { type: 'file', ... }]`); plain text messages keep the string form, so older sessions stay readable
-- `pricing` stores per-token dollar amounts used for cost calculation
-- `updatedAt` is bumped on every auto-save
-- Empty sessions (no user messages) are never saved
-- Older sessions without `temperature`/`budget`/`title` fall back to `0.7` / no cap / no title
+Detailed examples for listing, resuming, deleting, and exporting sessions,
+plus the on-disk session file format, live in
+[`docs/sessions.md`](docs/sessions.md).
 
 ## Preferences
 
@@ -485,8 +305,9 @@ The last model and provider become defaults in the interactive pickers. Reasonin
 
 ```
 cli (index.js)            — commander argument parsing, delegates to runCli
-├── cli-main.js           — runCli: flag validation, dispatch to commands and config setters
-├── cli-utils.js          — resolveFlagOrExit (exit on invalid flag values), collectFlag (repeatable --attach)
+├── cli-main.js           — runCli: error handling (ApiError/CliError/ExitPromptError), dispatch to commands and config setters
+├── cli-utils.js          — resolveFlagOrExit (throws CliError on invalid flag values), collectFlag (repeatable --attach)
+├── cli-validation.js     — pure flag-combination validation (validateCliFlags) + flag-group predicates
 ├── commands/
 │   ├── list-models.js    — --list-models handler
 │   ├── list-endpoints.js — --list-endpoints handler
@@ -506,9 +327,9 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 │   └── venice.js         — Venice.ai API client: models, synthetic endpoints, chat
 ├── model-selection.js    — interactive and non-interactive (-m) selection flows
 ├── session-setup.js      — shared one-shot/chat-start helpers: resolveSessionFlags, attachGateOptions, persistSession
-├── http.js               — fetchWithTimeout (30s) + fetchWithRetry (backoff, stream-safe)
-├── errors.js             — ApiError (status/provider/retryable) and formatError
-├── sse-parser.js         — shared SSE stream parser (consumed by both providers)
+├── http.js               — fetchWithTimeout (30s) + fetchWithRetry (backoff, retries timeouts)
+├── errors.js             — ApiError (status/provider/retryable), TimeoutError, CliError (exitCode), formatError
+├── sse-parser.js         — shared SSE stream parser (idle-timeout stall detection; consumed by both providers)
 ├── attachments.js        — attachment model: classify/load files (size limits), capability gate, content parts ↔ text helpers (contentText/messageText)
 ├── config.js             — API key lookup (provider meta), preferences load/save (~/.communicator.json)
 ├── constants.js          — shared constants (paths, labels, temperature bounds, SSE markers) and formatCost
@@ -516,6 +337,8 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 ├── flags.js              — CLI flag resolvers (temperature, web search/results, reasoning, budget)
 ├── reasoning.js          — reasoning effort default resolution + web search capability check
 ├── chat-state.js         — ChatState: session state + pure transitions + final-state snapshot
+├── turn-runner.js        — per-turn orchestration (stream render, abort, interrupt salvage, usage tracking)
+├── signals.js            — process signal registration (SIGINT/beforeExit/uncaughtException) + cleanup
 ├── sessions.js           — session persistence: save, load, list, title generation, delete, sidecar index, resolve
 ├── session-picker.js     — interactive session selector for --resume, --export, and --delete
 ├── export.js             — markdown exporter: format session data, write to file
@@ -528,6 +351,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 ├── ui/
 │   ├── style.js          — ANSI helpers (dim, bold, sep, thinking, answer)
 │   ├── format.js         — price formatting (formatModelPrice, formatPricePerM)
+│   ├── io.js             — output helpers (out/err) and debug logging (COMMUNICATOR_DEBUG=1)
 │   ├── markdown.js       — streaming terminal markdown renderer (in-place line redraw)
 │   ├── md-it.js          — markdown-it engine: ANSI token rendering, line classification, aligned tables
 │   ├── hyperlink.js      — OSC 8 hyperlink escape helper
@@ -544,7 +368,7 @@ The chat flow is built around four pieces:
 
 - **`ChatState` (`src/chat-state.js`)** — the mutable session state (model, reasoning effort, temperature, budget, web search, messages, …) with pure transitions (`setTemperature`, `applyModelSelection`, `toggleMarkdown`, …). `toFinalState()` produces the exact snapshot written to the session file; `resetForNewSession()` backs `/new`.
 - **Command registry (`src/commands/chat/index.js`)** — the 15 slash commands live in a data-driven map of `/name → async (ctx) => outcome`; `CHAT_COMMANDS` is derived from the registry keys so the suggestion list and the loop can never drift. Handlers never call `process.exit` — they return `{ exit }` / `{ reset }` signals that the loop translates into exit codes, which keeps every handler unit-testable (`test/chat-commands.test.js`).
-- **`runChatSession(ctx, deps)` (`src/chat.js`)** — the chat loop is dependency-injected: `deps = { readInput, renderer, stdout, exit, saveSession, savePrefs, onSignal, newSessionId }`, each defaulting to the real implementation, so production behavior is unchanged while the whole loop is drivable with fakes (`test/chat-loop.test.js`). Signal handling (idle/streaming SIGINT, `beforeExit`, `uncaughtException`) is registered through `onSignal`.
+- **`runChatSession(ctx, deps)` (`src/chat.js`)** — the chat loop is dependency-injected: `deps = { readInput, renderer, stdout, exit, saveSession, savePrefs, onSignal, newSessionId }`, each defaulting to the real implementation, so production behavior is unchanged while the whole loop is drivable with fakes (`test/chat-loop.test.js`). Signal handling (idle/streaming SIGINT, `beforeExit`, `uncaughtException`) is registered through `onSignal` (`src/signals.js`); per-turn orchestration — stream rendering, abort, interrupt salvage, usage tracking — lives in `src/turn-runner.js` on a shared `sessionState` object.
 - **`src/flags.js`** — CLI flag parsing helpers (`resolveTemperatureFlag`, `resolveWebResultsFlag`, `resolveWebSearchFlag`, `resolveReasoningFlag`, `resolveBudget`) shared by the chat loop, one-shot mode, and chat-start.
 
 `src/reasoning.js` holds the two model-capability helpers: `resolveEffortDefault` (forced flag → auto-reasoning → saved pref → model default, `'none'` normalized to `null`) and `isWebSearchSupported` (provider-wide or per-model capability).
