@@ -1,0 +1,284 @@
+import { test, mock, after } from 'node:test'
+import assert from 'node:assert/strict'
+import { mkdtemp, rm, readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+const tempHome = await mkdtemp(join(tmpdir(), 'communicator-home-'))
+after(() => rm(tempHome, { recursive: true, force: true }))
+
+mock.module('node:os', { namedExports: { homedir: () => tempHome } })
+mock.module('@inquirer/prompts', {
+  namedExports: {
+    search: async () => { throw new Error('unexpected picker in this test') },
+    select: async () => { throw new Error('unexpected picker in this test') },
+    confirm: async () => true,
+  },
+})
+
+const startChatCalls = []
+mock.module(new URL('../src/chat.js', import.meta.url).href, {
+  namedExports: {
+    startChat: async (apiKey, model, endpointProviderName, reasoningEffort, temperature, pricing, provider, opts) => {
+      startChatCalls.push({ apiKey, model, endpointProviderName, reasoningEffort, temperature, pricing, opts })
+      return {
+        sessionId: opts.sessionId,
+        createdAt: opts.createdAt,
+        modelId: model,
+        endpointProviderName,
+        providerType: provider.meta.name,
+        reasoningEffort,
+        temperature,
+        budget: opts.budget,
+        webSearch: opts.webSearch,
+        webResults: opts.webResults,
+        pricing,
+        messages: [
+          { role: 'system', content: 'You are a helpful assistant.' },
+          { role: 'user', content: 'First question' },
+          { role: 'assistant', content: 'First answer' },
+        ],
+      }
+    },
+  },
+})
+
+class ExitSignal {
+  constructor(code) {
+    this.code = code
+  }
+}
+
+function sessionData(overrides = {}) {
+  return {
+    model: 'test/model',
+    providerName: 'ProviderX',
+    providerType: 'openrouter',
+    reasoningEffort: 'low',
+    temperature: 0.9,
+    budget: 5,
+    webSearch: 'off',
+    webResults: null,
+    pricing: { prompt: 0.000001, completion: 0.000002 },
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:01.000Z',
+    messages: [
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'user', content: 'First question' },
+      { role: 'assistant', content: 'First answer', usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } },
+    ],
+    ...overrides,
+  }
+}
+
+const BASE_OPTS = {
+  model: undefined,
+  provider: 'openrouter',
+  listModels: undefined,
+  listEndpoints: undefined,
+  resume: undefined,
+  export: undefined,
+  outputDir: undefined,
+  listSessions: undefined,
+  config: undefined,
+  systemPrompt: undefined,
+  reasoningEffort: undefined,
+  temperature: undefined,
+  budget: undefined,
+  webSearch: undefined,
+  webResults: undefined,
+  smoothStreaming: true,
+  smoothSpeed: undefined,
+  delete: undefined,
+  attach: [],
+}
+
+function opts(overrides = {}) {
+  return { ...BASE_OPTS, ...overrides }
+}
+
+async function runAndExit(t, overrides, promptArg, expectedCode) {
+  let exitCode = null
+  const out = []
+  const err = []
+  t.mock.method(process, 'exit', (code) => {
+    exitCode = code
+    throw new ExitSignal(code)
+  })
+  t.mock.method(console, 'log', (msg) => out.push(String(msg)))
+  t.mock.method(console, 'error', (msg) => err.push(String(msg)))
+  const { runCli } = await import('../src/cli-main.js')
+  await assert.rejects(
+    runCli(opts(overrides), promptArg),
+    (e) => e instanceof ExitSignal && e.code === expectedCode
+  )
+  return { exitCode, out, err }
+}
+
+async function runCliNoExit(t, overrides, promptArg) {
+  const out = []
+  const err = []
+  t.mock.method(process, 'exit', (code) => {
+    throw new ExitSignal(code)
+  })
+  t.mock.method(console, 'log', (msg) => out.push(String(msg)))
+  t.mock.method(console, 'error', (msg) => err.push(String(msg)))
+  const { runCli } = await import('../src/cli-main.js')
+  await runCli(opts(overrides), promptArg)
+  return { out, err }
+}
+
+function withTTY(t, value) {
+  const original = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY')
+  Object.defineProperty(process.stdin, 'isTTY', { value, configurable: true })
+  t.after(() => {
+    if (original) Object.defineProperty(process.stdin, 'isTTY', original)
+    else delete process.stdin.isTTY
+  })
+}
+
+function withApiKey(t, value = 'test-key') {
+  const previous = process.env.OPENROUTER_API_KEY
+  process.env.OPENROUTER_API_KEY = value
+  t.after(() => {
+    if (previous === undefined) delete process.env.OPENROUTER_API_KEY
+    else process.env.OPENROUTER_API_KEY = previous
+  })
+}
+
+async function tempConfig(t) {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-config-'))
+  const file = join(dir, 'config.json')
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  return file
+}
+
+async function seedSession(id, data = {}) {
+  const { ensureSessionsDir, saveSession } = await import('../src/sessions.js')
+  const dir = await ensureSessionsDir()
+  await saveSession(dir, id, sessionData(data))
+  return dir
+}
+
+test('--list-sessions prints the seeded session and exits 0', async (t) => {
+  await seedSession('2026-01-01T00-00-00', { title: 'My custom title' })
+  const { out } = await runAndExit(t, { listSessions: true }, undefined, 0)
+  assert.match(out.join('\n'), /2026-01-01 00-00-00/)
+  assert.match(out.join('\n'), /"My custom title"/)
+})
+
+test('--export with a unique partial id writes the markdown file and exits 0', async (t) => {
+  withTTY(t, true)
+  await seedSession('2026-01-02T00-00-00')
+  const outDir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(outDir, { recursive: true, force: true }))
+
+  const { out } = await runAndExit(t, { export: '2026-01-02', outputDir: outDir }, undefined, 0)
+  assert.match(out.join('\n'), /Exported to/)
+
+  const md = await readFile(join(outDir, 'session-2026-01-02T00-00-00.md'), 'utf-8')
+  assert.match(md, /# Chat Session — 2026-01-01 00:00:00 UTC/)
+  assert.match(md, /First question/)
+})
+
+test('--export with an unknown id fails gracefully', async (t) => {
+  withTTY(t, true)
+  const { err } = await runAndExit(t, { export: 'nope' }, undefined, 1)
+  assert.match(err.join('\n'), /No session found matching "nope"/)
+})
+
+test('--delete with a unique partial id removes the session and exits 0', async (t) => {
+  withTTY(t, true)
+  const dir = await seedSession('2026-01-03T00-00-00')
+  const { out } = await runAndExit(t, { delete: '2026-01-03' }, undefined, 0)
+  assert.match(out.join('\n'), /Deleted session 2026-01-03T00-00-00/)
+
+  const { listSessions } = await import('../src/sessions.js')
+  const sessions = await listSessions(dir)
+  assert.ok(!sessions.some((s) => s.id === '2026-01-03T00-00-00'))
+})
+
+test('--resume with a unique partial id rebuilds the context from the session', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  await seedSession('2026-01-04T00-00-00')
+  const configFile = await tempConfig(t)
+  await runCliNoExit(t, { config: configFile, resume: '2026-01-04' }, undefined)
+
+  assert.equal(startChatCalls.length, 1)
+  const call = startChatCalls[0]
+  assert.equal(call.model, 'test/model')
+  assert.equal(call.endpointProviderName, 'ProviderX')
+  assert.equal(call.reasoningEffort, 'low')
+  assert.equal(call.temperature, 0.9)
+  assert.equal(call.opts.budget, 5)
+  assert.equal(call.opts.webSearch, 'off')
+  assert.equal(call.opts.webResults, null)
+  assert.equal(call.opts.sessionId, '2026-01-04T00-00-00')
+  assert.equal(call.opts.initialMessages.length, 3)
+  assert.equal(call.opts.configPath, configFile)
+
+  const saved = JSON.parse(await readFile(configFile, 'utf-8'))
+  assert.equal(saved.lastModel, 'test/model')
+  assert.equal(saved.lastProvider, 'ProviderX')
+  assert.equal(saved.temperature['test/model'], 0.9)
+  assert.equal(saved.reasoningEffort['test/model'], 'low')
+  assert.equal(saved.webSearch['test/model'], 'off')
+})
+
+test('--resume --reasoning-effort overrides the stored session effort', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  await seedSession('2026-01-05T00-00-00')
+  const configFile = await tempConfig(t)
+  await runCliNoExit(t, { config: configFile, resume: '2026-01-05', reasoningEffort: 'high' }, undefined, 0)
+
+  const call = startChatCalls[startChatCalls.length - 1]
+  assert.equal(call.reasoningEffort, 'high')
+})
+
+test('--resume --reasoning-effort none disables reasoning on resume', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  await seedSession('2026-01-06T00-00-00')
+  const configFile = await tempConfig(t)
+  await runCliNoExit(t, { config: configFile, resume: '2026-01-06', reasoningEffort: 'none' }, undefined, 0)
+
+  const call = startChatCalls[startChatCalls.length - 1]
+  assert.equal(call.reasoningEffort, null)
+})
+
+test('--resume --temperature and --budget override the stored session values', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  await seedSession('2026-01-07T00-00-00')
+  const configFile = await tempConfig(t)
+  await runCliNoExit(t, {
+    config: configFile,
+    resume: '2026-01-07',
+    temperature: '0.5',
+    budget: '2',
+  }, undefined)
+
+  const call = startChatCalls[startChatCalls.length - 1]
+  assert.equal(call.temperature, 0.5)
+  assert.equal(call.opts.budget, 2)
+})
+
+test('--resume --web-search always overrides the stored mode', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  await seedSession('2026-01-08T00-00-00')
+  const configFile = await tempConfig(t)
+  await runCliNoExit(t, { config: configFile, resume: '2026-01-08', webSearch: 'always' }, undefined, 0)
+
+  const call = startChatCalls[startChatCalls.length - 1]
+  assert.equal(call.opts.webSearch, 'always')
+})
+
+test('--resume with no matching sessions exits 1 with a friendly error', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  const { err } = await runAndExit(t, { resume: 'zzz' }, undefined, 1)
+  assert.match(err.join('\n'), /No session found matching "zzz"/)
+})
