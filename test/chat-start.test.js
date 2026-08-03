@@ -194,7 +194,6 @@ test('chatStart non-resume branch builds the context from selection and prefs', 
     namedExports: {
       selectModelAndEndpoint: async () => { throw new Error('unexpected picker') },
       selectModelNonInteractive: async () => selection,
-      cheapestEndpoint: async () => selection,
     },
   })
 
