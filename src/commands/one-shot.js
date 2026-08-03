@@ -1,14 +1,14 @@
 import { getProvider } from '../providers/index.js'
 import { DEFAULT_TEMPERATURE, cpsToCharsPerTick } from '../constants.js'
-import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, webSearchGate, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed } from '../flags.js'
-import { resolveFlagOrExit } from '../cli-utils.js'
+import { resolveWebSearchFlag, webSearchGate } from '../flags.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
-import { ensureSessionsDir, generateSessionId, saveSession, buildSessionPayload } from '../sessions.js'
-import { savePreferences, applyPreferenceUpdates } from '../config.js'
+import { ensureSessionsDir, generateSessionId } from '../sessions.js'
 import { createStreamRenderer, printSources } from '../ui/stream.js'
 import { UsageTracker, budgetLine } from '../tracker.js'
 import { formatError } from '../errors.js'
-import { loadAttachment, attachmentGate, buildContent } from '../attachments.js'
+import { extname } from 'node:path'
+import { classifyPath, loadAttachment, attachmentGate, buildContent } from '../attachments.js'
+import { resolveSessionFlags, attachGateOptions, persistSession } from '../session-setup.js'
 
 const MAX_STDIN_BYTES = 10 * 1024 * 1024
 
@@ -39,11 +39,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     process.exit(1)
   }
 
-  const forcedEffort = resolveReasoningFlag({ reasoningEffort: opts.reasoningEffort })
-  const budget = resolveFlagOrExit(resolveBudget, opts.budget) ?? prefs.budget ?? null
-  const forcedTemperature = resolveFlagOrExit((v) => resolveTemperatureFlag({ temperature: v }), opts.temperature)
-  const forcedWebResults = resolveFlagOrExit((v) => resolveWebResultsFlag({ webResults: v }), opts.webResults)
-  const smoothSpeed = resolveFlagOrExit(resolveSmoothSpeed, opts.smoothSpeed) ?? normalizeSmoothSpeed(prefs.smoothSpeed)
+  const { forcedEffort, forcedTemperature, budget, forcedWebResults, smoothSpeed } = resolveSessionFlags(opts, prefs)
 
   let selection
   let temperature
@@ -72,22 +68,24 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
 
   const attachments = []
   if (opts.attach?.length) {
+    const gateOptions = attachGateOptions(selection, provider.meta)
     for (const path of opts.attach) {
+      const { kind } = classifyPath(path)
+      if (!kind) {
+        console.error(`Error: Unsupported file type: ${extname(path).slice(1) || '(none)'}`)
+        process.exit(1)
+      }
+      const gateError = attachmentGate([{ kind }], gateOptions)
+      if (gateError) {
+        console.error(`Error: ${gateError}`)
+        process.exit(1)
+      }
       try {
         attachments.push(await loadAttachment(path))
       } catch (err) {
         console.error(`Error: ${err.message}`)
         process.exit(1)
       }
-    }
-    const gateError = attachmentGate(attachments, {
-      visionSupported: selection.visionSupported,
-      fileSupported: selection.fileSupported,
-      providerName: provider.meta.name,
-    })
-    if (gateError) {
-      console.error(`Error: ${gateError}`)
-      process.exit(1)
     }
   }
 
@@ -188,13 +186,5 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     pricing: selection.pricing,
   }
 
-  await saveSession(dir, sessionId, buildSessionPayload(finalState))
-
-  await savePreferences(applyPreferenceUpdates(prefs, {
-    modelId: selection.modelId,
-    lastModel: selection.modelId,
-    lastProvider: selection.endpointProviderName,
-    temperature,
-    webSearch,
-  }), opts.config)
+  await persistSession({ finalState, prefs, config: opts.config })
 }

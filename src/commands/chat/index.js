@@ -6,7 +6,8 @@ import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmooth
 import { budgetStatus } from '../../tracker.js'
 import { dim } from '../../ui/style.js'
 import { extname } from 'node:path'
-import { classifyPath, loadAttachment, attachmentGate, contentText, formatBytes } from '../../attachments.js'
+import { classifyPath, loadAttachment, attachmentGate, messageText, formatBytes } from '../../attachments.js'
+import { attachGateOptions } from '../../session-setup.js'
 
 const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments'])
 
@@ -17,11 +18,7 @@ export function budgetGuard(ctx) {
 }
 
 function attachmentGateOptions(ctx) {
-  return {
-    visionSupported: ctx.state.visionSupported,
-    fileSupported: ctx.state.fileSupported,
-    providerName: ctx.provider.meta.name,
-  }
+  return attachGateOptions(ctx.state, ctx.provider.meta)
 }
 
 const handlers = {
@@ -70,10 +67,16 @@ const handlers = {
   '/attach': async (ctx) => {
     if (!ctx.args) return handlers['/attachments'](ctx)
     const gateOptions = attachmentGateOptions(ctx)
-    for (const path of ctx.args.split(/\s+/)) {
-      const { kind } = classifyPath(path)
+    const ignored = []
+    for (const token of ctx.args.split(/\s+/)) {
+      const ext = extname(token)
+      if ((!ext || ext === '.') && !token.includes('/') && !token.includes('\\')) {
+        ignored.push(token)
+        continue
+      }
+      const { kind } = classifyPath(token)
       if (!kind) {
-        console.error(`Error: Unsupported file type: ${extname(path).slice(1) || '(none)'}\n`)
+        console.error(`Error: Unsupported file type: ${ext.slice(1) || '(none)'}\n`)
         continue
       }
       const gateError = attachmentGate([{ kind }], gateOptions)
@@ -83,13 +86,16 @@ const handlers = {
       }
       let att
       try {
-        att = await loadAttachment(path)
+        att = await loadAttachment(token)
       } catch (err) {
         console.error(`Error: ${err.message}\n`)
         continue
       }
       ctx.state.pendingAttachments.push(att)
       console.log(`attached: ${att.filename} (${att.kind}, ${formatBytes(att.size)})\n`)
+    }
+    if (ignored.length) {
+      console.log(`note: "${ignored.join(' ')}" is not a file path — /attach takes file paths only; type your message on the next line.\n`)
     }
   },
 
@@ -239,7 +245,7 @@ const handlers = {
       console.log('No assistant response to copy.\n')
       return
     }
-    const result = await ctx.copyText(contentText(last.content))
+    const result = await ctx.copyText(messageText(last.content))
     console.log(result.ok ? 'Copied last response to clipboard.\n' : `Copy failed: ${result.error}\n`)
   },
 

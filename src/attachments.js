@@ -49,11 +49,16 @@ export async function loadAttachment(path) {
     throw new Error(`Cannot read attachment: ${path}`)
   }
 
-  if (kind === 'image' && size > MAX_IMAGE_ATTACHMENT_BYTES) {
+  const encoded = Math.ceil(size * 4 / 3) + `data:${mime};base64,`.length
+
+  if (kind === 'image' && encoded > MAX_IMAGE_ATTACHMENT_BYTES) {
     throw new Error(`Attachment too large: ${basename(fullPath)} (image limit is 20 MB)`)
   }
-  if ((kind === 'pdf' || kind === 'office') && size > MAX_FILE_ATTACHMENT_BYTES) {
+  if ((kind === 'pdf' || kind === 'office') && encoded > MAX_FILE_ATTACHMENT_BYTES) {
     throw new Error(`Attachment too large: ${basename(fullPath)} (file limit is 25 MB)`)
+  }
+  if (kind === 'text' && size > MAX_FILE_ATTACHMENT_BYTES) {
+    throw new Error(`Attachment too large: ${basename(fullPath)} (text limit is 25 MB)`)
   }
 
   let buffer
@@ -109,6 +114,14 @@ export function contentText(content) {
   if (typeof content === 'string') return content
   if (Array.isArray(content)) {
     return content.filter((p) => p.type === 'text').map((p) => p.text).join('')
+  }
+  return ''
+}
+
+export function messageText(content) {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content.find((p) => p.type === 'text')?.text ?? ''
   }
   return ''
 }

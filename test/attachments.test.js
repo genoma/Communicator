@@ -3,13 +3,14 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { MAX_IMAGE_ATTACHMENT_BYTES } from '../src/constants.js'
+import { MAX_IMAGE_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES, MAX_INLINE_TEXT_ATTACHMENT_BYTES } from '../src/constants.js'
 import {
   classifyPath,
   loadAttachment,
   attachmentGate,
   buildContent,
   contentText,
+  messageText,
   contentAttachments,
   formatBytes,
 } from '../src/attachments.js'
@@ -87,6 +88,38 @@ test('loadAttachment rejects images over the 20 MB limit', async (t) => {
   await assert.rejects(loadAttachment(file), /image limit is 20 MB/)
 })
 
+test('loadAttachment gates images on the base64-encoded size', async (t) => {
+  const raw = MAX_IMAGE_ATTACHMENT_BYTES * 3 / 4 + 1
+  assert.ok(raw < MAX_IMAGE_ATTACHMENT_BYTES)
+  const file = await writeFixture(t, 'borderline.png', Buffer.alloc(raw))
+  await assert.rejects(loadAttachment(file), /image limit is 20 MB/)
+})
+
+test('loadAttachment rejects pdfs over the 25 MB limit', async (t) => {
+  const file = await writeFixture(t, 'huge.pdf', Buffer.alloc(MAX_FILE_ATTACHMENT_BYTES + 1))
+  await assert.rejects(loadAttachment(file), /file limit is 25 MB/)
+})
+
+test('loadAttachment rejects office files over the 25 MB limit', async (t) => {
+  const file = await writeFixture(t, 'huge.xlsx', Buffer.alloc(MAX_FILE_ATTACHMENT_BYTES + 1))
+  await assert.rejects(loadAttachment(file), /file limit is 25 MB/)
+})
+
+test('loadAttachment rejects text files over the 25 MB limit', async (t) => {
+  const file = await writeFixture(t, 'huge.log', Buffer.alloc(MAX_FILE_ATTACHMENT_BYTES + 1))
+  await assert.rejects(loadAttachment(file), /text limit is 25 MB/)
+})
+
+test('loadAttachment warns about context usage for inline text over 256 KB', async (t) => {
+  t.mock.method(console, 'warn', () => {})
+  const file = await writeFixture(t, 'big.md', Buffer.alloc(MAX_INLINE_TEXT_ATTACHMENT_BYTES + 1))
+  const att = await loadAttachment(file)
+  assert.equal(att.kind, 'text')
+  assert.equal(att.size, MAX_INLINE_TEXT_ATTACHMENT_BYTES + 1)
+  assert.equal(console.warn.mock.calls.length, 1)
+  assert.match(console.warn.mock.calls[0].arguments[0], /Warning: big\.md is 256\.0 KB of inline text/)
+})
+
 test('buildContent returns the plain string when there are no attachments', () => {
   assert.equal(buildContent('hello'), 'hello')
   assert.equal(buildContent('hello', []), 'hello')
@@ -113,6 +146,16 @@ test('contentText passes strings through and concatenates text parts', () => {
   assert.equal(contentText(undefined), '')
 })
 
+test('messageText returns the plain string or only the first text part', () => {
+  assert.equal(messageText('plain'), 'plain')
+  assert.equal(messageText([{ type: 'text', text: 'msg' }, { type: 'text', text: 'file content' }, { type: 'image_url', image_url: { url: 'x' } }]), 'msg')
+  assert.equal(messageText([{ type: 'text', text: 'msg' }, { type: 'image_url', image_url: { url: 'x' } }]), 'msg')
+  assert.equal(messageText([{ type: 'image_url', image_url: { url: 'x' } }]), '')
+  assert.equal(messageText([]), '')
+  assert.equal(messageText(null), '')
+  assert.equal(messageText(undefined), '')
+})
+
 test('contentAttachments lists file and image parts', () => {
   const content = [
     { type: 'text', text: 'hi' },
@@ -124,6 +167,15 @@ test('contentAttachments lists file and image parts', () => {
     { filename: 'image.png', kind: 'image' },
   ])
   assert.deepEqual(contentAttachments('plain'), [])
+})
+
+test('contentAttachments synthesizes image.<ext> names from the data-URL mime', () => {
+  assert.deepEqual(contentAttachments([{ type: 'image_url', image_url: { url: 'data:image/webp;base64,AA==' } }]), [
+    { filename: 'image.webp', kind: 'image' },
+  ])
+  assert.deepEqual(contentAttachments([{ type: 'image_url', image_url: { url: 'no-mime' } }]), [
+    { filename: 'image', kind: 'image' },
+  ])
 })
 
 test('attachmentGate blocks images when vision is explicitly unsupported', () => {
