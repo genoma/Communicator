@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { MAX_IMAGE_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES, MAX_INLINE_TEXT_ATTACHMENT_BYTES } from '../src/constants.js'
 import {
   classifyPath,
+  splitPathArgs,
   loadAttachment,
   attachmentGate,
   buildContent,
@@ -45,6 +46,15 @@ test('classifyPath maps extensions to kinds and mimes', () => {
   assert.deepEqual(classifyPath('a.py'), { kind: 'text', mime: 'text/plain' })
   assert.deepEqual(classifyPath('a.exe'), { kind: null, mime: null })
   assert.deepEqual(classifyPath('Makefile'), { kind: null, mime: null })
+})
+
+test('splitPathArgs splits on whitespace but keeps backslash-escaped spaces', () => {
+  assert.deepEqual(splitPathArgs('a.png b.txt'), ['a.png', 'b.txt'])
+  assert.deepEqual(splitPathArgs('/Users/x/Screenshot\\ 2026-07-23\\ at\\ 07.47.31.png'), ['/Users/x/Screenshot 2026-07-23 at 07.47.31.png'])
+  assert.deepEqual(splitPathArgs('C:\\Users\\me\\file.png'), ['C:\\Users\\me\\file.png'])
+  assert.deepEqual(splitPathArgs('/path\\ with\\ spaces/x.png /plain.png'), ['/path with spaces/x.png', '/plain.png'])
+  assert.deepEqual(splitPathArgs(''), [])
+  assert.deepEqual(splitPathArgs('   '), [])
 })
 
 test('loadAttachment encodes images as base64 data URLs', async (t) => {
