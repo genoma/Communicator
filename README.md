@@ -14,21 +14,21 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **One-shot mode** — pass a prompt argument or pipe input via stdin for a single non-interactive answer. TTY-aware output: styled with usage footer on a terminal, plain answer text only when piped
 - **Per-session budget caps** — `--budget <usd>` or `/budget <usd>` limits accumulated session cost; warns at 80% used and refuses turns at 100%
 - **Terminal markdown rendering** — responses are styled in the terminal (headers, bold/italic, code blocks, lists, quotes, links) with a `/markdown` toggle
-- **Streaming responses** — tokens appear as they arrive, with reasoning tokens shown in gray under a `[Thinking]` banner and a `[Answer]` separator before the final response
+- **Streaming responses** — tokens appear as they arrive, with reasoning tokens shown in gray under a `❯ Thinking` banner and a `❯ Answer` separator before the final response
 - **Smooth streaming** — in interactive sessions, incoming text is paced (default on) so answers render at a steady character rate instead of popping in bursts after a long wait; disable with `--no-smooth-streaming` or `/smooth off`. A dim waiting indicator (`Waiting for response...`, or `Searching the web...` when a search is guaranteed) shows while the model is still working
 - **Usage & cost tracking** — after each turn: prompt / completion / total token counts, cache hit detection (OpenRouter), and a dollar-cost breakdown (per turn + cumulative session total). Check anytime with `/cost`
-- **Slash commands** — `/new` starts a fresh session, `/model` switches models mid-chat, `/reasoning` re-picks the reasoning effort, `/temp` sets temperature, `/budget` sets/shows the budget, `/web-search` sets the web search mode, `/web-results` sets the result count, `/attach` queues files, `/attachments` lists/clears the queue, `/retry` re-runs the last turn, `/copy` copies the last response, `/markdown` toggles rendering, `/cost` shows the running total, `/quit` exits
+- **Slash commands** — `/new` starts a fresh session, `/model` switches models mid-chat, `/reasoning` re-picks the reasoning effort, `/temp` sets temperature, `/budget` sets/shows the budget, `/web-search` sets the web search mode, `/web-results` sets the result count, `/attach` queues files, `/attachments` lists/clears the queue, `/retry` re-runs the last turn, `/copy` copies the last response, `/markdown` toggles rendering, `/smooth` sets smooth streaming, `/cost` shows the running total, `/quit` exits
 - **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/`, with an auto-generated title from the first user message. Sessions are saved when you quit, switch models, start a new session, or interrupt with `Ctrl+C`, so the last exchange is never lost
 - **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, reasoning effort, temperature, and budget. Automatically detects and uses the correct API backend. Supports prefix matching and an interactive picker
 - **Session deletion** — remove saved sessions with `--delete` (with confirmation)
-- **Markdown export** — export any saved session as a clean markdown file with `--export`, with collapsible reasoning blocks and cost summary
+- **Markdown export** — export any saved session as a clean markdown file with `--export`, with separate thinking sections and cost summary
 - **Session persistence** — last model, provider, and per-model reasoning effort and temperature are saved to `~/.communicator.json` and restored on next launch
-- **CLI flags to skip pickers** — pass `-m`, `--reasoning-effort`, or `--reasoning-effort none` to bypass interactive prompts. `-m` skips *all* pickers (model, reasoning, endpoint) for fully non-interactive use
-- **Lightweight** — two runtime dependencies, pure Node.js ESM
+- **CLI flags to skip pickers** — `-m` skips *all* pickers (model, reasoning, endpoint) for fully non-interactive use; `--reasoning-effort` (or `--reasoning-effort none`) skips only the reasoning picker
+- **Lightweight** — four runtime dependencies, pure Node.js ESM
 
 ## Requirements
 
-- **Node.js** >= 22
+- **Node.js** >= 22.3
 
 ### API Keys
 
@@ -84,7 +84,7 @@ Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make t
 |       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`. `none` disables reasoning. With `--model` alone, saves the per-model default |
 |       | `--temperature`       | `<0-2>`  | Temperature override for the session (default: per-model preference, then 0.7). With `--model` alone, saves the per-model default |
 |       | `--budget`            | `<usd>`  | Per-session budget cap in USD. Warns at 80% used, refuses turns at 100%. Bare use saves the default |
-|       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `off` (bare flag = `auto`). Per-model default is persisted in preferences |
+|       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `on`, `off` (`on` = `auto`; bare flag = `auto`). Per-model default is persisted in preferences |
 |       | `--web-results`       | `<n>`    | Number of web search results (OpenRouter only, default 10). Implies `auto` mode. Bare use saves the default |
 |       | `--attach`            | `<path>` | Attach a file to the one-shot message (repeatable: images, pdf, xlsx/docx/pptx, txt, md, code, ...). Requires a prompt argument or piped stdin |
 |       | `--no-smooth-streaming` | —      | Disable smooth streaming (default: on in interactive sessions). Bare use saves the default |
@@ -96,7 +96,7 @@ Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make t
 | `-r`  | `--resume`            | `[id]`   | Resume a saved session. No arg = picker, partial ID = prefix match                   |
 | `-x`  | `--export`            | `[id]`   | Export a session to markdown. Same ID matching as `--resume`                         |
 |       | `--delete`            | `[id]`   | Delete a saved session (asks for confirmation). Same ID matching as `--resume`       |
-|       | `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences). Bare use saves it as the default |
+|       | `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences). Bare use saves it as the default (requires a TTY and no prompt) |
 |       | `--config`            | `[path]` | Custom path for the preferences JSON file (default: `~/.communicator.json`). Bare flag prints the current config |
 |       | `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
 
@@ -195,29 +195,30 @@ cat notes.md | communicator -m "openai/gpt-4o" --system-prompt ~/reviewer.md
 - Output is TTY-aware: on a terminal you get the streaming response with reasoning labels and the usage/cost footer; when stdout is piped you get **only** the plain answer text (no banners, no usage) — ideal for scripting: `communicator -m ... "hi" | jq`.
 - The answer is saved as a regular session (title, temperature, budget, usage) and the model/temperature preferences are persisted, exactly like an interactive chat.
 - Exit codes: `0` success, `1` API/validation error (message on stderr), `130` interrupted with `Ctrl+C`.
-- A prompt argument or piped stdin cannot be combined with `--resume`, `--export`, `--delete`, or `--list-*` flags (error + exit 1).
+- A prompt argument or piped stdin cannot be combined with `--resume`, `--export`, `--delete`, or `--list-*` flags (error + exit 1). `--list-models` and `--list-sessions` work with piped stdin; only the pickers (`--resume`/`--export`/`--delete` without a unique partial ID, bare `--list-endpoints`) need a TTY.
 
 ### Chat session
 
-Once connected, responses stream token by token. Reasoning tokens appear in gray with a `[Thinking]` label. After the final answer, a usage summary is printed automatically:
+Once connected, responses stream token by token. Reasoning tokens appear in gray with a `❯ Thinking` label. After the final answer, a usage summary is printed automatically:
 
 ```
 ❯ You
 What is the capital of France?
 
-[Thinking]
+❯ Thinking
 The user is asking about the capital of France...
 
-[Answer]
+❯ Answer
 
 The capital of France is Paris.
 
 ───────────────────────────────────────
   Tokens  ↑ 12 prompt  ↓ 28 completion  = 40 total
-  Cache   0 cached tokens
   Cost    $0.000034 this turn  |  $0.000124 session
 ───────────────────────────────────────
 ```
+
+The `Cache ⚡` line appears only when OpenRouter serves a cached response; on a cache miss it is omitted entirely.
 
 Cache hits are detected and shown when OpenRouter serves a cached response. The session cost accumulates across turns within the same chat. Venice pricing is normalized from per-1M-token rates to per-token for consistent cost display.
 
@@ -233,7 +234,7 @@ In interactive (TTY) sessions, streaming is paced by default: tokens are buffere
 
 The pace is a global speed setting, persisted in preferences under `smoothSpeed` (shared by every session, like `smoothStreaming`). Set it at launch with `--smooth-speed <level|cps>` (`slow` ≈ 500 chars/s, `normal` ≈ 2000 chars/s, `fast` ≈ 8000 chars/s, or any positive chars-per-second value) or mid-chat with `/smooth slow|normal|fast|<cps>`, which also enables smooth streaming. Speed changes apply live: the very next tick of an in-flight stream uses the new pace. The speed is inert when smooth streaming is off or output is piped.
 
-While the model is working, a dim indicator appears on the response line roughly 200 ms after you send the message — `Waiting for response...` with animated dots (or `Searching the web...` when web search is forced with `always`, since that mode is guaranteed to search). The indicator is erased the moment the first token arrives, and it never shows for instant replies.
+While the model is working, a dim indicator appears on the response line roughly 200 ms after you send the message — `Waiting for response` with a braille spinner (or `Searching the web` when web search is forced with `always`, since that mode is guaranteed to search). The indicator is erased the moment the first token arrives, and it never shows for instant replies.
 
 ### Budget caps
 
@@ -241,9 +242,9 @@ While the model is working, a dim indicator appears on the response line roughly
 
 ### Web search
 
-Web search has three modes, persisted per model in `~/.communicator.json` under `webSearch` (default `off`): `auto` lets the model decide when to search (recommended — searches only when useful), `always` forces a search on every request, and `off` disables it. Set the mode with `--web-search <mode>` at launch or `/web-search <mode>` mid-chat (legacy `on` maps to `auto`; bare `--web-search` means `auto`; bare `/web-search` shows the current mode). The chat banner shows the mode with a `[web: <mode>]` badge (`[web: auto]` / `[web: always]`), plus a result count when set.
+Web search has three modes, persisted per model in `~/.communicator.json` under `webSearch` (default `off`): `auto` lets the model decide when to search (recommended — searches only when useful), `always` forces a search on every request, and `off` disables it. Set the mode with `--web-search <mode>` at launch or `/web-search <mode>` mid-chat (legacy `on` maps to `auto` in both the CLI and slash commands; bare `--web-search` means `auto`; bare `/web-search` shows the current mode). The chat banner shows the mode with a `[web: <mode>]` badge (`[web: auto]` / `[web: always]`), plus a result count when set.
 
-- **OpenRouter** — `auto` mode uses the `openrouter:web_search` server tool (beta): the model decides whether to search, with 0–N searches per request and results surfacing as `url_citation` citations. `always` mode uses the legacy `web` plugin, which works on *any* model (native engines for major providers, Exa fallback) and forces one search per request; the plugin is deprecated by OpenRouter but functional — if it is removed, `always` will fall back to `auto` with a warning. The result count defaults to 10 — the pricing sweet spot: the base $0.005/request covers up to 10 results, and each result beyond 10 costs $0.001 extra. Override it per session with `--web-results <n>` or `/web-results <n>` (the banner then shows `[web: auto: N]` / `[web: always: N]`). `--web-results` implies `auto` mode for that invocation unless an explicit `--web-search <mode>` is given (e.g. `--web-search always --web-results 5` stays `always`); `/web-results` only sets the count, it does not change the mode. Validation accepts any positive integer — larger counts work but cost more (see pricing above).
+- **OpenRouter** — `auto` mode uses the `openrouter:web_search` server tool (beta): the model decides whether to search, with 0–N searches per request and results surfacing as `url_citation` citations. `always` mode uses the legacy `web` plugin, which works on *any* model (native engines for major providers, Exa fallback) and forces one search per request; the plugin is deprecated by OpenRouter but still functional — if it is removed, `always` requests will fail until this client is updated (no automatic fallback is implemented). The result count defaults to 10 — the pricing sweet spot: the base $0.005/request covers up to 10 results, and each result beyond 10 costs $0.001 extra. Override it per session with `--web-results <n>` or `/web-results <n>` (the banner then shows `[web: auto: N]` / `[web: always: N]`). `--web-results` implies `auto` mode for that invocation unless an explicit `--web-search <mode>` is given (e.g. `--web-search always --web-results 5` stays `always`); `/web-results` only sets the count, it does not change the mode. Validation accepts any positive integer — larger counts work but cost more (see pricing above).
 - **Venice** — maps to `venice_parameters.enable_web_search`: `auto` → `"auto"`, `always` → `"on"`, `off` → `"off"`; there is no result-count knob, so `--web-results`/`/web-results` have no effect there. Venice gates on the model's `supportsWebSearch` capability: enabling `auto`/`always` for a model that doesn't support web search refuses with a message (interactive) or exits with an error (CLI flags). Venice web search is billed per usage.
 - **Sources** — when web search is enabled, a numbered `Sources` section is printed after each answer (italic clickable OSC 8 hyperlinks in supporting terminals, plain text otherwise). Inline citations are also clickable and italic: OpenRouter models emit markdown links `[domain](url)`, Venice models emit `^n^` markers that map to the sources list. Sources are display-only: they are not saved to session files, not shown on `--resume`, and not included in markdown export.
 - Web search state is stored in the session file (`webSearch` mode / `webResults`) and restored on `--resume`. Existing `webSearch: true` prefs and sessions are read as `auto` (the smart mode), so previously-forced searches become model-decided unless you pick `always`.
@@ -346,7 +347,7 @@ communicator --resume 2026-07-30
 communicator --resume 2026-07-30T19-11-45
 ```
 
-When resuming, the original model, provider backend (OpenRouter or Venice), endpoint provider, reasoning effort, temperature, budget, and web search state (mode + result count) are restored automatically. The conversation picks up right where you left off — all previous messages are preserved. `--resume` takes precedence over `-m` and `-p` flags (they are silently ignored).
+When resuming, the original model, provider backend (OpenRouter or Venice), endpoint provider, reasoning effort, temperature, budget, and web search state (mode + result count) are restored automatically. The conversation picks up right where you left off — all previous messages are preserved. Session flags override the stored values on resume (`--temperature`, `--budget`, `--web-search`, `--web-results`, `--reasoning-effort`), while `-p` is silently ignored and `-m`, `--output-dir`, and `--attach` are rejected with an error.
 
 Older sessions saved without a `providerType` field default to OpenRouter for backward compatibility.
 
@@ -383,7 +384,7 @@ communicator --export 2026-07-30T19-11-45
 communicator --export --output-dir ~/Documents/CommunicatorExports
 ```
 
-The exported markdown file is saved as `session-{id}.md` in the current working directory by default. Use `--output-dir` to set a custom directory — once set, it's saved in your preferences and used for all future exports (omit the flag to revert to cwd).
+The exported markdown file is saved as `session-{id}.md` in the current working directory by default. Use `--output-dir` to set a custom directory — once set, it's saved in your preferences and used for all future exports; exports keep going to the saved preference directory until you override it with `--output-dir` again.
 
 - **Header** — timestamp, title, model, provider, message count, reasoning effort, and accumulated cost
 - **User messages** — blockquoted under a `## You` heading
@@ -445,7 +446,7 @@ Each session is stored as a JSON file:
 - `providerType` is the API backend (`"openrouter"` or `"venice"`). Older sessions without this field default to `"openrouter"` on resume
 - `reasoningEffort` is `null` when reasoning is explicitly disabled
 - `temperature` is the resolved session temperature (0–2); `budget` is the per-session cap in USD (`null` when unset)
-- `webSearch` is the web search mode (`"off"`, `"auto"`, or `"always"`); `webResults` is the OpenRouter result count (`null` when default) — both restored on resume
+- `webSearch` is the web search mode (`"off"`, `"auto"`, or `"always"`); `webResults` is the OpenRouter result count (`null` when unset — the provider default of 10 applies) — both restored on resume
 - `title` is auto-generated from the first user message
 - User messages with attachments store `content` as an OpenAI-style parts array (`[{ type: 'text', ... }, { type: 'image_url', ... }, { type: 'file', ... }]`); plain text messages keep the string form, so older sessions stay readable
 - `pricing` stores per-token dollar amounts used for cost calculation
@@ -470,22 +471,30 @@ Stored in `~/.communicator.json` (customizable with `--config`):
   "webSearch": {
     "openai/gpt-4o": "auto"
   },
+  "smoothStreaming": true,
+  "smoothSpeed": "normal",
+  "budget": 2,
+  "webResults": 10,
   "outputDir": "/home/user/Documents/CommunicatorExports"
 }
 ```
 
-The last model and provider become defaults in the interactive pickers. Reasoning effort, temperature, and web search mode are saved per model ID and restored automatically. Legacy `webSearch: true` values are read as `auto`. Preferences are currently scoped across both API backends — your last OpenRouter model will show as the favorite even when using Venice (this will be improved in a future release).
+The last model and provider become defaults in the interactive pickers. Reasoning effort, temperature, and web search mode are saved per model ID and restored automatically. `smoothStreaming` and `smoothSpeed` are global defaults, and `budget`/`webResults` are the session defaults applied when no flag is given. Legacy `webSearch: true` values are read as `auto`. Preferences are currently scoped across both API backends — your last OpenRouter model will show as the favorite even when using Venice (this will be improved in a future release).
 
 ## How it works
 
 ```
-cli (index.js)            — commander argument parsing, delegates to command modules
+cli (index.js)            — commander argument parsing, delegates to runCli
+├── cli-main.js           — runCli: flag validation, dispatch to commands and config setters
+├── cli-utils.js          — resolveFlagOrExit (exit on invalid flag values), collectFlag (repeatable --attach)
 ├── commands/
 │   ├── list-models.js    — --list-models handler
 │   ├── list-endpoints.js — --list-endpoints handler
 │   ├── list-sessions.js  — --list-sessions handler
 │   ├── export-cmd.js     — --export handler
 │   ├── delete-cmd.js     — --delete handler (confirm + remove session)
+│   ├── config-set.js     — standalone config setters (--model, --temperature, ... persist defaults)
+│   ├── config-view.js    — bare --config: print the current preferences
 │   ├── one-shot.js       — one-shot mode: prompt argument / stdin piping
 │   ├── resume.js         — --resume handler (load session, return params)
 │   ├── chat-start.js     — session context setup, chat start, end-of-chat persist
@@ -522,6 +531,7 @@ cli (index.js)            — commander argument parsing, delegates to command m
 │   ├── markdown.js       — streaming terminal markdown renderer (in-place line redraw)
 │   ├── md-it.js          — markdown-it engine: ANSI token rendering, line classification, aligned tables
 │   ├── hyperlink.js      — OSC 8 hyperlink escape helper
+│   ├── loader.js         — waiting indicator (braille spinner) for pending responses
 │   └── stream.js         — stream renderer + history replay
 └── chat.js               — runChatSession: DI chat loop (readInput/renderer/stdout/exit/save/signals), banner, SIGINT
 ```
@@ -557,6 +567,80 @@ export function handleHttpError(status, body) → throws ApiError
 - HTTP calls should go through `fetchWithRetry` from `src/http.js`; errors must be thrown as `ApiError`, never `process.exit`
 
 See `src/providers/openrouter.js` and `src/providers/venice.js` for reference implementations.
+
+## Platform compatibility
+
+Communicator is written in pure Node.js ESM with no native dependencies, so the same codebase runs on macOS, Linux, and Windows. It is developed and tested on macOS; Linux and Windows are verified by the CI matrix (GitHub Actions runs `npm test` and `npm run lint` on all three OSes).
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| macOS    | Primary — developed and tested locally and in CI | Clipboard via built-in `pbcopy` |
+| Linux    | Expected to work, CI-verified | Clipboard tools probed at runtime: `wl-copy` (Wayland) → `xclip` → `xsel` (X11) |
+| Windows  | Expected to work, CI-verified | Clipboard via built-in `clip`; multi-line input normalizes CRLF |
+
+### Requirements
+
+- **Node.js >= 22.3** on all platforms
+- No native dependencies — pure ESM
+
+### Clipboard tools
+
+| OS      | Tools probed (in order)          | Notes |
+|---------|----------------------------------|-------|
+| macOS   | `pbcopy`                         | Built-in |
+| Windows | `clip`                           | Built-in |
+| Linux   | `wl-copy` → `xclip` → `xsel`     | First one found wins; install any single one (`wl-clipboard` on Wayland, `xclip`/`xsel` on X11) |
+
+When none is available, `/copy` reports `Copy failed: No clipboard tool found. Install wl-copy, xclip, or xsel.`
+
+### Terminals
+
+The full experience requires a modern terminal emulator:
+
+- **ANSI colors and styling** — all modern terminals
+- **OSC 8 clickable links** (web sources, inline citations) — iTerm2, Terminal.app, Warp, WezTerm, kitty, GNOME Terminal, Windows Terminal, and most others
+- **Braille spinner, markdown tables, smooth streaming** — degrade gracefully elsewhere
+
+Terminals without ANSI support get plain-text fallbacks: OSC 8 escapes are stripped automatically and streaming text is written as-is. On Windows, use **Windows Terminal** (or another modern emulator) — legacy `conhost`/`cmd` renders plain text without styling, colors, or clickable links.
+
+### Data locations
+
+All persistent data is resolved from `os.homedir()` at runtime, so the paths are identical across OSes:
+
+| Path | Contents |
+|------|----------|
+| `~/.communicator/sessions/` | Session files + `.index.json` metadata |
+| `~/.communicator.json` | Preferences |
+| `~/.communicator-system-prompt.md` | Optional custom system prompt |
+
+### Install & environment on Linux/Windows
+
+`npm link` places the `communicator` binary on your PATH. The exact location depends on your Node.js setup:
+
+| OS / setup                                   | Symlink path                               |
+|----------------------------------------------|--------------------------------------------|
+| macOS Apple Silicon + Homebrew Node          | `/opt/homebrew/bin/communicator`           |
+| macOS Intel / system Node                    | `/usr/local/bin/communicator`              |
+| Linux + nvm                                  | `~/.nvm/versions/node/<version>/bin/communicator` |
+| Windows                                      | `%APPDATA%\npm\communicator` (add `%APPDATA%\npm` to `PATH` if needed) |
+
+Set the API keys per platform:
+
+```bash
+# macOS / Linux — add to ~/.zshrc or ~/.bashrc
+export OPENROUTER_API_KEY="sk-or-v1-your-key-here"
+export VENICE_API_KEY="vkey-your-key-here"
+```
+
+```powershell
+# Windows PowerShell — current session, or persist with setx
+$env:OPENROUTER_API_KEY = "sk-or-v1-your-key-here"
+$env:VENICE_API_KEY = "vkey-your-key-here"
+setx OPENROUTER_API_KEY "sk-or-v1-your-key-here"
+setx VENICE_API_KEY "vkey-your-key-here"
+```
+
+The `~/.zshrc` / `~/.bashrc` examples in the Setup section are Unix-specific; on Windows use PowerShell `$PROFILE` instead.
 
 ## Uninstall
 

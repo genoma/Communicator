@@ -1,7 +1,7 @@
 import { formatError } from '../../errors.js'
 import { selectModelAndEndpoint } from '../../model-selection.js'
 import { getEffortLabel, selectReasoningEffort } from '../../prompts.js'
-import { resolveTemperatureFlag, resolveWebResultsFlag, resolveSmoothSpeed, webSearchGate } from '../../flags.js'
+import { resolveTemperatureFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, webSearchGate } from '../../flags.js'
 import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed } from '../../constants.js'
 import { budgetStatus } from '../../tracker.js'
 import { dim } from '../../ui/style.js'
@@ -163,9 +163,11 @@ const handlers = {
   '/budget': async (ctx) => {
     const value = ctx.args
     if (value) {
-      const parsed = Number(value)
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        console.error('Error: budget must be a positive number (USD).\n')
+      let parsed
+      try {
+        parsed = resolveBudget(value)
+      } catch (err) {
+        console.error(`\nError: ${err.message}\n`)
         return
       }
       ctx.state.setBudget(parsed)
@@ -192,8 +194,9 @@ const handlers = {
       console.error('Error: /web-search expects "on", "off", "auto", or "always".\n')
       return
     }
-    if (webSearchGate(mode, ctx.state.webSearchSupported)) {
-      console.log('This model does not support web search.\n')
+    const gateError = webSearchGate(mode, ctx.state.webSearchSupported)
+    if (gateError) {
+      console.log(`${gateError}\n`)
       return
     }
     ctx.state.setWebSearch(mode)

@@ -4,7 +4,7 @@
   "description": "Terminal-first AI chat client for OpenRouter and Venice.ai with streaming responses, session persistence, and cost tracking",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.3"
   },
   "bin": {
     "communicator": "./index.js"
@@ -12,7 +12,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "node --test",
+    "test": "node --test --experimental-test-module-mocks",
     "lint": "eslint ."
   },
   "dependencies": {

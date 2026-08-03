@@ -1,6 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { applyPreferenceUpdates } from '../src/config.js'
+import { mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { applyPreferenceUpdates, loadSystemPrompt } from '../src/config.js'
 
 test('applyPreferenceUpdates merges per-model maps by spread', () => {
   const prefs = {
@@ -123,4 +126,32 @@ test('applyPreferenceUpdates skips undefined budget, webResults and outputDir', 
   })
 
   assert.deepEqual(Object.keys(updated).sort(), ['lastModel'])
+})
+
+async function tempDir(t) {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-config-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  return dir
+}
+
+test('loadSystemPrompt returns the trimmed content of a custom file', async (t) => {
+  const dir = await tempDir(t)
+  const file = join(dir, 'prompt.md')
+  await writeFile(file, '  You are a pirate.  \n\nSecond line  ')
+  assert.equal(await loadSystemPrompt(file), 'You are a pirate.  \n\nSecond line')
+})
+
+test('loadSystemPrompt returns null for a missing custom file', async (t) => {
+  const dir = await tempDir(t)
+  assert.equal(await loadSystemPrompt(join(dir, 'missing.md')), null)
+})
+
+test('loadSystemPrompt returns null for an empty or whitespace-only file', async (t) => {
+  const dir = await tempDir(t)
+  const empty = join(dir, 'empty.md')
+  await writeFile(empty, '')
+  assert.equal(await loadSystemPrompt(empty), null)
+  const blank = join(dir, 'blank.md')
+  await writeFile(blank, '   \n \t ')
+  assert.equal(await loadSystemPrompt(blank), null)
 })

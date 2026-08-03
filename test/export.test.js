@@ -1,6 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { formatMarkdown } from '../src/export.js'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { formatMarkdown, exportSession } from '../src/export.js'
 
 function session(overrides = {}) {
   return {
@@ -65,4 +68,27 @@ test('formats user attachments as blockquoted attachment lines', () => {
   assert.match(md, /> Look at this/)
   assert.match(md, /> \*\*Attachment:\*\* `image\.png`/)
   assert.match(md, /> \*\*Attachment:\*\* `report\.pdf`/)
+})
+
+test('exportSession writes the markdown file and overwrites it', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const file = join(dir, 'session.md')
+
+  await exportSession(session(), file)
+  const first = await readFile(file, 'utf-8')
+  assert.match(first, /^# Chat Session/)
+
+  await exportSession(session({ model: 'other/model' }), file)
+  const second = await readFile(file, 'utf-8')
+  assert.match(second, /\*\*Model:\*\* `other\/model`/)
+})
+
+test('exportSession rejects when the target path is not writable', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  await assert.rejects(
+    exportSession(session(), join(dir, 'missing', 'out.md')),
+    { code: 'ENOENT' }
+  )
 })

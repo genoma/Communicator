@@ -270,7 +270,7 @@ test('/budget rejects non-positive and non-numeric values', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx } = makeCtx()
   await chatCommands['/budget']({ ...ctx, args: '0' })
-  assert.equal(consoleSpy.error(0), 'Error: budget must be a positive number (USD).\n')
+  assert.equal(consoleSpy.error(0), '\nError: Budget must be a positive number (USD).\n')
   assert.equal(ctx.state.budget, null)
   await chatCommands['/budget']({ ...ctx, args: '-3' })
   assert.equal(ctx.state.budget, null)
@@ -351,7 +351,7 @@ test('/web-search on is rejected for unsupported models', async (t) => {
   const { ctx, prefsUpdates } = makeCtx()
   ctx.state.webSearchSupported = false
   await chatCommands['/web-search']({ ...ctx, args: 'on' })
-  assert.equal(consoleSpy.log(0), 'This model does not support web search.\n')
+  assert.equal(consoleSpy.log(0), 'The selected model does not support web search.\n')
   assert.equal(ctx.state.webSearch, 'off')
   assert.deepEqual(prefsUpdates, [])
 })
@@ -361,7 +361,7 @@ test('/web-search always is rejected for unsupported models', async (t) => {
   const { ctx, prefsUpdates } = makeCtx()
   ctx.state.webSearchSupported = false
   await chatCommands['/web-search']({ ...ctx, args: 'always' })
-  assert.equal(consoleSpy.log(0), 'This model does not support web search.\n')
+  assert.equal(consoleSpy.log(0), 'The selected model does not support web search.\n')
   assert.equal(ctx.state.webSearch, 'off')
   assert.deepEqual(prefsUpdates, [])
 })
