@@ -1,8 +1,9 @@
-import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { access, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join, basename, extname } from 'node:path'
 import { SESSIONS_DIR } from './constants.js'
 import { selectSession } from './session-picker.js'
 import { messageText } from './attachments.js'
+import { CliError } from './errors.js'
 
 const SIDECAR_FILE = '.index.json'
 
@@ -21,8 +22,7 @@ export async function resolveSessionInteractive(dir, partialId, opts = {}) {
   if (partialId && typeof partialId === 'string') {
     const matches = await resolveSession(dir, partialId)
     if (matches.length === 0) {
-      console.error(`No session found matching "${partialId}"`)
-      process.exit(1)
+      throw new CliError(`Error: No session found matching "${partialId}"`)
     }
     if (matches.length === 1) {
       return matches[0].id
@@ -32,8 +32,7 @@ export async function resolveSessionInteractive(dir, partialId, opts = {}) {
 
   const sessions = await listSessions(dir)
   if (!sessions.length) {
-    console.log('No saved sessions found.')
-    process.exit(0)
+    throw new CliError('No saved sessions found.', { exitCode: 0 })
   }
   return selectSession(sessions, { message })
 }
@@ -119,6 +118,8 @@ function toSessionItem(id, meta) {
   }
 }
 
+const byIdDesc = (a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
+
 async function parseSessionFiles(dir, jsonFiles) {
   const sessions = []
   for (const file of jsonFiles) {
@@ -144,7 +145,7 @@ async function parseSessionFiles(dir, jsonFiles) {
       // skip corrupt session files
     }
   }
-  return sessions.sort((a, b) => b.id.localeCompare(a.id))
+  return sessions.sort(byIdDesc)
 }
 
 export async function listSessions(dir) {
@@ -162,7 +163,7 @@ export async function listSessions(dir) {
   if (index && Object.keys(index).length > 0 && !(await sidecarStale(dir, sidecarPath))) {
     return Object.entries(index)
       .map(([id, meta]) => toSessionItem(id, meta))
-      .sort((a, b) => b.id.localeCompare(a.id))
+      .sort(byIdDesc)
   }
 
   const sessions = await parseSessionFiles(dir, jsonFiles)
@@ -205,12 +206,20 @@ async function updateSidecar(dir, id, data) {
   }
 }
 
+async function sessionFileExists(dir, id) {
+  try {
+    await access(join(dir, `${id}.json`))
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function generateSessionId(dir) {
   const baseId = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '')
   let sessionId = baseId
   let suffix = 1
-  const existing = (await listSessions(dir)).map((s) => s.id)
-  while (existing.includes(sessionId)) {
+  while (await sessionFileExists(dir, sessionId)) {
     suffix++
     sessionId = `${baseId}-${suffix}`
   }

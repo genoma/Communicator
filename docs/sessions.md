@@ -1,0 +1,160 @@
+# Session Persistence & Resume
+
+Every chat session is automatically saved to `~/.communicator/sessions/<timestamp>.json`,
+with a `title` auto-generated from the first user message (whitespace collapsed,
+truncated to 50 chars). Sessions are saved when you quit (`/quit` or `Ctrl+C`),
+when you switch models or start a new session, and on interrupt during streaming
+(including the partial response). A metadata index at
+`~/.communicator/sessions/.index.json` powers `--list-sessions` and the
+resume/export/delete pickers so listing never has to parse full session files.
+If the index is missing or stale (e.g. sessions from an older version), it is
+rebuilt automatically from the session files.
+
+## Listing sessions
+
+```bash
+communicator --list-sessions
+```
+
+Output shows each session's timestamp, model, message count, and the session title:
+
+```
+3 saved session(s):
+
+2026-07-30 19:15:22  openai/gpt-4o                        12 msgs       "Write a Python script that..."
+2026-07-30 18:42:10  deepseek-v4-flash                     5 msgs       "Explain how garbage collection..."
+2026-07-30 17:11:45  google/gemini-2.5-pro                 23 msgs       "Compare Rust and Go for..."
+```
+
+## Resuming a session
+
+```bash
+# Interactive picker — browse and select from all saved sessions
+communicator --resume
+
+# Prefix match — resumes if exactly one session starts with "2026-07-30"
+communicator --resume 2026-07-30
+
+# Full session ID — resumes the exact session
+communicator --resume 2026-07-30T19-11-45
+```
+
+When resuming, the original model, provider backend (OpenRouter or Venice),
+endpoint provider, reasoning effort, temperature, budget, and web search state
+(mode + result count) are restored automatically. The conversation picks up
+right where you left off — all previous messages are preserved. Session flags
+override the stored values on resume (`--temperature`, `--budget`,
+`--web-search`, `--web-results`, `--reasoning-effort`), while `-p` is silently
+ignored and `-m`, `--output-dir`, and `--attach` are rejected with an error.
+
+Older sessions saved without a `providerType` field default to OpenRouter for
+backward compatibility.
+
+## Deleting sessions
+
+```bash
+# Interactive picker — browse and select from all saved sessions
+communicator --delete
+
+# Prefix match — deletes if exactly one session starts with "2026-07-30"
+communicator --delete 2026-07-30
+
+# Full session ID — deletes the exact session
+communicator --delete 2026-07-30T19-11-45
+```
+
+`--delete` always asks for confirmation before removing the session file (and
+its sidecar entry). It cannot be combined with `--resume`, `--export`, or a
+prompt argument, and needs a TTY for the confirmation prompt.
+
+## Exporting sessions
+
+Export any saved session as a clean, readable markdown file:
+
+```bash
+# Interactive picker — browse and select from all saved sessions
+communicator --export
+
+# Prefix match — exports if exactly one session starts with "2026-07-30"
+communicator --export 2026-07-30
+
+# Full session ID — exports the exact session
+communicator --export 2026-07-30T19-11-45
+
+# Export to a custom directory (persisted in preferences)
+communicator --export --output-dir ~/Documents/CommunicatorExports
+```
+
+The exported markdown file is saved as `session-{id}.md` in the current working
+directory by default. Use `--output-dir` to set a custom directory — once set,
+it's saved in your preferences and used for all future exports; exports keep
+going to the saved preference directory until you override it with
+`--output-dir` again.
+
+- **Header** — timestamp, title, model, provider, message count, reasoning effort, and accumulated cost
+- **User messages** — blockquoted under a `## You` heading
+- **Assistant responses** — reasoning shown under `### thinking`, final answer under `### Answer`
+- **Cost** — calculated from token usage and provider pricing (shows "N/A" if pricing is unavailable)
+
+Example output:
+
+```markdown
+# Chat Session — 2026-07-30 19:11:45 UTC
+**Title:** What is the capital of France?
+**Model:** `openai/gpt-4o` | **Provider:** OpenAI | **Messages:** 4 | **Cost:** $0.000124
+
+---
+
+## You
+> What is the capital of France?
+
+---
+
+## Assistant
+### thinking
+The user is asking a straightforward geography question...
+
+### Answer
+The capital of France is Paris.
+```
+
+## Session file format
+
+Each session is stored as a JSON file:
+
+```json
+{
+  "model": "openai/gpt-4o",
+  "providerName": "OpenAI",
+  "providerType": "openrouter",
+  "reasoningEffort": "high",
+  "temperature": 0.7,
+  "budget": 0.5,
+  "webSearch": "auto",
+  "webResults": 5,
+  "title": "What is the capital of France?",
+  "pricing": {
+    "prompt": 0.0000025,
+    "completion": 0.00001
+  },
+  "createdAt": "2026-07-30T19:11:45.000Z",
+  "updatedAt": "2026-07-30T19:15:22.000Z",
+  "messages": [
+    { "role": "system", "content": "You are a helpful assistant." },
+    { "role": "user", "content": "Hello" },
+    { "role": "assistant", "content": "Hi there!", "reasoning": "...", "usage": { "prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17 } }
+  ]
+}
+```
+
+- `providerName` is the endpoint provider (e.g., `"OpenAI"` for OpenRouter, `"venice"` for Venice)
+- `providerType` is the API backend (`"openrouter"` or `"venice"`). Older sessions without this field default to `"openrouter"` on resume
+- `reasoningEffort` is `null` when reasoning is explicitly disabled
+- `temperature` is the resolved session temperature (0–2); `budget` is the per-session cap in USD (`null` when unset)
+- `webSearch` is the web search mode (`"off"`, `"auto"`, or `"always"`); `webResults` is the OpenRouter result count (`null` when unset — the provider default of 10 applies) — both restored on resume
+- `title` is auto-generated from the first user message
+- User messages with attachments store `content` as an OpenAI-style parts array (`[{ type: 'text', ... }, { type: 'image_url', ... }, { type: 'file', ... }]`); plain text messages keep the string form, so older sessions stay readable
+- `pricing` stores per-token dollar amounts used for cost calculation
+- `updatedAt` is bumped on every auto-save
+- Empty sessions (no user messages) are never saved
+- Older sessions without `temperature`/`budget`/`title` fall back to `0.7` / no cap / no title

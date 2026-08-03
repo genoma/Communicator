@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseSSEStream, extractPartialToken } from '../src/sse-parser.js'
+import { ApiError } from '../src/errors.js'
 
 function streamReader(chunks) {
   const stream = new ReadableStream({
@@ -70,12 +71,81 @@ test('captures usage chunk and skips [DONE]', async () => {
   assert.deepEqual(finalUsage, usage)
 })
 
-test('skips unparseable lines', async () => {
-  const { fullText } = await parseSSEStream(
-    streamReader(['data: {not json\n\n', event({ choices: [{ delta: { content: 'kept' } }] })]),
+test('skips unparseable lines and counts them', async () => {
+  const { fullText, skippedChunks } = await parseSSEStream(
+    streamReader([
+      'data: {not json\n\n',
+      'data: {also not json\n\n',
+      event({ choices: [{ delta: { content: 'kept' } }] }),
+    ]),
     () => {}
   )
   assert.equal(fullText, 'kept')
+  assert.equal(skippedChunks, 2)
+})
+
+test('rethrows reader errors with the pending buffer attached', async () => {
+  const partial = 'data: {"choices":[{"delta":{"content":"par'
+  let first = true
+  const reader = {
+    read: async () => {
+      if (first) {
+        first = false
+        return { done: false, value: new TextEncoder().encode(partial) }
+      }
+      throw new Error('boom')
+    },
+  }
+
+  await assert.rejects(parseSSEStream(reader, () => {}), (err) => err.message === 'boom' && err.pendingBuffer === partial)
+})
+
+test('throws a retryable stall error when the stream goes idle', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const partial = 'data: {"choices":[{"delta":{"content":"par'
+  let reads = 0
+  const reader = {
+    read: () => {
+      reads++
+      if (reads === 1) return Promise.resolve({ done: false, value: new TextEncoder().encode(partial) })
+      return new Promise(() => {})
+    },
+  }
+
+  const promise = parseSSEStream(reader, () => {}, null, { idleTimeoutMs: 10_000 })
+  const assertion = assert.rejects(
+    promise,
+    (err) => err instanceof ApiError && err.retryable === true && /stalled after 10s/.test(err.message) && err.pendingBuffer === partial
+  )
+  await Promise.resolve()
+  await Promise.resolve()
+  t.mock.timers.tick(10_000)
+  await assertion
+})
+
+test('does not start the idle timer when idleTimeoutMs is zero', async () => {
+  const { fullText } = await parseSSEStream(
+    streamReader([event({ choices: [{ delta: { content: 'ok' } }] })]),
+    () => {},
+    null,
+    { idleTimeoutMs: 0 }
+  )
+  assert.equal(fullText, 'ok')
+})
+
+test('extractPartialToken handles escaped quotes and newlines', () => {
+  assert.deepEqual(
+    extractPartialToken('data: {"choices":[{"delta":{"content":"Say \\"hi\\" no'),
+    { type: 'content', text: 'Say "hi" no' }
+  )
+  assert.deepEqual(
+    extractPartialToken('data: {"choices":[{"delta":{"content":"line1\\nline2\\t'),
+    { type: 'content', text: 'line1\nline2\t' }
+  )
+  assert.deepEqual(
+    extractPartialToken('data: {"choices":[{"delta":{"reasoning_content":"half\\'),
+    { type: 'reasoning', text: 'half' }
+  )
 })
 
 test('extractPartialToken pulls in-flight reasoning or content', () => {

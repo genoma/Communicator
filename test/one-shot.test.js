@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { CliError } from '../src/errors.js'
 
 const tempHome = await mkdtemp(join(tmpdir(), 'communicator-home-'))
 after(() => rm(tempHome, { recursive: true, force: true }))
@@ -107,7 +108,7 @@ async function runOneShot(t, { overrides = {}, prefs = {}, prompt = 'Hello' } = 
     await oneShotCmd({ apiKey: 'test-key', opts: opts(overrides), prefs, systemPrompt: null, providerType: 'openrouter', prompt })
     return { exited: false }
   } catch (e) {
-    if (e instanceof ExitSignal) return { exited: true }
+    if (e instanceof CliError) return { exited: true, exitCode: e.exitCode, message: e.message }
     throw e
   }
 }
@@ -159,16 +160,13 @@ test('one-shot budget pre-check refuses an already-exhausted budget before any r
   withApiKey(t)
   const file = await tempConfig(t)
   const out = []
-  const err = []
-  t.mock.method(console, 'error', (msg) => err.push(String(msg)))
   t.mock.method(console, 'log', (msg) => out.push(String(msg)))
-  const getExitCode = mockExit(t)
 
-  const { exited } = await runOneShot(t, { overrides: { config: file }, prefs: { budget: 0 } })
+  const { exited, exitCode, message } = await runOneShot(t, { overrides: { config: file }, prefs: { budget: 0 } })
 
   assert.equal(exited, true)
-  assert.equal(getExitCode(), 1)
-  assert.equal(err[0], 'Error: Budget exhausted ($0.000000 of $0.000000).')
+  assert.equal(exitCode, 1)
+  assert.equal(message, 'Error: Budget exhausted ($0.000000 of $0.000000).')
   assert.ok(!fetchCalls.some((u) => u.includes('/chat/completions')))
   assert.equal(out.length, 0)
 })
@@ -177,15 +175,12 @@ test('one-shot with a negative configured budget is refused too', async (t) => {
   mockOpenRouterStream(t)
   withApiKey(t)
   const file = await tempConfig(t)
-  const err = []
-  t.mock.method(console, 'error', (msg) => err.push(String(msg)))
-  const getExitCode = mockExit(t)
 
-  const { exited } = await runOneShot(t, { overrides: { config: file }, prefs: { budget: -1 } })
+  const { exited, exitCode, message } = await runOneShot(t, { overrides: { config: file }, prefs: { budget: -1 } })
 
   assert.equal(exited, true)
-  assert.equal(getExitCode(), 1)
-  assert.match(err[0], /Budget exhausted/)
+  assert.equal(exitCode, 1)
+  assert.match(message, /Budget exhausted/)
 })
 
 test('one-shot without a prompt errors before any API call', async (t) => {
@@ -197,15 +192,12 @@ test('one-shot without a prompt errors before any API call', async (t) => {
     if (original) Object.defineProperty(process.stdin, 'isTTY', original)
     else delete process.stdin.isTTY
   })
-  const err = []
-  t.mock.method(console, 'error', (msg) => err.push(String(msg)))
   const getExitCode = mockExit(t)
 
   const { oneShotCmd } = await import('../src/commands/one-shot.js')
   await assert.rejects(
     oneShotCmd({ apiKey: 'test-key', opts: opts(), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: '' }),
-    (e) => e instanceof ExitSignal
+    (e) => e instanceof CliError && /no prompt provided/.test(e.message) && e.exitCode === 1
   )
-  assert.equal(getExitCode(), 1)
-  assert.match(err[0], /no prompt provided/)
+  assert.equal(getExitCode(), null)
 })

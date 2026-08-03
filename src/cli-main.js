@@ -1,7 +1,8 @@
 import { ExitPromptError } from '@inquirer/core'
 import { getApiKey, loadPreferences, loadSystemPrompt, savePreferences } from './config.js'
 import { getProvider } from './providers/index.js'
-import { ApiError, formatError } from './errors.js'
+import { ApiError, CliError, formatError } from './errors.js'
+import { err, debug } from './ui/io.js'
 import { listModelsCmd } from './commands/list-models.js'
 import { listEndpointsCmd } from './commands/list-endpoints.js'
 import { listSessionsCmd } from './commands/list-sessions.js'
@@ -13,6 +14,7 @@ import { configViewCmd } from './commands/config-view.js'
 import { configSetCmd } from './commands/config-set.js'
 import { resolveSmoothSpeed } from './flags.js'
 import { resolveFlagOrExit } from './cli-utils.js'
+import { isConfigSetter, validateCliFlags } from './cli-validation.js'
 
 export async function runCli(opts, promptArg) {
   try {
@@ -23,121 +25,33 @@ export async function runCli(opts, promptArg) {
       process.exit(0)
     }
     if (error instanceof ApiError) {
-      console.error(`Error: ${formatError(error)}`)
+      debug(error.stack)
+      err(`Error: ${formatError(error)}`)
       process.exit(1)
     }
+    if (error instanceof CliError) {
+      debug(error.stack)
+      err(error.message)
+      process.exit(error.exitCode)
+    }
+    debug(error?.stack)
     throw error
   }
 }
 
 async function main(opts, promptArg) {
   const providerType = opts.provider || 'openrouter'
-  const interactiveFlags = opts.resume !== undefined || opts.export !== undefined || opts.delete !== undefined
-  const exitModeFlags = opts.listModels || opts.listEndpoints !== undefined || opts.listSessions
-
-  const WEB_SEARCH_MODES = new Set(['auto', 'always', 'on', 'off'])
-  if (opts.webSearch !== undefined && opts.webSearch !== true && !WEB_SEARCH_MODES.has(opts.webSearch)) {
-    console.error('Error: --web-search expects "auto", "always", "on", or "off" (bare flag = auto).')
-    process.exit(1)
-  }
 
   resolveFlagOrExit(resolveSmoothSpeed, opts.smoothSpeed)
 
-  if (opts.resume !== undefined && opts.export !== undefined) {
-    console.error('Cannot use --resume and --export together. Use one at a time.')
-    process.exit(1)
-  }
-
-  if (opts.delete !== undefined && (opts.resume !== undefined || opts.export !== undefined)) {
-    console.error('Cannot use --delete with --resume or --export. Use one at a time.')
-    process.exit(1)
-  }
-
-  if (promptArg && (interactiveFlags || exitModeFlags)) {
-    console.error('Cannot combine a prompt argument with --resume, --export, --delete, or --list-* flags.')
-    process.exit(1)
-  }
-
-  if (!process.stdin.isTTY && interactiveFlags) {
-    console.error('Cannot use --resume, --export, or --delete with piped stdin (interactive pickers need a TTY).')
-    process.exit(1)
-  }
-
-  const hasAttachments = (opts.attach?.length ?? 0) > 0
-
-  const SESSION_FLAGS_LIST = '--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach'
-
-  const exclusionError = (prefix, forbidden) =>
-    `Error: ${prefix} and the session flags (${SESSION_FLAGS_LIST}) cannot be combined with ${forbidden}.`
-
-  const sessionOnlyFlags =
-    opts.temperature !== undefined ||
-    opts.budget !== undefined ||
-    opts.reasoningEffort !== undefined ||
-    opts.webSearch !== undefined ||
-    opts.webResults !== undefined ||
-    opts.smoothSpeed !== undefined ||
-    opts.smoothStreaming === false ||
-    opts.systemPrompt !== undefined ||
-    hasAttachments
-
-  if (exitModeFlags && (sessionOnlyFlags || opts.model !== undefined || opts.outputDir !== undefined)) {
-    console.error(exclusionError('--model, --output-dir, --system-prompt', '--list-* flags'))
-    process.exit(1)
-  }
-
-  if (opts.export !== undefined && (sessionOnlyFlags || opts.model !== undefined)) {
-    console.error(exclusionError('--model, --system-prompt', '--export'))
-    process.exit(1)
-  }
-
-  if (opts.delete !== undefined && (sessionOnlyFlags || opts.model !== undefined || opts.outputDir !== undefined)) {
-    console.error(exclusionError('--model, --output-dir, --system-prompt', '--delete'))
-    process.exit(1)
-  }
-
-  if (opts.resume !== undefined && (opts.model !== undefined || opts.outputDir !== undefined || hasAttachments)) {
-    console.error('Error: --model, --output-dir and --attach cannot be combined with --resume (resumed sessions keep their own model; --output-dir only applies to --export).')
-    process.exit(1)
-  }
-
-  if (opts.outputDir !== undefined && opts.export === undefined && (promptArg || !process.stdin.isTTY)) {
-    console.error('Error: --output-dir sets the default export directory. Use it alone (with a TTY) or with --export.')
-    process.exit(1)
+  const validationErrors = validateCliFlags(opts, { promptArg, isTTY: process.stdin.isTTY })
+  if (validationErrors.length > 0) {
+    throw new CliError(validationErrors[0])
   }
 
   if (opts.config === true) {
-    const hasOther =
-      promptArg ||
-      opts.model !== undefined ||
-      opts.provider !== 'openrouter' ||
-      opts.listModels ||
-      opts.listEndpoints !== undefined ||
-      opts.resume !== undefined ||
-      opts.export !== undefined ||
-      opts.outputDir !== undefined ||
-      opts.listSessions ||
-      opts.systemPrompt !== undefined ||
-      opts.reasoningEffort !== undefined ||
-      opts.temperature !== undefined ||
-      opts.budget !== undefined ||
-      opts.webSearch !== undefined ||
-      opts.webResults !== undefined ||
-      opts.smoothStreaming === false ||
-      opts.smoothSpeed !== undefined ||
-      opts.delete !== undefined ||
-      hasAttachments
-    if (hasOther) {
-      console.error('Error: bare --config (config view) cannot be combined with other flags.')
-      process.exit(1)
-    }
     await configViewCmd()
     process.exit(0)
-  }
-
-  if (hasAttachments && !promptArg && process.stdin.isTTY) {
-    console.error('Error: --attach requires a prompt argument or piped stdin.')
-    process.exit(1)
   }
 
   const provider = getProvider(providerType)
@@ -176,23 +90,13 @@ async function main(opts, promptArg) {
     process.exit(0)
   }
 
-  const configSetterFlags =
-    opts.model !== undefined ||
-    opts.outputDir !== undefined ||
-    opts.temperature !== undefined ||
-    opts.budget !== undefined ||
-    opts.reasoningEffort !== undefined ||
-    opts.webSearch !== undefined ||
-    opts.webResults !== undefined ||
-    opts.smoothSpeed !== undefined ||
-    opts.smoothStreaming === false
-
-  if (configSetterFlags && !promptArg && process.stdin.isTTY && opts.resume === undefined) {
+  if (isConfigSetter(opts) && !promptArg && process.stdin.isTTY && opts.resume === undefined) {
     const prefs = await loadPreferences(opts.config)
     const apiKey = opts.model !== undefined ? getApiKey(providerType) : ''
     try {
       await configSetCmd({ opts, prefs, providerType, apiKey })
     } catch (err) {
+      if (err instanceof CliError) throw err
       console.error(`Error: ${formatError(err)}`)
       process.exit(1)
     }
@@ -200,8 +104,7 @@ async function main(opts, promptArg) {
   }
 
   if (!process.stdin.isTTY && !opts.model) {
-    console.error('Interactive selection needs a TTY. Use -m <model-id> when piping input.')
-    process.exit(1)
+    throw new CliError('Interactive selection needs a TTY. Use -m <model-id> when piping input.')
   }
 
   const apiKey = getApiKey(providerType)

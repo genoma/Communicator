@@ -145,7 +145,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
   const cacheStatus = res.headers.get(CACHE_HEADER)
   const reader = res.body.getReader()
 
-  const { fullText, fullReasoning, finalUsage, fullSources } = await parseSSEStream(reader, onToken, onSources)
+  const { fullText, fullReasoning, finalUsage, fullSources, skippedChunks } = await parseSSEStream(reader, onToken, onSources)
 
   const usage = finalUsage
 
@@ -155,6 +155,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
       reasoning: fullReasoning || undefined,
       usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cacheHit: true },
       sources: fullSources,
+      skippedChunks,
     }
   }
 
@@ -162,5 +163,5 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
     usage.cacheHit = true
   }
 
-  return { content: fullText, reasoning: fullReasoning || undefined, usage, sources: fullSources }
+  return { content: fullText, reasoning: fullReasoning || undefined, usage, sources: fullSources, skippedChunks }
 }

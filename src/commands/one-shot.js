@@ -6,7 +6,7 @@ import { ensureSessionsDir, generateSessionId } from '../sessions.js'
 import { createStreamRenderer, printSources } from '../ui/stream.js'
 import { UsageTracker, budgetLine } from '../tracker.js'
 import { ChatState } from '../chat-state.js'
-import { formatError } from '../errors.js'
+import { CliError, formatError } from '../errors.js'
 import { extname } from 'node:path'
 import { classifyPath, loadAttachment, attachmentGate, buildContent } from '../attachments.js'
 import { resolveSessionFlags, attachGateOptions, persistSession } from '../session-setup.js'
@@ -19,8 +19,7 @@ async function readStdin() {
   for await (const chunk of process.stdin) {
     total += chunk.length
     if (total > MAX_STDIN_BYTES) {
-      console.error('Error: stdin input exceeds the 10MB limit.')
-      process.exit(1)
+      throw new CliError('Error: stdin input exceeds the 10MB limit.')
     }
     chunks.push(chunk)
   }
@@ -36,16 +35,14 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     text = await readStdin()
   }
   if (!text) {
-    console.error('Error: no prompt provided. Pass a prompt argument or pipe input via stdin.')
-    process.exit(1)
+    throw new CliError('Error: no prompt provided. Pass a prompt argument or pipe input via stdin.')
   }
 
   const { forcedEffort, forcedTemperature, budget, forcedWebResults, smoothSpeed } = resolveSessionFlags(opts, prefs)
 
   const tracker = new UsageTracker()
   if (budget != null && tracker.cost >= budget) {
-    console.error(`Error: Budget exhausted (${formatCost(tracker.cost)} of ${formatCost(budget)}).`)
-    process.exit(1)
+    throw new CliError(`Error: Budget exhausted (${formatCost(tracker.cost)} of ${formatCost(budget)}).`)
   }
 
   let selection
@@ -54,13 +51,13 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     if (opts.model) {
       selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort })
     } else if (stdinPiped) {
-      console.error('Error: interactive model selection needs a TTY. Use -m <model-id> when piping input.')
-      process.exit(1)
+      throw new CliError('Error: interactive model selection needs a TTY. Use -m <model-id> when piping input.')
     } else {
       selection = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: forcedEffort })
     }
     temperature = forcedTemperature ?? prefs.temperature?.[selection.modelId] ?? DEFAULT_TEMPERATURE
   } catch (err) {
+    if (err instanceof CliError) throw err
     console.error(`Error: ${formatError(err)}`)
     process.exit(1)
   }
@@ -68,8 +65,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   const webSearch = resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: prefs.webSearch?.[selection.modelId] })
   const webSearchGateError = webSearchGate(webSearch, selection.webSearchSupported)
   if (webSearchGateError) {
-    console.error(`Error: ${webSearchGateError}`)
-    process.exit(1)
+    throw new CliError(`Error: ${webSearchGateError}`)
   }
   const webResults = forcedWebResults ?? prefs.webResults ?? null
 
@@ -79,19 +75,16 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     for (const path of opts.attach) {
       const { kind } = classifyPath(path)
       if (!kind) {
-        console.error(`Error: Unsupported file type: ${extname(path).slice(1) || '(none)'}`)
-        process.exit(1)
+        throw new CliError(`Error: Unsupported file type: ${extname(path).slice(1) || '(none)'}`)
       }
       const gateError = attachmentGate([{ kind }], gateOptions)
       if (gateError) {
-        console.error(`Error: ${gateError}`)
-        process.exit(1)
+        throw new CliError(`Error: ${gateError}`)
       }
       try {
         attachments.push(await loadAttachment(path))
       } catch (err) {
-        console.error(`Error: ${err.message}`)
-        process.exit(1)
+        throw new CliError(`Error: ${err.message}`)
       }
     }
   }
@@ -141,6 +134,9 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
       if (result.sources?.length > 0) {
         printSources(result.sources, process.stdout)
       }
+      if (result.skippedChunks > 0) {
+        process.stdout.write(`${result.skippedChunks} malformed stream chunk${result.skippedChunks > 1 ? 's' : ''} skipped\n`)
+      }
     } else {
       result = await provider.chatCompletion({ ...completionOpts, onToken: () => {} })
     }
@@ -149,8 +145,8 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
       console.error('\nInterrupted.')
       process.exit(130)
     }
-    console.error(`Error: ${formatError(err)}`)
-    process.exit(1)
+    if (err instanceof CliError) throw err
+    throw new CliError(`Error: ${formatError(err)}`)
   } finally {
     process.off('SIGINT', onSigint)
   }
