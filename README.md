@@ -195,7 +195,7 @@ cat notes.md | communicator -m "openai/gpt-4o" --system-prompt ~/reviewer.md
 - Output is TTY-aware: on a terminal you get the streaming response with reasoning labels and the usage/cost footer; when stdout is piped you get **only** the plain answer text (no banners, no usage) — ideal for scripting: `communicator -m ... "hi" | jq`.
 - The answer is saved as a regular session (title, temperature, budget, usage) and the model/temperature preferences are persisted, exactly like an interactive chat.
 - Exit codes: `0` success, `1` API/validation error (message on stderr), `130` interrupted with `Ctrl+C`.
-- A prompt argument or piped stdin cannot be combined with `--resume`, `--export`, `--delete`, or `--list-*` flags (error + exit 1). `--list-models` and `--list-sessions` work with piped stdin; only the pickers (`--resume`/`--export`/`--delete` without a unique partial ID, bare `--list-endpoints`) need a TTY.
+- A prompt argument or piped stdin cannot be combined with `--resume`, `--export`, `--delete`, or `--list-*` flags (error + exit 1). `--list-models`, `--list-sessions`, and `--list-endpoints <model>` work with piped stdin; the interactive pickers (`--resume`/`--export`/`--delete` in any form — even with a full session ID, and bare `--list-endpoints`) need a TTY.
 
 ### Chat session
 
