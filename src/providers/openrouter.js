@@ -48,6 +48,7 @@ export async function fetchModels(apiKey) {
       id: m.id,
       name: m.name,
       provider: m.id.split('/')[0],
+      aliasTarget: m.alias_target?.slug || null,
       contextLength: m.context_length,
       description: m.description,
       reasoning: r
@@ -65,12 +66,27 @@ export async function fetchModels(apiKey) {
   })
 }
 
-export async function fetchEndpoints(apiKey, modelId) {
-  const res = await fetchWithRetry(`${OPENROUTER_BASE}/models/${modelId}/endpoints`, {
+export async function fetchEndpoints(apiKey, modelId, allModels) {
+  const model = allModels?.find((m) => m.id === modelId)
+  let queryId = model?.aliasTarget || modelId
+
+  const request = () => fetchWithRetry(`${OPENROUTER_BASE}/models/${queryId}/endpoints`, {
     headers: { Authorization: `Bearer ${apiKey}` },
   }, { errorResponse: handleHttpError })
 
-  const { data } = await res.json()
+  let res = await request()
+  let { data } = await res.json()
+
+  if (!data?.endpoints?.length && modelId.startsWith('~') && queryId === modelId) {
+    const models = await fetchModels(apiKey)
+    const aliasTarget = models.find((m) => m.id === modelId)?.aliasTarget
+    if (aliasTarget && aliasTarget !== queryId) {
+      queryId = aliasTarget
+      res = await request()
+      ;({ data } = await res.json())
+    }
+  }
+
   if (!data?.endpoints?.length) {
     return []
   }
