@@ -46,7 +46,7 @@ export function resolveBudget(value) {
   if (value === undefined || value === null || value === '') return null
   const budget = Number(value)
   if (!Number.isFinite(budget) || budget <= 0) {
-    throw new Error('--budget must be a positive number (USD).')
+    throw new Error('Budget must be a positive number (USD).')
   }
   return budget
 }

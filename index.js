@@ -25,7 +25,7 @@ program
   .option('--reasoning-effort <level>', 'reasoning effort: max, xhigh, high, medium, low, minimal, none')
   .option('--temperature <0-2>', 'temperature override (0 to 2)')
   .option('--budget <usd>', 'per-session budget cap in USD')
-  .option('--web-search [mode]', 'web search mode: auto, always, off (bare flag = auto; per-model default persisted)')
+  .option('--web-search [mode]', 'web search mode: auto, always, on, off (bare flag = auto; per-model default persisted)')
   .option('--web-results <n>', 'number of web search results (OpenRouter only, default 10)')
   .option('--attach <path>', 'attach a file (repeatable; images/pdf/xlsx/txt/...)', collectFlag, [])
   .option('--no-smooth-streaming', 'disable smooth streaming (default: on in interactive sessions)')

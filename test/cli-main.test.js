@@ -111,7 +111,18 @@ function mockVeniceApi(t) {
 
 test('invalid --web-search mode is rejected before any dispatch', async (t) => {
   const { err } = await runAndExit(t, { webSearch: 'bogus' }, undefined, 1)
-  assert.match(err[0], /--web-search expects "auto", "always", or "off"/)
+  assert.match(err[0], /--web-search expects "auto", "always", "on", or "off"/)
+})
+
+test('--web-search on is accepted and persisted as auto', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  mockOpenRouterApi(t)
+  const file = await tempConfig(t)
+  const { out } = await runAndExit(t, { config: file, model: 'test/model-a', webSearch: 'on' }, undefined, 0)
+  assert.match(out.join('\n'), /Web search set to auto/)
+  const saved = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(saved.webSearch['test/model-a'], 'auto')
 })
 
 test('invalid --smooth-speed is rejected before any dispatch', async (t) => {
@@ -192,6 +203,13 @@ test('--model cannot be combined with --resume', async (t) => {
   withTTY(t, true)
   const { err } = await runAndExit(t, { resume: true, model: 'x' }, undefined, 1)
   assert.match(err[0], /cannot be combined with --resume/)
+})
+
+test('--attach cannot be combined with --resume', async (t) => {
+  withTTY(t, true)
+  const { err } = await runAndExit(t, { resume: true, attach: ['a.png'] }, undefined, 1)
+  assert.match(err[0], /cannot be combined with --resume/)
+  assert.match(err[0], /--attach/)
 })
 
 test('--output-dir cannot be combined with --resume', async (t) => {

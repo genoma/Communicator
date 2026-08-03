@@ -19,7 +19,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
     return {
       modelId: result.modelId,
       endpointProviderName: result.providerName,
-      reasoningEffort: result.reasoningEffort,
+      reasoningEffort: forcedEffort !== undefined ? forcedEffort : (result.reasoningEffort ?? null),
       temperature: forcedTemperature ?? result.temperature ?? DEFAULT_TEMPERATURE,
       budget: forcedBudget ?? result.budget ?? null,
       webSearch: resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: result.webSearch }),

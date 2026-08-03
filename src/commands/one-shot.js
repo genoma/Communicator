@@ -1,10 +1,11 @@
 import { getProvider } from '../providers/index.js'
-import { DEFAULT_TEMPERATURE, cpsToCharsPerTick } from '../constants.js'
+import { DEFAULT_TEMPERATURE, cpsToCharsPerTick, formatCost } from '../constants.js'
 import { resolveWebSearchFlag, webSearchGate } from '../flags.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
 import { ensureSessionsDir, generateSessionId } from '../sessions.js'
 import { createStreamRenderer, printSources } from '../ui/stream.js'
 import { UsageTracker, budgetLine } from '../tracker.js'
+import { ChatState } from '../chat-state.js'
 import { formatError } from '../errors.js'
 import { extname } from 'node:path'
 import { classifyPath, loadAttachment, attachmentGate, buildContent } from '../attachments.js'
@@ -40,6 +41,12 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   }
 
   const { forcedEffort, forcedTemperature, budget, forcedWebResults, smoothSpeed } = resolveSessionFlags(opts, prefs)
+
+  const tracker = new UsageTracker()
+  if (budget != null && tracker.cost >= budget) {
+    console.error(`Error: Budget exhausted (${formatCost(tracker.cost)} of ${formatCost(budget)}).`)
+    process.exit(1)
+  }
 
   let selection
   let temperature
@@ -97,7 +104,6 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     { role: 'user', content: buildContent(text, attachments) },
   ]
 
-  const tracker = new UsageTracker()
   const ttyOut = process.stdout.isTTY === true
   const controller = new AbortController()
   const onSigint = () => controller.abort()
@@ -171,20 +177,20 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     if (!content.endsWith('\n')) process.stdout.write('\n')
   }
 
-  const finalState = {
-    messages,
-    sessionId,
-    createdAt,
+  const state = new ChatState({
     modelId: selection.modelId,
     endpointProviderName: selection.endpointProviderName,
-    providerType: provider.meta.name,
     reasoningEffort: selection.reasoningEffort,
     temperature,
     budget,
     webSearch,
     webResults,
     pricing: selection.pricing,
-  }
+    sessionId,
+    createdAt,
+    messages,
+  })
+  const finalState = state.toFinalState(provider.meta.name)
 
   await persistSession({ finalState, prefs, config: opts.config })
 }

@@ -10,8 +10,8 @@ function clipboardCommands(platform = process.platform) {
   ]
 }
 
-export function copyText(text) {
-  const commands = clipboardCommands()
+export function copyText(text, { platform = process.platform } = {}) {
+  const commands = clipboardCommands(platform)
   return new Promise((resolve) => {
     const tryNext = (index) => {
       if (index >= commands.length) {

@@ -35,9 +35,9 @@ async function main(opts, promptArg) {
   const interactiveFlags = opts.resume !== undefined || opts.export !== undefined || opts.delete !== undefined
   const exitModeFlags = opts.listModels || opts.listEndpoints !== undefined || opts.listSessions
 
-  const WEB_SEARCH_MODES = new Set(['auto', 'always', 'off'])
+  const WEB_SEARCH_MODES = new Set(['auto', 'always', 'on', 'off'])
   if (opts.webSearch !== undefined && opts.webSearch !== true && !WEB_SEARCH_MODES.has(opts.webSearch)) {
-    console.error('Error: --web-search expects "auto", "always", or "off" (bare flag = auto).')
+    console.error('Error: --web-search expects "auto", "always", "on", or "off" (bare flag = auto).')
     process.exit(1)
   }
 
@@ -65,6 +65,11 @@ async function main(opts, promptArg) {
 
   const hasAttachments = (opts.attach?.length ?? 0) > 0
 
+  const SESSION_FLAGS_LIST = '--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach'
+
+  const exclusionError = (prefix, forbidden) =>
+    `Error: ${prefix} and the session flags (${SESSION_FLAGS_LIST}) cannot be combined with ${forbidden}.`
+
   const sessionOnlyFlags =
     opts.temperature !== undefined ||
     opts.budget !== undefined ||
@@ -77,22 +82,22 @@ async function main(opts, promptArg) {
     hasAttachments
 
   if (exitModeFlags && (sessionOnlyFlags || opts.model !== undefined || opts.outputDir !== undefined)) {
-    console.error('Error: --model, --output-dir, --system-prompt and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach) cannot be combined with --list-* flags.')
+    console.error(exclusionError('--model, --output-dir, --system-prompt', '--list-* flags'))
     process.exit(1)
   }
 
   if (opts.export !== undefined && (sessionOnlyFlags || opts.model !== undefined)) {
-    console.error('Error: --model, --system-prompt and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach) cannot be combined with --export.')
+    console.error(exclusionError('--model, --system-prompt', '--export'))
     process.exit(1)
   }
 
   if (opts.delete !== undefined && (sessionOnlyFlags || opts.model !== undefined || opts.outputDir !== undefined)) {
-    console.error('Error: --model, --output-dir, --system-prompt and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach) cannot be combined with --delete.')
+    console.error(exclusionError('--model, --output-dir, --system-prompt', '--delete'))
     process.exit(1)
   }
 
-  if (opts.resume !== undefined && (opts.model !== undefined || opts.outputDir !== undefined)) {
-    console.error('Error: --model and --output-dir cannot be combined with --resume (resumed sessions keep their own model; --output-dir only applies to --export).')
+  if (opts.resume !== undefined && (opts.model !== undefined || opts.outputDir !== undefined || hasAttachments)) {
+    console.error('Error: --model, --output-dir and --attach cannot be combined with --resume (resumed sessions keep their own model; --output-dir only applies to --export).')
     process.exit(1)
   }
 
@@ -182,7 +187,7 @@ async function main(opts, promptArg) {
     opts.smoothSpeed !== undefined ||
     opts.smoothStreaming === false
 
-  if (configSetterFlags && !promptArg && process.stdin.isTTY) {
+  if (configSetterFlags && !promptArg && process.stdin.isTTY && opts.resume === undefined) {
     const prefs = await loadPreferences(opts.config)
     const apiKey = opts.model !== undefined ? getApiKey(providerType) : ''
     try {
