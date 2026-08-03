@@ -15,33 +15,41 @@ export const pickerTheme = {
   },
 }
 
-export async function selectModel(models, lastModel) {
+export function orderModelChoices(models, lastModel) {
   const choices = models.map((m) => ({
     name: `${m.name}  (${m.id})`,
     value: { id: m.id, name: m.name },
     description: m.description || `${m.contextLength?.toLocaleString() || '?'} context`,
   }))
 
+  if (lastModel) {
+    const idx = choices.findIndex((c) => c.value.id === lastModel)
+    if (idx >= 0) {
+      const fav = choices[idx]
+      return [fav, ...choices.filter((_, i) => i !== idx)]
+    }
+  }
+  return choices
+}
+
+export function filterModelChoices(choices, input) {
+  const q = input.toLowerCase()
+  return choices.filter(
+    (c) =>
+      c.name.toLowerCase().includes(q) ||
+      c.value.id.toLowerCase().includes(q)
+  )
+}
+
+export async function selectModel(models, lastModel) {
+  const choices = orderModelChoices(models, lastModel)
+
   const answer = await search({
     message: 'Select a model',
     theme: pickerTheme,
     source: async (input) => {
-      if (!input) {
-        if (lastModel) {
-          const idx = choices.findIndex((c) => c.value.id === lastModel)
-          if (idx >= 0) {
-            const [fav] = choices.splice(idx, 1)
-            return [fav, ...choices]
-          }
-        }
-        return choices
-      }
-      const q = input.toLowerCase()
-      return choices.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.value.id.toLowerCase().includes(q)
-      )
+      if (!input) return choices
+      return filterModelChoices(choices, input)
     },
   })
 

@@ -186,6 +186,63 @@ test('network errors are retried with backoff before succeeding', async (t) => {
   assert.equal(calls, 3)
 })
 
+test('openrouter fetchModels captures aliasTarget for tilde aliases', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => jsonResponse({
+    data: [
+      { id: '~org/model-latest', name: 'Model Latest', alias_target: { slug: 'org/model-0731' } },
+      { id: 'org/model', name: 'Model' },
+    ],
+  }))
+
+  const models = await openrouter.fetchModels('key')
+  assert.equal(models[0].aliasTarget, 'org/model-0731')
+  assert.equal(models[1].aliasTarget, null)
+})
+
+test('openrouter fetchEndpoints resolves tilde aliases to their target slug', async (t) => {
+  const requested = []
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    requested.push(url)
+    return jsonResponse({ data: { endpoints: [
+      { name: 'Provider', provider_name: 'Provider', tag: 'tag', status: 'online', pricing: {}, supported_parameters: [] },
+    ] } })
+  })
+
+  const models = [{ id: '~org/model-latest', aliasTarget: 'org/model-0731' }]
+  const endpoints = await openrouter.fetchEndpoints('key', '~org/model-latest', models)
+
+  assert.equal(endpoints.length, 1)
+  assert.equal(requested.length, 1)
+  assert.ok(requested[0].endsWith('/models/org/model-0731/endpoints'), requested[0])
+})
+
+test('openrouter fetchEndpoints fetches models to resolve aliases when none are passed', async (t) => {
+  const requested = []
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    requested.push(url)
+    if (url.endsWith('/models')) {
+      return jsonResponse({ data: [{ id: '~org/model-latest', alias_target: { slug: 'org/model-0731' } }] })
+    }
+    if (url.includes('/endpoints')) {
+      const alias = url.includes('~org')
+      return alias
+        ? jsonResponse({ data: { id: '~org/model-latest', endpoints: [] } })
+        : jsonResponse({ data: { endpoints: [
+          { name: 'Provider', provider_name: 'Provider', tag: 'tag', status: 'online', pricing: {}, supported_parameters: [] },
+        ] } })
+    }
+    return jsonResponse({})
+  })
+
+  const endpoints = await openrouter.fetchEndpoints('key', '~org/model-latest')
+
+  assert.equal(endpoints.length, 1)
+  assert.equal(requested.length, 3)
+  assert.ok(requested[0].endsWith('/models/~org/model-latest/endpoints'), requested[0])
+  assert.ok(requested[1].endsWith('/models'), requested[1])
+  assert.ok(requested[2].endsWith('/models/org/model-0731/endpoints'), requested[2])
+})
+
 test('openrouter fetchEndpoints maps endpoint pricing and parameters', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => jsonResponse({
     data: {
