@@ -26,6 +26,13 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **CLI flags to skip pickers** — `-m` skips *all* pickers (model, reasoning, endpoint) for fully non-interactive use; `--reasoning-effort` (or `--reasoning-effort none`) skips only the reasoning picker
 - **Lightweight** — four runtime dependencies, pure Node.js ESM
 
+## Documentation
+
+Guides in the [`docs/`](docs/) folder cover specific workflows in depth:
+
+- 📘 **[`docs/commands.md`](docs/commands.md)** — Full usage examples: one-shot mode, session management, reasoning, web search, and standalone config commands
+- 📕 **[`docs/sessions.md`](docs/sessions.md)** — Session persistence: listing, resuming, deleting, exporting, and the on-disk session file format
+
 ## Requirements
 
 - **Node.js** >= 22.3
@@ -103,7 +110,7 @@ Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make t
 Pass `--reasoning-effort none` to disable reasoning entirely.
 
 Full usage examples (one-shot mode, session management, reasoning, web search,
-standalone config commands) live in [`docs/commands.md`](docs/commands.md).
+standalone config commands) live in [`docs/commands.md`](docs/commands.md) (see [Documentation](#documentation)).
 
 ## Usage
 
@@ -272,7 +279,7 @@ communicator --delete          # delete a session (with confirmation)
 
 Detailed examples for listing, resuming, deleting, and exporting sessions,
 plus the on-disk session file format, live in
-[`docs/sessions.md`](docs/sessions.md).
+[`docs/sessions.md`](docs/sessions.md) (see [Documentation](#documentation)).
 
 ## Preferences
 
