@@ -1,6 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, normalizeWebSearchMode, webSearchGate, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed } from '../src/flags.js'
+import { collectFlag } from '../src/cli-utils.js'
+
+test('collectFlag accumulates repeated --attach values', () => {
+  assert.deepEqual(collectFlag('a.png', []), ['a.png'])
+  assert.deepEqual(collectFlag('b.pdf', collectFlag('a.png', [])), ['a.png', 'b.pdf'])
+  assert.deepEqual(collectFlag('c.txt', ['a.png', 'b.pdf']), ['a.png', 'b.pdf', 'c.txt'])
+})
 
 test('resolveTemperatureFlag parses string and number values', () => {
   assert.equal(resolveTemperatureFlag({ temperature: '0.5' }), 0.5)

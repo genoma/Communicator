@@ -8,6 +8,7 @@ import { savePreferences, applyPreferenceUpdates } from '../config.js'
 import { createStreamRenderer, printSources } from '../ui/stream.js'
 import { UsageTracker, budgetLine } from '../tracker.js'
 import { formatError } from '../errors.js'
+import { loadAttachment, attachmentGate, buildContent } from '../attachments.js'
 
 const MAX_STDIN_BYTES = 10 * 1024 * 1024
 
@@ -69,12 +70,33 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   }
   const webResults = forcedWebResults ?? prefs.webResults ?? null
 
+  const attachments = []
+  if (opts.attach?.length) {
+    for (const path of opts.attach) {
+      try {
+        attachments.push(await loadAttachment(path))
+      } catch (err) {
+        console.error(`Error: ${err.message}`)
+        process.exit(1)
+      }
+    }
+    const gateError = attachmentGate(attachments, {
+      visionSupported: selection.visionSupported,
+      fileSupported: selection.fileSupported,
+      providerName: provider.meta.name,
+    })
+    if (gateError) {
+      console.error(`Error: ${gateError}`)
+      process.exit(1)
+    }
+  }
+
   const dir = await ensureSessionsDir()
   const sessionId = await generateSessionId(dir)
   const createdAt = new Date().toISOString()
   const messages = [
     { role: 'system', content: systemPrompt || 'You are a helpful assistant.' },
-    { role: 'user', content: text },
+    { role: 'user', content: buildContent(text, attachments) },
   ]
 
   const tracker = new UsageTracker()

@@ -128,6 +128,39 @@ test('generateTitle collapses whitespace and truncates to 50 chars', () => {
   assert.equal(generateTitle([{ role: 'user', content: '   \n  ' }]), '')
 })
 
+test('generateTitle reads text parts from attachment messages', () => {
+  const messages = [
+    { role: 'system', content: 'x' },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'What is  this' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,AA' } },
+      ],
+    },
+  ]
+  assert.equal(generateTitle(messages), 'What is this')
+})
+
+test('sidecar preview reads text parts from attachment messages', async (t) => {
+  const dir = await tempDir(t)
+  await writeFile(join(dir, 'parts.json'), JSON.stringify(sessionData({
+    messages: [
+      { role: 'system', content: 'x' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Analyze this chart' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,AA' } },
+        ],
+      },
+    ],
+  })))
+
+  const sessions = await listSessions(dir)
+  assert.equal(sessions[0].preview, 'Analyze this chart')
+})
+
 test('sidecar stores title and formatSessionItem prefers it over preview', async (t) => {
   const dir = await tempDir(t)
   await saveSession(dir, '2026-01-01T00-00-00', sessionData({ title: 'My custom title' }))

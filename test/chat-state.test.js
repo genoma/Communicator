@@ -25,7 +25,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   const s = makeState()
   assert.deepEqual(
     Object.keys(s).sort(),
-    ['budget', 'createdAt', 'endpointProviderName', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pricing', 'reasoningEffort', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'webResults', 'webSearch', 'webSearchSupported']
+    ['budget', 'createdAt', 'endpointProviderName', 'fileSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'visionSupported', 'webResults', 'webSearch', 'webSearchSupported']
   )
   assert.equal(s.modelId, 'org/model')
   assert.equal(s.endpointProviderName, 'Provider')
@@ -37,6 +37,9 @@ test('constructor keeps parity with the old state literal fields', () => {
   assert.equal(s.webSearch, 'auto')
   assert.equal(s.webResults, 3)
   assert.equal(s.webSearchSupported, true)
+  assert.equal(s.visionSupported, undefined)
+  assert.equal(s.fileSupported, undefined)
+  assert.deepEqual(s.pendingAttachments, [])
   assert.equal(s.sessionId, '2026-01-01T00-00-00')
   assert.equal(s.createdAt, '2026-01-01T00:00:00.000Z')
   assert.deepEqual(s.modelReasoning, { supported: true })
@@ -44,6 +47,12 @@ test('constructor keeps parity with the old state literal fields', () => {
   assert.equal(s.smoothStreaming, true)
   assert.equal(s.smoothSpeed, 2000)
   assert.deepEqual(s.messages, [{ role: 'system', content: 'You are a helpful assistant.' }])
+})
+
+test('constructor accepts vision and file capability flags', () => {
+  const s = makeState({ visionSupported: true, fileSupported: false })
+  assert.equal(s.visionSupported, true)
+  assert.equal(s.fileSupported, false)
 })
 
 test('constructor builds default system message from systemContent', () => {
@@ -91,12 +100,14 @@ test('toFinalState returns exactly the old finalState field list', () => {
 
 test('resetForNewSession clears messages, budget, webResults and returns the reset marker', () => {
   const s = makeState({ messages: [{ role: 'system', content: 'x' }, { role: 'user', content: 'hi' }] })
+  s.pendingAttachments.push({ kind: 'image', filename: 'a.png', size: 1 })
   const marker = s.resetForNewSession('Fresh prompt.')
 
   assert.equal(marker, true)
   assert.deepEqual(s.messages, [{ role: 'system', content: 'Fresh prompt.' }])
   assert.equal(s.budget, null)
   assert.equal(s.webResults, null)
+  assert.deepEqual(s.pendingAttachments, [])
   assert.equal(s.temperature, 1.1)
   assert.equal(s.webSearch, 'auto')
   assert.equal(s.sessionId, '2026-01-01T00-00-00')
@@ -140,6 +151,8 @@ test('applyModelSelection switches model and reads per-model prefs', () => {
     supportsReasoning: true,
     modelReasoning: { supported: true, supportsEffort: true },
     webSearchSupported: true,
+    visionSupported: true,
+    fileSupported: false,
   }
   const prefs = {
     temperature: { 'other/model': 0.3 },
@@ -156,6 +169,8 @@ test('applyModelSelection switches model and reads per-model prefs', () => {
   assert.equal(s.temperature, 0.3)
   assert.equal(s.webSearch, 'auto')
   assert.equal(s.webSearchSupported, true)
+  assert.equal(s.visionSupported, true)
+  assert.equal(s.fileSupported, false)
 })
 
 test('applyModelSelection falls back to default temperature and pref web search', () => {

@@ -2,6 +2,7 @@ import { dim, italic, you, thinking, answer } from './style.js'
 import { createMarkdownRenderer, renderText } from './markdown.js'
 import { hyperlink } from './hyperlink.js'
 import { SMOOTH_CHARS_PER_TICK, SMOOTH_TICK_MS } from '../constants.js'
+import { contentText, contentAttachments } from '../attachments.js'
 
 export function createStreamRenderer({ markdown = false, stdout = process.stdout, smooth = false, smoothCharsPerTick = SMOOTH_CHARS_PER_TICK, smoothTickMs = SMOOTH_TICK_MS } = {}) {
   const md = createMarkdownRenderer({
@@ -136,14 +137,17 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
   stdout.write('\n')
   for (const msg of messages) {
     if (msg.role === 'user') {
-      stdout.write(`${you()}\n${markdown ? renderText(msg.content) : msg.content}\n\n`)
+      stdout.write(`${you()}\n${markdown ? renderText(contentText(msg.content)) : contentText(msg.content)}\n\n`)
+      for (const att of contentAttachments(msg.content)) {
+        stdout.write(`${dim(`${italic('attached')}: ${att.filename}`)}\n`)
+      }
     } else if (msg.role === 'assistant') {
       if (msg.reasoning) {
         stdout.write(`${thinking()}\n\n`)
         stdout.write(`${dim(msg.reasoning)}\n`)
         stdout.write(`\n${answer()}\n\n`)
       }
-      stdout.write(`${markdown ? renderText(msg.content) : msg.content}\n\n`)
+      stdout.write(`${markdown ? renderText(contentText(msg.content)) : contentText(msg.content)}\n\n`)
     }
   }
 }

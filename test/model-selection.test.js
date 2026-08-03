@@ -157,3 +157,81 @@ test('non-interactive selection normalizes a none model default to null', async 
   const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'none-default' })
   assert.equal(sel.reasoningEffort, null)
 })
+
+test('selection reports vision support from openrouter architecture modalities', async () => {
+  const provider = fakeProvider({
+    meta: { name: 'openrouter', hasEndpoints: true },
+    async fetchModels() {
+      return [{ id: 'vision', reasoning: null, pricing: null, architecture: { input_modalities: ['text', 'image'] }, supportedParameters: null }]
+    },
+    async fetchEndpoints() {
+      return [{ providerName: 'P', pricing: null, supportedParameters: [] }]
+    },
+  })
+  const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'vision' })
+  assert.equal(sel.visionSupported, true)
+  assert.equal(sel.fileSupported, true)
+})
+
+test('selection reports no vision when modalities exclude image', async () => {
+  const provider = fakeProvider({
+    meta: { name: 'openrouter', hasEndpoints: true },
+    async fetchModels() {
+      return [{ id: 'text-only', reasoning: null, pricing: null, architecture: { input_modalities: ['text'] }, supportedParameters: null }]
+    },
+    async fetchEndpoints() {
+      return [{ providerName: 'P', pricing: null, supportedParameters: [] }]
+    },
+  })
+  const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'text-only' })
+  assert.equal(sel.visionSupported, false)
+})
+
+test('selection proves vision via endpoint supportedParameters', async () => {
+  const provider = fakeProvider({
+    meta: { name: 'openrouter', hasEndpoints: true },
+    async fetchModels() {
+      return [{ id: 'alias-model', reasoning: null, pricing: null, architecture: { input_modalities: [] }, supportedParameters: null }]
+    },
+    async fetchEndpoints() {
+      return [{ providerName: 'P', pricing: null, supportedParameters: ['image_url', 'reasoning'] }]
+    },
+  })
+  const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'alias-model' })
+  assert.equal(sel.visionSupported, true)
+})
+
+test('selection keeps vision unknown when no metadata is available', async () => {
+  const provider = fakeProvider({
+    meta: { name: 'openrouter', hasEndpoints: true },
+    async fetchModels() {
+      return [{ id: 'mystery', reasoning: null, pricing: null }]
+    },
+    async fetchEndpoints() {
+      return [{ providerName: 'P', pricing: null, supportedParameters: undefined }]
+    },
+  })
+  const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'mystery' })
+  assert.equal(sel.visionSupported, undefined)
+  assert.equal(sel.fileSupported, true)
+})
+
+test('selection reads venice vision and file capabilities', async () => {
+  const provider = fakeProvider({
+    async fetchModels() {
+      return [
+        { id: 'vision', reasoning: null, pricing: null, capabilities: { supportsVision: true } },
+        { id: 'no-vision', reasoning: null, pricing: null, capabilities: { supportsVision: false } },
+        { id: 'no-files', reasoning: null, pricing: null, capabilities: { supportsFileInput: false } },
+      ]
+    },
+  })
+  const vision = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'vision' })
+  assert.equal(vision.visionSupported, true)
+  assert.equal(vision.fileSupported, true)
+  const noVision = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'no-vision' })
+  assert.equal(noVision.visionSupported, false)
+  const noFiles = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'no-files' })
+  assert.equal(noFiles.visionSupported, undefined)
+  assert.equal(noFiles.fileSupported, false)
+})

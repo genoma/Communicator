@@ -46,3 +46,23 @@ test('hides system messages and omits cost when pricing is missing', () => {
   assert.match(md, /\*\*Cost:\*\* N\/A/)
   assert.doesNotMatch(md, /\*\*Reasoning:\*\*/)
 })
+
+test('formats user attachments as blockquoted attachment lines', () => {
+  const md = formatMarkdown(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Look at this' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
+          { type: 'file', file: { filename: 'report.pdf', file_data: 'data:application/pdf;base64,BBBB' } },
+        ],
+      },
+      { role: 'assistant', content: 'I see it.' },
+    ],
+  }))
+  assert.match(md, /> Look at this/)
+  assert.match(md, /> \*\*Attachment:\*\* `image\.png`/)
+  assert.match(md, /> \*\*Attachment:\*\* `report\.pdf`/)
+})

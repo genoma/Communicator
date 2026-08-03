@@ -1,6 +1,30 @@
 import { selectModel, selectProvider, selectReasoningEffort, BACK_SENTINEL } from './prompts.js'
 import { resolveEffortDefault, isWebSearchSupported } from './reasoning.js'
 
+function capabilityFlags(provider, modelData, endpoint) {
+  const isVenice = provider.meta.name === 'venice'
+  const capabilities = modelData?.capabilities
+  const modalities = modelData?.architecture?.input_modalities
+  const supportedParams = modelData?.supportedParameters ?? endpoint?.supportedParameters
+
+  let visionSupported
+  if (isVenice && capabilities?.supportsVision === true) {
+    visionSupported = true
+  } else if (isVenice && capabilities?.supportsVision === false) {
+    visionSupported = false
+  } else if (Array.isArray(modalities) && modalities.includes('image')) {
+    visionSupported = true
+  } else if (Array.isArray(supportedParams) && supportedParams.includes('image_url')) {
+    visionSupported = true
+  } else if ((Array.isArray(modalities) && modalities.length > 0) || (Array.isArray(supportedParams) && supportedParams.length > 0)) {
+    visionSupported = false
+  }
+
+  const fileSupported = isVenice ? capabilities?.supportsFileInput !== false : true
+
+  return { visionSupported, fileSupported }
+}
+
 export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort }) {
   const models = await provider.fetchModels(apiKey)
 
@@ -31,6 +55,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
         supportsReasoning: !!ep?.supportedParameters?.supportsReasoningEffort,
         modelReasoning: modelData?.reasoning || null,
         webSearchSupported: isWebSearchSupported(provider.meta, modelData),
+        ...capabilityFlags(provider, modelData, ep),
       }
     }
 
@@ -53,6 +78,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
       supportsReasoning: !!ep.supportedParameters?.supportsReasoningEffort,
       modelReasoning: modelData?.reasoning || null,
       webSearchSupported: isWebSearchSupported(provider.meta, modelData),
+      ...capabilityFlags(provider, modelData, ep),
     }
   }
 }
@@ -92,5 +118,6 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
     supportsReasoning: !!ep?.supportedParameters?.supportsReasoningEffort,
     modelReasoning: reasoning,
     webSearchSupported: isWebSearchSupported(provider.meta, modelData),
+    ...capabilityFlags(provider, modelData, ep),
   }
 }

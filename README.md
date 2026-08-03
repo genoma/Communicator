@@ -10,13 +10,14 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Reasoning effort control** — per-model effort level persisted across sessions. Only shown for models that support reasoning. OpenRouter uses its native reasoning format; Venice uses standard OpenAI `reasoning_effort`
 - **Temperature control** — `--temperature <0-2>` flag, `/temp` command, per-model default persisted in preferences
 - **Web search** — three modes per model (`off`, `auto` = model decides when to search, `always` = force a search every request) via `--web-search`/`/web-search`. OpenRouter lets you set the result count (`--web-results <n>`, `/web-results <n>`); Venice has no result-count knob
+- **File & image attachments** — attach images, PDFs, office files, and text/code files to messages with `/attach <path>...` (interactive) or `--attach <path>` (one-shot). Images require a vision-capable model; PDFs and text files work anywhere; office files (xlsx/docx/pptx) are extracted server-side on Venice only
 - **One-shot mode** — pass a prompt argument or pipe input via stdin for a single non-interactive answer. TTY-aware output: styled with usage footer on a terminal, plain answer text only when piped
 - **Per-session budget caps** — `--budget <usd>` or `/budget <usd>` limits accumulated session cost; warns at 80% used and refuses turns at 100%
 - **Terminal markdown rendering** — responses are styled in the terminal (headers, bold/italic, code blocks, lists, quotes, links) with a `/markdown` toggle
 - **Streaming responses** — tokens appear as they arrive, with reasoning tokens shown in gray under a `[Thinking]` banner and a `[Answer]` separator before the final response
 - **Smooth streaming** — in interactive sessions, incoming text is paced (default on) so answers render at a steady character rate instead of popping in bursts after a long wait; disable with `--no-smooth-streaming` or `/smooth off`. A dim waiting indicator (`Waiting for response...`, or `Searching the web...` when a search is guaranteed) shows while the model is still working
 - **Usage & cost tracking** — after each turn: prompt / completion / total token counts, cache hit detection (OpenRouter), and a dollar-cost breakdown (per turn + cumulative session total). Check anytime with `/cost`
-- **Slash commands** — `/new` starts a fresh session, `/model` switches models mid-chat, `/reasoning` re-picks the reasoning effort, `/temp` sets temperature, `/budget` sets/shows the budget, `/web-search` sets the web search mode, `/web-results` sets the result count, `/retry` re-runs the last turn, `/copy` copies the last response, `/markdown` toggles rendering, `/cost` shows the running total, `/quit` exits
+- **Slash commands** — `/new` starts a fresh session, `/model` switches models mid-chat, `/reasoning` re-picks the reasoning effort, `/temp` sets temperature, `/budget` sets/shows the budget, `/web-search` sets the web search mode, `/web-results` sets the result count, `/attach` queues files, `/attachments` lists/clears the queue, `/retry` re-runs the last turn, `/copy` copies the last response, `/markdown` toggles rendering, `/cost` shows the running total, `/quit` exits
 - **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/`, with an auto-generated title from the first user message. Sessions are saved when you quit, switch models, start a new session, or interrupt with `Ctrl+C`, so the last exchange is never lost
 - **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, reasoning effort, temperature, and budget. Automatically detects and uses the correct API backend. Supports prefix matching and an interactive picker
 - **Session deletion** — remove saved sessions with `--delete` (with confirmation)
@@ -85,6 +86,7 @@ Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make t
 |       | `--budget`            | `<usd>`  | Per-session budget cap in USD. Warns at 80% used, refuses turns at 100%. Bare use saves the default |
 |       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `off` (bare flag = `auto`). Per-model default is persisted in preferences |
 |       | `--web-results`       | `<n>`    | Number of web search results (OpenRouter only, default 10). Implies `auto` mode. Bare use saves the default |
+|       | `--attach`            | `<path>` | Attach a file to the one-shot message (repeatable: images, pdf, xlsx/docx/pptx, txt, md, code, ...). Requires a prompt argument or piped stdin |
 |       | `--no-smooth-streaming` | —      | Disable smooth streaming (default: on in interactive sessions). Bare use saves the default |
 |       | `--smooth-speed`      | `<level\|cps>` | Smooth streaming speed: `slow`, `normal`, `fast`, or chars per second (default: `normal` ≈ 2000). Bare use saves the default |
 | `-V`  | `--version`           | —        | Print the version and exit                                                           |
@@ -122,6 +124,8 @@ communicator -m "openai/gpt-4o" "What is the capital of France?"     # positiona
 echo "Summarize this: ..." | communicator -m "openai/gpt-4o"          # piped stdin
 communicator -m "openai/gpt-4o" --temperature 0.2 "Write a haiku"     # with temperature
 cat notes.md | communicator -m "openai/gpt-4o" --budget 0.5 "Fix typos:" # with budget cap
+communicator -m "openai/gpt-4o" --attach screenshot.png "What is the bug?"   # vision model + image
+communicator -p venice -m "qwen-3-7-max" --attach data.xlsx "Summarize this" # Venice office file
 
 # Session management
 communicator --list-sessions                                   # list saved sessions
@@ -244,6 +248,28 @@ Web search has three modes, persisted per model in `~/.communicator.json` under 
 - **Sources** — when web search is enabled, a numbered `Sources` section is printed after each answer (italic clickable OSC 8 hyperlinks in supporting terminals, plain text otherwise). Inline citations are also clickable and italic: OpenRouter models emit markdown links `[domain](url)`, Venice models emit `^n^` markers that map to the sources list. Sources are display-only: they are not saved to session files, not shown on `--resume`, and not included in markdown export.
 - Web search state is stored in the session file (`webSearch` mode / `webResults`) and restored on `--resume`. Existing `webSearch: true` prefs and sessions are read as `auto` (the smart mode), so previously-forced searches become model-decided unless you pick `always`.
 
+### File & image attachments
+
+Attach local files to a message so the model can see or read them. Queued files are sent with the next message, and the original message text goes along unchanged. Attachments persist in the session file (as OpenAI-style content parts), so `--resume` replays them and re-sending works.
+
+Supported formats:
+
+| Kind     | Extensions                                              | How it is sent                                        |
+|----------|---------------------------------------------------------|-------------------------------------------------------|
+| Image    | `png`, `jpg`, `jpeg`, `gif`, `webp`, `bmp`              | base64 `image_url` part — requires a vision model      |
+| PDF      | `pdf`                                                   | base64 `file` part (server-side parsing on any model)  |
+| Office   | `xlsx`, `xls`, `docx`, `pptx`                           | base64 `file` part — **Venice only** (server-side extraction) |
+| Text     | `txt`, `md`, `markdown`, `csv`, `json`, `yaml`, `yml`, `toml`, `xml`, `log`, `py`, `js`, `mjs`, `cjs`, `ts`, `tsx`, `jsx`, `css`, `html`, `sh`, `sql`, `go`, `rs`, `java`, `c`, `cpp`, `h`, `hpp`, `ini` | inlined as a `text` part (no base64 bloat) |
+
+Anything else is rejected with `Unsupported file type: <ext>`.
+
+- **Interactive** — `/attach <path>...` queues one or more files (relative paths resolve from the current directory); each file prints `attached: <name> (<kind>, <size>)` or an error line, and one failing file does not abort the rest. `/attach` with no arguments lists the queue, `/attachments` lists it too, and `/attachments clear` empties it. Queued files are sent with the very next message you type and the queue resets. `/new` also clears the queue.
+- **One-shot** — `--attach <path>` is repeatable and requires a prompt argument or piped stdin (`communicator --attach report.pdf "Summarize"`). It cannot be combined with `--resume`, `--export`, `--delete`, `--list-*`, or bare `--config`.
+- **Vision gating** — image attachments are blocked at attach time when the selected model is known to lack vision (`The selected model does not support image input.`). Unknown capability allows the attachment — API errors surface naturally. PDFs and text files work on any model. Office files are rejected on OpenRouter with a clear message (`xlsx/docx/pptx are only supported on Venice...`) and accepted on Venice, which extracts them server-side.
+- **Switching models** — `/model` re-checks the queue against the new model and drops entries it can't accept, with a warning line per dropped file.
+- **Limits** — images over 20 MB and pdf/office files over 25 MB (the Venice cap) are rejected; inline text over 256 KB warns about context usage.
+- **Display & export** — resumed sessions render `attached: <filename>` lines under the message; markdown export adds `> **Attachment:** \`<filename>\`` lines; `/copy` copies only the message text, never base64.
+
 ### Slash commands
 
 | Input          | Action                                                                              |
@@ -256,6 +282,8 @@ Web search has three modes, persisted per model in `~/.communicator.json` under 
 | `/budget`      | Show used/remaining budget, or set one with `/budget <usd>`                          |
 | `/web-search`  | Set the web search mode (`/web-search auto|always|off`; `on` = `auto`), show the current mode with no args |
 | `/web-results` | Set the web search result count (`/web-results <n>`, OpenRouter only), show it with no args |
+| `/attach`      | Queue files for the next message (`/attach <path>...`). No args = same as `/attachments` |
+| `/attachments` | List the queued attachments, or clear them with `/attachments clear` |
 | `/retry`       | Re-run the last user turn (regenerates the last answer)                             |
 | `/copy`        | Copy the last assistant response to the clipboard                                   |
 | `/markdown`    | Toggle terminal markdown rendering (default on)                                     |
@@ -419,6 +447,7 @@ Each session is stored as a JSON file:
 - `temperature` is the resolved session temperature (0–2); `budget` is the per-session cap in USD (`null` when unset)
 - `webSearch` is the web search mode (`"off"`, `"auto"`, or `"always"`); `webResults` is the OpenRouter result count (`null` when default) — both restored on resume
 - `title` is auto-generated from the first user message
+- User messages with attachments store `content` as an OpenAI-style parts array (`[{ type: 'text', ... }, { type: 'image_url', ... }, { type: 'file', ... }]`); plain text messages keep the string form, so older sessions stay readable
 - `pricing` stores per-token dollar amounts used for cost calculation
 - `updatedAt` is bumped on every auto-save
 - Empty sessions (no user messages) are never saved
@@ -461,7 +490,7 @@ cli (index.js)            — commander argument parsing, delegates to command m
 │   ├── resume.js         — --resume handler (load session, return params)
 │   ├── chat-start.js     — session context setup, chat start, end-of-chat persist
 │   └── chat/
-│       └── index.js      — slash command registry (12 chatCommands) + budgetGuard
+│       └── index.js      — slash command registry (15 chatCommands) + budgetGuard
 ├── providers/
 │   ├── index.js          — factory: getProvider(name) → provider module; common chatCompletion contract
 │   ├── openrouter.js     — OpenRouter API client: models, endpoints, chat completions
@@ -470,6 +499,7 @@ cli (index.js)            — commander argument parsing, delegates to command m
 ├── http.js               — fetchWithTimeout (30s) + fetchWithRetry (backoff, stream-safe)
 ├── errors.js             — ApiError (status/provider/retryable) and formatError
 ├── sse-parser.js         — shared SSE stream parser (consumed by both providers)
+├── attachments.js        — attachment model: classify/load files, capability gate, content parts ↔ text helpers
 ├── config.js             — API key lookup (provider meta), preferences load/save (~/.communicator.json)
 ├── constants.js          — shared constants (paths, labels, temperature bounds, SSE markers) and formatCost
 ├── prompts.js            — interactive TUI pickers using @inquirer/prompts (model, provider, reasoning effort)
@@ -502,7 +532,7 @@ Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI arg
 The chat flow is built around four pieces:
 
 - **`ChatState` (`src/chat-state.js`)** — the mutable session state (model, reasoning effort, temperature, budget, web search, messages, …) with pure transitions (`setTemperature`, `applyModelSelection`, `toggleMarkdown`, …). `toFinalState()` produces the exact snapshot written to the session file; `resetForNewSession()` backs `/new`.
-- **Command registry (`src/commands/chat/index.js`)** — the 12 slash commands live in a data-driven map of `/name → async (ctx) => outcome`; `CHAT_COMMANDS` is derived from the registry keys so the suggestion list and the loop can never drift. Handlers never call `process.exit` — they return `{ exit }` / `{ reset }` signals that the loop translates into exit codes, which keeps every handler unit-testable (`test/chat-commands.test.js`).
+- **Command registry (`src/commands/chat/index.js`)** — the 15 slash commands live in a data-driven map of `/name → async (ctx) => outcome`; `CHAT_COMMANDS` is derived from the registry keys so the suggestion list and the loop can never drift. Handlers never call `process.exit` — they return `{ exit }` / `{ reset }` signals that the loop translates into exit codes, which keeps every handler unit-testable (`test/chat-commands.test.js`).
 - **`runChatSession(ctx, deps)` (`src/chat.js`)** — the chat loop is dependency-injected: `deps = { readInput, renderer, stdout, exit, saveSession, savePrefs, onSignal, newSessionId }`, each defaulting to the real implementation, so production behavior is unchanged while the whole loop is drivable with fakes (`test/chat-loop.test.js`). Signal handling (idle/streaming SIGINT, `beforeExit`, `uncaughtException`) is registered through `onSignal`.
 - **`src/flags.js`** — CLI flag parsing helpers (`resolveTemperatureFlag`, `resolveWebResultsFlag`, `resolveWebSearchFlag`, `resolveReasoningFlag`, `resolveBudget`) shared by the chat loop, one-shot mode, and chat-start.
 

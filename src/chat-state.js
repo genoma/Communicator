@@ -2,7 +2,7 @@ import { DEFAULT_TEMPERATURE } from './constants.js'
 import { normalizeSmoothSpeed, normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
-  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, supportsReasoning, webSearch, webResults, webSearchSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent }) {
+  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, supportsReasoning, webSearch, webResults, webSearchSupported, visionSupported, fileSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent }) {
     this.modelId = modelId
     this.endpointProviderName = endpointProviderName
     this.reasoningEffort = reasoningEffort
@@ -13,6 +13,9 @@ export class ChatState {
     this.webSearch = normalizeWebSearchMode(webSearch)
     this.webResults = webResults
     this.webSearchSupported = webSearchSupported
+    this.visionSupported = visionSupported
+    this.fileSupported = fileSupported
+    this.pendingAttachments = []
     this.sessionId = sessionId
     this.createdAt = createdAt
     this.modelReasoning = modelReasoning
@@ -44,6 +47,7 @@ export class ChatState {
     this.messages = [{ role: 'system', content: systemContent }]
     this.budget = null
     this.webResults = null
+    this.pendingAttachments = []
     return true
   }
 
@@ -77,6 +81,8 @@ export class ChatState {
     this.temperature = prefs.temperature?.[sel.modelId] ?? DEFAULT_TEMPERATURE
     this.webSearchSupported = sel.webSearchSupported
     this.webSearch = sel.webSearchSupported === false ? 'off' : normalizeWebSearchMode(prefs.webSearch?.[sel.modelId])
+    this.visionSupported = sel.visionSupported
+    this.fileSupported = sel.fileSupported
   }
 
   toggleMarkdown() {

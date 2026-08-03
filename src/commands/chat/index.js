@@ -5,13 +5,23 @@ import { resolveTemperatureFlag, resolveWebResultsFlag, resolveSmoothSpeed, webS
 import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed } from '../../constants.js'
 import { budgetStatus } from '../../tracker.js'
 import { dim } from '../../ui/style.js'
+import { extname } from 'node:path'
+import { classifyPath, loadAttachment, attachmentGate, contentText, formatBytes } from '../../attachments.js'
 
-const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth'])
+const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments'])
 
 export function budgetGuard(ctx) {
   const { state, tracker } = ctx
   if (state.budget == null || tracker.cost < state.budget) return null
   return `Budget exhausted (${formatCost(tracker.cost)} of ${formatCost(state.budget)}). /new to start fresh or /quit.\n`
+}
+
+function attachmentGateOptions(ctx) {
+  return {
+    visionSupported: ctx.state.visionSupported,
+    fileSupported: ctx.state.fileSupported,
+    providerName: ctx.provider.meta.name,
+  }
 }
 
 const handlers = {
@@ -36,6 +46,17 @@ const handlers = {
       return
     }
     ctx.state.applyModelSelection(sel, ctx.prefs)
+    const gateOptions = attachmentGateOptions(ctx)
+    const kept = []
+    for (const att of ctx.state.pendingAttachments) {
+      const gateError = attachmentGate([att], gateOptions)
+      if (gateError) {
+        console.log(`Dropped attachment ${att.filename}: ${gateError}\n`)
+      } else {
+        kept.push(att)
+      }
+    }
+    ctx.state.pendingAttachments = kept
     await ctx.savePrefs({
       modelId: sel.modelId,
       lastModel: sel.modelId,
@@ -44,6 +65,53 @@ const handlers = {
     })
     const label = sel.endpointProviderName ? `${sel.endpointProviderName} / ${sel.modelId}` : sel.modelId
     console.log(`\nSwitched to ${label}\n`)
+  },
+
+  '/attach': async (ctx) => {
+    if (!ctx.args) return handlers['/attachments'](ctx)
+    const gateOptions = attachmentGateOptions(ctx)
+    for (const path of ctx.args.split(/\s+/)) {
+      const { kind } = classifyPath(path)
+      if (!kind) {
+        console.error(`Error: Unsupported file type: ${extname(path).slice(1) || '(none)'}\n`)
+        continue
+      }
+      const gateError = attachmentGate([{ kind }], gateOptions)
+      if (gateError) {
+        console.error(`Error: ${gateError}\n`)
+        continue
+      }
+      let att
+      try {
+        att = await loadAttachment(path)
+      } catch (err) {
+        console.error(`Error: ${err.message}\n`)
+        continue
+      }
+      ctx.state.pendingAttachments.push(att)
+      console.log(`attached: ${att.filename} (${att.kind}, ${formatBytes(att.size)})\n`)
+    }
+  },
+
+  '/attachments': async (ctx) => {
+    if (ctx.args && ctx.args !== 'clear') {
+      console.error('Error: /attachments expects "clear" or no argument.\n')
+      return
+    }
+    if (ctx.args === 'clear') {
+      ctx.state.pendingAttachments = []
+      console.log('Attachment queue cleared.\n')
+      return
+    }
+    const queue = ctx.state.pendingAttachments
+    if (!queue.length) {
+      console.log('No attachments queued. Use /attach <path> to add one.\n')
+      return
+    }
+    console.log(`Pending attachments (${queue.length}):`)
+    for (const att of queue) {
+      console.log(`${att.filename}  ${att.kind}  ${formatBytes(att.size)}\n`)
+    }
   },
 
   '/reasoning': async (ctx) => {
@@ -171,7 +239,7 @@ const handlers = {
       console.log('No assistant response to copy.\n')
       return
     }
-    const result = await ctx.copyText(last.content)
+    const result = await ctx.copyText(contentText(last.content))
     console.log(result.ok ? 'Copied last response to clipboard.\n' : `Copy failed: ${result.error}\n`)
   },
 
