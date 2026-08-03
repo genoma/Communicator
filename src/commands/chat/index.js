@@ -6,7 +6,7 @@ import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmooth
 import { budgetStatus } from '../../tracker.js'
 import { dim } from '../../ui/style.js'
 import { extname } from 'node:path'
-import { classifyPath, loadAttachment, attachmentGate, messageText, formatBytes } from '../../attachments.js'
+import { classifyPath, loadAttachment, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
 
 const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments'])
@@ -68,7 +68,7 @@ const handlers = {
     if (!ctx.args) return handlers['/attachments'](ctx)
     const gateOptions = attachmentGateOptions(ctx)
     const ignored = []
-    for (const token of ctx.args.split(/\s+/)) {
+    for (const token of splitPathArgs(ctx.args)) {
       const ext = extname(token)
       if ((!ext || ext === '.') && !token.includes('/') && !token.includes('\\')) {
         ignored.push(token)

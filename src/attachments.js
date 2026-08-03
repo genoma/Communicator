@@ -28,6 +28,27 @@ const TEXT_EXTS = new Set([
   'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'ini',
 ])
 
+export function splitPathArgs(input) {
+  const tokens = []
+  let current = ''
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i]
+    if (ch === '\\' && i + 1 < input.length && /\s/.test(input[i + 1])) {
+      current += input[i + 1]
+      i++
+    } else if (/\s/.test(ch)) {
+      if (current) {
+        tokens.push(current)
+        current = ''
+      }
+    } else {
+      current += ch
+    }
+  }
+  if (current) tokens.push(current)
+  return tokens
+}
+
 export function classifyPath(path) {
   const ext = extname(path).slice(1).toLowerCase()
   if (IMAGE_EXTS.has(ext)) return { kind: 'image', mime: IMAGE_MIMES[ext] }

@@ -675,6 +675,20 @@ test('/attach ignores prose words with a single hint instead of per-word errors'
   assert.equal(consoleSpy.error(0), undefined)
 })
 
+test('/attach accepts shell-escaped paths with spaces', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  const png = await writeFixture(t, 'Screenshot 2026-07-23 at 07.47.31.png', 'PNGDATA')
+
+  await chatCommands['/attach']({ ...ctx, args: png.replace(/ /g, '\\ ') })
+
+  assert.equal(ctx.state.pendingAttachments.length, 1)
+  assert.equal(ctx.state.pendingAttachments[0].filename, 'Screenshot 2026-07-23 at 07.47.31.png')
+  assert.equal(ctx.state.pendingAttachments[0].kind, 'image')
+  assert.equal(consoleSpy.error(0), undefined)
+  assert.equal(consoleSpy.log(0), 'attached: Screenshot 2026-07-23 at 07.47.31.png (image, 7 B)\n')
+})
+
 test('/attach rejects missing files', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx } = makeCtx()
