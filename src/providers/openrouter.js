@@ -46,6 +46,16 @@ export async function fetchModels(apiKey) {
   return data.map((m) => {
     const r = m.reasoning
     const aliasTarget = m.alias_target?.slug || null
+    const inputModalities = m.architecture?.input_modalities || []
+    const supportedParams = Array.isArray(m.supported_parameters) ? m.supported_parameters : null
+
+    let visionSupported
+    if (inputModalities.includes('image') || supportedParams?.includes('image_url')) {
+      visionSupported = true
+    } else if (inputModalities.length > 0 || supportedParams?.length > 0) {
+      visionSupported = false
+    }
+
     return {
       id: m.id,
       name: m.name,
@@ -53,8 +63,9 @@ export async function fetchModels(apiKey) {
       aliasTarget,
       contextLength: m.context_length,
       description: m.description,
-      architecture: { input_modalities: m.architecture?.input_modalities || [] },
-      supportedParameters: Array.isArray(m.supported_parameters) ? m.supported_parameters : null,
+      architecture: { input_modalities: inputModalities },
+      supportedParameters: supportedParams,
+      visionSupported,
       zdr: zdr.modelIds.has(m.id) || (aliasTarget != null && zdr.modelIds.has(aliasTarget)) || undefined,
       reasoning: r
         ? {

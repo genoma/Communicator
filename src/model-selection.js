@@ -17,17 +17,19 @@ function capabilityFlags(provider, modelData, endpoint) {
   const modalities = modelData?.architecture?.input_modalities
   const supportedParams = modelData?.supportedParameters ?? endpoint?.supportedParameters
 
-  let visionSupported
-  if (isVenice && capabilities?.supportsVision === true) {
-    visionSupported = true
-  } else if (isVenice && capabilities?.supportsVision === false) {
-    visionSupported = false
-  } else if (Array.isArray(modalities) && modalities.includes('image')) {
-    visionSupported = true
-  } else if (Array.isArray(supportedParams) && supportedParams.includes('image_url')) {
-    visionSupported = true
-  } else if ((Array.isArray(modalities) && modalities.length > 0) || (Array.isArray(supportedParams) && supportedParams.length > 0)) {
-    visionSupported = false
+  let visionSupported = modelData?.visionSupported
+  if (visionSupported === undefined) {
+    if (isVenice && capabilities?.supportsVision === true) {
+      visionSupported = true
+    } else if (isVenice && capabilities?.supportsVision === false) {
+      visionSupported = false
+    } else if (Array.isArray(modalities) && modalities.includes('image')) {
+      visionSupported = true
+    } else if (Array.isArray(supportedParams) && supportedParams.includes('image_url')) {
+      visionSupported = true
+    } else if ((Array.isArray(modalities) && modalities.length > 0) || (Array.isArray(supportedParams) && supportedParams.length > 0)) {
+      visionSupported = false
+    }
   }
 
   const fileSupported = isVenice ? capabilities?.supportsFileInput !== false : true
