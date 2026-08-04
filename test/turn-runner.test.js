@@ -1,0 +1,224 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { createTurnRunner, createSessionState } from '../src/turn-runner.js'
+import { ApiError } from '../src/errors.js'
+
+function fakeState(overrides = {}) {
+  const state = {
+    modelId: 'org/model',
+    endpointProviderName: 'Provider',
+    reasoningEffort: 'high',
+    supportsReasoning: true,
+    sessionId: '2026-01-01T00-00-00',
+    temperature: 0.7,
+    webSearch: 'off',
+    webResults: null,
+    zdr: false,
+    pricing: { prompt: 0.000001, completion: 0.000002 },
+    budget: null,
+    messages: [
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'user', content: 'hello' },
+    ],
+    appendAssistant(message) {
+      this.messages.push(message)
+    },
+    popLastMessage() {
+      return this.messages.pop()
+    },
+    ...overrides,
+  }
+  return state
+}
+
+function makeDeps(overrides = {}) {
+  const render = () => {}
+  render.sources = []
+  render.flush = () => {}
+  const loader = { start() {}, stop() {} }
+  const exitCodes = []
+  const saves = []
+  const stdout = { write() {} }
+  const deps = {
+    render,
+    loader,
+    stdout,
+    tty: false,
+    saveCurrentSession: async () => { saves.push('session') },
+    interruptSave: async () => { saves.push('interrupt') },
+    exit: (code) => exitCodes.push(code),
+    ...overrides,
+  }
+  return { deps, exitCodes, saves }
+}
+
+function runTurn(deps, state) {
+  const runner = createTurnRunner({
+    state,
+    provider: deps.provider,
+    apiKey: 'test-key',
+    render: deps.render,
+    loader: deps.loader,
+    stdout: deps.stdout,
+    tty: deps.tty,
+    saveCurrentSession: deps.saveCurrentSession,
+    interruptSave: deps.interruptSave,
+    exit: deps.exit,
+    sessionState: deps.sessionState ?? createSessionState(),
+  })
+  return runner.runTurn()
+}
+
+function okProvider(overrides = {}) {
+  return {
+    async chatCompletion() {
+      return { content: 'Hello!', usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }
+    },
+    ...overrides,
+  }
+}
+
+function mockConsole(t) {
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', () => {})
+}
+
+test('a successful turn streams tokens, records usage and appends the message', async (t) => {
+  mockConsole(t)
+  const render = () => {}
+  render.sources = []
+  render.flush = () => {}
+  const state = fakeState()
+  const sessionState = createSessionState()
+  const provider = {
+    async chatCompletion(opts) {
+      opts.onToken('Hel', 'content')
+      opts.onToken('lo', 'content')
+      return { content: 'Hello', usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }
+    },
+  }
+  const { deps, exitCodes } = makeDeps({ render, provider, sessionState })
+
+  await runTurn(deps, state)
+
+  assert.equal(state.messages[2].content, 'Hello')
+  assert.equal(state.messages[2].usage.total_tokens, 15)
+  assert.equal(sessionState.tracker.requests, 1)
+  assert.equal(sessionState.tracker.promptTokens, 10)
+  assert.equal(exitCodes.length, 0)
+})
+
+test('prints a warning when the stream carried skipped chunks', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (msg) => logs.push(String(msg)))
+  t.mock.method(console, 'error', () => {})
+  const provider = okProvider({
+    async chatCompletion() {
+      return { content: 'ok', skippedChunks: 3, usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }
+    },
+  })
+  const { deps } = makeDeps({ provider })
+
+  await runTurn(deps, fakeState())
+
+  assert.ok(logs.some((l) => l.includes('3 malformed stream chunks skipped')))
+})
+
+test('warns once via the budget line when the cap is 90% crossed', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (msg) => logs.push(String(msg)))
+  t.mock.method(console, 'error', () => {})
+  const provider = okProvider()
+  const state = fakeState({ budget: 0.00004 })
+  const { deps } = makeDeps({ provider })
+
+  const runner = createTurnRunner({
+    state,
+    provider,
+    apiKey: 'test-key',
+    render: deps.render,
+    loader: deps.loader,
+    stdout: deps.stdout,
+    tty: false,
+    saveCurrentSession: deps.saveCurrentSession,
+    exit: deps.exit,
+    sessionState: createSessionState(),
+  })
+  await runner.runTurn()
+  await runner.runTurn()
+
+  const budgetLines = logs.filter((l) => l.includes('Budget'))
+  assert.equal(budgetLines.length, 1)
+  assert.match(budgetLines[0], /Budget/)
+})
+
+test('a retryable error pops the last user message', async (t) => {
+  mockConsole(t)
+  const provider = okProvider({
+    async chatCompletion() {
+      throw new ApiError('Rate limited', { status: 429, retryable: true })
+    },
+  })
+  const state = fakeState()
+  const { deps } = makeDeps({ provider })
+
+  await runTurn(deps, state)
+
+  assert.equal(state.messages.length, 1)
+})
+
+test('a non-retryable error keeps the user message', async (t) => {
+  mockConsole(t)
+  const provider = okProvider({
+    async chatCompletion() {
+      throw new ApiError('Bad request', { status: 400, retryable: false })
+    },
+  })
+  const state = fakeState()
+  const { deps } = makeDeps({ provider })
+
+  await runTurn(deps, state)
+
+  assert.equal(state.messages.length, 2)
+})
+
+test('an interrupted stream salvages the partial response, saves and exits 130', async (t) => {
+  mockConsole(t)
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  const provider = okProvider({
+    async chatCompletion(opts) {
+      opts.signal.addEventListener('abort', () => {
+        rejectCompletion(Object.assign(new Error('aborted'), { pendingBuffer: 'data: {"choices":[{"delta":{"content":"Hel' }))
+      })
+      return pending
+    },
+  })
+  const state = fakeState()
+  const sessionState = createSessionState()
+  sessionState.streaming = true
+  sessionState.streamController = new AbortController()
+  const { deps, exitCodes, saves } = makeDeps({ provider, sessionState })
+  const runner = createTurnRunner({
+    state,
+    provider,
+    apiKey: 'test-key',
+    render: deps.render,
+    loader: deps.loader,
+    stdout: deps.stdout,
+    tty: false,
+    saveCurrentSession: deps.saveCurrentSession,
+    interruptSave: deps.interruptSave,
+    exit: deps.exit,
+    sessionState,
+  })
+
+  const turn = runner.runTurn()
+  sessionState.interrupted = true
+  sessionState.streamController.abort()
+  await turn
+
+  assert.deepEqual(exitCodes, [130])
+  assert.deepEqual(saves, ['interrupt'])
+  assert.equal(state.messages[2].content, 'Hel')
+})
