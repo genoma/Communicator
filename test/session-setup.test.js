@@ -79,3 +79,20 @@ test('persistSession survives a failed session save', async (t) => {
   const prefs = JSON.parse(await readFile(file, 'utf-8'))
   assert.equal(prefs.lastModel, 'org/model')
 })
+
+test('resolveSessionFlags treats an invalid configured budget as unset', async () => {
+  const { resolveSessionFlags } = await import('../src/session-setup.js')
+  const opts = { budget: undefined, temperature: undefined, reasoningEffort: undefined, webResults: undefined, smoothSpeed: undefined, zdr: false }
+
+  assert.equal(resolveSessionFlags(opts, { budget: 0 }).budget, null)
+  assert.equal(resolveSessionFlags(opts, { budget: -1 }).budget, null)
+  assert.equal(resolveSessionFlags(opts, { budget: 'abc' }).budget, null)
+  assert.equal(resolveSessionFlags(opts, { budget: 2.5 }).budget, 2.5)
+  assert.equal(resolveSessionFlags(opts, {}).budget, null)
+})
+
+test('resolveSessionFlags lets an explicit CLI budget win over an invalid pref', async () => {
+  const { resolveSessionFlags } = await import('../src/session-setup.js')
+  const opts = { budget: '3', temperature: undefined, reasoningEffort: undefined, webResults: undefined, smoothSpeed: undefined, zdr: false }
+  assert.equal(resolveSessionFlags(opts, { budget: 0 }).budget, 3)
+})

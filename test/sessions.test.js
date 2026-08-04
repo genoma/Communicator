@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { deleteSession, formatSessionItem, generateTitle, listSessions, saveSession, loadSession, generateSessionId, buildSessionPayload } from '../src/sessions.js'
+import { CliError } from '../src/errors.js'
 
 async function tempDir(t) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-test-'))
@@ -100,6 +101,23 @@ test('loadSession returns full data for a known id', async (t) => {
   const data = await loadSession(dir, '2026-01-01T00-00-00')
   assert.equal(data.model, 'test/model')
   assert.equal(data.messages.length, 3)
+})
+
+test('loadSession turns a missing file into a clean CliError and drops the stale sidecar entry', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  await saveSession(dir, '2026-01-02T00-00-00', sessionData())
+  await rm(join(dir, '2026-01-01T00-00-00.json'))
+
+  await assert.rejects(
+    loadSession(dir, '2026-01-01T00-00-00'),
+    (err) => err instanceof CliError && /2026-01-01T00-00-00.*missing/.test(err.message)
+  )
+
+  const index = JSON.parse(await readFile(join(dir, '.index.json'), 'utf-8'))
+  assert.deepEqual(Object.keys(index), ['2026-01-02T00-00-00'])
+  const sessions = await listSessions(dir)
+  assert.deepEqual(sessions.map((s) => s.id), ['2026-01-02T00-00-00'])
 })
 
 test('generateSessionId produces unique ids', async (t) => {
@@ -337,10 +355,33 @@ test('buildSessionPayload fills createdAt when missing and defaults undefined fi
     webSearch: false,
   })
   assert.ok(payload.createdAt)
-  assert.equal(payload.reasoningEffort, null)
+  assert.equal(payload.reasoningEffort, 'auto')
   assert.equal(payload.budget, null)
   assert.equal(payload.webResults, null)
   assert.equal(payload.pricing, null)
+})
+
+test('buildSessionPayload marks undefined reasoning effort as auto and keeps null as disabled', () => {
+  const auto = buildSessionPayload({
+    messages: [],
+    modelId: 'm',
+    endpointProviderName: null,
+    providerType: 'openrouter',
+    temperature: 0.7,
+    webSearch: false,
+  })
+  assert.equal(auto.reasoningEffort, 'auto')
+
+  const disabled = buildSessionPayload({
+    messages: [],
+    modelId: 'm',
+    endpointProviderName: null,
+    providerType: 'openrouter',
+    reasoningEffort: null,
+    temperature: 0.7,
+    webSearch: false,
+  })
+  assert.equal(disabled.reasoningEffort, null)
 })
 
 test('buildSessionPayload output round-trips through saveSession and loadSession', async (t) => {

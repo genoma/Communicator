@@ -1,6 +1,6 @@
 import { getProvider } from '../providers/index.js'
 import { DEFAULT_TEMPERATURE, cpsToCharsPerTick, formatCost } from '../constants.js'
-import { resolveWebSearchFlag, webSearchGate } from '../flags.js'
+import { resolveWebSearchFlag, webSearchGate, resolveWebResultsFlag, resolvePrefOrNull } from '../flags.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
 import { ensureSessionsDir, generateSessionId } from '../sessions.js'
 import { createStreamRenderer, printSources } from '../ui/stream.js'
@@ -67,7 +67,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   if (webSearchGateError) {
     throw new CliError(`Error: ${webSearchGateError}`)
   }
-  const webResults = forcedWebResults ?? prefs.webResults ?? null
+  const webResults = forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), prefs.webResults) ?? null
 
   const attachments = []
   if (opts.attach?.length) {

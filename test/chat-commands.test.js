@@ -182,6 +182,45 @@ test('/model reports selection failures without crashing', async (t) => {
   assert.equal(ctx.state.reasoningEffort, before.reasoningEffort)
 })
 
+test('/model with no zero-retention models prints the error and never exits the process', async (t) => {
+  const consoleSpy = mockConsole(t)
+  let exitCalled = 0
+  t.mock.method(process, 'exit', () => { exitCalled++ })
+  const { ctx } = makeCtx({
+    state: new ChatState({
+      modelId: 'org/model',
+      endpointProviderName: 'Provider',
+      reasoningEffort: 'high',
+      temperature: 0.7,
+      budget: null,
+      pricing: null,
+      supportsReasoning: true,
+      webSearch: false,
+      webResults: null,
+      webSearchSupported: true,
+      zdr: true,
+      sessionId: '2026-01-01T00-00-00',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      modelReasoning: null,
+    }),
+    provider: fakeProvider({
+      meta: { name: 'openrouter', supportsWebSearchOnAll: true, supportsZdr: true },
+      isZdrIndexDegraded: async () => false,
+      async fetchModels() {
+        return []
+      },
+    }),
+  })
+  const before = ctx.state.modelId
+
+  const outcome = await chatCommands['/model'](ctx)
+
+  assert.equal(exitCalled, 0)
+  assert.equal(outcome, undefined)
+  assert.equal(ctx.state.modelId, before)
+  assert.equal(consoleSpy.error(0), '\nError: No zero-retention models available on OpenRouter right now.\n')
+})
+
 test('/reasoning sets the effort and saves the pref', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx, prefsUpdates } = makeCtx({

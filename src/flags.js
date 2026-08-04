@@ -51,6 +51,14 @@ export function resolveBudget(value) {
   return budget
 }
 
+export function resolvePrefOrNull(resolve, value) {
+  try {
+    return resolve(value)
+  } catch {
+    return null
+  }
+}
+
 export function resolveSmoothSpeed(value) {
   if (value === undefined || value === null || value === '') return undefined
   const preset = SMOOTH_SPEED_PRESETS[value]

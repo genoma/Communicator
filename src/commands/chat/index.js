@@ -1,4 +1,4 @@
-import { formatError } from '../../errors.js'
+import { formatError, CliError } from '../../errors.js'
 import { selectModelAndEndpoint } from '../../model-selection.js'
 import { getEffortLabel, selectReasoningEffort } from '../../prompts.js'
 import { resolveTemperatureFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, webSearchGate } from '../../flags.js'
@@ -39,7 +39,7 @@ const handlers = {
     try {
       sel = await (ctx.selectModelAndEndpoint ?? selectModelAndEndpoint)({ provider: ctx.provider, apiKey: ctx.apiKey, prefs: ctx.prefs, reasoningEffort: undefined, zdr: ctx.state.zdr })
     } catch (err) {
-      console.error(`\nError: ${formatError(err)}\n`)
+      console.error(err instanceof CliError ? `\n${err.message}\n` : `\nError: ${formatError(err)}\n`)
       return
     }
     ctx.state.applyModelSelection(sel, ctx.prefs)

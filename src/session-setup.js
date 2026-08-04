@@ -1,4 +1,4 @@
-import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed } from './flags.js'
+import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed, resolvePrefOrNull } from './flags.js'
 import { resolveFlagOrExit } from './cli-utils.js'
 import { ensureSessionsDir, saveSession, buildSessionPayload } from './sessions.js'
 import { savePreferences, applyPreferenceUpdates } from './config.js'
@@ -9,7 +9,7 @@ export function resolveSessionFlags(opts, prefs) {
     forcedEffort: resolveReasoningFlag({ reasoningEffort: opts.reasoningEffort }),
     forcedTemperature: resolveFlagOrExit((v) => resolveTemperatureFlag({ temperature: v }), opts.temperature),
     forcedBudget,
-    budget: forcedBudget ?? prefs.budget ?? null,
+    budget: forcedBudget ?? resolvePrefOrNull(resolveBudget, prefs.budget) ?? null,
     forcedWebResults: resolveFlagOrExit((v) => resolveWebResultsFlag({ webResults: v }), opts.webResults),
     smoothSpeed: resolveFlagOrExit(resolveSmoothSpeed, opts.smoothSpeed) ?? normalizeSmoothSpeed(prefs.smoothSpeed),
     zdr: opts.zdr === true,

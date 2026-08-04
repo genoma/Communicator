@@ -156,10 +156,27 @@ export async function runChatSession(ctx = {}, deps = {}) {
     await saveCurrentSession()
   }
 
+  const bestEffortExitSave = async () => {
+    if (exitSaveDone) return
+    exitSaveDone = true
+    const finalState = state.toFinalState(provider.meta.name)
+    await Promise.all([
+      saveCurrentSession(),
+      savePrefs({
+        modelId: finalState.modelId,
+        lastModel: finalState.modelId,
+        lastProvider: finalState.endpointProviderName,
+        reasoningEffort: finalState.reasoningEffort,
+        temperature: finalState.temperature,
+        webSearch: finalState.webSearch,
+      }),
+    ])
+  }
+
   const cleanupSignals = onSignal({
     sigint: () => {
       if (!sessionState.streaming) {
-        void bestEffortSave().finally(() => exit(130))
+        void bestEffortExitSave().finally(() => exit(130))
         return
       }
       sessionState.interrupted = true
@@ -190,6 +207,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     stdout,
     tty,
     saveCurrentSession,
+    interruptSave: bestEffortExitSave,
     exit,
     sessionState,
   })

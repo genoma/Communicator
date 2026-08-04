@@ -1,5 +1,5 @@
 import { getProvider } from '../providers/index.js'
-import { resolveWebSearchFlag, webSearchGate } from '../flags.js'
+import { resolveWebSearchFlag, webSearchGate, resolveBudget, resolveWebResultsFlag, resolvePrefOrNull } from '../flags.js'
 import { DEFAULT_TEMPERATURE } from '../constants.js'
 import { startChat } from '../chat.js'
 import { ensureSessionsDir, generateSessionId } from '../sessions.js'
@@ -16,14 +16,15 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
     if (!result) process.exit(0)
 
     const provider = getProvider(result.providerType || providerType)
+    const resumedEffort = result.reasoningEffort === 'auto' ? undefined : (result.reasoningEffort ?? null)
     return {
       modelId: result.modelId,
       endpointProviderName: result.providerName,
-      reasoningEffort: forcedEffort !== undefined ? forcedEffort : (result.reasoningEffort ?? null),
+      reasoningEffort: forcedEffort !== undefined ? forcedEffort : resumedEffort,
       temperature: forcedTemperature ?? result.temperature ?? DEFAULT_TEMPERATURE,
-      budget: forcedBudget ?? result.budget ?? null,
+      budget: forcedBudget ?? resolvePrefOrNull(resolveBudget, result.budget) ?? null,
       webSearch: resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: result.webSearch }),
-      webResults: forcedWebResults ?? result.webResults ?? null,
+      webResults: forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), result.webResults) ?? null,
       zdr,
       smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
       smoothSpeed,
@@ -64,7 +65,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
     temperature: forcedTemperature ?? prefs.temperature?.[selection.modelId] ?? DEFAULT_TEMPERATURE,
     budget,
     webSearch,
-    webResults: forcedWebResults ?? prefs.webResults ?? null,
+    webResults: forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), prefs.webResults) ?? null,
     zdr,
     smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
     smoothSpeed,

@@ -1,4 +1,4 @@
-import { SSE_DATA_PREFIX, SSE_DONE, STREAM_IDLE_TIMEOUT_MS } from './constants.js'
+import { SSE_DONE, STREAM_IDLE_TIMEOUT_MS } from './constants.js'
 import { ApiError } from './errors.js'
 
 function unescapeJson(s) {
@@ -87,6 +87,50 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     if (idleTimeoutMs > 0) timer = setTimeout(onTimeout, idleTimeoutMs)
   })
 
+  const handleLine = (line) => {
+    const trimmed = line.trim()
+    const match = trimmed.match(/^data:( ?)(.*)$/)
+    if (!match) return
+    const data = match[2]
+    if (data === SSE_DONE) return
+    try {
+      const parsed = JSON.parse(data)
+
+      collectSources(parsed, fullSources, seenUrls, onSources)
+
+      if (parsed.usage) {
+        finalUsage = parsed.usage
+        return
+      }
+
+      const delta = parsed.choices?.[0]?.delta
+      if (!delta) return
+
+      const reasoningToken = delta.reasoning_content ?? (typeof delta.reasoning === 'string' ? delta.reasoning : undefined)
+      if (reasoningToken) {
+        fullReasoning += reasoningToken
+        if (!inThinking) {
+          inThinking = true
+          onToken('\n', 'start_reasoning')
+        }
+        onToken(reasoningToken, 'reasoning')
+        return
+      }
+
+      const contentToken = delta.content
+      if (contentToken) {
+        if (inThinking) {
+          inThinking = false
+          onToken(null, 'end_reasoning')
+        }
+        fullText += contentToken
+        onToken(contentToken, 'content')
+      }
+    } catch {
+      skippedChunks++
+    }
+  }
+
   while (true) {
     let chunk
     try {
@@ -96,54 +140,22 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
       throw err
     }
     const { done, value } = chunk
-    if (done) break
+    if (done) {
+      buffer += decoder.decode()
+      break
+    }
 
     buffer += decoder.decode(value, { stream: true })
     const lines = buffer.split('\n')
     buffer = lines.pop() || ''
 
     for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || !trimmed.startsWith(SSE_DATA_PREFIX)) continue
-      const data = trimmed.slice(SSE_DATA_PREFIX.length)
-      if (data === SSE_DONE) continue
-      try {
-        const parsed = JSON.parse(data)
-
-        collectSources(parsed, fullSources, seenUrls, onSources)
-
-        if (parsed.usage) {
-          finalUsage = parsed.usage
-          continue
-        }
-
-        const delta = parsed.choices?.[0]?.delta
-        if (!delta) continue
-
-        const reasoningToken = delta.reasoning_content ?? (typeof delta.reasoning === 'string' ? delta.reasoning : undefined)
-        if (reasoningToken) {
-          fullReasoning += reasoningToken
-          if (!inThinking) {
-            inThinking = true
-            onToken('\n', 'start_reasoning')
-          }
-          onToken(reasoningToken, 'reasoning')
-          continue
-        }
-
-        const contentToken = delta.content
-        if (contentToken) {
-          if (inThinking) {
-            inThinking = false
-            onToken(null, 'end_reasoning')
-          }
-          fullText += contentToken
-          onToken(contentToken, 'content')
-        }
-      } catch {
-        skippedChunks++
-      }
+      handleLine(line)
     }
+  }
+
+  for (const line of buffer.split('\n')) {
+    handleLine(line)
   }
 
   return { fullText, fullReasoning, finalUsage, fullSources, skippedChunks }

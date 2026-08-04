@@ -9,7 +9,7 @@ function formatTimestamp(iso) {
 }
 
 function calculateCost(pricing, messages) {
-  if (!pricing?.prompt || !pricing?.completion) return null
+  if (pricing?.prompt == null || pricing?.completion == null) return null
 
   let totalCost = 0
   let hasUsage = false

@@ -146,6 +146,26 @@ test('chatStart resume branch applies --reasoning-effort overrides', async (t) =
   assert.equal(startChatCalls[startChatCalls.length - 1].reasoningEffort, null)
 })
 
+test('chatStart resume branch maps the auto marker back to undefined reasoning effort', async (t) => {
+  resumeResult = resumeSession({ reasoningEffort: 'auto' })
+  withApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(console, 'log', () => {})
+
+  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'openrouter' })
+  assert.equal(startChatCalls[startChatCalls.length - 1].reasoningEffort, undefined)
+})
+
+test('chatStart resume branch keeps disabled reasoning for sessions written pre-change', async (t) => {
+  resumeResult = resumeSession({ reasoningEffort: null })
+  withApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(console, 'log', () => {})
+
+  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'openrouter' })
+  assert.equal(startChatCalls[startChatCalls.length - 1].reasoningEffort, null)
+})
+
 test('chatStart resume branch applies --temperature, --budget and --web-search overrides', async (t) => {
   resumeResult = resumeSession()
   withApiKey(t)

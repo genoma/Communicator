@@ -17,7 +17,7 @@ export function createSessionState() {
   }
 }
 
-export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, exit, sessionState }) {
+export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState }) {
   const runTurn = async () => {
     let apiResult
     let streamedContent = ''
@@ -94,7 +94,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         if (partial.content || partial.reasoning) {
           state.appendAssistant(partial)
         }
-        await saveCurrentSession()
+        await interruptSave()
         exit(130)
       }
       render.flush({ sync: true })

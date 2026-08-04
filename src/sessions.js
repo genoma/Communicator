@@ -59,7 +59,7 @@ export function buildSessionPayload({ messages, modelId, endpointProviderName, p
     model: modelId,
     providerName: endpointProviderName,
     providerType,
-    reasoningEffort: reasoningEffort ?? null,
+    reasoningEffort: reasoningEffort === undefined ? 'auto' : reasoningEffort,
     temperature,
     budget: budget ?? null,
     webSearch,
@@ -206,6 +206,18 @@ async function updateSidecar(dir, id, data) {
   }
 }
 
+async function dropSidecarEntry(dir, id) {
+  try {
+    const index = (await readSidecar(dir)) || {}
+    if (index[id]) {
+      delete index[id]
+      await writeSidecar(dir, index)
+    }
+  } catch {
+    // sidecar failures are non-fatal
+  }
+}
+
 async function sessionFileExists(dir, id) {
   try {
     await access(join(dir, `${id}.json`))
@@ -228,7 +240,16 @@ export async function generateSessionId(dir) {
 
 export async function loadSession(dir, id) {
   const filePath = join(dir, `${id}.json`)
-  const raw = await readFile(filePath, 'utf-8')
+  let raw
+  try {
+    raw = await readFile(filePath, 'utf-8')
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      await dropSidecarEntry(dir, id)
+      throw new CliError(`Error: Session file "${id}" is missing. It may have been deleted.`)
+    }
+    throw err
+  }
   const data = JSON.parse(raw)
 
   if (!data.model || !Array.isArray(data.messages)) {
