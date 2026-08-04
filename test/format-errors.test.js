@@ -25,7 +25,15 @@ test('formatError returns ApiError message and falls back gracefully', () => {
 test('resolveReasoningFlag normalizes effort semantics', () => {
   assert.equal(resolveReasoningFlag({ reasoningEffort: 'none' }), null)
   assert.equal(resolveReasoningFlag({ reasoningEffort: 'high' }), 'high')
+  assert.equal(resolveReasoningFlag({ reasoningEffort: 'max' }), 'max')
   assert.equal(resolveReasoningFlag({ reasoningEffort: undefined }), undefined)
+  assert.equal(resolveReasoningFlag({ reasoningEffort: null }), undefined)
+  assert.equal(resolveReasoningFlag({ reasoningEffort: '' }), undefined)
+})
+
+test('resolveReasoningFlag rejects unknown levels', () => {
+  assert.throws(() => resolveReasoningFlag({ reasoningEffort: 'bogus' }), /must be one of: max, xhigh, high, medium, low, minimal, none/)
+  assert.throws(() => resolveReasoningFlag({ reasoningEffort: 'auto' }), /must be one of/)
 })
 
 test('formatModelPrice renders per-1M prices with fallbacks', () => {

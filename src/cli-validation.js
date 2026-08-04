@@ -114,6 +114,10 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --model, --output-dir and --attach cannot be combined with --resume (resumed sessions keep their own model; --output-dir only applies to --export).')
   }
 
+  if (interactiveFlags && exitModeFlags) {
+    errors.push('Error: --resume, --export and --delete cannot be combined with --list-* flags.')
+  }
+
   if (opts.outputDir !== undefined && opts.export === undefined && (promptArg || !isTTY)) {
     errors.push('Error: --output-dir sets the default export directory. Use it alone (with a TTY) or with --export.')
   }

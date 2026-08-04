@@ -30,7 +30,7 @@ export function budgetStatusLine(cost, budget) {
 }
 
 function formatCompactCost(cost) {
-  return `$${cost.toFixed(2)}`
+  return `$${cost.toFixed(4)}`
 }
 
 function renderBar(pct) {

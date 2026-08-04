@@ -46,7 +46,7 @@ communicator -m "openai/gpt-4o" --web-search auto "Latest AI news"      # auto m
 communicator -m "openai/gpt-4o" --web-search always "Latest AI news"    # force a web search on every request
 communicator -m "openai/gpt-4o" --web-search off "Latest AI news"       # disable web search
 communicator -m "openai/gpt-4o" --web-results 5 "Latest AI news"        # 5 results, implies auto mode
-communicator -p venice -m "qwen-3-7-max" --web-search "Latest AI news"  # Venice: no result count (auto/on/off only)
+communicator -p venice -m "qwen-3-7-max" --web-search "Latest AI news"  # Venice: no result count; always maps to on
 
 # Standalone config commands (persist defaults to ~/.communicator.json and exit)
 communicator --output-dir ~/Documents                                  # save the default export directory

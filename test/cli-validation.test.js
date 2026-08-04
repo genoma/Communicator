@@ -91,6 +91,26 @@ test('rejects exit-mode flags combined with session flags', () => {
   )
 })
 
+test('rejects interactive flags combined with exit-mode flags', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ resume: 'x', listModels: true }), TTY),
+    ['Error: --resume, --export and --delete cannot be combined with --list-* flags.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ delete: 'x', listSessions: true }), TTY),
+    ['Error: --resume, --export and --delete cannot be combined with --list-* flags.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ export: 'x', listEndpoints: 'm' }), NO_TTY),
+    [
+      'Cannot use --resume, --export, or --delete with piped stdin (interactive pickers need a TTY).',
+      'Error: --resume, --export and --delete cannot be combined with --list-* flags.',
+    ]
+  )
+  assert.deepEqual(validateCliFlags(opts({ listEndpoints: 'm' }), NO_TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ resume: 'x' }), TTY), [])
+})
+
 test('rejects --export combined with session flags', () => {
   assert.deepEqual(
     validateCliFlags(opts({ export: 'x', budget: 5 }), TTY),

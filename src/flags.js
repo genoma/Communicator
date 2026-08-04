@@ -1,9 +1,13 @@
-import { MAX_TEMPERATURE, SMOOTH_DEFAULT_SPEED, SMOOTH_SPEED_PRESETS } from './constants.js'
+import { MAX_TEMPERATURE, SMOOTH_DEFAULT_SPEED, SMOOTH_SPEED_PRESETS, EFFORT_LABELS } from './constants.js'
 
 export const WEB_SEARCH_MODES = new Set(['auto', 'always', 'on', 'off'])
 
 export function resolveReasoningFlag({ reasoningEffort }) {
+  if (reasoningEffort === undefined || reasoningEffort === null || reasoningEffort === '') return undefined
   if (reasoningEffort === 'none') return null
+  if (!(reasoningEffort in EFFORT_LABELS)) {
+    throw new Error(`--reasoning-effort must be one of: ${Object.keys(EFFORT_LABELS).join(', ')}.`)
+  }
   return reasoningEffort
 }
 
