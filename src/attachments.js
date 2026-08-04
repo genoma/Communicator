@@ -3,7 +3,7 @@ import { extname, basename, resolve } from 'node:path'
 import { MAX_IMAGE_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES, MAX_INLINE_TEXT_ATTACHMENT_BYTES } from './constants.js'
 import { CliError } from './errors.js'
 
-const IMAGE_MIMES = {
+export const IMAGE_MIMES = {
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
@@ -12,11 +12,38 @@ const IMAGE_MIMES = {
   bmp: 'image/bmp',
 }
 
-const OFFICE_MIMES = {
+export const OFFICE_MIMES = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   xls: 'application/vnd.ms-excel',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+}
+
+export const PDF_MIME = 'application/pdf'
+
+const MIME_EXT = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/bmp': 'bmp',
+  [PDF_MIME]: 'pdf',
+  [OFFICE_MIMES.xlsx]: 'xlsx',
+  [OFFICE_MIMES.xls]: 'xls',
+  [OFFICE_MIMES.docx]: 'docx',
+  [OFFICE_MIMES.pptx]: 'pptx',
+}
+
+export function extForMime(mime) {
+  return MIME_EXT[mime] || 'bin'
+}
+
+export function mimeForExt(ext) {
+  const normalized = String(ext || '').toLowerCase()
+  if (normalized === 'pdf') return PDF_MIME
+  if (IMAGE_MIMES[normalized]) return IMAGE_MIMES[normalized]
+  if (OFFICE_MIMES[normalized]) return OFFICE_MIMES[normalized]
+  return 'application/octet-stream'
 }
 
 const IMAGE_EXTS = new Set(Object.keys(IMAGE_MIMES))
@@ -53,7 +80,7 @@ export function splitPathArgs(input) {
 export function classifyPath(path) {
   const ext = extname(path).slice(1).toLowerCase()
   if (IMAGE_EXTS.has(ext)) return { kind: 'image', mime: IMAGE_MIMES[ext] }
-  if (ext === 'pdf') return { kind: 'pdf', mime: 'application/pdf' }
+  if (ext === 'pdf') return { kind: 'pdf', mime: PDF_MIME }
   if (OFFICE_EXTS.has(ext)) return { kind: 'office', mime: OFFICE_MIMES[ext] }
   if (TEXT_EXTS.has(ext)) return { kind: 'text', mime: 'text/plain' }
   return { kind: null, mime: null }

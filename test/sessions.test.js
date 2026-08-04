@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readdir, readFile, stat, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { deleteSession, formatSessionItem, generateTitle, listSessions, saveSession, loadSession, generateSessionId, buildSessionPayload } from '../src/sessions.js'
@@ -421,4 +421,75 @@ test('buildSessionPayload output round-trips through saveSession and loadSession
   assert.equal(sessions[0].model, 'test/model')
   assert.equal(sessions[0].messageCount, 3)
   assert.equal(sessions[0].preview, 'First question')
+})
+
+test('saveSession externalizes image parts to blob refs and loadSession hydrates them back', async (t) => {
+  const dir = await tempDir(t)
+  const pngBytes = Buffer.from('fake-png-content')
+  const imageUrl = `data:image/png;base64,${pngBytes.toString('base64')}`
+  const data = sessionData({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: [
+        { type: 'text', text: 'what is this?' },
+        { type: 'image_url', image_url: { url: imageUrl } },
+      ] },
+      { role: 'assistant', content: 'an image' },
+    ],
+  })
+
+  await saveSession(dir, '2026-01-01T00-00-00', data)
+
+  const raw = await readFile(join(dir, '2026-01-01T00-00-00.json'), 'utf-8')
+  assert.ok(raw.includes('ref://attachments/'))
+  assert.ok(!raw.includes('data:image'))
+  assert.ok(!raw.includes('fake-png-content'))
+
+  const blobDir = join(dir, 'attachments', '2026-01-01T00-00-00')
+  const blobFiles = await readdir(blobDir)
+  assert.equal(blobFiles.length, 1)
+  assert.deepEqual(await readFile(join(blobDir, blobFiles[0])), pngBytes)
+
+  const loaded = await loadSession(dir, '2026-01-01T00-00-00')
+  assert.equal(loaded.messages[1].content[1].image_url.url, imageUrl)
+})
+
+test('saveSession does not mutate the in-memory messages passed to it', async (t) => {
+  const dir = await tempDir(t)
+  const imageUrl = `data:image/png;base64,${Buffer.from('fake-png-content').toString('base64')}`
+  const data = sessionData({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: [
+        { type: 'text', text: 'what is this?' },
+        { type: 'image_url', image_url: { url: imageUrl } },
+      ] },
+    ],
+  })
+  const snapshot = structuredClone(data)
+
+  await saveSession(dir, '2026-01-01T00-00-00', data)
+  assert.deepEqual(data, snapshot)
+})
+
+test('deleteSession removes the attachment blob directory alongside the JSON file', async (t) => {
+  const dir = await tempDir(t)
+  const imageUrl = `data:image/png;base64,${Buffer.from('fake-png-content').toString('base64')}`
+  const data = sessionData({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: [
+        { type: 'text', text: 'what is this?' },
+        { type: 'image_url', image_url: { url: imageUrl } },
+      ] },
+      { role: 'assistant', content: 'an image' },
+    ],
+  })
+  await saveSession(dir, '2026-01-01T00-00-00', data)
+  await assert.doesNotReject(stat(join(dir, 'attachments', '2026-01-01T00-00-00')))
+
+  await deleteSession(dir, '2026-01-01T00-00-00')
+
+  await assert.rejects(readFile(join(dir, '2026-01-01T00-00-00.json')))
+  await assert.rejects(stat(join(dir, 'attachments', '2026-01-01T00-00-00')), { code: 'ENOENT' })
 })

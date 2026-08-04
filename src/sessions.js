@@ -3,6 +3,7 @@ import { join, basename, extname } from 'node:path'
 import { SESSIONS_DIR } from './constants.js'
 import { selectSession } from './session-picker.js'
 import { messageText } from './attachments.js'
+import { attachmentDirFor, externalizeAttachments, hydrateAttachments } from './attachment-store.js'
 import { CliError } from './errors.js'
 
 const SIDECAR_FILE = '.index.json'
@@ -191,8 +192,9 @@ export async function saveSession(dir, id, data) {
 
   const filePath = join(dir, `${id}.json`)
   try {
-    await writeFile(filePath, JSON.stringify(data, null, 2) + '\n')
-    await updateSidecar(dir, id, data)
+    const payload = { ...data, messages: await externalizeAttachments(data.messages, attachmentDirFor(dir, id)) }
+    await writeFile(filePath, JSON.stringify(payload, null, 2) + '\n')
+    await updateSidecar(dir, id, payload)
   } catch (err) {
     if (err.code === 'ENOSPC') {
       console.error('Warning: disk full, could not save session')
@@ -271,6 +273,12 @@ export async function loadSession(dir, id) {
     throw new Error(`Session file is corrupt: ${filePath}`)
   }
 
+  const { messages, missing } = await hydrateAttachments(data.messages, attachmentDirFor(dir, id))
+  for (const ref of missing) {
+    console.warn(`Warning: missing attachment ${ref}`)
+  }
+  data.messages = messages
+
   return data
 }
 
@@ -286,6 +294,7 @@ export function formatSessionItem(s) {
 
 export async function deleteSession(dir, id) {
   await rm(join(dir, `${id}.json`), { force: true })
+  await rm(attachmentDirFor(dir, id), { recursive: true, force: true })
   const index = await readSidecar(dir)
   if (index && index[id]) {
     delete index[id]
