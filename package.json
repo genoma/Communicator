@@ -21,6 +21,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@inquirer/core": "^11.2.1",
     "@inquirer/prompts": "^8.0.0",
     "commander": "^14.0.0",
     "markdown-it": "^14.3.0",

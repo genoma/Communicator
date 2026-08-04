@@ -79,7 +79,7 @@ function renderInlineTokens(tokens, env) {
   return out
 }
 
-export function renderInlineText(text, env) {
+function renderInlineText(text, env) {
   const tokens = []
   md.inline.parse(text, md, env, tokens)
   return renderInlineTokens(tokens, env)

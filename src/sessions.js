@@ -12,7 +12,7 @@ export async function ensureSessionsDir() {
   return SESSIONS_DIR
 }
 
-export async function resolveSession(dir, partialId) {
+async function resolveSession(dir, partialId) {
   const sessions = await listSessions(dir)
   return sessions.filter((s) => s.id.startsWith(partialId))
 }
