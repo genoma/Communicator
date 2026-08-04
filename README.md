@@ -281,7 +281,7 @@ communicator --system-prompt /path/to/custom-prompt.md
 
 ## Session Persistence & Resume
 
-Every chat session is automatically saved to `~/.communicator/sessions/<timestamp>.json`, with a `title` auto-generated from the first user message (whitespace collapsed, truncated to 50 chars). Sessions are saved when you quit (`/quit` or `Ctrl+C`), when you switch models or start a new session, and on interrupt during streaming (including the partial response). A metadata index at `~/.communicator/sessions/.index.json` powers `--list-sessions` and the resume/export/delete pickers so listing never has to parse full session files. If the index is missing or stale (e.g. sessions from an older version), it is rebuilt automatically from the session files.
+Every chat session is automatically saved to `~/.communicator/sessions/<timestamp>.json`, with a `title` auto-generated from the first user message (whitespace collapsed, truncated to 50 chars). Sessions are saved when you quit (`/quit` or `Ctrl+C`), when you switch models or start a new session, and on interrupt during streaming (including the partial response). A metadata index at `~/.communicator/sessions/.index.json` powers `--list-sessions` and the resume/export/delete pickers so listing never has to parse full session files. If the index is missing or stale (e.g. sessions from an older version), it is rebuilt automatically from the session files. Binary attachments (images, PDFs, office files) are stored as blob files under `~/.communicator/sessions/attachments/<sessionId>/` and referenced from the session JSON via `ref://attachments/` sentinels, keeping session files small; they are rehydrated back into API data URLs on resume/export. Text-file attachments stay inline in the JSON.
 
 ```bash
 communicator --list-sessions   # list saved sessions
@@ -454,6 +454,7 @@ All persistent data is resolved from `os.homedir()` at runtime, so the paths are
 | Path | Contents |
 |------|----------|
 | `~/.communicator/sessions/` | Session files + `.index.json` metadata |
+| `~/.communicator/sessions/attachments/<sessionId>/` | Binary attachment blobs (images, PDFs, office files), referenced via `ref://attachments/` in session JSON |
 | `~/.communicator.json` | Preferences |
 | `~/.communicator-system-prompt.md` | Optional custom system prompt |
 

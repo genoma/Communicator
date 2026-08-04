@@ -64,8 +64,10 @@ communicator --delete 2026-07-30T19-11-45
 ```
 
 `--delete` always asks for confirmation before removing the session file (and
-its sidecar entry). It cannot be combined with `--resume`, `--export`, or a
-prompt argument, and needs a TTY for the confirmation prompt.
+its sidecar entry, plus any attachment blobs under
+`~/.communicator/sessions/attachments/<sessionId>/`). It cannot be combined
+with `--resume`, `--export`, or a prompt argument, and needs a TTY for the
+confirmation prompt.
 
 ## Exporting sessions
 
@@ -154,6 +156,7 @@ Each session is stored as a JSON file:
 - `webSearch` is the web search mode (`"off"`, `"auto"`, or `"always"`); `webResults` is the OpenRouter result count (`null` when unset — the provider default of 10 applies) — both restored on resume
 - `title` is auto-generated from the first user message
 - User messages with attachments store `content` as an OpenAI-style parts array (`[{ type: 'text', ... }, { type: 'image_url', ... }, { type: 'file', ... }]`); plain text messages keep the string form, so older sessions stay readable
+- Binary attachment payloads (`image_url.url` / `file.file_data`) are not stored inline: the data URL is replaced by a `ref://attachments/<sha256>.<ext>` sentinel pointing at a blob in `~/.communicator/sessions/attachments/<sessionId>/` (raw bytes, deduplicated by sha256 within the session). On `--resume`/`--export` the blob is read back and re-encoded into the `data:<mime>;base64,...` URL. Text-file attachments stay inline as `text` parts. Old sessions with inline data URLs load unchanged and convert to refs on the next save; a missing blob drops that part with a warning
 - `pricing` stores per-token dollar amounts used for cost calculation
 - `updatedAt` is bumped on every auto-save
 - Empty sessions (no user messages) are never saved
