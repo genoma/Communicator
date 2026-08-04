@@ -209,14 +209,33 @@ test('openrouter fetchModels captures architecture and supported parameters', as
         supported_parameters: ['image_url', 'temperature'],
       },
       { id: 'plain/model' },
+      { id: 'text/model', supported_parameters: ['temperature'] },
     ],
   }))
 
   const models = await openrouter.fetchModels('key')
   assert.deepEqual(models[0].architecture, { input_modalities: ['text', 'image'] })
   assert.deepEqual(models[0].supportedParameters, ['image_url', 'temperature'])
+  assert.equal(models[0].visionSupported, true)
   assert.deepEqual(models[1].architecture, { input_modalities: [] })
   assert.equal(models[1].supportedParameters, null)
+  assert.equal(models[1].visionSupported, undefined)
+  assert.equal(models[2].visionSupported, false)
+})
+
+test('venice fetchModels normalizes vision support', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => jsonResponse({
+    data: [
+      { id: 'vision', model_spec: { capabilities: { supportsVision: true } } },
+      { id: 'text', model_spec: { capabilities: { supportsVision: false } } },
+      { id: 'unknown', model_spec: { capabilities: {} } },
+    ],
+  }))
+
+  const models = await venice.fetchModels('')
+  assert.equal(models.find((m) => m.id === 'vision').visionSupported, true)
+  assert.equal(models.find((m) => m.id === 'text').visionSupported, false)
+  assert.equal(models.find((m) => m.id === 'unknown').visionSupported, undefined)
 })
 
 test('openrouter fetchEndpoints resolves tilde aliases to their target slug', async (t) => {

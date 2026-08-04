@@ -57,6 +57,7 @@ export async function fetchModels(apiKey) {
       name: spec.name || m.id,
       provider: 'venice',
       contextLength: spec.availableContextTokens || null,
+      visionSupported: typeof caps.supportsVision === 'boolean' ? caps.supportsVision : undefined,
       description: modelDesc ? `${metaStr}\n${modelDesc}` : metaStr,
       reasoning: caps.supportsReasoning
         ? {

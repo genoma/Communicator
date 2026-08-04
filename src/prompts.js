@@ -18,7 +18,7 @@ export const pickerTheme = {
 
 export function orderModelChoices(models, lastModel) {
   const choices = models.map((m) => ({
-    name: `${m.name}  (${m.id})`,
+    name: `${m.name}  (${m.id})${m.visionSupported === true ? '  [vision]' : ''}`,
     value: { id: m.id, name: m.name },
     description: m.description || `${m.contextLength?.toLocaleString() || '?'} context`,
   }))

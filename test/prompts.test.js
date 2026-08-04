@@ -42,6 +42,17 @@ test('orderModelChoices falls back to the original order when the last model is 
   assert.deepEqual(ordered.map((c) => c.value.id), ['alpha', 'last-model', 'gamma'])
 })
 
+test('orderModelChoices tags vision-capable models', () => {
+  const ordered = orderModelChoices([
+    { id: 'eye', name: 'Eye', visionSupported: true },
+    { id: 'ear', name: 'Ear', visionSupported: false },
+    { id: 'plain', name: 'Plain' },
+  ])
+  assert.equal(ordered[0].name, 'Eye  (eye)  [vision]')
+  assert.equal(ordered[1].name, 'Ear  (ear)')
+  assert.equal(ordered[2].name, 'Plain  (plain)')
+})
+
 test('filterModelChoices finds the last-used model after ordering', () => {
   const ordered = orderModelChoices(MODELS, 'last-model')
   assert.deepEqual(filterModelChoices(ordered, 'last').map((c) => c.value.id), ['last-model'])
