@@ -1,5 +1,15 @@
 import { selectModel, selectProvider, selectReasoningEffort, BACK_SENTINEL } from './prompts.js'
 import { resolveEffortDefault, isWebSearchSupported } from './reasoning.js'
+import { CliError } from './errors.js'
+
+async function zdrGate(provider, zdr) {
+  if (zdr !== true || provider.meta.supportsZdr !== true) return false
+  if ((await provider.isZdrIndexDegraded?.()) === true) {
+    console.error('Warning: could not verify ZDR-capable endpoints; --zdr filtering disabled. The request may still fail if the provider is not ZDR-capable.')
+    return false
+  }
+  return true
+}
 
 function capabilityFlags(provider, modelData, endpoint) {
   const isVenice = provider.meta.name === 'venice'
@@ -25,11 +35,17 @@ function capabilityFlags(provider, modelData, endpoint) {
   return { visionSupported, fileSupported }
 }
 
-export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort }) {
+export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort, zdr = false }) {
   const models = await provider.fetchModels(apiKey)
+  const zdrActive = await zdrGate(provider, zdr)
+  const pickable = zdrActive ? models.filter((m) => m.zdr === true) : models
+  if (zdrActive && pickable.length === 0) {
+    console.error('No zero-retention models available on OpenRouter right now.')
+    process.exit(1)
+  }
 
   for (;;) {
-    const selected = await selectModel(models, prefs.lastModel)
+    const selected = await selectModel(pickable, prefs.lastModel, zdrActive)
     const modelId = selected.id
     const modelData = models.find((m) => m.id === modelId)
     let effort = reasoningEffort
@@ -65,7 +81,13 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
       process.exit(1)
     }
 
-    const ep = await selectProvider(endpoints)
+    const zdrEndpoints = zdrActive ? endpoints.filter((ep) => ep.zdr === true) : endpoints
+    if (zdrActive && zdrEndpoints.length === 0) {
+      console.error(`No zero-retention providers found for model: ${modelId}`)
+      continue
+    }
+
+    const ep = await selectProvider(zdrEndpoints, zdrActive)
     if (ep === BACK_SENTINEL) {
       effort = undefined
       continue
@@ -98,17 +120,22 @@ export function cheapestEndpoint(endpoints) {
   return best
 }
 
-export async function selectModelNonInteractive({ provider, apiKey, prefs, modelId, forcedEffort }) {
+export async function selectModelNonInteractive({ provider, apiKey, prefs, modelId, forcedEffort, zdr = false }) {
   const models = await provider.fetchModels(apiKey)
+  const zdrActive = await zdrGate(provider, zdr)
   const modelData = models.find((m) => m.id === modelId)
   const reasoning = modelData?.reasoning || null
 
   const effort = resolveEffortDefault({ reasoning, forcedEffort, prefs, modelId })
 
   const endpoints = await provider.fetchEndpoints(apiKey, modelId, models)
-  const ep = provider.meta.hasEndpoints && endpoints.length > 1
-    ? cheapestEndpoint(endpoints)
-    : endpoints[0]
+  const zdrEndpoints = zdrActive ? endpoints.filter((ep) => ep.zdr === true) : endpoints
+  if (zdrActive && zdrEndpoints.length === 0) {
+    throw new CliError(`Error: model ${modelId} has no zero-retention providers. Pick a ZDR-capable model or retry without --zdr.`)
+  }
+  const ep = provider.meta.hasEndpoints && zdrEndpoints.length > 1
+    ? cheapestEndpoint(zdrEndpoints)
+    : zdrEndpoints[0]
 
   return {
     modelId,

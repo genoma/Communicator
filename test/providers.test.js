@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { ApiError } from '../src/errors.js'
 import * as openrouter from '../src/providers/openrouter.js'
 import * as venice from '../src/providers/venice.js'
+import { getZdrIndex, getProviderPolicies, resetMetadataCaches } from '../src/providers/openrouter-meta.js'
 
 function jsonResponse(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
@@ -219,9 +220,11 @@ test('openrouter fetchModels captures architecture and supported parameters', as
 })
 
 test('openrouter fetchEndpoints resolves tilde aliases to their target slug', async (t) => {
+  resetMetadataCaches()
   const requested = []
   t.mock.method(globalThis, 'fetch', async (url) => {
     requested.push(url)
+    if (url.includes('/endpoints/zdr') || url.endsWith('/providers')) return jsonResponse({})
     return jsonResponse({ data: { endpoints: [
       { name: 'Provider', provider_name: 'Provider', tag: 'tag', status: 'online', pricing: {}, supported_parameters: [] },
     ] } })
@@ -231,14 +234,17 @@ test('openrouter fetchEndpoints resolves tilde aliases to their target slug', as
   const endpoints = await openrouter.fetchEndpoints('key', '~org/model-latest', models)
 
   assert.equal(endpoints.length, 1)
-  assert.equal(requested.length, 1)
-  assert.ok(requested[0].endsWith('/models/org/model-0731/endpoints'), requested[0])
+  const endpointCalls = requested.filter((u) => u.includes('/endpoints') && !u.includes('/endpoints/zdr'))
+  assert.equal(endpointCalls.length, 1)
+  assert.ok(endpointCalls[0].endsWith('/models/org/model-0731/endpoints'), endpointCalls[0])
 })
 
 test('openrouter fetchEndpoints fetches models to resolve aliases when none are passed', async (t) => {
+  resetMetadataCaches()
   const requested = []
   t.mock.method(globalThis, 'fetch', async (url) => {
     requested.push(url)
+    if (url.includes('/endpoints/zdr') || url.endsWith('/providers')) return jsonResponse({})
     if (url.endsWith('/models')) {
       return jsonResponse({ data: [{ id: '~org/model-latest', alias_target: { slug: 'org/model-0731' } }] })
     }
@@ -256,36 +262,50 @@ test('openrouter fetchEndpoints fetches models to resolve aliases when none are 
   const endpoints = await openrouter.fetchEndpoints('key', '~org/model-latest')
 
   assert.equal(endpoints.length, 1)
-  assert.equal(requested.length, 3)
-  assert.ok(requested[0].endsWith('/models/~org/model-latest/endpoints'), requested[0])
-  assert.ok(requested[1].endsWith('/models'), requested[1])
-  assert.ok(requested[2].endsWith('/models/org/model-0731/endpoints'), requested[2])
+  const routing = requested.filter((u) => (u.endsWith('/models') || u.includes('/endpoints')) && !u.includes('/endpoints/zdr'))
+  assert.equal(routing.length, 3)
+  assert.ok(routing[0].endsWith('/models/~org/model-latest/endpoints'), routing[0])
+  assert.ok(routing[1].endsWith('/models'), routing[1])
+  assert.ok(routing[2].endsWith('/models/org/model-0731/endpoints'), routing[2])
 })
 
 test('openrouter fetchEndpoints maps endpoint pricing and parameters', async (t) => {
-  t.mock.method(globalThis, 'fetch', async () => jsonResponse({
-    data: {
-      endpoints: [
-        {
-          name: 'Provider',
-          provider_name: 'Provider',
-          tag: 'tag1',
-          status: 'online',
-          uptime_last_30m: 99.5,
-          pricing: { prompt: '0.0000015', completion: '0.000006' },
-          context_length: 1000,
-          max_completion_tokens: 500,
-          supported_parameters: ['reasoning'],
-        },
-      ],
-    },
-  }))
+  resetMetadataCaches()
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (url.includes('/endpoints/zdr')) {
+      return jsonResponse({ data: [{ provider_name: 'Provider', tag: 'tag1', model_id: 'org/model' }] })
+    }
+    if (url.endsWith('/providers')) {
+      return jsonResponse({ data: [
+        { name: 'Provider', privacy_policy_url: 'https://example.com/privacy', terms_of_service_url: 'https://example.com/tos' },
+      ] })
+    }
+    return jsonResponse({
+      data: {
+        endpoints: [
+          {
+            name: 'Provider',
+            provider_name: 'Provider',
+            tag: 'tag1',
+            status: 'online',
+            uptime_last_30m: 99.5,
+            pricing: { prompt: '0.0000015', completion: '0.000006' },
+            context_length: 1000,
+            max_completion_tokens: 500,
+            supported_parameters: ['reasoning'],
+          },
+        ],
+      },
+    })
+  })
 
   const endpoints = await openrouter.fetchEndpoints('key', 'org/model')
   assert.equal(endpoints.length, 1)
   assert.equal(endpoints[0].providerName, 'Provider')
   assert.equal(endpoints[0].uptime30m, 99.5)
   assert.deepEqual(endpoints[0].supportedParameters, ['reasoning'])
+  assert.equal(endpoints[0].zdr, true)
+  assert.equal(endpoints[0].privacyPolicyURL, 'https://example.com/privacy')
 })
 
 test('chatCompletion streams tokens and usage for openrouter', async (t) => {
@@ -622,12 +642,15 @@ test('both providers accept the full documented option set without throwing', as
     temperature: 0.9,
     webSearch: 'auto',
     webResults: 3,
+    zdr: true,
     signal: undefined,
   }
 
   await openrouter.chatCompletion(fullOpts)
   await venice.chatCompletion(fullOpts)
   assert.equal(calls.length, 2)
+  assert.deepEqual(calls[0].provider, { order: ['Provider'], allow_fallbacks: false, zdr: true })
+  assert.equal(calls[1].provider, undefined)
 })
 
 test('openrouter ignores supportsReasoning and sessionId in the request body', async (t) => {
@@ -678,4 +701,128 @@ test('venice maps sessionId to prompt_cache_key with the full option set', async
   assert.equal(sentBody.reasoning_effort, 'high')
   assert.equal(sentBody.venice_parameters.enable_web_search, 'auto')
   assert.equal(sentBody.temperature, 0.9)
+})
+
+test('openrouter meta declares zero-retention support', () => {
+  assert.equal(openrouter.meta.supportsZdr, true)
+})
+
+test('isZdrIndexDegraded reflects index fetch success and failure', async (t) => {
+  resetMetadataCaches()
+  let fail = true
+  t.mock.method(globalThis, 'fetch', async () => {
+    if (fail) throw new TypeError('boom')
+    return jsonResponse({ data: [{ provider_name: 'X', tag: 'x', model_id: 'org/model' }] })
+  })
+
+  assert.equal(await openrouter.isZdrIndexDegraded(), true)
+  resetMetadataCaches()
+  fail = false
+  assert.equal(await openrouter.isZdrIndexDegraded(), false)
+  assert.equal((await getZdrIndex()).tags.has('x'), true)
+})
+
+test('openrouter fetchModels marks models that have zero-retention endpoints', async (t) => {
+  resetMetadataCaches()
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (url.includes('/endpoints/zdr')) {
+      return jsonResponse({ data: [
+        { provider_name: 'X', tag: 'x', model_id: 'org/model' },
+        { provider_name: 'Y', tag: 'y', model_id: 'other/model' },
+      ] })
+    }
+    return jsonResponse({ data: [
+      { id: 'org/model', name: 'Model', context_length: 1000 },
+      { id: 'plain/model', name: 'Plain', context_length: 1000 },
+      { id: '~org/alias', alias_target: { slug: 'org/model' } },
+    ] })
+  })
+
+  const models = await openrouter.fetchModels('key')
+  assert.equal(models.find((m) => m.id === 'org/model').zdr, true)
+  assert.equal(models.find((m) => m.id === 'plain/model').zdr, undefined)
+  assert.equal(models.find((m) => m.id === '~org/alias').zdr, true)
+})
+
+test('chatCompletion sends provider.zdr only when zdr is set', async (t) => {
+  const sentBodies = []
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBodies.push(JSON.parse(opts.body))
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'org/model',
+    messages: [],
+    onToken: () => {},
+    provider: 'Provider',
+    zdr: true,
+  })
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'org/model',
+    messages: [],
+    onToken: () => {},
+    provider: 'Provider',
+  })
+
+  assert.deepEqual(sentBodies[0].provider, { order: ['Provider'], allow_fallbacks: false, zdr: true })
+  assert.deepEqual(sentBodies[1].provider, { order: ['Provider'], allow_fallbacks: false })
+})
+
+test('chatCompletion rewrites a 400 ZDR rejection with a friendly hint', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => jsonResponse(
+    { error: { message: 'Provider does not support ZDR' } },
+    400
+  ))
+
+  await assert.rejects(
+    openrouter.chatCompletion({
+      apiKey: 'key',
+      model: 'org/model',
+      messages: [],
+      onToken: () => {},
+      provider: 'Provider',
+      zdr: true,
+    }),
+    (err) => err instanceof ApiError
+      && err.status === 400
+      && err.message.includes('ZDR request failed')
+      && err.message.includes('zero data retention')
+  )
+})
+
+test('metadata indexes cache within the TTL and degrade to empty on failure', async (t) => {
+  resetMetadataCaches()
+  let zdrCalls = 0
+  let providerCalls = 0
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (url.includes('/endpoints/zdr')) {
+      zdrCalls++
+      return jsonResponse({ data: [{ provider_name: 'X', tag: 'x', model_id: 'org/model' }] })
+    }
+    providerCalls++
+    return jsonResponse({ data: [{ name: 'X', privacy_policy_url: 'https://example.com/privacy' }] })
+  })
+
+  const first = await getZdrIndex()
+  assert.equal(first.tags.has('x'), true)
+  assert.equal(first.modelIds.has('org/model'), true)
+  await getZdrIndex()
+  assert.equal(zdrCalls, 1)
+
+  const policies = await getProviderPolicies()
+  assert.equal(policies.get('X').privacyPolicyURL, 'https://example.com/privacy')
+  await getProviderPolicies()
+  assert.equal(providerCalls, 1)
+
+  resetMetadataCaches()
+  t.mock.method(globalThis, 'fetch', async () => { throw new TypeError('boom') })
+  const degraded = await getZdrIndex()
+  assert.equal(degraded.tags.size, 0)
+  assert.equal(degraded.modelIds.size, 0)
+  assert.equal(degraded.degraded, true)
+  const noPolicies = await getProviderPolicies()
+  assert.equal(noPolicies.size, 0)
 })

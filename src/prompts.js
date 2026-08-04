@@ -2,6 +2,7 @@ import { search, select } from '@inquirer/prompts'
 import { Separator } from '@inquirer/core'
 import { EFFORT_LABELS } from './constants.js'
 import { formatModelPrice } from './ui/format.js'
+import { hyperlink } from './ui/hyperlink.js'
 import { bold, dim } from './ui/style.js'
 
 export const BACK_SENTINEL = Symbol('back')
@@ -41,11 +42,11 @@ export function filterModelChoices(choices, input) {
   )
 }
 
-export async function selectModel(models, lastModel) {
+export async function selectModel(models, lastModel, zdrOnly = false) {
   const choices = orderModelChoices(models, lastModel)
 
   const answer = await search({
-    message: 'Select a model',
+    message: zdrOnly ? 'Select a model (ZDR-capable only)' : 'Select a model',
     theme: pickerTheme,
     source: async (input) => {
       if (!input) return choices
@@ -56,11 +57,29 @@ export async function selectModel(models, lastModel) {
   return answer
 }
 
-export async function selectProvider(endpoints) {
+export function formatEndpointLabel(ep) {
+  const priceText = formatModelPrice(ep.pricing?.prompt, ep.pricing?.completion)
+  const uptime = ep.uptime30m != null ? `${ep.uptime30m.toFixed(0)}% uptime` : '?'
+  const zdr = ep.zdr ? '  [zero retention]' : ''
+  return `${ep.providerName}  —  ${priceText}  ${uptime}${zdr}`
+}
+
+export function formatEndpointDescription(ep) {
+  const parts = []
+  if (ep.tag) parts.push(`tag: ${ep.tag}`)
+  if (ep.privacyPolicyURL) {
+    const link = hyperlink(ep.privacyPolicyURL, 'privacy policy')
+    if (link) parts.push(link)
+  }
+  return parts.length ? parts.join(' · ') : undefined
+}
+
+export async function selectProvider(endpoints, zdrOnly = false) {
   if (endpoints.length === 1) {
     const ep = endpoints[0]
     const priceText = formatModelPrice(ep.pricing?.prompt, ep.pricing?.completion)
-    console.log(`Only one provider available: ${ep.providerName} (${priceText})`)
+    const zdr = ep.zdr ? ' [zero retention]' : ''
+    console.log(`Only one provider available: ${ep.providerName}${zdr} (${priceText})`)
     return ep
   }
 
@@ -70,22 +89,18 @@ export async function selectProvider(endpoints) {
     description: 'Return to the model picker',
   }
 
-  const providerChoices = endpoints.map((ep) => {
-    const priceText = formatModelPrice(ep.pricing?.prompt, ep.pricing?.completion)
-    const uptime = ep.uptime30m != null ? `${ep.uptime30m.toFixed(0)}% uptime` : '?'
-    const label = `${ep.providerName}  —  ${priceText}  ${uptime}`
-
-    return {
-      name: label,
-      value: ep,
-      description: ep.tag ? `tag: ${ep.tag}` : undefined,
-    }
-  })
+  const providerChoices = endpoints.map((ep) => ({
+    name: formatEndpointLabel(ep),
+    value: ep,
+    description: formatEndpointDescription(ep),
+  }))
 
   const fullChoices = [backChoice, new Separator(), ...providerChoices]
 
   const answer = await search({
-    message: `Select a provider (${endpoints.length} available)`,
+    message: zdrOnly
+      ? `Select a provider (${endpoints.length} available, ZDR only)`
+      : `Select a provider (${endpoints.length} available)`,
     theme: pickerTheme,
     source: async (input) => {
       if (!input) return fullChoices

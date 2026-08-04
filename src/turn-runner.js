@@ -51,6 +51,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         temperature: state.temperature,
         webSearch: state.webSearch,
         webResults: state.webResults,
+        zdr: state.zdr,
         signal: sessionState.streamController.signal,
       })
       loader.stop()

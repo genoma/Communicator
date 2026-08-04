@@ -2,6 +2,7 @@ import { parseSSEStream } from '../sse-parser.js'
 import { fetchWithRetry } from '../http.js'
 import { ApiError } from '../errors.js'
 import { DEFAULT_TEMPERATURE, DEFAULT_WEB_SEARCH_RESULTS } from '../constants.js'
+import { getZdrIndex, getProviderPolicies } from './openrouter-meta.js'
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 const CACHE_HEADER = 'x-openrouter-cache-status'
@@ -12,6 +13,11 @@ export const meta = {
   apiKeyEnv: 'OPENROUTER_API_KEY',
   hasEndpoints: true,
   supportsWebSearchOnAll: true,
+  supportsZdr: true,
+}
+
+export async function isZdrIndexDegraded() {
+  return (await getZdrIndex()).degraded === true
 }
 
 export function normalizePricing(raw) {
@@ -42,17 +48,20 @@ export async function fetchModels(apiKey) {
   }, { errorResponse: handleHttpError })
 
   const { data } = await res.json()
+  const zdr = await getZdrIndex()
   return data.map((m) => {
     const r = m.reasoning
+    const aliasTarget = m.alias_target?.slug || null
     return {
       id: m.id,
       name: m.name,
       provider: m.id.split('/')[0],
-      aliasTarget: m.alias_target?.slug || null,
+      aliasTarget,
       contextLength: m.context_length,
       description: m.description,
       architecture: { input_modalities: m.architecture?.input_modalities || [] },
       supportedParameters: Array.isArray(m.supported_parameters) ? m.supported_parameters : null,
+      zdr: zdr.modelIds.has(m.id) || (aliasTarget != null && zdr.modelIds.has(aliasTarget)) || undefined,
       reasoning: r
         ? {
             supported: true,
@@ -93,6 +102,8 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
     return []
   }
 
+  const [zdrIndex, policies] = await Promise.all([getZdrIndex(), getProviderPolicies()])
+
   return data.endpoints.map((ep) => ({
     name: ep.name,
     providerName: ep.provider_name,
@@ -103,10 +114,12 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
     contextLength: ep.context_length,
     maxCompletionTokens: ep.max_completion_tokens,
     supportedParameters: ep.supported_parameters,
+    zdr: zdrIndex.tags.has(ep.tag),
+    privacyPolicyURL: policies.get(ep.provider_name)?.privacyPolicyURL || null,
   }))
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, onSources, provider, reasoningEffort, temperature = DEFAULT_TEMPERATURE, webSearch, webResults, signal }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, onSources, provider, reasoningEffort, temperature = DEFAULT_TEMPERATURE, webSearch, webResults, zdr = false, signal }) {
   const body = {
     model,
     messages,
@@ -118,6 +131,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
     body.provider = {
       order: [provider],
       allow_fallbacks: false,
+      ...(zdr ? { zdr: true } : {}),
     }
   }
 
@@ -133,14 +147,22 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
     body.reasoning = { enabled: false }
   }
 
-  const res = await fetchWithRetry(`${OPENROUTER_BASE}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  }, { errorResponse: handleHttpError, signal })
+  let res
+  try {
+    res = await fetchWithRetry(`${OPENROUTER_BASE}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    }, { errorResponse: handleHttpError, signal })
+  } catch (err) {
+    if (zdr && err instanceof ApiError && err.status === 400 && /zdr|data retention/i.test(err.message)) {
+      throw new ApiError('ZDR request failed: the selected provider does not support zero data retention. Pick a zero-retention endpoint or retry without --zdr.', { status: 400, provider: 'openrouter', retryable: false })
+    }
+    throw err
+  }
 
   const cacheStatus = res.headers.get(CACHE_HEADER)
   const reader = res.body.getReader()

@@ -90,6 +90,17 @@ function mockConsole(t) {
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
 
+test('zdr flag flows to chatCompletion calls in interactive mode', async (t) => {
+  mockConsole(t)
+  const { provider, calls } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['hello', '/quit']) })
+
+  await runChatSession(baseCtx(provider, { zdr: true }), harness.deps)
+
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].zdr, true)
+})
+
 test('happy path runs a turn and saves the final session once', async (t) => {
   mockConsole(t)
   const { provider, calls } = fakeProvider()
@@ -106,6 +117,7 @@ test('happy path runs a turn and saves the final session once', async (t) => {
   assert.equal(opts.temperature, 1.1)
   assert.equal(opts.webSearch, 'off')
   assert.equal(opts.webResults, null)
+  assert.equal(opts.zdr, false)
   assert.equal(opts.supportsReasoning, true)
   assert.equal(opts.sessionId, '2026-01-01T00-00-00')
   assert.deepEqual(opts.messages.map((m) => m.role), ['system', 'user'])
@@ -345,6 +357,19 @@ test('banner shows reasoning and web badges when active', async (t) => {
   )
 
   assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [thinking: High]  [temp: 1.1]  [web: auto: 3]')
+})
+
+test('banner shows the zdr badge when active', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/quit']) })
+
+  await runChatSession(
+    baseCtx(provider, { reasoningEffort: null, temperature: 0.7, zdr: true }),
+    harness.deps
+  )
+
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [zdr]')
 })
 
 test('banner shows a bare web badge when results are not set', async (t) => {

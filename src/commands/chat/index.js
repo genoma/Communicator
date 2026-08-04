@@ -37,7 +37,7 @@ const handlers = {
     await ctx.saveSession()
     let sel
     try {
-      sel = await (ctx.selectModelAndEndpoint ?? selectModelAndEndpoint)({ provider: ctx.provider, apiKey: ctx.apiKey, prefs: ctx.prefs, reasoningEffort: undefined })
+      sel = await (ctx.selectModelAndEndpoint ?? selectModelAndEndpoint)({ provider: ctx.provider, apiKey: ctx.apiKey, prefs: ctx.prefs, reasoningEffort: undefined, zdr: ctx.state.zdr })
     } catch (err) {
       console.error(`\nError: ${formatError(err)}\n`)
       return

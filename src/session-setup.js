@@ -12,6 +12,7 @@ export function resolveSessionFlags(opts, prefs) {
     budget: forcedBudget ?? prefs.budget ?? null,
     forcedWebResults: resolveFlagOrExit((v) => resolveWebResultsFlag({ webResults: v }), opts.webResults),
     smoothSpeed: resolveFlagOrExit(resolveSmoothSpeed, opts.smoothSpeed) ?? normalizeSmoothSpeed(prefs.smoothSpeed),
+    zdr: opts.zdr === true,
   }
 }
 

@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { selectModelNonInteractive } from '../src/model-selection.js'
+import { CliError } from '../src/errors.js'
 
 function fakeProvider(overrides = {}) {
   return {
@@ -234,4 +235,58 @@ test('selection reads venice vision and file capabilities', async () => {
   const noFiles = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'no-files' })
   assert.equal(noFiles.visionSupported, undefined)
   assert.equal(noFiles.fileSupported, false)
+})
+
+test('non-interactive selection with zdr picks the cheapest zero-retention endpoint', async () => {
+  const provider = fakeProvider({
+    meta: { name: 'openrouter', hasEndpoints: true, supportsZdr: true },
+    isZdrIndexDegraded: async () => false,
+    async fetchEndpoints() {
+      return [
+        { providerName: 'NonZdrCheap', pricing: { prompt: 1e-9, completion: 1e-9 }, supportedParameters: {}, zdr: false },
+        { providerName: 'ZdrCheap', pricing: { prompt: 1e-6, completion: 2e-6 }, supportedParameters: {}, zdr: true },
+        { providerName: 'ZdrExpensive', pricing: { prompt: 1e-5, completion: 2e-5 }, supportedParameters: {}, zdr: true },
+      ]
+    },
+  })
+  const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'effort-model', zdr: true })
+  assert.equal(sel.endpointProviderName, 'ZdrCheap')
+})
+
+test('non-interactive selection with zdr rejects when no endpoint is zero-retention', async () => {
+  const provider = fakeProvider({
+    meta: { name: 'openrouter', hasEndpoints: true, supportsZdr: true },
+    isZdrIndexDegraded: async () => false,
+    async fetchEndpoints() {
+      return [
+        { providerName: 'NonZdr', pricing: { prompt: 1e-6, completion: 2e-6 }, supportedParameters: {}, zdr: false },
+      ]
+    },
+  })
+  await assert.rejects(
+    selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'effort-model', zdr: true }),
+    (err) => err instanceof CliError && err.message.includes('no zero-retention providers')
+  )
+})
+
+test('non-interactive selection with zdr and a degraded index skips filtering and warns', async (t) => {
+  const warnSpy = t.mock.method(console, 'error', () => {})
+  const provider = fakeProvider({
+    meta: { name: 'openrouter', hasEndpoints: true, supportsZdr: true },
+    isZdrIndexDegraded: async () => true,
+    async fetchEndpoints() {
+      return [
+        { providerName: 'NonZdrCheap', pricing: { prompt: 1e-9, completion: 1e-9 }, supportedParameters: {}, zdr: false },
+        { providerName: 'ZdrExpensive', pricing: { prompt: 1e-5, completion: 2e-5 }, supportedParameters: {}, zdr: true },
+      ]
+    },
+  })
+  const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'effort-model', zdr: true })
+  assert.equal(sel.endpointProviderName, 'NonZdrCheap')
+  assert.ok(warnSpy.mock.calls.some((c) => String(c.arguments[0]).includes('--zdr filtering disabled')))
+})
+
+test('non-interactive selection with zdr ignores the flag for providers without supportsZdr', async () => {
+  const sel = await selectModelNonInteractive({ provider: fakeProvider(), apiKey: '', prefs: {}, modelId: 'auto-reasoner', zdr: true })
+  assert.equal(sel.endpointProviderName, 'venice')
 })

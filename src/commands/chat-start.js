@@ -9,7 +9,7 @@ import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-sele
 import { resolveSessionFlags, persistSession } from '../session-setup.js'
 
 async function createSessionContext({ apiKey, opts, prefs, providerType }) {
-  const { forcedEffort, forcedTemperature, forcedBudget, budget, forcedWebResults, smoothSpeed } = resolveSessionFlags(opts, prefs)
+  const { forcedEffort, forcedTemperature, forcedBudget, budget, forcedWebResults, smoothSpeed, zdr } = resolveSessionFlags(opts, prefs)
 
   if (opts.resume !== undefined) {
     const result = await resumeCmd(opts.resume)
@@ -24,6 +24,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
       budget: forcedBudget ?? result.budget ?? null,
       webSearch: resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: result.webSearch }),
       webResults: forcedWebResults ?? result.webResults ?? null,
+      zdr,
       smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
       smoothSpeed,
       pricing: result.pricing,
@@ -41,9 +42,9 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
 
   let selection
   if (opts.model) {
-    selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort })
+    selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort, zdr })
   } else {
-    selection = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: forcedEffort })
+    selection = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: forcedEffort, zdr })
   }
 
   const dir = await ensureSessionsDir()
@@ -64,6 +65,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
     budget,
     webSearch,
     webResults: forcedWebResults ?? prefs.webResults ?? null,
+    zdr,
     smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
     smoothSpeed,
     webSearchSupported: selection.webSearchSupported,
@@ -91,6 +93,7 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerTyp
     budget: ctx.budget,
     webSearch: ctx.webSearch,
     webResults: ctx.webResults,
+    zdr: ctx.zdr,
     webSearchSupported: ctx.webSearchSupported,
     visionSupported: ctx.visionSupported,
     fileSupported: ctx.fileSupported,

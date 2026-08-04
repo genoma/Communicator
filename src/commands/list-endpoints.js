@@ -33,8 +33,10 @@ async function printEndpoints(provider, apiKey, modelId) {
   for (const ep of endpoints) {
     const priceText = formatModelPrice(ep.pricing?.prompt, ep.pricing?.completion)
     const uptime = ep.uptime30m != null ? `${ep.uptime30m.toFixed(0)}%` : '?'
+    const zdrCol = ep.zdr !== undefined ? ` | zdr ${ep.zdr ? 'yes' : 'no'}` : ''
+    const privacyCol = ep.privacyPolicyURL ? ` | privacy ${ep.privacyPolicyURL}` : ''
     console.log(
-      `${ep.providerName.padEnd(20)} | ${priceText.padEnd(26)} | uptime ${uptime} | tag ${ep.tag}`
+      `${ep.providerName.padEnd(20)} | ${priceText.padEnd(26)} | uptime ${uptime} | tag ${ep.tag}${zdrCol}${privacyCol}`
     )
   }
 }

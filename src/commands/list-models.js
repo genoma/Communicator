@@ -7,8 +7,9 @@ export async function listModelsCmd(provider, apiKey) {
       ? `  ${formatModelPrice(m.pricing?.prompt, m.pricing?.completion)}`
       : ''
     const privacyTag = m.capabilities?.privacy ? `  [${m.capabilities.privacy}]` : ''
+    const zdrTag = m.zdr ? '  [zdr]' : ''
     console.log(
-      `${m.name.padEnd(40)} ${m.id.padEnd(50)} ${m.contextLength?.toLocaleString() || '?'} ctx${pricingCol}${privacyTag}`
+      `${m.name.padEnd(40)} ${m.id.padEnd(50)} ${m.contextLength?.toLocaleString() || '?'} ctx${pricingCol}${privacyTag}${zdrTag}`
     )
   }
 }

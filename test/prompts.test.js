@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { pickerTheme, BACK_SENTINEL, getEffortLabel, orderModelChoices, filterModelChoices } from '../src/prompts.js'
+import { pickerTheme, BACK_SENTINEL, getEffortLabel, orderModelChoices, filterModelChoices, formatEndpointLabel, formatEndpointDescription } from '../src/prompts.js'
 
 test('pickerTheme does not reuse the chat ❯ prefix', () => {
   assert.equal(pickerTheme.prefix, undefined)
@@ -52,4 +52,29 @@ test('filterModelChoices matches by name and id case-insensitively', () => {
   assert.deepEqual(filterModelChoices(ordered, 'ALPHA').map((c) => c.value.id), ['alpha'])
   assert.deepEqual(filterModelChoices(ordered, 'gamma').map((c) => c.value.id), ['gamma'])
   assert.deepEqual(filterModelChoices(ordered, 'zzz'), [])
+})
+
+const ENDPOINT = {
+  providerName: 'Provider',
+  uptime30m: 99.5,
+  pricing: { prompt: 0.0000015, completion: 0.000006 },
+}
+
+test('formatEndpointLabel shows the zero-retention marker when zdr is set', () => {
+  assert.equal(formatEndpointLabel(ENDPOINT), 'Provider  —  in $1.50 / out $6.00/M  100% uptime')
+  assert.equal(
+    formatEndpointLabel({ ...ENDPOINT, zdr: true }),
+    'Provider  —  in $1.50 / out $6.00/M  100% uptime  [zero retention]'
+  )
+})
+
+test('formatEndpointDescription shows the tag and a privacy-policy hyperlink when available', () => {
+  assert.equal(formatEndpointDescription({ ...ENDPOINT, tag: 'novita/bf16' }), 'tag: novita/bf16')
+  assert.equal(
+    formatEndpointDescription({ ...ENDPOINT, tag: 'novita/bf16', privacyPolicyURL: 'https://example.com/privacy' }),
+    'tag: novita/bf16 · \x1b]8;;https://example.com/privacy\x1b\\privacy policy\x1b]8;;\x1b\\'
+  )
+  assert.equal(formatEndpointDescription({ ...ENDPOINT, privacyPolicyURL: 'https://example.com/privacy' }),
+    '\x1b]8;;https://example.com/privacy\x1b\\privacy policy\x1b]8;;\x1b\\')
+  assert.equal(formatEndpointDescription(ENDPOINT), undefined)
 })

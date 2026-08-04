@@ -25,7 +25,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   const s = makeState()
   assert.deepEqual(
     Object.keys(s).sort(),
-    ['budget', 'createdAt', 'endpointProviderName', 'fileSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'visionSupported', 'webResults', 'webSearch', 'webSearchSupported']
+    ['budget', 'createdAt', 'endpointProviderName', 'fileSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'visionSupported', 'webResults', 'webSearch', 'webSearchSupported', 'zdr']
   )
   assert.equal(s.modelId, 'org/model')
   assert.equal(s.endpointProviderName, 'Provider')

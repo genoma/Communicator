@@ -33,6 +33,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     budget = null,
     webSearch = 'off',
     webResults = null,
+    zdr = false,
     webSearchSupported = undefined,
     visionSupported = undefined,
     fileSupported = undefined,
@@ -76,6 +77,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     supportsReasoning,
     webSearch,
     webResults,
+    zdr,
     webSearchSupported,
     visionSupported,
     fileSupported,
@@ -102,6 +104,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
   const bannerParts = []
   if (reasoningEffort != null) bannerParts.push(`[thinking: ${getEffortLabel(reasoningEffort)}]`)
   if (temperature !== DEFAULT_TEMPERATURE) bannerParts.push(`[temp: ${temperature}]`)
+  if (state.zdr) bannerParts.push('[zdr]')
   if (state.webSearch !== 'off') {
     const results = state.webResults != null ? `: ${state.webResults}` : ''
     bannerParts.push(`[web: ${state.webSearch}${results}]`)

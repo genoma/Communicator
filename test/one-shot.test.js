@@ -4,6 +4,7 @@ import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CliError } from '../src/errors.js'
+import { resetMetadataCaches } from '../src/providers/openrouter-meta.js'
 
 const tempHome = await mkdtemp(join(tmpdir(), 'communicator-home-'))
 after(() => rm(tempHome, { recursive: true, force: true }))
@@ -200,4 +201,45 @@ test('one-shot without a prompt errors before any API call', async (t) => {
     (e) => e instanceof CliError && /no prompt provided/.test(e.message) && e.exitCode === 1
   )
   assert.equal(getExitCode(), null)
+})
+
+test('one-shot with --zdr sends provider.zdr in the request body', async (t) => {
+  const bodies = []
+  const models = [{ id: 'test/model-a', name: 'Model A', context_length: 1000, description: 'd', reasoning: null }]
+  const endpoints = [{
+    provider_name: 'ProviderX',
+    tag: 't',
+    status: 'available',
+    uptime_last_30m: null,
+    pricing: { prompt: 1e-6, completion: 2e-6 },
+    context_length: 1000,
+    max_completion_tokens: null,
+    supported_parameters: {},
+  }]
+  const stream = [
+    event({ choices: [{ delta: { content: 'Hello' } }] }),
+    event({ choices: [{ delta: {}, usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }] }),
+    'data: [DONE]\n\n',
+  ]
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    if (String(url).includes('/chat/completions')) {
+      bodies.push(JSON.parse(opts.body))
+      return sseResponse(stream)
+    }
+    if (String(url).includes('/endpoints/zdr')) {
+      return jsonResponse({ data: [{ provider_name: 'ProviderX', tag: 't', model_id: 'test/model-a' }] })
+    }
+    if (String(url).includes('/endpoints')) return jsonResponse({ data: { endpoints } })
+    return jsonResponse({ data: models })
+  })
+  withApiKey(t)
+  const file = await tempConfig(t)
+  mockExit(t)
+  resetMetadataCaches()
+
+  const { exited } = await runOneShot(t, { overrides: { config: file, zdr: true } })
+
+  assert.equal(exited, false)
+  assert.equal(bodies.length, 1)
+  assert.deepEqual(bodies[0].provider, { order: ['ProviderX'], allow_fallbacks: false, zdr: true })
 })

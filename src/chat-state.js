@@ -2,7 +2,7 @@ import { DEFAULT_TEMPERATURE } from './constants.js'
 import { normalizeSmoothSpeed, normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
-  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, supportsReasoning, webSearch, webResults, webSearchSupported, visionSupported, fileSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent }) {
+  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, supportsReasoning, webSearch, webResults, zdr = false, webSearchSupported, visionSupported, fileSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent }) {
     this.modelId = modelId
     this.endpointProviderName = endpointProviderName
     this.reasoningEffort = reasoningEffort
@@ -12,6 +12,7 @@ export class ChatState {
     this.supportsReasoning = supportsReasoning
     this.webSearch = normalizeWebSearchMode(webSearch)
     this.webResults = webResults
+    this.zdr = zdr === true
     this.webSearchSupported = webSearchSupported
     this.visionSupported = visionSupported
     this.fileSupported = fileSupported

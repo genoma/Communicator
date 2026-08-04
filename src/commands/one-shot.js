@@ -38,7 +38,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     throw new CliError('Error: no prompt provided. Pass a prompt argument or pipe input via stdin.')
   }
 
-  const { forcedEffort, forcedTemperature, budget, forcedWebResults, smoothSpeed } = resolveSessionFlags(opts, prefs)
+  const { forcedEffort, forcedTemperature, budget, forcedWebResults, smoothSpeed, zdr } = resolveSessionFlags(opts, prefs)
 
   const tracker = new UsageTracker()
   if (budget != null && tracker.cost >= budget) {
@@ -49,11 +49,11 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   let temperature
   try {
     if (opts.model) {
-      selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort })
+      selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort, zdr })
     } else if (stdinPiped) {
       throw new CliError('Error: interactive model selection needs a TTY. Use -m <model-id> when piping input.')
     } else {
-      selection = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: forcedEffort })
+      selection = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: forcedEffort, zdr })
     }
     temperature = forcedTemperature ?? prefs.temperature?.[selection.modelId] ?? DEFAULT_TEMPERATURE
   } catch (err) {
@@ -115,12 +115,13 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
       temperature,
       webSearch,
       webResults,
+      zdr,
       signal: controller.signal,
     }
 
     if (ttyOut) {
       const label = selection.endpointProviderName ? `${selection.endpointProviderName} / ${selection.modelId}` : selection.modelId
-      console.log(`\nConnected to ${label}\n`)
+      console.log(`\nConnected to ${label}${zdr ? '  [zdr]' : ''}\n`)
       const render = createStreamRenderer({ markdown: true, smooth: opts.smoothStreaming !== false && prefs.smoothStreaming !== false, smoothCharsPerTick: cpsToCharsPerTick(smoothSpeed) })
       result = await provider.chatCompletion({
         ...completionOpts,
@@ -181,6 +182,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     budget,
     webSearch,
     webResults,
+    zdr,
     pricing: selection.pricing,
     sessionId,
     createdAt,

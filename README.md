@@ -13,6 +13,7 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **File & image attachments** — attach images, PDFs, office files, and text/code files to messages with `/attach <path>...` (interactive) or `--attach <path>` (one-shot). Images require a vision-capable model; PDFs and text files work anywhere; office files (xlsx/docx/pptx) are extracted server-side on Venice only
 - **One-shot mode** — pass a prompt argument or pipe input via stdin for a single non-interactive answer. TTY-aware output: styled with usage footer on a terminal, plain answer text only when piped
 - **Per-session budget caps** — `--budget <usd>` or `/budget <usd>` limits accumulated session cost; warns at 80% used and refuses turns at 100%
+- **Zero data retention** — `--zdr` (OpenRouter only) forces every request through zero-data-retention routing: no caching, no logging, no training. Under `--zdr` the model and provider pickers show only ZDR-capable entries, endpoints are tagged `[zero retention]` in the provider picker and `zdr yes` in `--list-endpoints`, and every provider row links to its privacy policy; `--list-models` marks models with a ZDR-capable endpoint as `[zdr]`
 - **Terminal markdown rendering** — responses are styled in the terminal (headers, bold/italic, code blocks, lists, quotes, links) with a `/markdown` toggle
 - **Streaming responses** — tokens appear as they arrive, with reasoning tokens shown in gray under a `❯ Thinking` banner and a `❯ Answer` separator before the final response
 - **Smooth streaming** — in interactive sessions, incoming text is paced (default on) so answers render at a steady character rate instead of popping in bursts after a long wait; disable with `--no-smooth-streaming` or `/smooth off`. A dim waiting indicator (`Waiting for response...`, or `Searching the web...` when a search is guaranteed) shows while the model is still working
@@ -93,12 +94,13 @@ Add those lines to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent to make t
 |       | `--budget`            | `<usd>`  | Per-session budget cap in USD. Warns at 80% used, refuses turns at 100%. Bare use saves the default |
 |       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `on`, `off` (`on` = `auto`; bare flag = `auto`). Per-model default is persisted in preferences |
 |       | `--web-results`       | `<n>`    | Number of web search results (OpenRouter only, default 10). Implies `auto` mode. Bare use saves the default |
+|       | `--zdr`               | —        | Force zero-data-retention routing (OpenRouter only). Filters model/provider selection to ZDR-capable endpoints; errors at selection if a model has none |
 |       | `--attach`            | `<path>` | Attach a file to the one-shot message (repeatable: images, pdf, xlsx/docx/pptx, txt, md, code, ...). Requires a prompt argument or piped stdin |
 |       | `--no-smooth-streaming` | —      | Disable smooth streaming (default: on in interactive sessions). Bare use saves the default |
 |       | `--smooth-speed`      | `<level\|cps>` | Smooth streaming speed: `slow`, `normal`, `fast`, or chars per second (default: `normal` ≈ 2000). Bare use saves the default |
 | `-V`  | `--version`           | —        | Print the version and exit                                                           |
 |       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
-|       | `--list-endpoints`    | `[model]`| List providers for a model (pricing, uptime). No arg = picker, partial ID = fuzzy match |
+|       | `--list-endpoints`    | `[model]`| List providers for a model (pricing, uptime, ZDR support, privacy policy link). No arg = picker, partial ID = fuzzy match |
 |       | `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, title) and exit                |
 | `-r`  | `--resume`            | `[id]`   | Resume a saved session. No arg = picker, partial ID = prefix match                   |
 | `-x`  | `--export`            | `[id]`   | Export a session to markdown. Same ID matching as `--resume`                         |
@@ -191,6 +193,17 @@ While the model is working, a dim indicator appears on the response line roughly
 ### Budget caps
 
 `--budget <usd>` (or `/budget <usd>` mid-chat) sets a per-session spending cap based on accumulated tracked cost. When 80% is crossed, the usage footer shows a budget line (`Budget  83% used ($0.0005 of $0.0006), $0.0001 remaining`). At 100% the next turn is refused with `Budget exhausted ($X of $Y). /new to start fresh or /quit.`. `/budget` with no value prints used/remaining. Budgets are stored in the session file and restored on `--resume`; `/new` clears the budget for the fresh session.
+
+### Zero data retention (ZDR)
+
+OpenRouter lets you force **zero data retention** per request: no caching, no logging, no training on your prompts or responses. Pass `--zdr` (OpenRouter only — silently ignored on Venice) and every request in the session carries `provider.zdr: true`. Selection is **filtered to ZDR-capable entries**: the model picker shows only models that have a zero-retention endpoint, the provider picker shows only `[zero retention]` endpoints, and a non-interactive `-m <model>` fails at selection — before any request — if the model has no ZDR endpoints. The runtime error is kept as a safety net for paths that bypass selection (`--resume`, mid-chat model switches, index drift). Without `--zdr` nothing changes — normal (non-ZDR) routing applies.
+
+Privacy metadata comes from OpenRouter's own public endpoints and is fetched live (cached briefly, non-fatal on failure):
+
+- **`[zero retention]` tag** — the provider picker marks endpoints listed in OpenRouter's ZDR index; `--list-endpoints` shows a `zdr yes/no` column; `--list-models` marks models that have at least one ZDR-capable endpoint as `[zdr]`
+- **Privacy policy links** — each provider row in `--list-endpoints` prints its `privacy policy` URL, and the picker's description line shows a clickable `privacy policy` OSC 8 hyperlink (plain text in terminals without hyperlink support)
+
+Caveats: `--zdr` is a per-invocation flag, not persisted. ZDR-capable providers may not support web search — combining `--zdr` with `--web-search` is allowed, but the request can be rejected by the API depending on the provider. If OpenRouter's ZDR index can't be fetched, `--zdr` prints a warning and skips filtering, relying on the runtime error instead. `--resume` keeps the session's model/effort/temperature but ZDR must be re-passed with `--zdr` on the resuming invocation.
 
 ### Web search
 
