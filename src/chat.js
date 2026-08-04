@@ -1,6 +1,7 @@
 import { UsageTracker } from './tracker.js'
 import { getEffortLabel } from './prompts.js'
 import { DEFAULT_TEMPERATURE, cpsToCharsPerTick } from './constants.js'
+import { sessionLabel } from './ui/format.js'
 import { chatCommands, budgetGuard, commandAcceptsArgs, visibleChatCommands } from './commands/chat/index.js'
 import { buildContent } from './attachments.js'
 import { readInput as defaultReadInput } from './input.js'
@@ -8,7 +9,7 @@ import { createStreamRenderer, renderHistory } from './ui/stream.js'
 import { createLoader } from './ui/loader.js'
 import { dim, sep } from './ui/style.js'
 import { out } from './ui/io.js'
-import { ensureSessionsDir, generateSessionId, saveSession, buildSessionPayload } from './sessions.js'
+import { ensureSessionsDir, generateSessionId, persistSessionFile, buildSessionPayload } from './sessions.js'
 import { savePreferences, applyPreferenceUpdates } from './config.js'
 import { copyText } from './clipboard.js'
 import { ChatState } from './chat-state.js'
@@ -51,10 +52,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     onSignal = registerSignalHandlers,
   } = deps
 
-  const saveSessionFile = deps.saveSession ?? (async (sessionIdToSave, payload) => {
-    const dir = await ensureSessionsDir()
-    await saveSession(dir, sessionIdToSave, payload)
-  })
+  const saveSessionFile = deps.saveSession ?? persistSessionFile
 
   const savePrefsFile = deps.savePrefs ?? (async (updates) => {
     await savePreferences(applyPreferenceUpdates(prefs, updates), configPath)
@@ -100,7 +98,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     }
   }
 
-  const label = endpointProviderName ? `${endpointProviderName} / ${model}` : model
+  const label = sessionLabel(endpointProviderName, model)
   const bannerParts = []
   if (reasoningEffort != null) bannerParts.push(`[thinking: ${getEffortLabel(reasoningEffort)}]`)
   if (temperature !== DEFAULT_TEMPERATURE) bannerParts.push(`[temp: ${temperature}]`)
@@ -156,10 +154,27 @@ export async function runChatSession(ctx = {}, deps = {}) {
     await saveCurrentSession()
   }
 
+  const bestEffortExitSave = async () => {
+    if (exitSaveDone) return
+    exitSaveDone = true
+    const finalState = state.toFinalState(provider.meta.name)
+    await Promise.all([
+      saveCurrentSession(),
+      savePrefs({
+        modelId: finalState.modelId,
+        lastModel: finalState.modelId,
+        lastProvider: finalState.endpointProviderName,
+        reasoningEffort: finalState.reasoningEffort,
+        temperature: finalState.temperature,
+        webSearch: finalState.webSearch,
+      }),
+    ])
+  }
+
   const cleanupSignals = onSignal({
     sigint: () => {
       if (!sessionState.streaming) {
-        void bestEffortSave().finally(() => exit(130))
+        void bestEffortExitSave().finally(() => exit(130))
         return
       }
       sessionState.interrupted = true
@@ -190,6 +205,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     stdout,
     tty,
     saveCurrentSession,
+    interruptSave: bestEffortExitSave,
     exit,
     sessionState,
   })

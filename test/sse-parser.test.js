@@ -40,6 +40,33 @@ test('handles fragmented chunks across reads', async () => {
   assert.equal(fullText, 'fragmented')
 })
 
+test('keeps the final line when the stream ends mid-emoji without a trailing newline', async () => {
+  const emoji = '😀'
+  const line = `data: ${JSON.stringify({ choices: [{ delta: { content: `done ${emoji}` } }] })}`
+  const bytes = new TextEncoder().encode(line)
+  const cut = bytes.length - 3
+  const chunks = [
+    Buffer.from(bytes.subarray(0, cut)).toString('utf-8'),
+    Buffer.from(bytes.subarray(cut)).toString('utf-8'),
+  ]
+
+  const { fullText, skippedChunks } = await parseSSEStream(streamReader(chunks), () => {})
+  assert.equal(fullText, `done ${emoji}`)
+  assert.equal(skippedChunks, 0)
+})
+
+test('accepts spec-valid data events without a space after the colon', async () => {
+  const { fullText, skippedChunks } = await parseSSEStream(
+    streamReader([
+      `data:${JSON.stringify({ choices: [{ delta: { content: 'tight' } }] })}\n\n`,
+      'data:[DONE]\n\n',
+    ]),
+    () => {}
+  )
+  assert.equal(fullText, 'tight')
+  assert.equal(skippedChunks, 0)
+})
+
 test('emits reasoning then content transition events', async () => {
   const tokens = []
   const { fullText, fullReasoning } = await parseSSEStream(

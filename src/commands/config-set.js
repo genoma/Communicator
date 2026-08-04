@@ -2,7 +2,7 @@ import { getProvider } from '../providers/index.js'
 import { cheapestEndpoint } from '../model-selection.js'
 import { isWebSearchSupported } from '../reasoning.js'
 import { applyPreferenceUpdates, savePreferences } from '../config.js'
-import { resolveReasoningFlag, resolveTemperatureFlag, resolveWebResultsFlag, normalizeWebSearchMode, resolveBudget, resolveSmoothSpeed, webSearchGate } from '../flags.js'
+import { resolveFlagValues, normalizeWebSearchMode, webSearchGate } from '../flags.js'
 import { getEffortLabel } from '../prompts.js'
 import { formatModelPrice } from '../ui/format.js'
 import { CliError } from '../errors.js'
@@ -11,11 +11,7 @@ import { DEFAULT_CONFIG_FILE, formatSmoothSpeed } from '../constants.js'
 const PER_MODEL_FLAGS = '--temperature, --reasoning-effort and --web-search'
 
 export function resolveConfigValues(opts) {
-  const temperature = opts.temperature !== undefined ? resolveTemperatureFlag({ temperature: opts.temperature }) : undefined
-  const budget = opts.budget !== undefined ? resolveBudget(opts.budget) : undefined
-  const webResults = opts.webResults !== undefined ? resolveWebResultsFlag({ webResults: opts.webResults }) : undefined
-  const smoothSpeed = opts.smoothSpeed !== undefined ? resolveSmoothSpeed(opts.smoothSpeed) : undefined
-  const reasoningEffort = opts.reasoningEffort !== undefined ? resolveReasoningFlag({ reasoningEffort: opts.reasoningEffort }) : undefined
+  const { temperature, budget, webResults, smoothSpeed, reasoningEffort } = resolveFlagValues(opts)
   const webSearch = opts.webSearch !== undefined ? normalizeWebSearchMode(opts.webSearch) : undefined
   const smoothStreaming = opts.smoothStreaming === false ? false : undefined
   const outputDir = opts.outputDir

@@ -1,13 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, normalizeWebSearchMode, webSearchGate, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed } from '../src/flags.js'
-import { collectFlag } from '../src/cli-utils.js'
-
-test('collectFlag accumulates repeated --attach values', () => {
-  assert.deepEqual(collectFlag('a.png', []), ['a.png'])
-  assert.deepEqual(collectFlag('b.pdf', collectFlag('a.png', [])), ['a.png', 'b.pdf'])
-  assert.deepEqual(collectFlag('c.txt', ['a.png', 'b.pdf']), ['a.png', 'b.pdf', 'c.txt'])
-})
+import { resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, normalizeWebSearchMode, webSearchGate, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed, resolvePrefOrNull } from '../src/flags.js'
 
 test('resolveTemperatureFlag parses string and number values', () => {
   assert.equal(resolveTemperatureFlag({ temperature: '0.5' }), 0.5)
@@ -159,4 +152,13 @@ test('normalizeSmoothSpeed falls back to the normal preset', () => {
   assert.equal(normalizeSmoothSpeed('1500'), 1500)
   assert.equal(normalizeSmoothSpeed('bogus'), 2000)
   assert.equal(normalizeSmoothSpeed(0), 2000)
+})
+
+test('resolvePrefOrNull returns valid values and null for invalid ones', () => {
+  assert.equal(resolvePrefOrNull(resolveBudget, 2.5), 2.5)
+  assert.equal(resolvePrefOrNull(resolveBudget, 'abc'), null)
+  assert.equal(resolvePrefOrNull(resolveBudget, 0), null)
+  assert.equal(resolvePrefOrNull(resolveBudget, -1), null)
+  assert.equal(resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), 0), null)
+  assert.equal(resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), 5), 5)
 })

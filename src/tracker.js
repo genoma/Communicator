@@ -19,8 +19,18 @@ export function budgetStatus(cost, budget) {
   return { pct, remaining: Math.max(0, budget - cost) }
 }
 
+export function budgetExhaustedMessage(cost, budget) {
+  return `Budget exhausted (${formatCost(cost)} of ${formatCost(budget)}).`
+}
+
+export function budgetStatusLine(cost, budget) {
+  const status = budgetStatus(cost, budget)
+  if (!status) return null
+  return `Budget: ${formatCost(cost)} of ${formatCost(budget)} used (${status.pct.toFixed(0)}%). ${formatCost(status.remaining)} remaining.`
+}
+
 function formatCompactCost(cost) {
-  return `$${cost.toFixed(2)}`
+  return `$${cost.toFixed(4)}`
 }
 
 function renderBar(pct) {

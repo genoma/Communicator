@@ -1,6 +1,6 @@
 import { parseSSEStream } from '../sse-parser.js'
 import { fetchWithRetry } from '../http.js'
-import { ApiError } from '../errors.js'
+import { ApiError, makeHandleHttpError } from '../errors.js'
 import { DEFAULT_TEMPERATURE, DEFAULT_WEB_SEARCH_RESULTS } from '../constants.js'
 import { getZdrIndex, getProviderPolicies } from './openrouter-meta.js'
 
@@ -16,6 +16,13 @@ export const meta = {
   supportsZdr: true,
 }
 
+export const handleHttpError = makeHandleHttpError({
+  providerName: 'OpenRouter',
+  providerId: 'openrouter',
+  apiKeyEnv: 'OPENROUTER_API_KEY',
+  notFoundMessage: 'Model not found on OpenRouter. Use --list-models to list available models.',
+})
+
 export async function isZdrIndexDegraded() {
   return (await getZdrIndex()).degraded === true
 }
@@ -27,19 +34,6 @@ export function normalizePricing(raw) {
     prompt: Number.isNaN(prompt) ? null : prompt,
     completion: Number.isNaN(completion) ? null : completion,
   }
-}
-
-export function handleHttpError(status, body) {
-  if (status === 401) {
-    throw new ApiError('Invalid API key. Check your OPENROUTER_API_KEY environment variable.', { status, provider: 'openrouter', retryable: false })
-  }
-  if (status === 429) {
-    throw new ApiError('Rate limited by OpenRouter. Wait a moment and try again.', { status, provider: 'openrouter', retryable: true })
-  }
-  if (status === 404) {
-    throw new ApiError('Model not found on OpenRouter. Use --list-models to list available models.', { status, provider: 'openrouter', retryable: false })
-  }
-  throw new ApiError(`OpenRouter request failed (${status}): ${body}`, { status, provider: 'openrouter', retryable: status >= 500 })
 }
 
 export async function fetchModels(apiKey) {

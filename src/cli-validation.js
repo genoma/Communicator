@@ -1,6 +1,6 @@
-const SESSION_FLAGS_LIST = '--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach'
+import { WEB_SEARCH_MODES } from './flags.js'
 
-const WEB_SEARCH_MODES = new Set(['auto', 'always', 'on', 'off'])
+const SESSION_FLAGS_LIST = '--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach'
 
 export function hasAttachments(opts) {
   return (opts.attach?.length ?? 0) > 0
@@ -112,6 +112,10 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
 
   if (opts.resume !== undefined && (opts.model !== undefined || opts.outputDir !== undefined || attachments)) {
     errors.push('Error: --model, --output-dir and --attach cannot be combined with --resume (resumed sessions keep their own model; --output-dir only applies to --export).')
+  }
+
+  if (interactiveFlags && exitModeFlags) {
+    errors.push('Error: --resume, --export and --delete cannot be combined with --list-* flags.')
   }
 
   if (opts.outputDir !== undefined && opts.export === undefined && (promptArg || !isTTY)) {

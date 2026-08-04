@@ -155,33 +155,29 @@ test('one-shot success path writes plain output, the session file and persisted 
   assert.equal(prefs.budget, 5)
 })
 
-test('one-shot budget pre-check refuses an already-exhausted budget before any request', async (t) => {
+test('one-shot treats an invalid configured budget as unset', async (t) => {
   const fetchCalls = []
   mockOpenRouterStream(t, fetchCalls)
   withApiKey(t)
   const file = await tempConfig(t)
-  const out = []
-  t.mock.method(console, 'log', (msg) => out.push(String(msg)))
 
-  const { exited, exitCode, message } = await runOneShot(t, { overrides: { config: file }, prefs: { budget: 0 } })
+  const sessionsDir = join(tempHome, '.communicator', 'sessions')
+  const before = new Set((await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.')))
 
-  assert.equal(exited, true)
-  assert.equal(exitCode, 1)
-  assert.equal(message, 'Error: Budget exhausted ($0.000000 of $0.000000).')
-  assert.ok(!fetchCalls.some((u) => u.includes('/chat/completions')))
-  assert.equal(out.length, 0)
-})
+  const zero = await runOneShot(t, { overrides: { config: file }, prefs: { budget: 0 } })
+  assert.equal(zero.exited, false)
+  const negative = await runOneShot(t, { overrides: { config: file }, prefs: { budget: -1 } })
+  assert.equal(negative.exited, false)
+  const garbage = await runOneShot(t, { overrides: { config: file }, prefs: { budget: 'abc' } })
+  assert.equal(garbage.exited, false)
+  assert.ok(fetchCalls.some((u) => u.includes('/chat/completions')))
 
-test('one-shot with a negative configured budget is refused too', async (t) => {
-  mockOpenRouterStream(t)
-  withApiKey(t)
-  const file = await tempConfig(t)
-
-  const { exited, exitCode, message } = await runOneShot(t, { overrides: { config: file }, prefs: { budget: -1 } })
-
-  assert.equal(exited, true)
-  assert.equal(exitCode, 1)
-  assert.match(message, /Budget exhausted/)
+  const created = (await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.') && !before.has(f))
+  assert.equal(created.length, 3)
+  for (const f of created) {
+    const saved = JSON.parse(await readFile(join(sessionsDir, f), 'utf-8'))
+    assert.equal(saved.budget, null)
+  }
 })
 
 test('one-shot without a prompt errors before any API call', async (t) => {

@@ -1,15 +1,14 @@
 import { getProvider } from '../providers/index.js'
-import { DEFAULT_TEMPERATURE, cpsToCharsPerTick, formatCost } from '../constants.js'
-import { resolveWebSearchFlag, webSearchGate } from '../flags.js'
-import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
+import { cpsToCharsPerTick } from '../constants.js'
 import { ensureSessionsDir, generateSessionId } from '../sessions.js'
 import { createStreamRenderer, printSources } from '../ui/stream.js'
-import { UsageTracker, budgetLine } from '../tracker.js'
+import { sessionLabel } from '../ui/format.js'
+import { UsageTracker, budgetLine, budgetExhaustedMessage } from '../tracker.js'
 import { ChatState } from '../chat-state.js'
 import { CliError, formatError } from '../errors.js'
-import { extname } from 'node:path'
-import { classifyPath, loadAttachment, attachmentGate, buildContent } from '../attachments.js'
-import { resolveSessionFlags, attachGateOptions, persistSession } from '../session-setup.js'
+import { fail } from '../cli-utils.js'
+import { loadAttachments, buildContent } from '../attachments.js'
+import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
 
 const MAX_STDIN_BYTES = 10 * 1024 * 1024
 
@@ -42,51 +41,33 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
 
   const tracker = new UsageTracker()
   if (budget != null && tracker.cost >= budget) {
-    throw new CliError(`Error: Budget exhausted (${formatCost(tracker.cost)} of ${formatCost(budget)}).`)
+    throw new CliError(`Error: ${budgetExhaustedMessage(tracker.cost, budget)}`)
   }
 
-  let selection
-  let temperature
+  let context
   try {
-    if (opts.model) {
-      selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort, zdr })
-    } else if (stdinPiped) {
-      throw new CliError('Error: interactive model selection needs a TTY. Use -m <model-id> when piping input.')
-    } else {
-      selection = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: forcedEffort, zdr })
-    }
-    temperature = forcedTemperature ?? prefs.temperature?.[selection.modelId] ?? DEFAULT_TEMPERATURE
+    context = await buildSessionContext({
+      provider,
+      apiKey,
+      opts,
+      prefs,
+      forcedEffort,
+      forcedTemperature,
+      forcedWebResults,
+      zdr,
+      allowInteractive: !stdinPiped,
+    })
   } catch (err) {
     if (err instanceof CliError) throw err
-    console.error(`Error: ${formatError(err)}`)
-    process.exit(1)
+    fail(`Error: ${formatError(err)}`)
   }
-
-  const webSearch = resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: prefs.webSearch?.[selection.modelId] })
-  const webSearchGateError = webSearchGate(webSearch, selection.webSearchSupported)
-  if (webSearchGateError) {
-    throw new CliError(`Error: ${webSearchGateError}`)
-  }
-  const webResults = forcedWebResults ?? prefs.webResults ?? null
+  const { selection, temperature, webSearch, webResults } = context
 
   const attachments = []
   if (opts.attach?.length) {
     const gateOptions = attachGateOptions(selection, provider.meta)
-    for (const path of opts.attach) {
-      const { kind } = classifyPath(path)
-      if (!kind) {
-        throw new CliError(`Error: Unsupported file type: ${extname(path).slice(1) || '(none)'}`)
-      }
-      const gateError = attachmentGate([{ kind }], gateOptions)
-      if (gateError) {
-        throw new CliError(`Error: ${gateError}`)
-      }
-      try {
-        attachments.push(await loadAttachment(path))
-      } catch (err) {
-        throw new CliError(`Error: ${err.message}`)
-      }
-    }
+    const loaded = await loadAttachments(opts.attach, gateOptions)
+    attachments.push(...loaded.attachments)
   }
 
   const dir = await ensureSessionsDir()
@@ -120,7 +101,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     }
 
     if (ttyOut) {
-      const label = selection.endpointProviderName ? `${selection.endpointProviderName} / ${selection.modelId}` : selection.modelId
+      const label = sessionLabel(selection.endpointProviderName, selection.modelId)
       console.log(`\nConnected to ${label}${zdr ? '  [zdr]' : ''}\n`)
       const render = createStreamRenderer({ markdown: true, smooth: opts.smoothStreaming !== false && prefs.smoothStreaming !== false, smoothCharsPerTick: cpsToCharsPerTick(smoothSpeed) })
       result = await provider.chatCompletion({

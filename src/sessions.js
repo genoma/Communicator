@@ -12,7 +12,7 @@ export async function ensureSessionsDir() {
   return SESSIONS_DIR
 }
 
-export async function resolveSession(dir, partialId) {
+async function resolveSession(dir, partialId) {
   const sessions = await listSessions(dir)
   return sessions.filter((s) => s.id.startsWith(partialId))
 }
@@ -37,21 +37,27 @@ export async function resolveSessionInteractive(dir, partialId, opts = {}) {
   return selectSession(sessions, { message })
 }
 
+function firstUserText(messages) {
+  const first = (messages || []).find((m) => m.role === 'user')
+  return first ? String(messageText(first.content) || '') : ''
+}
+
 function firstUserPreview(messages) {
-  for (let i = 1; i < messages.length; i++) {
-    if (messages[i].role === 'user') {
-      return String(messageText(messages[i].content) || '').slice(0, 60)
-    }
-  }
-  return ''
+  return firstUserText(messages).slice(0, 60)
 }
 
 export function generateTitle(messages) {
-  const first = (messages || []).find((m) => m.role === 'user')
-  if (!first) return ''
-  const collapsed = String(messageText(first.content) || '').replace(/\s+/g, ' ').trim()
+  const collapsed = firstUserText(messages).replace(/\s+/g, ' ').trim()
   if (!collapsed) return ''
   return collapsed.length > 50 ? collapsed.slice(0, 50) + '...' : collapsed
+}
+
+export function formatSessionTime(value, { utc = false } = {}) {
+  if (!value) return 'Unknown'
+  let time = String(value).replace('T', ' ')
+  time = time.replace(/^(\d{4}-\d{2}-\d{2} )(\d{2})-(\d{2})-(\d{2})/, '$1$2:$3:$4')
+  if (utc) time = time.replace(/\.\d+Z$/, '') + ' UTC'
+  return time
 }
 
 export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, budget, webSearch, webResults, pricing, createdAt }) {
@@ -59,7 +65,7 @@ export function buildSessionPayload({ messages, modelId, endpointProviderName, p
     model: modelId,
     providerName: endpointProviderName,
     providerType,
-    reasoningEffort: reasoningEffort ?? null,
+    reasoningEffort: reasoningEffort === undefined ? 'auto' : reasoningEffort,
     temperature,
     budget: budget ?? null,
     webSearch,
@@ -171,6 +177,15 @@ export async function listSessions(dir) {
   return sessions
 }
 
+export async function persistSessionFile(id, payload) {
+  try {
+    const dir = await ensureSessionsDir()
+    await saveSession(dir, id, payload)
+  } catch {
+    // save failures are non-fatal
+  }
+}
+
 export async function saveSession(dir, id, data) {
   if (!data.messages || data.messages.length <= 1) return
 
@@ -206,6 +221,18 @@ async function updateSidecar(dir, id, data) {
   }
 }
 
+async function dropSidecarEntry(dir, id) {
+  try {
+    const index = (await readSidecar(dir)) || {}
+    if (index[id]) {
+      delete index[id]
+      await writeSidecar(dir, index)
+    }
+  } catch {
+    // sidecar failures are non-fatal
+  }
+}
+
 async function sessionFileExists(dir, id) {
   try {
     await access(join(dir, `${id}.json`))
@@ -228,7 +255,16 @@ export async function generateSessionId(dir) {
 
 export async function loadSession(dir, id) {
   const filePath = join(dir, `${id}.json`)
-  const raw = await readFile(filePath, 'utf-8')
+  let raw
+  try {
+    raw = await readFile(filePath, 'utf-8')
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      await dropSidecarEntry(dir, id)
+      throw new CliError(`Error: Session file "${id}" is missing. It may have been deleted.`)
+    }
+    throw err
+  }
   const data = JSON.parse(raw)
 
   if (!data.model || !Array.isArray(data.messages)) {
@@ -239,7 +275,7 @@ export async function loadSession(dir, id) {
 }
 
 export function formatSessionItem(s) {
-  const time = s.id.replace('T', ' ')
+  const time = formatSessionTime(s.id)
   const model = s.model.length > 35 ? s.model.slice(0, 32) + '...' : s.model
   const count = `${s.messageCount} msg${s.messageCount !== 1 ? 's' : ''}`
   const preview = s.title || s.preview || ''

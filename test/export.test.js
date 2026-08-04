@@ -50,6 +50,11 @@ test('hides system messages and omits cost when pricing is missing', () => {
   assert.doesNotMatch(md, /\*\*Reasoning:\*\*/)
 })
 
+test('exports a cost when the prompt price is zero', () => {
+  const md = formatMarkdown(session({ pricing: { prompt: 0, completion: 0.5 } }))
+  assert.match(md, /\*\*Cost:\*\* \$2\.500000/)
+})
+
 test('formats user attachments as blockquoted attachment lines', () => {
   const md = formatMarkdown(session({
     messages: [

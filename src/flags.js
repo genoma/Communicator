@@ -1,8 +1,24 @@
-import { MAX_TEMPERATURE, SMOOTH_DEFAULT_SPEED, SMOOTH_SPEED_PRESETS } from './constants.js'
+import { MAX_TEMPERATURE, SMOOTH_DEFAULT_SPEED, SMOOTH_SPEED_PRESETS, EFFORT_LABELS } from './constants.js'
+
+export const WEB_SEARCH_MODES = new Set(['auto', 'always', 'on', 'off'])
 
 export function resolveReasoningFlag({ reasoningEffort }) {
+  if (reasoningEffort === undefined || reasoningEffort === null || reasoningEffort === '') return undefined
   if (reasoningEffort === 'none') return null
+  if (!(reasoningEffort in EFFORT_LABELS)) {
+    throw new Error(`--reasoning-effort must be one of: ${Object.keys(EFFORT_LABELS).join(', ')}.`)
+  }
   return reasoningEffort
+}
+
+export function resolveFlagValues(opts) {
+  return {
+    reasoningEffort: opts.reasoningEffort !== undefined ? resolveReasoningFlag({ reasoningEffort: opts.reasoningEffort }) : undefined,
+    temperature: opts.temperature !== undefined ? resolveTemperatureFlag({ temperature: opts.temperature }) : undefined,
+    budget: opts.budget !== undefined ? resolveBudget(opts.budget) : undefined,
+    webResults: opts.webResults !== undefined ? resolveWebResultsFlag({ webResults: opts.webResults }) : undefined,
+    smoothSpeed: opts.smoothSpeed !== undefined ? resolveSmoothSpeed(opts.smoothSpeed) : undefined,
+  }
 }
 
 export function resolveTemperatureFlag({ temperature } = {}) {
@@ -25,7 +41,7 @@ export function resolveWebResultsFlag({ webResults } = {}) {
 
 export function normalizeWebSearchMode(value) {
   if (value === true || value === 'on') return 'auto'
-  if (value === 'auto' || value === 'always' || value === 'off') return value
+  if (WEB_SEARCH_MODES.has(value)) return value
   return 'off'
 }
 
@@ -49,6 +65,14 @@ export function resolveBudget(value) {
     throw new Error('Budget must be a positive number (USD).')
   }
   return budget
+}
+
+export function resolvePrefOrNull(resolve, value) {
+  try {
+    return resolve(value)
+  } catch {
+    return null
+  }
 }
 
 export function resolveSmoothSpeed(value) {

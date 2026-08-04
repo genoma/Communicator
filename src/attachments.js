@@ -1,6 +1,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { extname, basename, resolve } from 'node:path'
 import { MAX_IMAGE_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES, MAX_INLINE_TEXT_ATTACHMENT_BYTES } from './constants.js'
+import { CliError } from './errors.js'
 
 const IMAGE_MIMES = {
   png: 'image/png',
@@ -101,6 +102,44 @@ export async function loadAttachment(path) {
   return { kind, filename, mime, size: buffer.length, data: `data:${mime};base64,${buffer.toString('base64')}` }
 }
 
+export async function loadAttachments(paths, gateOptions, { skipNonPaths = false, onError, onAttached } = {}) {
+  const attachments = []
+  const ignored = []
+  for (const token of paths) {
+    const ext = extname(token)
+    if (skipNonPaths && (!ext || ext === '.') && !token.includes('/') && !token.includes('\\')) {
+      ignored.push(token)
+      continue
+    }
+    const { kind } = classifyPath(token)
+    if (!kind) {
+      const message = `Error: Unsupported file type: ${ext.slice(1) || '(none)'}`
+      if (onError) onError(message)
+      else throw new CliError(message)
+      continue
+    }
+    const gateError = attachmentGate([{ kind }], gateOptions)
+    if (gateError) {
+      const message = `Error: ${gateError}`
+      if (onError) onError(message)
+      else throw new CliError(message)
+      continue
+    }
+    let att
+    try {
+      att = await loadAttachment(token)
+    } catch (err) {
+      const message = `Error: ${err.message}`
+      if (onError) onError(message)
+      else throw new CliError(message)
+      continue
+    }
+    attachments.push(att)
+    if (onAttached) onAttached(att)
+  }
+  return { attachments, ignored }
+}
+
 export function attachmentGate(attachments, { visionSupported, fileSupported, providerName }) {
   for (const att of attachments || []) {
     if (att.kind === 'image' && visionSupported === false) {
@@ -131,20 +170,20 @@ export function buildContent(text, attachments = []) {
   return [{ type: 'text', text }, ...attachments.map(toPart)]
 }
 
-export function contentText(content) {
-  if (typeof content === 'string') return content
+function textParts(content) {
+  if (typeof content === 'string') return [content]
   if (Array.isArray(content)) {
-    return content.filter((p) => p.type === 'text').map((p) => p.text).join('')
+    return content.filter((p) => p.type === 'text').map((p) => p.text)
   }
-  return ''
+  return []
+}
+
+export function contentText(content) {
+  return textParts(content).join('')
 }
 
 export function messageText(content) {
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return content.find((p) => p.type === 'text')?.text ?? ''
-  }
-  return ''
+  return textParts(content)[0] ?? ''
 }
 
 export function contentAttachments(content) {

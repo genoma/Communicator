@@ -79,11 +79,17 @@ test('budgetStatus returns null for unset or invalid budgets', () => {
 test('budgetLine warns at 80% and omits below', () => {
   assert.equal(budgetLine(0.5, 1), null)
   assert.match(budgetLine(0.9, 1), /90% used/)
-  assert.match(budgetLine(0.9, 1), /\$0\.90 of \$1\.00/)
+  assert.match(budgetLine(0.9, 1), /\$0\.9000 of \$1\.0000/)
   assert.match(budgetLine(0.9, 1), /█████████░/)
   assert.match(budgetLine(1.2, 1), /100% used/)
   assert.match(budgetLine(1.2, 1), /██████████/)
   assert.equal(budgetLine(0.5, null), null)
+})
+
+test('budgetLine formats small budgets with four decimals', () => {
+  const line = budgetLine(0.0005, 0.0006)
+  assert.match(line, /\$0\.0005 of \$0\.0006/)
+  assert.match(line, /\$0\.0001 remaining/)
 })
 
 test('printTurn aligns labels and shows cache hits with ratio', (t) => {

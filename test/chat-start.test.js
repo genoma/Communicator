@@ -43,6 +43,17 @@ mock.module(new URL('../src/chat.js', import.meta.url).href, {
   },
 })
 
+let nonInteractiveSelection = null
+mock.module(new URL('../src/model-selection.js', import.meta.url).href, {
+  namedExports: {
+    selectModelAndEndpoint: async () => { throw new Error('unexpected picker') },
+    selectModelNonInteractive: async () => {
+      if (nonInteractiveSelection === null) throw new Error('no selection mocked')
+      return nonInteractiveSelection
+    },
+  },
+})
+
 const { chatStart } = await import('../src/commands/chat-start.js')
 
 class ExitSignal {
@@ -146,6 +157,26 @@ test('chatStart resume branch applies --reasoning-effort overrides', async (t) =
   assert.equal(startChatCalls[startChatCalls.length - 1].reasoningEffort, null)
 })
 
+test('chatStart resume branch maps the auto marker back to undefined reasoning effort', async (t) => {
+  resumeResult = resumeSession({ reasoningEffort: 'auto' })
+  withApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(console, 'log', () => {})
+
+  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'openrouter' })
+  assert.equal(startChatCalls[startChatCalls.length - 1].reasoningEffort, undefined)
+})
+
+test('chatStart resume branch keeps disabled reasoning for sessions written pre-change', async (t) => {
+  resumeResult = resumeSession({ reasoningEffort: null })
+  withApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(console, 'log', () => {})
+
+  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'openrouter' })
+  assert.equal(startChatCalls[startChatCalls.length - 1].reasoningEffort, null)
+})
+
 test('chatStart resume branch applies --temperature, --budget and --web-search overrides', async (t) => {
   resumeResult = resumeSession()
   withApiKey(t)
@@ -179,7 +210,7 @@ test('chatStart exits 0 when the resumed session does not resolve', async (t) =>
 
 test('chatStart non-resume branch builds the context from selection and prefs', async (t) => {
   resumeResult = null
-  const selection = {
+  nonInteractiveSelection = {
     modelId: 'test/model',
     endpointProviderName: 'ProviderX',
     reasoningEffort: 'medium',
@@ -190,12 +221,6 @@ test('chatStart non-resume branch builds the context from selection and prefs', 
     supportsReasoning: true,
     modelReasoning: null,
   }
-  mock.module(new URL('../src/model-selection.js', import.meta.url).href, {
-    namedExports: {
-      selectModelAndEndpoint: async () => { throw new Error('unexpected picker') },
-      selectModelNonInteractive: async () => selection,
-    },
-  })
 
   const { chatStart: chatStartFresh } = await import(`../src/commands/chat-start.js?t=${Date.now()}`)
   withApiKey(t)

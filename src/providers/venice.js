@@ -1,6 +1,6 @@
 import { parseSSEStream } from '../sse-parser.js'
 import { fetchWithRetry } from '../http.js'
-import { ApiError } from '../errors.js'
+import { makeHandleHttpError } from '../errors.js'
 import { formatPricePerM } from '../ui/format.js'
 import { DEFAULT_TEMPERATURE } from '../constants.js'
 
@@ -13,6 +13,8 @@ export const meta = {
   hasEndpoints: false,
 }
 
+export const handleHttpError = makeHandleHttpError({ providerName: 'Venice', providerId: 'venice', apiKeyEnv: 'VENICE_API_KEY' })
+
 export function normalizePricing(raw) {
   if (raw?.input?.usd == null || raw?.output?.usd == null) {
     return { prompt: null, completion: null }
@@ -21,16 +23,6 @@ export function normalizePricing(raw) {
     prompt: raw.input.usd / 1_000_000,
     completion: raw.output.usd / 1_000_000,
   }
-}
-
-export function handleHttpError(status, body) {
-  if (status === 401) {
-    throw new ApiError('Invalid API key. Check your VENICE_API_KEY environment variable.', { status, provider: 'venice', retryable: false })
-  }
-  if (status === 429) {
-    throw new ApiError('Rate limited by Venice. Wait a moment and try again.', { status, provider: 'venice', retryable: true })
-  }
-  throw new ApiError(`Venice request failed (${status}): ${body}`, { status, provider: 'venice', retryable: status >= 500 })
 }
 
 export async function fetchModels(apiKey) {

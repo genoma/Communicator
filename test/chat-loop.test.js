@@ -218,6 +218,54 @@ test('idle SIGINT saves then exits 130', async (t) => {
   assert.deepEqual(harness.exitCodes, [130])
 })
 
+test('idle SIGINT flushes preference updates before exiting', async (t) => {
+  mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['hi', neverResolving()]) })
+
+  runChatSession(baseCtx(provider), harness.deps)
+  await tick()
+  harness.signalHandlers.sigint()
+  await tick()
+  await tick()
+
+  assert.equal(harness.prefsCalls.length, 1)
+  assert.deepEqual(harness.prefsCalls[0], {
+    modelId: 'org/model',
+    lastModel: 'org/model',
+    lastProvider: 'Provider',
+    reasoningEffort: 'high',
+    temperature: 1.1,
+    webSearch: 'off',
+  })
+  assert.deepEqual(harness.exitCodes, [130])
+})
+
+test('SIGINT during streaming flushes preference updates before exiting', async (t) => {
+  mockConsole(t)
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  const { provider } = fakeProvider({
+    async chatCompletion(opts) {
+      opts.signal.addEventListener('abort', () => {
+        rejectCompletion(Object.assign(new Error('aborted'), { pendingBuffer: 'data: {"choices":[{"delta":{"content":"Hel' }))
+      })
+      return pending
+    },
+  })
+  const harness = makeDeps({ readInput: scriptedInput(['hello', '/quit']) })
+
+  const session = runChatSession(baseCtx(provider), harness.deps)
+  await tick()
+  harness.signalHandlers.sigint()
+  await session
+
+  assert.ok(harness.exitCodes.includes(130))
+  assert.ok(harness.prefsCalls.length >= 1)
+  assert.equal(harness.prefsCalls[0].lastModel, 'org/model')
+  assert.equal(harness.prefsCalls[0].reasoningEffort, 'high')
+})
+
 test('SIGINT during streaming aborts the request, saves partial content and exits 130', async (t) => {
   mockConsole(t)
   let captured

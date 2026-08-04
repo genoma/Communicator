@@ -40,8 +40,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
   const zdrActive = await zdrGate(provider, zdr)
   const pickable = zdrActive ? models.filter((m) => m.zdr === true) : models
   if (zdrActive && pickable.length === 0) {
-    console.error('No zero-retention models available on OpenRouter right now.')
-    process.exit(1)
+    throw new CliError('Error: No zero-retention models available on OpenRouter right now.')
   }
 
   for (;;) {
@@ -77,8 +76,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
 
     const endpoints = await provider.fetchEndpoints(apiKey, modelId, models)
     if (!endpoints.length) {
-      console.error(`No providers found for model: ${modelId}`)
-      process.exit(1)
+      throw new CliError(`Error: No providers found for model: ${modelId}`)
     }
 
     const zdrEndpoints = zdrActive ? endpoints.filter((ep) => ep.zdr === true) : endpoints

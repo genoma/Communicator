@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { mkdir } from 'node:fs/promises'
 import { ensureSessionsDir, resolveSessionInteractive, loadSession } from '../sessions.js'
 import { exportSession } from '../export.js'
+import { fail } from '../cli-utils.js'
 
 export async function exportCmd(partialId, outputDir) {
   const dir = await ensureSessionsDir()
@@ -17,7 +18,6 @@ export async function exportCmd(partialId, outputDir) {
     await exportSession(sessionData, outputPath)
     console.log(`Exported to ${outputPath}`)
   } catch (err) {
-    console.error(`Export failed: ${err.message}`)
-    process.exit(1)
+    fail(`Export failed: ${err.message}`)
   }
 }

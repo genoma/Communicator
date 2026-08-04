@@ -1,4 +1,4 @@
-export function isDebug() {
+function isDebug() {
   const value = process.env.COMMUNICATOR_DEBUG
   return value === '1' || value === 'true'
 }
