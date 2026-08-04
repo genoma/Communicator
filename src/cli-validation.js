@@ -1,6 +1,6 @@
-const SESSION_FLAGS_LIST = '--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach'
+import { WEB_SEARCH_MODES } from './flags.js'
 
-const WEB_SEARCH_MODES = new Set(['auto', 'always', 'on', 'off'])
+const SESSION_FLAGS_LIST = '--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach'
 
 export function hasAttachments(opts) {
   return (opts.attach?.length ?? 0) > 0

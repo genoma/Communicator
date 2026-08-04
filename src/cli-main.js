@@ -13,7 +13,7 @@ import { chatStart } from './commands/chat-start.js'
 import { configViewCmd } from './commands/config-view.js'
 import { configSetCmd } from './commands/config-set.js'
 import { resolveSmoothSpeed } from './flags.js'
-import { resolveFlagOrExit } from './cli-utils.js'
+import { resolveFlagOrExit, fail } from './cli-utils.js'
 import { isConfigSetter, validateCliFlags } from './cli-validation.js'
 
 export async function runCli(opts, promptArg) {
@@ -97,8 +97,7 @@ async function main(opts, promptArg) {
       await configSetCmd({ opts, prefs, providerType, apiKey })
     } catch (err) {
       if (err instanceof CliError) throw err
-      console.error(`Error: ${formatError(err)}`)
-      process.exit(1)
+      fail(`Error: ${formatError(err)}`)
     }
     process.exit(0)
   }

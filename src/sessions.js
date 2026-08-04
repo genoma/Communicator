@@ -37,21 +37,27 @@ export async function resolveSessionInteractive(dir, partialId, opts = {}) {
   return selectSession(sessions, { message })
 }
 
+function firstUserText(messages) {
+  const first = (messages || []).find((m) => m.role === 'user')
+  return first ? String(messageText(first.content) || '') : ''
+}
+
 function firstUserPreview(messages) {
-  for (let i = 1; i < messages.length; i++) {
-    if (messages[i].role === 'user') {
-      return String(messageText(messages[i].content) || '').slice(0, 60)
-    }
-  }
-  return ''
+  return firstUserText(messages).slice(0, 60)
 }
 
 export function generateTitle(messages) {
-  const first = (messages || []).find((m) => m.role === 'user')
-  if (!first) return ''
-  const collapsed = String(messageText(first.content) || '').replace(/\s+/g, ' ').trim()
+  const collapsed = firstUserText(messages).replace(/\s+/g, ' ').trim()
   if (!collapsed) return ''
   return collapsed.length > 50 ? collapsed.slice(0, 50) + '...' : collapsed
+}
+
+export function formatSessionTime(value, { utc = false } = {}) {
+  if (!value) return 'Unknown'
+  let time = String(value).replace('T', ' ')
+  time = time.replace(/^(\d{4}-\d{2}-\d{2} )(\d{2})-(\d{2})-(\d{2})/, '$1$2:$3:$4')
+  if (utc) time = time.replace(/\.\d+Z$/, '') + ' UTC'
+  return time
 }
 
 export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, budget, webSearch, webResults, pricing, createdAt }) {
@@ -171,6 +177,15 @@ export async function listSessions(dir) {
   return sessions
 }
 
+export async function persistSessionFile(id, payload) {
+  try {
+    const dir = await ensureSessionsDir()
+    await saveSession(dir, id, payload)
+  } catch {
+    // save failures are non-fatal
+  }
+}
+
 export async function saveSession(dir, id, data) {
   if (!data.messages || data.messages.length <= 1) return
 
@@ -260,7 +275,7 @@ export async function loadSession(dir, id) {
 }
 
 export function formatSessionItem(s) {
-  const time = s.id.replace('T', ' ')
+  const time = formatSessionTime(s.id)
   const model = s.model.length > 35 ? s.model.slice(0, 32) + '...' : s.model
   const count = `${s.messageCount} msg${s.messageCount !== 1 ? 's' : ''}`
   const preview = s.title || s.preview || ''

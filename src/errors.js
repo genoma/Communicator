@@ -27,3 +27,18 @@ export function formatError(err) {
   if (err instanceof ApiError) return err.message
   return err?.message || String(err)
 }
+
+export function makeHandleHttpError({ providerName, providerId = providerName, apiKeyEnv, notFoundMessage = null }) {
+  return function handleHttpError(status, body) {
+    if (status === 401) {
+      throw new ApiError(`Invalid API key. Check your ${apiKeyEnv} environment variable.`, { status, provider: providerId, retryable: false })
+    }
+    if (status === 429) {
+      throw new ApiError(`Rate limited by ${providerName}. Wait a moment and try again.`, { status, provider: providerId, retryable: true })
+    }
+    if (status === 404 && notFoundMessage) {
+      throw new ApiError(notFoundMessage, { status, provider: providerId, retryable: false })
+    }
+    throw new ApiError(`${providerName} request failed (${status}): ${body}`, { status, provider: providerId, retryable: status >= 500 })
+  }
+}

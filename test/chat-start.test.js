@@ -43,6 +43,17 @@ mock.module(new URL('../src/chat.js', import.meta.url).href, {
   },
 })
 
+let nonInteractiveSelection = null
+mock.module(new URL('../src/model-selection.js', import.meta.url).href, {
+  namedExports: {
+    selectModelAndEndpoint: async () => { throw new Error('unexpected picker') },
+    selectModelNonInteractive: async () => {
+      if (nonInteractiveSelection === null) throw new Error('no selection mocked')
+      return nonInteractiveSelection
+    },
+  },
+})
+
 const { chatStart } = await import('../src/commands/chat-start.js')
 
 class ExitSignal {
@@ -199,7 +210,7 @@ test('chatStart exits 0 when the resumed session does not resolve', async (t) =>
 
 test('chatStart non-resume branch builds the context from selection and prefs', async (t) => {
   resumeResult = null
-  const selection = {
+  nonInteractiveSelection = {
     modelId: 'test/model',
     endpointProviderName: 'ProviderX',
     reasoningEffort: 'medium',
@@ -210,12 +221,6 @@ test('chatStart non-resume branch builds the context from selection and prefs', 
     supportsReasoning: true,
     modelReasoning: null,
   }
-  mock.module(new URL('../src/model-selection.js', import.meta.url).href, {
-    namedExports: {
-      selectModelAndEndpoint: async () => { throw new Error('unexpected picker') },
-      selectModelNonInteractive: async () => selection,
-    },
-  })
 
   const { chatStart: chatStartFresh } = await import(`../src/commands/chat-start.js?t=${Date.now()}`)
   withApiKey(t)

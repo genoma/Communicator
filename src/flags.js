@@ -1,8 +1,20 @@
 import { MAX_TEMPERATURE, SMOOTH_DEFAULT_SPEED, SMOOTH_SPEED_PRESETS } from './constants.js'
 
+export const WEB_SEARCH_MODES = new Set(['auto', 'always', 'on', 'off'])
+
 export function resolveReasoningFlag({ reasoningEffort }) {
   if (reasoningEffort === 'none') return null
   return reasoningEffort
+}
+
+export function resolveFlagValues(opts) {
+  return {
+    reasoningEffort: opts.reasoningEffort !== undefined ? resolveReasoningFlag({ reasoningEffort: opts.reasoningEffort }) : undefined,
+    temperature: opts.temperature !== undefined ? resolveTemperatureFlag({ temperature: opts.temperature }) : undefined,
+    budget: opts.budget !== undefined ? resolveBudget(opts.budget) : undefined,
+    webResults: opts.webResults !== undefined ? resolveWebResultsFlag({ webResults: opts.webResults }) : undefined,
+    smoothSpeed: opts.smoothSpeed !== undefined ? resolveSmoothSpeed(opts.smoothSpeed) : undefined,
+  }
 }
 
 export function resolveTemperatureFlag({ temperature } = {}) {
@@ -25,7 +37,7 @@ export function resolveWebResultsFlag({ webResults } = {}) {
 
 export function normalizeWebSearchMode(value) {
   if (value === true || value === 'on') return 'auto'
-  if (value === 'auto' || value === 'always' || value === 'off') return value
+  if (WEB_SEARCH_MODES.has(value)) return value
   return 'off'
 }
 

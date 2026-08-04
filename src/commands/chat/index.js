@@ -3,10 +3,10 @@ import { selectModelAndEndpoint } from '../../model-selection.js'
 import { getEffortLabel, selectReasoningEffort } from '../../prompts.js'
 import { resolveTemperatureFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, webSearchGate } from '../../flags.js'
 import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed } from '../../constants.js'
-import { budgetStatus } from '../../tracker.js'
+import { budgetStatusLine, budgetExhaustedMessage } from '../../tracker.js'
+import { sessionLabel } from '../../ui/format.js'
 import { dim } from '../../ui/style.js'
-import { extname } from 'node:path'
-import { classifyPath, loadAttachment, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
+import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
 
 const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments'])
@@ -14,7 +14,7 @@ const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results',
 export function budgetGuard(ctx) {
   const { state, tracker } = ctx
   if (state.budget == null || tracker.cost < state.budget) return null
-  return `Budget exhausted (${formatCost(tracker.cost)} of ${formatCost(state.budget)}). /new to start fresh or /quit.\n`
+  return `${budgetExhaustedMessage(tracker.cost, state.budget)} /new to start fresh or /quit.\n`
 }
 
 function attachmentGateOptions(ctx) {
@@ -60,40 +60,19 @@ const handlers = {
       lastProvider: sel.endpointProviderName,
       reasoningEffort: sel.reasoningEffort,
     })
-    const label = sel.endpointProviderName ? `${sel.endpointProviderName} / ${sel.modelId}` : sel.modelId
+    const label = sessionLabel(sel.endpointProviderName, sel.modelId)
     console.log(`\nSwitched to ${label}\n`)
   },
 
   '/attach': async (ctx) => {
     if (!ctx.args) return handlers['/attachments'](ctx)
     const gateOptions = attachmentGateOptions(ctx)
-    const ignored = []
-    for (const token of splitPathArgs(ctx.args)) {
-      const ext = extname(token)
-      if ((!ext || ext === '.') && !token.includes('/') && !token.includes('\\')) {
-        ignored.push(token)
-        continue
-      }
-      const { kind } = classifyPath(token)
-      if (!kind) {
-        console.error(`Error: Unsupported file type: ${ext.slice(1) || '(none)'}\n`)
-        continue
-      }
-      const gateError = attachmentGate([{ kind }], gateOptions)
-      if (gateError) {
-        console.error(`Error: ${gateError}\n`)
-        continue
-      }
-      let att
-      try {
-        att = await loadAttachment(token)
-      } catch (err) {
-        console.error(`Error: ${err.message}\n`)
-        continue
-      }
-      ctx.state.pendingAttachments.push(att)
-      console.log(`attached: ${att.filename} (${att.kind}, ${formatBytes(att.size)})\n`)
-    }
+    const { attachments, ignored } = await loadAttachments(splitPathArgs(ctx.args), gateOptions, {
+      skipNonPaths: true,
+      onError: (message) => console.error(`${message}\n`),
+      onAttached: (att) => console.log(`attached: ${att.filename} (${att.kind}, ${formatBytes(att.size)})\n`),
+    })
+    ctx.state.pendingAttachments.push(...attachments)
     if (ignored.length) {
       console.log(`note: "${ignored.join(' ')}" is not a file path — /attach takes file paths only; type your message on the next line.\n`)
     }
@@ -178,8 +157,8 @@ const handlers = {
       console.log('No budget set. Use /budget <usd> to cap this session.\n')
       return
     }
-    const { pct, remaining } = budgetStatus(ctx.tracker.cost, ctx.state.budget)
-    console.log(`Budget: ${formatCost(ctx.tracker.cost)} of ${formatCost(ctx.state.budget)} used (${pct.toFixed(0)}%). ${formatCost(remaining)} remaining.\n`)
+    const line = budgetStatusLine(ctx.tracker.cost, ctx.state.budget)
+    console.log(`${line ?? 'No budget set. Use /budget <usd> to cap this session.'}\n`)
   },
 
   '/web-search': async (ctx) => {

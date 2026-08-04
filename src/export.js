@@ -2,11 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import { formatCost } from './constants.js'
 import { computeTurnCost } from './tracker.js'
 import { contentText, contentAttachments } from './attachments.js'
-
-function formatTimestamp(iso) {
-  if (!iso) return 'Unknown'
-  return iso.replace('T', ' ').replace(/\.\d+Z$/, '') + ' UTC'
-}
+import { formatSessionTime } from './sessions.js'
 
 function calculateCost(pricing, messages) {
   if (pricing?.prompt == null || pricing?.completion == null) return null
@@ -32,7 +28,7 @@ export function formatMarkdown(sessionData) {
 
   let md = ''
 
-  const time = formatTimestamp(createdAt)
+  const time = formatSessionTime(createdAt, { utc: true })
   md += `# Chat Session — ${time}\n\n`
   if (title) md += `**Title:** ${title}\n\n`
   md += `**Model:** \`${model || 'unknown'}\``

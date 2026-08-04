@@ -1,12 +1,11 @@
 import { getProvider } from '../providers/index.js'
-import { resolveWebSearchFlag, webSearchGate, resolveBudget, resolveWebResultsFlag, resolvePrefOrNull } from '../flags.js'
+import { resolveWebSearchFlag, resolveBudget, resolveWebResultsFlag, resolvePrefOrNull } from '../flags.js'
 import { DEFAULT_TEMPERATURE } from '../constants.js'
 import { startChat } from '../chat.js'
 import { ensureSessionsDir, generateSessionId } from '../sessions.js'
 import { resumeCmd } from './resume.js'
 import { getApiKey } from '../config.js'
-import { selectModelAndEndpoint, selectModelNonInteractive } from '../model-selection.js'
-import { resolveSessionFlags, persistSession } from '../session-setup.js'
+import { resolveSessionFlags, persistSession, buildSessionContext } from '../session-setup.js'
 
 async function createSessionContext({ apiKey, opts, prefs, providerType }) {
   const { forcedEffort, forcedTemperature, forcedBudget, budget, forcedWebResults, smoothSpeed, zdr } = resolveSessionFlags(opts, prefs)
@@ -41,31 +40,28 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
 
   const provider = getProvider(providerType)
 
-  let selection
-  if (opts.model) {
-    selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort, zdr })
-  } else {
-    selection = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: forcedEffort, zdr })
-  }
+  const { selection, temperature, webSearch, webResults } = await buildSessionContext({
+    provider,
+    apiKey,
+    opts,
+    prefs,
+    forcedEffort,
+    forcedTemperature,
+    forcedWebResults,
+    zdr,
+  })
 
   const dir = await ensureSessionsDir()
   const sessionId = await generateSessionId(dir)
-
-  const webSearch = resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: prefs.webSearch?.[selection.modelId] })
-  const webSearchGateError = webSearchGate(webSearch, selection.webSearchSupported)
-  if (webSearchGateError) {
-    console.error(`Error: ${webSearchGateError}`)
-    process.exit(1)
-  }
 
   return {
     modelId: selection.modelId,
     endpointProviderName: selection.endpointProviderName,
     reasoningEffort: selection.reasoningEffort,
-    temperature: forcedTemperature ?? prefs.temperature?.[selection.modelId] ?? DEFAULT_TEMPERATURE,
+    temperature,
     budget,
     webSearch,
-    webResults: forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), prefs.webResults) ?? null,
+    webResults,
     zdr,
     smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
     smoothSpeed,

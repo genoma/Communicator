@@ -42,19 +42,20 @@ export function filterModelChoices(choices, input) {
   )
 }
 
-export async function selectModel(models, lastModel, zdrOnly = false) {
-  const choices = orderModelChoices(models, lastModel)
-
-  const answer = await search({
-    message: zdrOnly ? 'Select a model (ZDR-capable only)' : 'Select a model',
+export function searchPrompt(message, choices, filter) {
+  return search({
+    message,
     theme: pickerTheme,
     source: async (input) => {
       if (!input) return choices
-      return filterModelChoices(choices, input)
+      return filter(choices, input)
     },
   })
+}
 
-  return answer
+export async function selectModel(models, lastModel, zdrOnly = false) {
+  const choices = orderModelChoices(models, lastModel)
+  return searchPrompt(zdrOnly ? 'Select a model (ZDR-capable only)' : 'Select a model', choices, filterModelChoices)
 }
 
 export function formatEndpointLabel(ep) {
@@ -97,13 +98,12 @@ export async function selectProvider(endpoints, zdrOnly = false) {
 
   const fullChoices = [backChoice, new Separator(), ...providerChoices]
 
-  const answer = await search({
-    message: zdrOnly
+  return searchPrompt(
+    zdrOnly
       ? `Select a provider (${endpoints.length} available, ZDR only)`
       : `Select a provider (${endpoints.length} available)`,
-    theme: pickerTheme,
-    source: async (input) => {
-      if (!input) return fullChoices
+    fullChoices,
+    (_, input) => {
       const q = input.toLowerCase()
       const filtered = providerChoices.filter(
         (c) =>
@@ -118,10 +118,8 @@ export async function selectProvider(endpoints, zdrOnly = false) {
         return backMatch ? [backChoice] : []
       }
       return filtered
-    },
-  })
-
-  return answer
+    }
+  )
 }
 
 const FULL_EFFORT_LIST = ['max', 'xhigh', 'high', 'medium', 'low', 'minimal', 'none']

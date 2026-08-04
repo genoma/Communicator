@@ -4,14 +4,16 @@ function priceParts(prompt, completion) {
   return { inPrice, outPrice }
 }
 
-export function formatModelPrice(prompt, completion) {
+export function formatModelPrice(prompt, completion, { perM = false } = {}) {
   const { inPrice, outPrice } = priceParts(prompt, completion)
   if (inPrice === '?' && outPrice === '?') return '?'
-  return `in ${inPrice} / out ${outPrice}/M`
+  return `in ${inPrice} / out ${outPrice}${perM ? ' per 1M' : '/M'}`
 }
 
 export function formatPricePerM(pricing) {
-  const { inPrice, outPrice } = priceParts(pricing?.prompt, pricing?.completion)
-  if (inPrice === '?' && outPrice === '?') return '?'
-  return `in ${inPrice} / out ${outPrice} per 1M`
+  return formatModelPrice(pricing?.prompt, pricing?.completion, { perM: true })
+}
+
+export function sessionLabel(endpointProviderName, modelId) {
+  return endpointProviderName ? `${endpointProviderName} / ${modelId}` : modelId
 }
