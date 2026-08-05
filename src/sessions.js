@@ -257,20 +257,23 @@ export async function generateSessionId(dir) {
 
 export async function loadSession(dir, id) {
   const filePath = join(dir, `${id}.json`)
-  let raw
+  let data
   try {
-    raw = await readFile(filePath, 'utf-8')
+    const raw = await readFile(filePath, 'utf-8')
+    data = JSON.parse(raw)
   } catch (err) {
     if (err.code === 'ENOENT') {
       await dropSidecarEntry(dir, id)
       throw new CliError(`Error: Session file "${id}" is missing. It may have been deleted.`)
     }
+    if (err instanceof SyntaxError) {
+      throw new CliError(`Error: Session file is corrupt: ${filePath}`)
+    }
     throw err
   }
-  const data = JSON.parse(raw)
 
-  if (!data.model || !Array.isArray(data.messages)) {
-    throw new Error(`Session file is corrupt: ${filePath}`)
+  if (!data || typeof data !== 'object' || !data.model || !Array.isArray(data.messages)) {
+    throw new CliError(`Error: Session file is corrupt: ${filePath}`)
   }
 
   const { messages, missing } = await hydrateAttachments(data.messages, attachmentDirFor(dir, id))

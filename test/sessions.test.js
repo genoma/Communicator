@@ -120,6 +120,36 @@ test('loadSession turns a missing file into a clean CliError and drops the stale
   assert.deepEqual(sessions.map((s) => s.id), ['2026-01-02T00-00-00'])
 })
 
+test('loadSession turns a corrupt session file into a clean CliError', async (t) => {
+  const dir = await tempDir(t)
+  await writeFile(join(dir, '2026-01-01T00-00-00.json'), '{ not json')
+
+  await assert.rejects(
+    loadSession(dir, '2026-01-01T00-00-00'),
+    (err) => err instanceof CliError && /corrupt/.test(err.message)
+  )
+})
+
+test('loadSession rejects valid JSON with a wrong shape as CliError', async (t) => {
+  const dir = await tempDir(t)
+  await writeFile(join(dir, '2026-01-01T00-00-00.json'), JSON.stringify({ foo: 'bar' }))
+
+  await assert.rejects(
+    loadSession(dir, '2026-01-01T00-00-00'),
+    (err) => err instanceof CliError && /corrupt/.test(err.message)
+  )
+})
+
+test('loadSession rejects null JSON as CliError', async (t) => {
+  const dir = await tempDir(t)
+  await writeFile(join(dir, '2026-01-01T00-00-00.json'), 'null')
+
+  await assert.rejects(
+    loadSession(dir, '2026-01-01T00-00-00'),
+    (err) => err instanceof CliError && /corrupt/.test(err.message)
+  )
+})
+
 test('generateSessionId produces unique ids', async (t) => {
   const dir = await tempDir(t)
   const id = await generateSessionId(dir)
