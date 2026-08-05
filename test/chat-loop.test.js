@@ -128,13 +128,14 @@ test('happy path runs a turn and saves the final session once', async (t) => {
   assert.equal(id, '2026-01-01T00-00-00')
   assert.deepEqual(
     Object.keys(payload).sort(),
-    ['budget', 'createdAt', 'messages', 'model', 'pricing', 'providerName', 'providerType', 'reasoningEffort', 'temperature', 'title', 'updatedAt', 'webResults', 'webSearch']
+    ['budget', 'contextLength', 'createdAt', 'messages', 'model', 'pricing', 'providerName', 'providerType', 'reasoningEffort', 'temperature', 'title', 'updatedAt', 'webResults', 'webSearch']
   )
   assert.equal(payload.model, 'org/model')
   assert.equal(payload.providerName, 'Provider')
   assert.equal(payload.providerType, 'openrouter')
   assert.equal(payload.reasoningEffort, 'high')
   assert.equal(payload.temperature, 1.1)
+  assert.equal(payload.contextLength, null)
   assert.equal(payload.title, 'hello')
   assert.deepEqual(payload.messages.map((m) => m.role), ['system', 'user', 'assistant'])
   assert.equal(payload.messages[2].content, 'Hello!')
@@ -509,13 +510,14 @@ test('resume path renders history, seeds the tracker and shows the previous sess
   ]
 
   await runChatSession(
-    baseCtx(provider, { initialMessages, createdAt: '2026-01-01T00:00:00.000Z' }),
+    baseCtx(provider, { initialMessages, createdAt: '2026-01-01T00:00:00.000Z', contextLength: 200 }),
     harness.deps
   )
 
   const summaryLine = consoleSpy.allLogs().find((l) => l.includes('Previous session:'))
   assert.ok(summaryLine)
   assert.match(summaryLine, /1 request\(s\)/)
+  assert.match(summaryLine, /CTX ██░░░░░░░░ 15%/)
 
   assert.ok(stdoutWrites.some((w) => w.includes('old question')))
   assert.ok(stdoutWrites.some((w) => w.includes('old answer')))

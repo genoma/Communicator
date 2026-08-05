@@ -12,11 +12,13 @@ function fakeProvider(overrides = {}) {
           id: 'auto-reasoner',
           reasoning: { supported: true, supportsEffort: false },
           pricing: { prompt: 0.000002, completion: 0.000004 },
+          contextLength: 32000,
         },
         {
           id: 'effort-model',
           reasoning: { supported: true, supportsEffort: true, default_effort: 'low' },
           pricing: { prompt: 0.000002, completion: 0.000004 },
+          contextLength: 32000,
         },
       ]
     },
@@ -141,6 +143,32 @@ test('non-interactive selection keeps forced string effort over saved pref', asy
   assert.equal(sel.supportsReasoning, true)
   assert.equal(sel.modelReasoning.supportsEffort, true)
   assert.equal(sel.webSearchSupported, false)
+})
+
+test('selection carries the context length from model data', async () => {
+  const sel = await selectModelNonInteractive({ provider: fakeProvider(), apiKey: '', prefs: {}, modelId: 'auto-reasoner' })
+  assert.equal(sel.contextLength, 32000)
+})
+
+test('selection prefers the endpoint context length over model data', async () => {
+  const provider = fakeProvider({
+    meta: { name: 'openrouter', hasEndpoints: true },
+    async fetchEndpoints() {
+      return [{ providerName: 'P', pricing: null, supportedParameters: {}, contextLength: 64000 }]
+    },
+  })
+  const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'effort-model' })
+  assert.equal(sel.contextLength, 64000)
+})
+
+test('selection defaults the context length to null when unknown', async () => {
+  const provider = fakeProvider({
+    async fetchModels() {
+      return [{ id: 'unknown-window', reasoning: null, pricing: null }]
+    },
+  })
+  const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'unknown-window' })
+  assert.equal(sel.contextLength, null)
 })
 
 test('non-interactive selection normalizes a none model default to null', async () => {

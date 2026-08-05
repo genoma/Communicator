@@ -361,7 +361,7 @@ test('one-shot TTY output prints the banner, sources and the skipped-chunk warni
     'data: {not-json}\n\n',
     event({ choices: [{ delta: { content: ' world' } }] }),
     event({ choices: [{ delta: { annotations: [{ type: 'url_citation', url_citation: { url: 'https://example.com', title: 'Example' } }] } }] }),
-    event({ choices: [{ delta: {}, usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }] }),
+    event({ usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }),
     'data: [DONE]\n\n',
   ]
   t.mock.method(globalThis, 'fetch', async (url) => {
@@ -393,5 +393,13 @@ test('one-shot TTY output prints the banner, sources and the skipped-chunk warni
   assert.ok(writes.some((w) => w.includes('Hello world')))
   assert.ok(writes.some((w) => w.includes('Sources (1)')))
   assert.ok(writes.some((w) => w.includes('1 malformed stream chunk skipped')))
+
+  const sessionsDir = join(tempHome, '.communicator', 'sessions')
+  const files = (await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.'))
+  for (const f of files) {
+    const saved = JSON.parse(await readFile(join(sessionsDir, f), 'utf-8'))
+    assert.equal(saved.contextLength, 1000)
+  }
+  assert.ok(logs.some((l) => l.includes('CTX ░░░░░░░░░░ 2%')))
 })
 

@@ -140,6 +140,7 @@ Each session is stored as a JSON file:
     "prompt": 0.0000025,
     "completion": 0.00001
   },
+  "contextLength": 128000,
   "createdAt": "2026-07-30T19:11:45.000Z",
   "updatedAt": "2026-07-30T19:15:22.000Z",
   "messages": [
@@ -154,6 +155,7 @@ Each session is stored as a JSON file:
 - `providerType` is the API backend (`"openrouter"` or `"venice"`). Older sessions without this field default to `"openrouter"` on resume
 - `reasoningEffort` is `"auto"` when the model reasons without effort control, `null` when reasoning is explicitly disabled, and a level string (`"low"`, `"medium"`, ...) otherwise. Older sessions without the field or with `null` restore as disabled
 - `temperature` is the resolved session temperature (0–2); `budget` is the per-session cap in USD (`null` when unset)
+- `pricing` is the endpoint's per-token USD rates (`null` when unknown); `contextLength` is the endpoint's advertised context window (`null` when undisclosed, e.g. some Venice models) — used by the CTX indicator on resume
 - `webSearch` is the web search mode (`"off"`, `"auto"`, or `"always"`); `webResults` is the OpenRouter result count (`null` when unset — the provider default of 10 applies) — both restored on resume
 - `title` is auto-generated from the first user message
 - User messages with attachments store `content` as an OpenAI-style parts array (`[{ type: 'text', ... }, { type: 'image_url', ... }, { type: 'file', ... }]`); plain text messages keep the string form, so older sessions stay readable

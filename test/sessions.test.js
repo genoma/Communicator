@@ -327,11 +327,13 @@ test('buildSessionPayload returns the full save object shape', () => {
     webSearch: 'auto',
     webResults: 3,
     pricing: { prompt: 0.000001, completion: 0.000002 },
+    contextLength: 128000,
     createdAt: '2026-01-01T00:00:00.000Z',
   })
 
   assert.deepEqual(Object.keys(payload).sort(), [
     'budget',
+    'contextLength',
     'createdAt',
     'messages',
     'model',
@@ -354,6 +356,7 @@ test('buildSessionPayload returns the full save object shape', () => {
   assert.equal(payload.webSearch, 'auto')
   assert.equal(payload.webResults, 3)
   assert.deepEqual(payload.pricing, { prompt: 0.000001, completion: 0.000002 })
+  assert.equal(payload.contextLength, 128000)
   assert.equal(payload.createdAt, '2026-01-01T00:00:00.000Z')
   assert.equal(payload.title, 'Hi')
   assert.deepEqual(payload.messages, messages)
@@ -396,6 +399,7 @@ test('buildSessionPayload passes nulls through for optional fields', () => {
   assert.equal(payload.budget, null)
   assert.equal(payload.webResults, null)
   assert.equal(payload.pricing, null)
+  assert.equal(payload.contextLength, null)
   assert.equal(payload.providerName, null)
   assert.equal(payload.title, '')
 })
@@ -456,6 +460,7 @@ test('buildSessionPayload output round-trips through saveSession and loadSession
     webSearch: 'always',
     webResults: 5,
     pricing: { prompt: 0.000001, completion: 0.000002 },
+    contextLength: 200000,
     createdAt: '2026-01-01T00:00:00.000Z',
   })
 
@@ -468,6 +473,7 @@ test('buildSessionPayload output round-trips through saveSession and loadSession
   assert.equal(loaded.webSearch, 'always')
   assert.equal(loaded.webResults, 5)
   assert.deepEqual(loaded.pricing, { prompt: 0.000001, completion: 0.000002 })
+  assert.equal(loaded.contextLength, 200000)
   assert.equal(loaded.title, 'First question')
   assert.equal(loaded.messages.length, 3)
 

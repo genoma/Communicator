@@ -15,6 +15,7 @@ function fakeState(overrides = {}) {
     webResults: null,
     zdr: false,
     pricing: { prompt: 0.000001, completion: 0.000002 },
+    contextLength: 1000,
     budget: null,
     messages: [
       { role: 'system', content: 'You are a helpful assistant.' },
@@ -106,6 +107,28 @@ test('a successful turn streams tokens, records usage and appends the message', 
   assert.equal(sessionState.tracker.requests, 1)
   assert.equal(sessionState.tracker.promptTokens, 10)
   assert.equal(exitCodes.length, 0)
+})
+
+test('printTurn receives the state context length for the CTX segment', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (msg) => logs.push(String(msg)))
+  t.mock.method(console, 'error', () => {})
+  const { deps } = makeDeps({ provider: okProvider() })
+
+  await runTurn(deps, fakeState({ contextLength: 1000 }))
+
+  assert.ok(logs.some((l) => l.includes('CTX ░░░░░░░░░░ 2%')))
+})
+
+test('printTurn shows an unknown CTX segment without a context length', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (msg) => logs.push(String(msg)))
+  t.mock.method(console, 'error', () => {})
+  const { deps } = makeDeps({ provider: okProvider() })
+
+  await runTurn(deps, fakeState({ contextLength: null }))
+
+  assert.ok(logs.some((l) => l.includes('CTX: ?')))
 })
 
 test('persists the provider sources on the appended assistant message', async (t) => {

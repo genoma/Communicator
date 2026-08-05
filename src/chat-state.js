@@ -2,13 +2,14 @@ import { DEFAULT_TEMPERATURE } from './constants.js'
 import { normalizeSmoothSpeed, normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
-  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, supportsReasoning, webSearch, webResults, zdr = false, webSearchSupported, visionSupported, fileSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent }) {
+  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, webSearchSupported, visionSupported, fileSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent }) {
     this.modelId = modelId
     this.endpointProviderName = endpointProviderName
     this.reasoningEffort = reasoningEffort
     this.temperature = temperature
     this.budget = budget
     this.pricing = pricing
+    this.contextLength = contextLength
     this.supportsReasoning = supportsReasoning
     this.webSearch = normalizeWebSearchMode(webSearch)
     this.webResults = webResults
@@ -40,6 +41,7 @@ export class ChatState {
       webSearch: this.webSearch,
       webResults: this.webResults,
       pricing: this.pricing,
+      contextLength: this.contextLength,
       providerType,
     }
   }
@@ -76,6 +78,7 @@ export class ChatState {
     this.modelId = sel.modelId
     this.endpointProviderName = sel.endpointProviderName
     this.pricing = sel.pricing
+    this.contextLength = sel.contextLength
     this.reasoningEffort = sel.reasoningEffort
     this.supportsReasoning = sel.supportsReasoning
     this.modelReasoning = sel.modelReasoning

@@ -141,7 +141,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   if (ttyOut) {
     if (result.usage) {
       tracker.record(result.usage, selection.pricing)
-      tracker.printTurn(result.usage, selection.pricing)
+      tracker.printTurn(result.usage, selection.pricing, selection.contextLength)
       if (budget != null) {
         const line = budgetLine(tracker.cost, budget)
         if (line) console.log(line)
@@ -163,6 +163,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     webResults,
     zdr,
     pricing: selection.pricing,
+    contextLength: selection.contextLength,
     sessionId,
     createdAt,
     messages,

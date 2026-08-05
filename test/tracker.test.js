@@ -2,8 +2,8 @@
 /* eslint-disable no-control-regex, no-regex-spaces */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { UsageTracker, budgetLine, budgetStatus, computeTurnCost } from '../src/tracker.js'
-import { green, cyan } from '../src/ui/style.js'
+import { UsageTracker, budgetLine, budgetStatus, computeTurnCost, contextSegment } from '../src/tracker.js'
+import { green, cyan, yellow, red } from '../src/ui/style.js'
 
 const PRICING = { prompt: 0.0000015, completion: 0.000006 }
 
@@ -118,7 +118,7 @@ test('printTurn aligns labels and shows cache hits with ratio', (t) => {
   )
 
   const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
-  assert.match(plain, /^  Tokens ↑ 200 prompt  ↓ 50 completion  = 250 total$/m)
+  assert.match(plain, /^  Tokens ↑ 200 prompt  ↓ 50 completion  = 250 total  \|  CTX: \?$/m)
   assert.match(plain, /^  Cache  ⚡ 100 cached tokens \(50% of prompt\)$/m)
   assert.match(plain, /^  Cost   \$0\.000600 this turn  \|  \$0\.000600 session$/m)
   const greenCache = logs.find((l) => l.includes('⚡'))
@@ -135,5 +135,61 @@ test('printTurn omits the cache line on a miss', (t) => {
 
   const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
   assert.doesNotMatch(plain, /Cache/)
-  assert.match(plain, /^  Tokens ↑ 200 prompt  ↓ 50 completion  = 250 total$/m)
+  assert.match(plain, /^  Tokens ↑ 200 prompt  ↓ 50 completion  = 250 total  \|  CTX: \?$/m)
+})
+
+test('contextSegment renders the bar and percentage for a known window', () => {
+  assert.equal(contextSegment(100, 100, 2000), 'CTX █░░░░░░░░░ 10%')
+  assert.equal(contextSegment(0, 0, 2000), 'CTX ░░░░░░░░░░ 0%')
+})
+
+test('contextSegment shows a question mark without a context window', () => {
+  assert.equal(contextSegment(100, 50, null), 'CTX: ?')
+  assert.equal(contextSegment(100, 50, 0), 'CTX: ?')
+  assert.equal(contextSegment(100, 50, undefined), 'CTX: ?')
+})
+
+test('contextSegment shows a question mark for zeroed OpenRouter cache hits', () => {
+  assert.equal(contextSegment(0, 0, 1000, true), 'CTX: ?')
+  assert.equal(contextSegment(0, 0, 1000), 'CTX ░░░░░░░░░░ 0%')
+})
+
+test('contextSegment clamps the percentage at 100', () => {
+  assert.equal(contextSegment(3000, 0, 1000), red('CTX ██████████ 100%'))
+  assert.equal(contextSegment(0, 5000, 1000), red('CTX ██████████ 100%'))
+})
+
+test('contextSegment applies the yellow threshold at 80% and red at 95%', () => {
+  assert.equal(contextSegment(1600, 0, 2000), yellow('CTX ████████░░ 80%'))
+  assert.equal(contextSegment(1900, 0, 2000), red('CTX ██████████ 95%'))
+})
+
+test('printTurn appends the CTX segment when a context window is known', (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+
+  new UsageTracker().printTurn({ prompt_tokens: 200, completion_tokens: 50 }, PRICING, 2500)
+
+  const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
+  assert.match(plain, /^  Tokens ↑ 200 prompt  ↓ 50 completion  = 250 total  \|  CTX █░░░░░░░░░ 10%$/m)
+})
+
+test('printTurn shows a question mark segment when the context window is unknown', (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+
+  new UsageTracker().printTurn({ prompt_tokens: 200, completion_tokens: 50 }, PRICING)
+
+  const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
+  assert.match(plain, /\|  CTX: \?$/m)
+})
+
+test('printTurn shows a question mark segment for zeroed cache hits', (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+
+  new UsageTracker().printTurn({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cacheHit: true }, PRICING, 2500)
+
+  const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
+  assert.match(plain, /\|  CTX: \?$/m)
 })

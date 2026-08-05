@@ -17,7 +17,7 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Terminal markdown rendering** — responses are styled in the terminal (headers, bold/italic, code blocks, lists, quotes, links) with a `/markdown` toggle
 - **Streaming responses** — tokens appear as they arrive, with reasoning tokens shown in gray under a `❯ Thinking` banner and a `❯ Answer` separator before the final response
 - **Smooth streaming** — in interactive sessions, incoming text is paced (default on) so answers render at a steady character rate instead of popping in bursts after a long wait; disable with `--no-smooth-streaming` or `/smooth off`. A dim waiting indicator (`Waiting for response...`, or `Searching the web...` when a search is guaranteed) shows while the model is still working
-- **Usage & cost tracking** — after each turn: prompt / completion / total token counts, cache hit detection (OpenRouter), and a dollar-cost breakdown (per turn + cumulative session total). Check anytime with `/cost`
+- **Usage & cost tracking** — after each turn: prompt / completion / total token counts, a context-window usage indicator (CTX), cache hit detection (OpenRouter), and a dollar-cost breakdown (per turn + cumulative session total). Check anytime with `/cost`
 - **Slash commands** — `/new` starts a fresh session, `/model` switches models mid-chat, `/reasoning` re-picks the reasoning effort, `/temp` sets temperature, `/budget` sets/shows the budget, `/web-search` sets the web search mode, `/web-results` sets the result count, `/attach` queues files, `/attachments` lists/clears the queue, `/retry` re-runs the last turn, `/copy` copies the last response, `/markdown` toggles rendering, `/smooth` sets smooth streaming, `/cost` shows the running total, `/quit` exits
 - **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/`, with an auto-generated title from the first user message. Sessions are saved when you quit, switch models, start a new session, or interrupt with `Ctrl+C`, so the last exchange is never lost
 - **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, reasoning effort, temperature, and budget. Automatically detects and uses the correct API backend. Supports prefix matching and an interactive picker
@@ -167,10 +167,12 @@ The user is asking about the capital of France...
 The capital of France is Paris.
 
 ───────────────────────────────────────
-  Tokens  ↑ 12 prompt  ↓ 28 completion  = 40 total
+  Tokens  ↑ 12 prompt  ↓ 28 completion  = 40 total  |  CTX ░░░░░░░░░░ 2%
   Cost    $0.000034 this turn  |  $0.000124 session
 ───────────────────────────────────────
 ```
+
+The `Tokens` line includes a **CTX indicator**: how much of the model's context window the last turn occupies (`prompt + completion` divided by the endpoint's advertised context length), with the bar turning yellow at 80% and red at 95%. Models that don't disclose a context window (e.g. some Venice models) show `CTX: ?`.
 
 The `Cache ⚡` line appears only when OpenRouter serves a cached response; on a cache miss it is omitted entirely.
 

@@ -1,4 +1,4 @@
-import { UsageTracker } from './tracker.js'
+import { UsageTracker, contextSegment } from './tracker.js'
 import { getEffortLabel } from './prompts.js'
 import { DEFAULT_TEMPERATURE, cpsToCharsPerTick } from './constants.js'
 import { sessionLabel } from './ui/format.js'
@@ -24,6 +24,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     reasoningEffort,
     temperature,
     pricing,
+    contextLength = null,
     provider,
     systemPrompt = null,
     initialMessages = null,
@@ -72,6 +73,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     temperature,
     budget,
     pricing,
+    contextLength,
     supportsReasoning,
     webSearch,
     webResults,
@@ -90,10 +92,12 @@ export async function runChatSession(ctx = {}, deps = {}) {
 
   const sessionState = createSessionState()
 
+  let lastUsage = null
   if (initialMessages) {
     for (const msg of initialMessages) {
       if (msg.role === 'assistant' && msg.usage) {
         sessionState.tracker.record(msg.usage, pricing)
+        lastUsage = msg.usage
       }
     }
   }
@@ -122,7 +126,14 @@ export async function runChatSession(ctx = {}, deps = {}) {
   }
 
   if (initialMessages && sessionState.tracker.requests > 0) {
-    console.log(`${dim('Previous session:')} ${sessionState.tracker.summary()}\n`)
+    let summary = sessionState.tracker.summary()
+    if (lastUsage) {
+      const pt = lastUsage.prompt_tokens ?? 0
+      const ct = lastUsage.completion_tokens ?? 0
+      const hit = lastUsage.cacheHit || (lastUsage.prompt_tokens_details?.cached_tokens ?? 0) > 0
+      summary += `  |  ${contextSegment(pt, ct, state.contextLength, hit)}`
+    }
+    console.log(`${dim('Previous session:')} ${summary}\n`)
   }
 
   const tty = stdout.isTTY === true

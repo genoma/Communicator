@@ -25,7 +25,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   const s = makeState()
   assert.deepEqual(
     Object.keys(s).sort(),
-    ['budget', 'createdAt', 'endpointProviderName', 'fileSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'visionSupported', 'webResults', 'webSearch', 'webSearchSupported', 'zdr']
+    ['budget', 'contextLength', 'createdAt', 'endpointProviderName', 'fileSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'visionSupported', 'webResults', 'webSearch', 'webSearchSupported', 'zdr']
   )
   assert.equal(s.modelId, 'org/model')
   assert.equal(s.endpointProviderName, 'Provider')
@@ -72,6 +72,7 @@ test('toFinalState returns exactly the old finalState field list', () => {
 
   assert.deepEqual(Object.keys(state).sort(), [
     'budget',
+    'contextLength',
     'createdAt',
     'endpointProviderName',
     'messages',
@@ -147,6 +148,7 @@ test('applyModelSelection switches model and reads per-model prefs', () => {
     modelId: 'other/model',
     endpointProviderName: 'OtherProvider',
     pricing: { prompt: 0.000002, completion: 0.000003 },
+    contextLength: 128000,
     reasoningEffort: 'medium',
     supportsReasoning: true,
     modelReasoning: { supported: true, supportsEffort: true },
@@ -163,6 +165,7 @@ test('applyModelSelection switches model and reads per-model prefs', () => {
   assert.equal(s.modelId, 'other/model')
   assert.equal(s.endpointProviderName, 'OtherProvider')
   assert.deepEqual(s.pricing, { prompt: 0.000002, completion: 0.000003 })
+  assert.equal(s.contextLength, 128000)
   assert.equal(s.reasoningEffort, 'medium')
   assert.equal(s.supportsReasoning, true)
   assert.deepEqual(s.modelReasoning, { supported: true, supportsEffort: true })

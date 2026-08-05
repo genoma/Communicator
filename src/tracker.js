@@ -38,6 +38,14 @@ function renderBar(pct) {
   return '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled)
 }
 
+export function contextSegment(pt, ct, contextLength, hit = false) {
+  if (!contextLength || contextLength <= 0) return 'CTX: ?'
+  if (hit && pt === 0 && ct === 0) return 'CTX: ?'
+  const pct = Math.min(100, ((pt + ct) / contextLength) * 100)
+  const style = pct >= 95 ? red : pct >= 80 ? yellow : (t) => t
+  return style(`CTX ${renderBar(pct)} ${pct.toFixed(0)}%`)
+}
+
 export function budgetLine(cost, budget) {
   const status = budgetStatus(cost, budget)
   if (!status || status.pct < 80) return null
@@ -83,7 +91,7 @@ export class UsageTracker {
     this.cost += turnCost
   }
 
-  printTurn(usage, pricing) {
+  printTurn(usage, pricing, contextLength) {
     if (!usage) return
 
     const { pt, ct, tt, cached, hit, turnCost } = computeMetrics(usage, pricing)
@@ -96,7 +104,7 @@ export class UsageTracker {
     const label = (text) => `  ${text.padEnd(6)} `
 
     console.log(
-      `${label('Tokens')}${arrowUp} ${pt.toLocaleString()} prompt  ${arrowDown} ${ct.toLocaleString()} completion  ${eq} ${tt.toLocaleString()} total`
+      `${label('Tokens')}${arrowUp} ${pt.toLocaleString()} prompt  ${arrowDown} ${ct.toLocaleString()} completion  ${eq} ${tt.toLocaleString()} total  |  ${contextSegment(pt, ct, contextLength, hit)}`
     )
 
     if (hit) {

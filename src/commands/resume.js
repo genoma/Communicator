@@ -19,6 +19,7 @@ export async function resumeCmd(partialId) {
     webSearch: normalizeWebSearchMode(sessionData.webSearch),
     webResults: sessionData.webResults ?? null,
     pricing: sessionData.pricing || null,
+    contextLength: sessionData.contextLength || null,
     initialMessages: sessionData.messages,
     sessionId: matchedId,
     sessionCreatedAt: sessionData.createdAt,

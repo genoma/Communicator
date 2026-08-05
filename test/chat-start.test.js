@@ -74,6 +74,7 @@ function resumeSession(overrides = {}) {
     webSearch: 'off',
     webResults: null,
     pricing: { prompt: 0.000001, completion: 0.000002 },
+    contextLength: 128000,
     initialMessages: [
       { role: 'system', content: 'You are a helpful assistant.' },
       { role: 'user', content: 'First question' },
@@ -136,6 +137,7 @@ test('chatStart resume branch restores the session context', async (t) => {
   assert.equal(call.opts.budget, 5)
   assert.equal(call.opts.webSearch, 'off')
   assert.equal(call.opts.webResults, null)
+  assert.equal(call.opts.contextLength, 128000)
   assert.equal(call.opts.sessionId, '2026-01-01T00-00-00')
   assert.equal(call.opts.initialMessages.length, 3)
   assert.equal(call.opts.configPath, configFile)
@@ -218,6 +220,7 @@ test('chatStart non-resume branch builds the context from selection and prefs', 
     visionSupported: undefined,
     fileSupported: true,
     pricing: { prompt: 1e-6, completion: 2e-6 },
+    contextLength: 64000,
     supportsReasoning: true,
     modelReasoning: null,
   }
@@ -237,6 +240,7 @@ test('chatStart non-resume branch builds the context from selection and prefs', 
   assert.equal(call.opts.budget, 2)
   assert.equal(call.opts.webSearch, 'off')
   assert.equal(call.opts.webSearchSupported, true)
+  assert.equal(call.opts.contextLength, 64000)
   assert.match(call.opts.sessionId, /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/)
   assert.ok(call.opts.createdAt)
 })
