@@ -128,10 +128,8 @@ export async function runChatSession(ctx = {}, deps = {}) {
   if (initialMessages && sessionState.tracker.requests > 0) {
     let summary = sessionState.tracker.summary()
     if (lastUsage) {
-      const pt = lastUsage.prompt_tokens ?? 0
-      const ct = lastUsage.completion_tokens ?? 0
       const hit = lastUsage.cacheHit || (lastUsage.prompt_tokens_details?.cached_tokens ?? 0) > 0
-      summary += `  |  ${contextSegment(pt, ct, state.contextLength, hit)}`
+      summary += `  |  ${contextSegment(sessionState.tracker.peakContext, state.contextLength, hit)}`
     }
     console.log(`${dim('Previous session:')} ${summary}\n`)
   }

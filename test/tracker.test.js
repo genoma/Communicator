@@ -139,29 +139,29 @@ test('printTurn omits the cache line on a miss', (t) => {
 })
 
 test('contextSegment renders the bar and percentage for a known window', () => {
-  assert.equal(contextSegment(100, 100, 2000), 'CTX █░░░░░░░░░ 10%')
-  assert.equal(contextSegment(0, 0, 2000), 'CTX ░░░░░░░░░░ 0%')
+  assert.equal(contextSegment(200, 2000), 'CTX █░░░░░░░░░ 10%')
+  assert.equal(contextSegment(0, 2000), 'CTX ░░░░░░░░░░ 0%')
 })
 
 test('contextSegment shows a question mark without a context window', () => {
-  assert.equal(contextSegment(100, 50, null), 'CTX: ?')
-  assert.equal(contextSegment(100, 50, 0), 'CTX: ?')
-  assert.equal(contextSegment(100, 50, undefined), 'CTX: ?')
+  assert.equal(contextSegment(150, null), 'CTX: ?')
+  assert.equal(contextSegment(150, 0), 'CTX: ?')
+  assert.equal(contextSegment(150, undefined), 'CTX: ?')
 })
 
 test('contextSegment shows a question mark for zeroed OpenRouter cache hits', () => {
-  assert.equal(contextSegment(0, 0, 1000, true), 'CTX: ?')
-  assert.equal(contextSegment(0, 0, 1000), 'CTX ░░░░░░░░░░ 0%')
+  assert.equal(contextSegment(0, 1000, true), 'CTX: ?')
+  assert.equal(contextSegment(0, 1000), 'CTX ░░░░░░░░░░ 0%')
 })
 
 test('contextSegment clamps the percentage at 100', () => {
-  assert.equal(contextSegment(3000, 0, 1000), red('CTX ██████████ 100%'))
-  assert.equal(contextSegment(0, 5000, 1000), red('CTX ██████████ 100%'))
+  assert.equal(contextSegment(3000, 1000), red('CTX ██████████ 100%'))
+  assert.equal(contextSegment(5000, 1000), red('CTX ██████████ 100%'))
 })
 
 test('contextSegment applies the yellow threshold at 80% and red at 95%', () => {
-  assert.equal(contextSegment(1600, 0, 2000), yellow('CTX ████████░░ 80%'))
-  assert.equal(contextSegment(1900, 0, 2000), red('CTX ██████████ 95%'))
+  assert.equal(contextSegment(1600, 2000), yellow('CTX ████████░░ 80%'))
+  assert.equal(contextSegment(1900, 2000), red('CTX ██████████ 95%'))
 })
 
 test('printTurn appends the CTX segment when a context window is known', (t) => {
@@ -192,4 +192,21 @@ test('printTurn shows a question mark segment for zeroed cache hits', (t) => {
 
   const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
   assert.match(plain, /\|  CTX: \?$/m)
+})
+
+test('printTurn keeps the CTX segment at the session peak when a later turn shrinks', (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+
+  const tracker = new UsageTracker()
+  // A web search turn transiently inflates the prompt tokens...
+  tracker.record({ prompt_tokens: 5000, completion_tokens: 300 }, PRICING)
+  tracker.printTurn({ prompt_tokens: 5000, completion_tokens: 300 }, PRICING, 100000)
+  // ...and the next plain turn reports a smaller prompt; CTX must not drop.
+  tracker.record({ prompt_tokens: 1200, completion_tokens: 200 }, PRICING)
+  tracker.printTurn({ prompt_tokens: 1200, completion_tokens: 200 }, PRICING, 100000)
+
+  const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
+  const segments = plain.match(/\|  CTX █░░░░░░░░░ 5%/g)
+  assert.equal(segments.length, 2)
 })

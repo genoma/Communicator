@@ -38,10 +38,10 @@ function renderBar(pct) {
   return '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled)
 }
 
-export function contextSegment(pt, ct, contextLength, hit = false) {
+export function contextSegment(peakTokens, contextLength, hit = false) {
   if (!contextLength || contextLength <= 0) return 'CTX: ?'
-  if (hit && pt === 0 && ct === 0) return 'CTX: ?'
-  const pct = Math.min(100, ((pt + ct) / contextLength) * 100)
+  if (hit && peakTokens === 0) return 'CTX: ?'
+  const pct = Math.min(100, (peakTokens / contextLength) * 100)
   const style = pct >= 95 ? red : pct >= 80 ? yellow : (t) => t
   return style(`CTX ${renderBar(pct)} ${pct.toFixed(0)}%`)
 }
@@ -75,6 +75,10 @@ export class UsageTracker {
     this.requests = 0
     this.cacheHits = 0
     this.cachedTokens = 0
+    // Peak context occupancy (prompt + completion) across the session. Web
+    // search tool results transiently inflate a single turn's prompt tokens,
+    // so the per-turn value can shrink; the peak never does.
+    this.peakContext = 0
   }
 
   record(usage, pricing) {
@@ -89,12 +93,15 @@ export class UsageTracker {
     if (hit) this.cacheHits += 1
     this.cachedTokens += cached
     this.cost += turnCost
+    this.peakContext = Math.max(this.peakContext, pt + ct)
   }
 
   printTurn(usage, pricing, contextLength) {
     if (!usage) return
 
     const { pt, ct, tt, cached, hit, turnCost } = computeMetrics(usage, pricing)
+
+    this.peakContext = Math.max(this.peakContext, pt + ct)
 
     console.log(sep())
 
@@ -104,7 +111,7 @@ export class UsageTracker {
     const label = (text) => `  ${text.padEnd(6)} `
 
     console.log(
-      `${label('Tokens')}${arrowUp} ${pt.toLocaleString()} prompt  ${arrowDown} ${ct.toLocaleString()} completion  ${eq} ${tt.toLocaleString()} total  |  ${contextSegment(pt, ct, contextLength, hit)}`
+      `${label('Tokens')}${arrowUp} ${pt.toLocaleString()} prompt  ${arrowDown} ${ct.toLocaleString()} completion  ${eq} ${tt.toLocaleString()} total  |  ${contextSegment(this.peakContext, contextLength, hit)}`
     )
 
     if (hit) {

@@ -172,7 +172,7 @@ The capital of France is Paris.
 ───────────────────────────────────────
 ```
 
-The `Tokens` line includes a **CTX indicator**: how much of the model's context window the last turn occupies (`prompt + completion` divided by the endpoint's advertised context length), with the bar turning yellow at 80% and red at 95%. Models that don't disclose a context window (e.g. some Venice models) show `CTX: ?`.
+The `Tokens` line includes a **CTX indicator**: the session's peak context usage — the most context a single turn has occupied (`prompt + completion` divided by the endpoint's advertised context length). It never decreases as the conversation grows, even when web search results transiently inflate a turn's prompt. The bar turns yellow at 80% and red at 95%. Models that don't disclose a context window (e.g. some Venice models) show `CTX: ?`.
 
 The `Cache ⚡` line appears only when OpenRouter serves a cached response; on a cache miss it is omitted entirely.
 
