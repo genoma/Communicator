@@ -55,8 +55,6 @@ export const EFFORT_LABELS = {
   none: 'Disabled',
 }
 
-export const SSE_DATA_PREFIX = 'data: '
-
 export const SSE_DONE = '[DONE]'
 
 export function formatCost(cost) {

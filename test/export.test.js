@@ -114,6 +114,25 @@ test('exports sources with hostname fallback and plain text for invalid URLs', (
   assert.doesNotMatch(md, /- Broken\(/)
 })
 
+test('exports sources with neither title nor a parseable url as plain text', () => {
+  const md = formatMarkdown(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'q' },
+      {
+        role: 'assistant',
+        content: 'ok',
+        sources: [
+          { title: null, url: 'not a url' },
+          { title: null, url: '' },
+        ],
+      },
+    ],
+  }))
+  assert.match(md, /- not a url\n/)
+  assert.match(md, /- \n/)
+})
+
 test('emits no Sources block and keeps citations literal without sources', () => {
   const md = formatMarkdown(session({
     messages: [

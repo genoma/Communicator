@@ -96,6 +96,20 @@ test('renderHistory passes plain strings through unchanged', () => {
   assert.doesNotMatch(plain(), /attached:/)
 })
 
+test('renderHistory prints reasoning under a thinking header for assistant messages', (t) => {
+  enableAnsi(t)
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'You are helpful.' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: 'Answer here', reasoning: 'thinking text' },
+  ], { markdown: false, stdout })
+  assert.match(plain(), /❯ Thinking/)
+  assert.match(plain(), /thinking text/)
+  assert.match(plain(), /❯ Answer/)
+  assert.match(plain(), /Answer here/)
+})
+
 test('renderHistory prints a Sources block with OSC 8 links for assistant messages with sources', (t) => {
   enableAnsi(t)
   const { stdout, text, plain } = capture()

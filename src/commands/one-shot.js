@@ -3,7 +3,7 @@ import { cpsToCharsPerTick } from '../constants.js'
 import { ensureSessionsDir, generateSessionId } from '../sessions.js'
 import { createStreamRenderer, printSources } from '../ui/stream.js'
 import { sessionLabel } from '../ui/format.js'
-import { UsageTracker, budgetLine, budgetExhaustedMessage } from '../tracker.js'
+import { UsageTracker, budgetLine } from '../tracker.js'
 import { ChatState } from '../chat-state.js'
 import { CliError, formatError } from '../errors.js'
 import { fail } from '../cli-utils.js'
@@ -40,9 +40,6 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   const { forcedEffort, forcedTemperature, budget, forcedWebResults, smoothSpeed, zdr } = resolveSessionFlags(opts, prefs)
 
   const tracker = new UsageTracker()
-  if (budget != null && tracker.cost >= budget) {
-    throw new CliError(`Error: ${budgetExhaustedMessage(tracker.cost, budget)}`)
-  }
 
   let context
   try {

@@ -150,6 +150,31 @@ test('loadSession rejects null JSON as CliError', async (t) => {
   )
 })
 
+test('loadSession warns and drops attachment parts whose blob files are missing', async (t) => {
+  const dir = await tempDir(t)
+  const warns = []
+  t.mock.method(console, 'warn', (line) => { warns.push(String(line)) })
+  await writeFile(join(dir, '2026-01-01T00-00-00.json'), JSON.stringify({
+    model: 'test/model',
+    providerName: 'TestProvider',
+    providerType: 'openrouter',
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'check this' },
+          { type: 'image_url', image_url: { url: 'ref://attachments/deadbeef.png' } },
+        ],
+      },
+    ],
+  }))
+
+  const data = await loadSession(dir, '2026-01-01T00-00-00')
+  assert.ok(warns.some((w) => w.includes('missing attachment') && w.includes('ref://attachments/deadbeef.png')))
+  assert.deepEqual(data.messages[1].content, [{ type: 'text', text: 'check this' }])
+})
+
 test('generateSessionId produces unique ids', async (t) => {
   const dir = await tempDir(t)
   const id = await generateSessionId(dir)

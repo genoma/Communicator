@@ -53,6 +53,15 @@ test('summary includes cost only when pricing produced a cost', () => {
   assert.doesNotMatch(noPricing.summary(), /cost/)
 })
 
+test('summary includes cache hit counts when cached tokens were recorded', () => {
+  const tracker = new UsageTracker()
+  tracker.record({ prompt_tokens: 50, completion_tokens: 10, prompt_tokens_details: { cached_tokens: 30 } }, PRICING)
+  tracker.record({ prompt_tokens: 0, completion_tokens: 10, cacheHit: true }, PRICING)
+
+  const s = tracker.summary()
+  assert.match(s, /2 cache hit\(s\) \[30 cached tokens\]/)
+})
+
 test('budgetStatus computes pct and remaining with 80/100 boundaries', () => {
   const low = budgetStatus(0.4, 1)
   assert.ok(Math.abs(low.pct - 40) < 1e-9)

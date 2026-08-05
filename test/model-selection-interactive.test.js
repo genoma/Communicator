@@ -18,6 +18,7 @@ mock.module('@inquirer/prompts', {
 })
 
 const { cheapestEndpoint, selectModelAndEndpoint } = await import('../src/model-selection.js')
+const { BACK_SENTINEL } = await import('../src/prompts.js')
 
 test('cheapestEndpoint picks the endpoint with the lowest combined price', () => {
   const endpoints = [
@@ -179,4 +180,82 @@ test('interactive selection with zdr and a degraded index keeps the full picker 
   assert.equal(sel.endpointProviderName, 'NonZdr')
   assert.equal(searchMessages[0], 'Select a model')
   assert.ok(errorSpy.mock.calls.some((c) => String(c.arguments[0]).includes('--zdr filtering disabled')))
+})
+
+test('interactive selection loops back to the model picker when the provider picker returns the back sentinel', async (t) => {
+  const model = { id: 'org/multi', name: 'Multi', contextLength: 1000, reasoning: { supported: true, supportsEffort: false }, architecture: { input_modalities: [] }, supportedParameters: [] }
+  const other = { providerName: 'ThirdProvider', pricing: { prompt: 3e-6, completion: 5e-6 }, supportedParameters: {} }
+  searchQueue = [model, BACK_SENTINEL, model, chosen]
+  searchMessages = []
+  searchChoices = []
+  t.mock.method(console, 'log', () => {})
+
+  const provider = {
+    meta: { name: 'openrouter', hasEndpoints: true, supportsWebSearchOnAll: true },
+    async fetchModels() { return [model] },
+    async fetchEndpoints() { return [chosen, other] },
+  }
+
+  const sel = await selectModelAndEndpoint({ provider, apiKey: 'k', prefs: {}, reasoningEffort: undefined })
+
+  assert.equal(sel.modelId, 'org/multi')
+  assert.equal(sel.endpointProviderName, 'SecondProvider')
+  assert.equal(searchMessages[0], 'Select a model')
+  assert.equal(searchMessages[1], 'Select a provider (2 available)')
+  assert.equal(searchMessages[2], 'Select a model')
+})
+
+test('interactive selection asks for the reasoning effort when the model supports effort control', async (t) => {
+  const model = { id: 'org/effort', name: 'Effort', contextLength: 1000, reasoning: { supported: true, supportsEffort: true, supported_efforts: ['high', 'medium', 'low'], default_effort: 'medium' }, architecture: { input_modalities: [] }, supportedParameters: [] }
+  searchQueue = [model, chosen]
+  t.mock.method(console, 'log', () => {})
+
+  const provider = {
+    meta: { name: 'openrouter', hasEndpoints: true, supportsWebSearchOnAll: true },
+    async fetchModels() { return [model] },
+    async fetchEndpoints() { return [chosen] },
+  }
+
+  const sel = await selectModelAndEndpoint({ provider, apiKey: 'k', prefs: {}, reasoningEffort: undefined })
+
+  assert.equal(sel.reasoningEffort, 'medium')
+  assert.equal(sel.modelReasoning.supportsEffort, true)
+})
+
+test('interactive selection throws when a model has no providers', async (t) => {
+  const model = { id: 'org/lonely', name: 'Lonely', contextLength: 1000, reasoning: null, architecture: { input_modalities: [] }, supportedParameters: [] }
+  searchQueue = [model]
+  t.mock.method(console, 'log', () => {})
+
+  const provider = {
+    meta: { name: 'openrouter', hasEndpoints: true, supportsWebSearchOnAll: true },
+    async fetchModels() { return [model] },
+    async fetchEndpoints() { return [] },
+  }
+
+  await assert.rejects(
+    selectModelAndEndpoint({ provider, apiKey: 'k', prefs: {}, reasoningEffort: undefined }),
+    (err) => err instanceof Error && /No providers found for model: org\/lonely/.test(err.message)
+  )
+})
+
+test('interactive selection for endpointless providers returns the model route', async (t) => {
+  const model = { id: 'venice/model', name: 'V', contextLength: 1000, reasoning: null, architecture: { input_modalities: [] }, capabilities: {} }
+  searchQueue = [model]
+  t.mock.method(console, 'log', () => {})
+
+  const provider = {
+    meta: { name: 'venice', hasEndpoints: false, supportsWebSearchOnAll: false },
+    async fetchModels() { return [model] },
+    async fetchEndpoints() {
+      return [{ providerName: 'venice', pricing: { prompt: 1e-6, completion: 2e-6 }, supportedParameters: {} }]
+    },
+  }
+
+  const sel = await selectModelAndEndpoint({ provider, apiKey: 'k', prefs: {}, reasoningEffort: undefined })
+
+  assert.equal(sel.modelId, 'venice/model')
+  assert.equal(sel.endpointProviderName, 'venice')
+  assert.equal(sel.supportsReasoning, false)
+  assert.deepEqual(sel.pricing, { prompt: 1e-6, completion: 2e-6 })
 })

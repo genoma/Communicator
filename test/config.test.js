@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { applyPreferenceUpdates, loadSystemPrompt } from '../src/config.js'
+import { applyPreferenceUpdates, loadSystemPrompt, getApiKey } from '../src/config.js'
+import { CliError } from '../src/errors.js'
 
 test('applyPreferenceUpdates merges per-model maps by spread', () => {
   const prefs = {
@@ -154,4 +155,29 @@ test('loadSystemPrompt returns null for an empty or whitespace-only file', async
   const blank = join(dir, 'blank.md')
   await writeFile(blank, '   \n \t ')
   assert.equal(await loadSystemPrompt(blank), null)
+})
+
+test('getApiKey throws a CliError when the environment variable is unset', () => {
+  const previous = process.env.OPENROUTER_API_KEY
+  delete process.env.OPENROUTER_API_KEY
+  try {
+    assert.throws(
+      () => getApiKey(),
+      (err) => err instanceof CliError && /OPENROUTER_API_KEY environment variable is not set/.test(err.message)
+    )
+  } finally {
+    if (previous === undefined) delete process.env.OPENROUTER_API_KEY
+    else process.env.OPENROUTER_API_KEY = previous
+  }
+})
+
+test('getApiKey trims the value from the environment', () => {
+  const previous = process.env.OPENROUTER_API_KEY
+  process.env.OPENROUTER_API_KEY = '  key-123  '
+  try {
+    assert.equal(getApiKey(), 'key-123')
+  } finally {
+    if (previous === undefined) delete process.env.OPENROUTER_API_KEY
+    else process.env.OPENROUTER_API_KEY = previous
+  }
 })

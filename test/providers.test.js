@@ -133,6 +133,15 @@ test('venice fetchModels works without an api key', async (t) => {
   assert.equal(calledWith.headers.Authorization, undefined)
 })
 
+test('venice fetchEndpoints returns an empty list for an unknown model', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => jsonResponse({
+    data: [{ id: 'venice/known', name: 'Known' }],
+  }))
+
+  const endpoints = await venice.fetchEndpoints('key', 'venice/unknown')
+  assert.deepEqual(endpoints, [])
+})
+
 test('openrouter 401 throws ApiError with friendly message, no retry', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => new Response('nope', { status: 401 }))
 
@@ -473,6 +482,25 @@ test('chatCompletion maps venice sessionId to prompt_cache_key', async (t) => {
   assert.equal(sentBody.prompt_cache_key, '2026-01-01T00-00-00')
   assert.equal(sentBody.reasoning_effort, 'high')
   assert.equal(result.content, 'ok')
+})
+
+test('venice chatCompletion maps a disabled reasoning effort to none', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await venice.chatCompletion({
+    apiKey: 'key',
+    model: 'm',
+    messages: [],
+    onToken: () => {},
+    reasoningEffort: null,
+    supportsReasoning: true,
+  })
+
+  assert.equal(sentBody.reasoning_effort, 'none')
 })
 
 test('openrouter chatCompletion adds the web_search server tool with default max_results in auto mode', async (t) => {

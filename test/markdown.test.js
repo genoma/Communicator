@@ -45,6 +45,12 @@ test('renderText styles inline elements and drops link urls', (t) => {
   assert.match(out, /\x1b\[2malt\x1b\[22m/)
 })
 
+test('renderText drops link reference definition lines', () => {
+  const out = renderText('[ref]: https://example.com\n\n**bold** after')
+  const plain = out.replace(ANSI, '').replace(OSC8, '')
+  assert.equal(plain, '\nbold after')
+})
+
 test('renderText resolves venice citation markers against sources', (t) => {
   enableAnsi(t)
   const sources = [
@@ -415,6 +421,26 @@ test('streaming renderer resets between flushed responses', (t) => {
   renderer.write('second turn\n')
   renderer.flush()
   assert.equal(plain(output()), afterFirst + 'second turn\n')
+})
+
+test('streaming renderer emits lines between two tables in one batch', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  renderer.write('a para\n')
+  renderer.write('a | b\n')
+  renderer.write('---|---\n')
+  renderer.write('1 | 2\n')
+  renderer.write('\n')
+  renderer.write('between\n')
+  renderer.write('c | d\n')
+  renderer.write('---|---\n')
+  renderer.flush()
+
+  assert.equal(
+    plain(output()),
+    'a para\na | b\n\x1b[1A\r\x1b[Ja  b\n---  ---\n1  2\n\nbetween\nc | d\n\x1b[1A\r\x1b[Jc  d\n---  ---\n'
+  )
 })
 
 test('streaming renderer rewinds rows correctly for emoji that render two columns', (t) => {

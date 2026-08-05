@@ -1,6 +1,7 @@
 import { test, mock, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
+import { Readable } from 'node:stream'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CliError } from '../src/errors.js'
@@ -239,3 +240,158 @@ test('one-shot with --zdr sends provider.zdr in the request body', async (t) => 
   assert.equal(bodies.length, 1)
   assert.deepEqual(bodies[0].provider, { order: ['ProviderX'], allow_fallbacks: false, zdr: true })
 })
+
+test('one-shot rejects piped stdin over the 10MB limit', async (t) => {
+  mockOpenRouterStream(t)
+  withApiKey(t)
+  const originalStdin = process.stdin
+  const stdinMock = Readable.from([Buffer.alloc(11 * 1024 * 1024)])
+  Object.defineProperty(process, 'stdin', { value: stdinMock, configurable: true })
+  t.after(() => {
+    Object.defineProperty(process, 'stdin', { value: originalStdin, configurable: true })
+  })
+
+  const { oneShotCmd } = await import('../src/commands/one-shot.js')
+  await assert.rejects(
+    oneShotCmd({ apiKey: 'test-key', opts: opts(), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: '' }),
+    (e) => e instanceof CliError && /exceeds the 10MB limit/.test(e.message)
+  )
+})
+
+test('one-shot reads the prompt from piped stdin when no prompt is given', async (t) => {
+  mockOpenRouterStream(t)
+  withApiKey(t)
+  const originalStdin = process.stdin
+  const stdinMock = Readable.from([Buffer.from('Hello from stdin')])
+  Object.defineProperty(process, 'stdin', { value: stdinMock, configurable: true })
+  t.after(() => {
+    Object.defineProperty(process, 'stdin', { value: originalStdin, configurable: true })
+  })
+  const file = await tempConfig(t)
+  const writes = []
+  const originalWrite = process.stdout.write.bind(process.stdout)
+  t.mock.method(process.stdout, 'write', function (chunk, ...rest) {
+    writes.push(String(chunk))
+    return originalWrite(chunk, ...rest)
+  })
+  mockExit(t)
+
+  const { oneShotCmd } = await import('../src/commands/one-shot.js')
+  await oneShotCmd({ apiKey: 'test-key', opts: opts({ config: file }), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: '' })
+
+  assert.ok(writes.some((w) => w.includes('Hello world')))
+  const sessionsDir = join(tempHome, '.communicator', 'sessions')
+  const files = (await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.'))
+  const matches = []
+  for (const f of files) {
+    const saved = JSON.parse(await readFile(join(sessionsDir, f), 'utf-8'))
+    if (saved.messages.some((m) => m.role === 'user' && m.content === 'Hello from stdin')) matches.push(saved)
+  }
+  assert.equal(matches.length, 1)
+})
+
+test('one-shot SIGINT during the request aborts and exits 130', async (t) => {
+  const models = [{ id: 'test/model-a', name: 'Model A', context_length: 1000, description: 'd', reasoning: null }]
+  const endpoints = [{
+    provider_name: 'ProviderX',
+    tag: 't',
+    status: 'available',
+    uptime_last_30m: null,
+    pricing: { prompt: 1e-6, completion: 2e-6 },
+    context_length: 1000,
+    max_completion_tokens: null,
+    supported_parameters: {},
+  }]
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  const fetchCalls = []
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    fetchCalls.push(String(url))
+    if (String(url).includes('/chat/completions')) {
+      opts.signal.addEventListener('abort', () => {
+        rejectCompletion(Object.assign(new Error('aborted'), { pendingBuffer: 'data: {"choices":[{"delta":{"content":"Hel' }))
+      })
+      return pending
+    }
+    if (String(url).includes('/endpoints')) return jsonResponse({ data: { endpoints } })
+    return jsonResponse({ data: models })
+  })
+  withApiKey(t)
+  const getExitCode = mockExit(t)
+  const errors = []
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  let sigintHandler = null
+  const originalOn = process.on.bind(process)
+  const originalOff = process.off.bind(process)
+  t.mock.method(process, 'on', (event, fn) => {
+    if (event === 'SIGINT') sigintHandler = fn
+    return originalOn(event, fn)
+  })
+  t.mock.method(process, 'off', (event, fn) => originalOff(event, fn))
+
+  const { oneShotCmd } = await import('../src/commands/one-shot.js')
+  const run = oneShotCmd({ apiKey: 'test-key', opts: opts(), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: 'Hello' })
+  for (let i = 0; i < 100 && sigintHandler === null; i++) {
+    await new Promise((r) => setImmediate(r))
+  }
+  assert.ok(sigintHandler !== null)
+  sigintHandler()
+
+  await assert.rejects(run, (e) => e instanceof ExitSignal && e.code === 130)
+  assert.equal(getExitCode(), 130)
+  assert.ok(errors.some((e) => e.includes('Interrupted.')))
+})
+
+
+test('one-shot TTY output prints the banner, sources and the skipped-chunk warning', async (t) => {
+  const models = [{ id: 'test/model-a', name: 'Model A', context_length: 1000, description: 'd', reasoning: null }]
+  const endpoints = [{
+    provider_name: 'ProviderX',
+    tag: 't',
+    status: 'available',
+    uptime_last_30m: null,
+    pricing: { prompt: 1e-6, completion: 2e-6 },
+    context_length: 1000,
+    max_completion_tokens: null,
+    supported_parameters: {},
+  }]
+  const stream = [
+    event({ choices: [{ delta: { content: 'Hello' } }] }),
+    'data: {not-json}\n\n',
+    event({ choices: [{ delta: { content: ' world' } }] }),
+    event({ choices: [{ delta: { annotations: [{ type: 'url_citation', url_citation: { url: 'https://example.com', title: 'Example' } }] } }] }),
+    event({ choices: [{ delta: {}, usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }] }),
+    'data: [DONE]\n\n',
+  ]
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (String(url).includes('/chat/completions')) return sseResponse(stream)
+    if (String(url).includes('/endpoints')) return jsonResponse({ data: { endpoints } })
+    return jsonResponse({ data: models })
+  })
+  withApiKey(t)
+  const original = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
+  Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
+  t.after(() => {
+    if (original) Object.defineProperty(process.stdout, 'isTTY', original)
+    else delete process.stdout.isTTY
+  })
+  const writes = []
+  const originalWrite = process.stdout.write.bind(process.stdout)
+  t.mock.method(process.stdout, 'write', function (chunk, ...rest) {
+    writes.push(String(chunk))
+    return originalWrite(chunk, ...rest)
+  })
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  mockExit(t)
+
+  const { oneShotCmd } = await import('../src/commands/one-shot.js')
+  await oneShotCmd({ apiKey: 'test-key', opts: opts(), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: 'Hello' })
+
+  assert.ok(logs.some((l) => l.includes('Connected to ProviderX')))
+  assert.ok(writes.some((w) => w.includes('Hello world')))
+  assert.ok(writes.some((w) => w.includes('Sources (1)')))
+  assert.ok(writes.some((w) => w.includes('1 malformed stream chunk skipped')))
+})
+
