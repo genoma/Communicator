@@ -147,7 +147,10 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
         stdout.write(`${dim(msg.reasoning)}\n`)
         stdout.write(`\n${answer()}\n\n`)
       }
-      stdout.write(`${markdown ? renderText(contentText(msg.content)) : contentText(msg.content)}\n\n`)
+      stdout.write(`${markdown ? renderText(contentText(msg.content), msg.sources || []) : contentText(msg.content)}\n\n`)
+      if (msg.sources?.length) {
+        printSources(msg.sources, stdout)
+      }
     }
   }
 }

@@ -84,6 +84,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         stdout.write('\n')
         const partial = { role: 'assistant', content: streamedContent }
         if (streamedReasoning) partial.reasoning = streamedReasoning
+        if (render.sources?.length > 0) partial.sources = render.sources
         if (!partial.content && !partial.reasoning && err.pendingBuffer) {
           const pending = extractPartialToken(err.pendingBuffer)
           if (pending) {
@@ -116,6 +117,9 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       }
       if (apiResult.usage) {
         msg.usage = apiResult.usage
+      }
+      if (apiResult.sources?.length > 0) {
+        msg.sources = apiResult.sources
       }
       state.appendAssistant(msg)
     }
