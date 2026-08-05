@@ -21,6 +21,38 @@ function calculateCost(pricing, messages) {
   return totalCost
 }
 
+const CITATION = /\^(\d+(?:,\d+)*)\^/g
+
+function citationLinks(text, sources) {
+  const raw = String(text ?? '')
+  if (!sources || sources.length === 0) return raw
+  return raw.replace(CITATION, (marker, nums) => {
+    return nums.split(',').map((n) => {
+      const source = sources[Number(n) - 1]
+      return source?.url ? `[${n}](${source.url})` : `^${n}^`
+    }).join(' ')
+  })
+}
+
+function sourcesList(sources) {
+  if (!sources || sources.length === 0) return ''
+  const lines = ['**Sources:**']
+  for (const source of sources) {
+    const url = source?.url || ''
+    let parsed = null
+    try {
+      parsed = url ? new URL(url) : null
+    } catch {
+      parsed = null
+    }
+    const label = source?.title || (parsed ? parsed.hostname : null)
+    if (parsed && label) lines.push(`- [${label}](${url})`)
+    else if (label) lines.push(`- ${label}`)
+    else lines.push(`- ${url}`)
+  }
+  return lines.join('\n')
+}
+
 export function formatMarkdown(sessionData) {
   const { model, providerName, reasoningEffort, pricing, createdAt, messages, title } = sessionData
   const visibleMessages = (messages || []).filter((m) => m.role !== 'system')
@@ -52,7 +84,9 @@ export function formatMarkdown(sessionData) {
         md += `${msg.reasoning}\n\n`
       }
       md += '### Answer\n\n'
-      md += `${msg.content}\n\n`
+      md += `${citationLinks(msg.content, msg.sources)}\n\n`
+      const list = sourcesList(msg.sources)
+      if (list) md += `${list}\n\n`
     }
     md += '---\n\n'
   }

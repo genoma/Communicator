@@ -96,6 +96,7 @@ going to the saved preference directory until you override it with
 - **Header** — timestamp, title, model, provider, message count, reasoning effort, and accumulated cost
 - **User messages** — blockquoted under a `## You` heading
 - **Assistant responses** — reasoning shown under `### thinking`, final answer under `### Answer`
+- **Sources** — when web search was used, a `**Sources:**` markdown list follows each answer, with inline `^n^` citations converted to `[n](url)` links
 - **Cost** — calculated from token usage and provider pricing (shows "N/A" if pricing is unavailable)
 
 Example output:
@@ -144,7 +145,7 @@ Each session is stored as a JSON file:
   "messages": [
     { "role": "system", "content": "You are a helpful assistant." },
     { "role": "user", "content": "Hello" },
-    { "role": "assistant", "content": "Hi there!", "reasoning": "...", "usage": { "prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17 } }
+    { "role": "assistant", "content": "Hi there!", "reasoning": "...", "usage": { "prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17 }, "sources": [{ "title": "Example", "url": "https://example.com" }] }
   ]
 }
 ```
@@ -158,6 +159,7 @@ Each session is stored as a JSON file:
 - User messages with attachments store `content` as an OpenAI-style parts array (`[{ type: 'text', ... }, { type: 'image_url', ... }, { type: 'file', ... }]`); plain text messages keep the string form, so older sessions stay readable
 - Binary attachment payloads (`image_url.url` / `file.file_data`) are not stored inline: the data URL is replaced by a `ref://attachments/<sha256>.<ext>` sentinel pointing at a blob in `~/.communicator/sessions/attachments/<sessionId>/` (raw bytes, deduplicated by sha256 within the session). On `--resume`/`--export` the blob is read back and re-encoded into the `data:<mime>;base64,...` URL. Text-file attachments stay inline as `text` parts. Old sessions with inline data URLs load unchanged and convert to refs on the next save; a missing blob drops that part with a warning
 - `pricing` stores per-token dollar amounts used for cost calculation
+- Assistant messages may carry `sources` (`[{ title, url }]`) when web search was used — restored on `--resume` (numbered list + clickable inline citations) and exported as a markdown `**Sources:**` list with `^n^` citations converted to `[n](url)` links; older sessions without the field render no sources and keep citations literal
 - `updatedAt` is bumped on every auto-save
 - Empty sessions (no user messages) are never saved
 - Older sessions without `temperature`/`budget`/`title` fall back to `0.7` / no cap / no title

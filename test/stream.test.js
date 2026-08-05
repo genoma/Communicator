@@ -94,6 +94,56 @@ test('renderHistory passes plain strings through unchanged', () => {
   assert.doesNotMatch(plain(), /attached:/)
 })
 
+test('renderHistory prints a Sources block with OSC 8 links for assistant messages with sources', (t) => {
+  enableAnsi(t)
+  const { stdout, text, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'You are helpful.' },
+    { role: 'user', content: 'question' },
+    {
+      role: 'assistant',
+      content: 'Answer here',
+      sources: [
+        { title: 'Example', url: 'https://example.com/a' },
+        { title: 'Other', url: 'https://other.example/b' },
+      ],
+    },
+  ], { markdown: false, stdout })
+  assert.match(plain(), /Sources \(2\)\n\[1\] Example\n\[2\] Other/)
+  assert.match(text(), /\x1b\[2m\[1\]\x1b\[22m \x1b\[3m\x1b\]8;;https:\/\/example\.com\/a\x1b\\Example\x1b\]8;;\x1b\\\x1b\[23m/)
+})
+
+test('renderHistory links inline citations when the assistant message has sources', (t) => {
+  enableAnsi(t)
+  const { stdout, plain, text } = capture()
+  renderHistory([
+    { role: 'system', content: 'You are helpful.' },
+    { role: 'user', content: 'question' },
+    {
+      role: 'assistant',
+      content: 'See ^1^ and ^2^.',
+      sources: [
+        { title: 'One', url: 'https://one.example' },
+        { title: 'Two', url: 'https://two.example' },
+      ],
+    },
+  ], { markdown: true, stdout })
+  assert.match(plain(), /See \[1\] and \[2\]\./)
+  assert.match(text(), /\x1b\]8;;https:\/\/one\.example\x1b\\\[1\]/)
+  assert.match(plain(), /Sources \(2\)\n\[1\] One\n\[2\] Two/)
+})
+
+test('renderHistory leaves assistant messages without sources unchanged', () => {
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'You are helpful.' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: 'Plain answer ^1^' },
+  ], { markdown: true, stdout })
+  assert.match(plain(), /Plain answer \^1\^/)
+  assert.doesNotMatch(plain(), /Sources/)
+})
+
 test('smooth renderer writes nothing before the first tick and paces at the char cap', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const { stdout, plain } = capture()

@@ -75,6 +75,57 @@ test('formats user attachments as blockquoted attachment lines', () => {
   assert.match(md, /> \*\*Attachment:\*\* `report\.pdf`/)
 })
 
+test('exports a Sources list with markdown links and converts inline citations', () => {
+  const md = formatMarkdown(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'Search something' },
+      {
+        role: 'assistant',
+        content: 'Result from ^1^ and ^2^ plus ^3^.',
+        sources: [
+          { title: 'First', url: 'https://first.example/a' },
+          { title: null, url: 'https://second.example/b' },
+        ],
+      },
+    ],
+  }))
+  assert.match(md, /Result from \[1\]\(https:\/\/first\.example\/a\) and \[2\]\(https:\/\/second\.example\/b\) plus \^3\^\./)
+  assert.match(md, /\*\*Sources:\*\*\n- \[First\]\(https:\/\/first\.example\/a\)\n- \[second\.example\]\(https:\/\/second\.example\/b\)/)
+})
+
+test('exports sources with hostname fallback and plain text for invalid URLs', () => {
+  const md = formatMarkdown(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'q' },
+      {
+        role: 'assistant',
+        content: 'ok',
+        sources: [
+          { title: null, url: 'https://host.example/x' },
+          { title: 'Broken', url: 'not a url' },
+        ],
+      },
+    ],
+  }))
+  assert.match(md, /- \[host\.example\]\(https:\/\/host\.example\/x\)/)
+  assert.match(md, /- Broken\n/)
+  assert.doesNotMatch(md, /- Broken\(/)
+})
+
+test('emits no Sources block and keeps citations literal without sources', () => {
+  const md = formatMarkdown(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'q' },
+      { role: 'assistant', content: 'Plain ^1^' },
+    ],
+  }))
+  assert.doesNotMatch(md, /\*\*Sources:\*\*/)
+  assert.match(md, /Plain \^1\^/)
+})
+
 test('exportSession writes the markdown file and overwrites it', async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
   t.after(() => rm(dir, { recursive: true, force: true }))

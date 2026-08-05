@@ -108,6 +108,84 @@ test('a successful turn streams tokens, records usage and appends the message', 
   assert.equal(exitCodes.length, 0)
 })
 
+test('persists the provider sources on the appended assistant message', async (t) => {
+  mockConsole(t)
+  const sources = [
+    { title: 'Example', url: 'https://example.com/a' },
+    { title: null, url: 'https://example.com/b' },
+  ]
+  const render = () => {}
+  render.sources = []
+  render.flush = () => {}
+  const state = fakeState()
+  const provider = okProvider({
+    async chatCompletion() {
+      return { content: 'Hello', sources, usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }
+    },
+  })
+  const { deps } = makeDeps({ render, provider })
+
+  await runTurn(deps, state)
+
+  assert.deepEqual(state.messages[2].sources, sources)
+})
+
+test('leaves the sources field unset when the provider returns none', async (t) => {
+  mockConsole(t)
+  const state = fakeState()
+  const { deps } = makeDeps({ provider: okProvider() })
+
+  await runTurn(deps, state)
+
+  assert.equal('sources' in state.messages[2], false)
+})
+
+test('an interrupted stream salvages the sources collected so far', async (t) => {
+  mockConsole(t)
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  const sources = [{ title: 'X', url: 'https://x.example' }]
+  const provider = okProvider({
+    async chatCompletion(opts) {
+      opts.onSources(sources)
+      opts.signal.addEventListener('abort', () => {
+        rejectCompletion(Object.assign(new Error('aborted'), { pendingBuffer: 'data: {"choices":[{"delta":{"content":"Hel' }))
+      })
+      return pending
+    },
+  })
+  const render = () => {}
+  render.flush = () => {}
+  const state = fakeState()
+  const sessionState = createSessionState()
+  sessionState.streaming = true
+  sessionState.streamController = new AbortController()
+  const { deps, exitCodes, saves } = makeDeps({ render, provider, sessionState })
+  const runner = createTurnRunner({
+    state,
+    provider,
+    apiKey: 'test-key',
+    render: deps.render,
+    loader: deps.loader,
+    stdout: deps.stdout,
+    tty: false,
+    saveCurrentSession: deps.saveCurrentSession,
+    interruptSave: deps.interruptSave,
+    exit: deps.exit,
+    sessionState,
+  })
+
+  const turn = runner.runTurn()
+  sessionState.interrupted = true
+  sessionState.streamController.abort()
+  await turn
+
+  assert.deepEqual(exitCodes, [130])
+  assert.deepEqual(saves, ['interrupt'])
+  assert.equal(state.messages[2].content, 'Hel')
+  assert.deepEqual(state.messages[2].sources, sources)
+})
+
 test('prints a warning when the stream carried skipped chunks', async (t) => {
   const logs = []
   t.mock.method(console, 'log', (msg) => logs.push(String(msg)))
