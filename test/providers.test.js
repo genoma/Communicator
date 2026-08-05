@@ -503,7 +503,7 @@ test('venice chatCompletion maps a disabled reasoning effort to none', async (t)
   assert.equal(sentBody.reasoning_effort, 'none')
 })
 
-test('openrouter chatCompletion adds the web_search server tool with default max_results in auto mode', async (t) => {
+test('openrouter chatCompletion adds the web_search server tool with default max_results and max_total_results in auto mode', async (t) => {
   let sentBody
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
     sentBody = JSON.parse(opts.body)
@@ -518,11 +518,11 @@ test('openrouter chatCompletion adds the web_search server tool with default max
     webSearch: 'auto',
   })
 
-  assert.deepEqual(sentBody.tools, [{ type: 'openrouter:web_search', parameters: { max_results: 10 } }])
+  assert.deepEqual(sentBody.tools, [{ type: 'openrouter:web_search', parameters: { max_results: 10, max_total_results: 10 } }])
   assert.equal(sentBody.plugins, undefined)
 })
 
-test('openrouter chatCompletion uses custom max_results in the server tool when webResults is set', async (t) => {
+test('openrouter chatCompletion uses custom max_results and max_total_results in the server tool when webResults is set', async (t) => {
   let sentBody
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
     sentBody = JSON.parse(opts.body)
@@ -538,7 +538,7 @@ test('openrouter chatCompletion uses custom max_results in the server tool when 
     webResults: 3,
   })
 
-  assert.deepEqual(sentBody.tools, [{ type: 'openrouter:web_search', parameters: { max_results: 3 } }])
+  assert.deepEqual(sentBody.tools, [{ type: 'openrouter:web_search', parameters: { max_results: 3, max_total_results: 3 } }])
 })
 
 test('openrouter chatCompletion uses the deprecated web plugin with default max_results in always mode', async (t) => {

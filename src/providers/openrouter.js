@@ -141,7 +141,14 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
   }
 
   if (webSearch === 'auto') {
-    body.tools = [{ type: 'openrouter:web_search', parameters: { max_results: webResults ?? DEFAULT_WEB_SEARCH_RESULTS } }]
+    const results = webResults ?? DEFAULT_WEB_SEARCH_RESULTS
+    body.tools = [{
+      type: 'openrouter:web_search',
+      // max_results caps a single search call; max_total_results caps the
+      // cumulative total across all search calls in the request, so the model
+      // cannot exceed the requested count by searching multiple times.
+      parameters: { max_results: results, max_total_results: results },
+    }]
   } else if (webSearch === 'always') {
     body.plugins = [{ id: 'web', max_results: webResults ?? DEFAULT_WEB_SEARCH_RESULTS }]
   }
