@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { chmod, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { attachmentDirFor, externalizeAttachments, hydrateAttachments, REF_PREFIX } from '../src/attachment-store.js'
@@ -101,14 +101,12 @@ test('externalize and hydrate never mutate their input', async (t) => {
 
 test('blob write failure keeps the part inline and does not throw', async (t) => {
   const dir = await tempDir(t)
-  await chmod(dir, 0o555)
-  try {
-    const messages = messagesWith([{ type: 'image_url', image_url: { url: PNG_URL } }])
-    const externalized = await externalizeAttachments(messages, attachmentDirFor(dir, 'sess'))
-    assert.equal(externalized[1].content[0].image_url.url, PNG_URL)
-  } finally {
-    await chmod(dir, 0o755)
-  }
+  const blocker = join(dir, 'blocker')
+  await writeFile(blocker, 'not a directory')
+  t.mock.method(console, 'warn', () => {})
+  const messages = messagesWith([{ type: 'image_url', image_url: { url: PNG_URL } }])
+  const externalized = await externalizeAttachments(messages, join(blocker, 'attachments', 'sess'))
+  assert.equal(externalized[1].content[0].image_url.url, PNG_URL)
 })
 
 test('missing blob on hydrate drops the part, reports it, and keeps the rest', async (t) => {
