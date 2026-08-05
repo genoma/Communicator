@@ -39,7 +39,7 @@ function sourcesList(sources) {
   const lines = ['**Sources:**']
   for (const source of sources) {
     const url = source?.url || ''
-    let parsed = null
+    let parsed
     try {
       parsed = url ? new URL(url) : null
     } catch {

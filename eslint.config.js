@@ -1,3 +1,5 @@
+import js from '@eslint/js'
+
 const nodeGlobals = {
   process: 'readonly',
   console: 'readonly',
@@ -9,6 +11,8 @@ const nodeGlobals = {
   fetch: 'readonly',
   AbortController: 'readonly',
   AbortSignal: 'readonly',
+  DOMException: 'readonly',
+  EventTarget: 'readonly',
   TextDecoder: 'readonly',
   TextEncoder: 'readonly',
   ReadableStream: 'readonly',
@@ -18,9 +22,11 @@ const nodeGlobals = {
   Buffer: 'readonly',
   structuredClone: 'readonly',
   queueMicrotask: 'readonly',
+  setImmediate: 'readonly',
 }
 
 export default [
+  js.configs.recommended,
   {
     files: ['**/*.js'],
     languageOptions: {
@@ -31,7 +37,6 @@ export default [
     rules: {
       semi: ['error', 'never'],
       quotes: ['error', 'single', { avoidEscape: true }],
-      'no-extra-semi': 'error',
       'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
       'no-constant-condition': ['error', { checkLoops: false }],
     },

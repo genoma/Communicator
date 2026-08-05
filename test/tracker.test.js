@@ -1,3 +1,5 @@
+// assertions intentionally match ANSI-rendered output
+/* eslint-disable no-control-regex, no-regex-spaces */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { UsageTracker, budgetLine, budgetStatus, computeTurnCost } from '../src/tracker.js'

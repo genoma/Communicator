@@ -1,3 +1,5 @@
+// assertions intentionally match ANSI-rendered output
+/* eslint-disable no-control-regex */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { pickerTheme, BACK_SENTINEL, getEffortLabel, orderModelChoices, filterModelChoices, formatEndpointLabel, formatEndpointDescription } from '../src/prompts.js'

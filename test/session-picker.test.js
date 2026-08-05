@@ -44,7 +44,7 @@ test('selectSession returns all choices without an input filter', async () => {
     assert.equal(all.length, 2)
     assert.match(all[0].name, /2026-07-30 19:15:22/)
     assert.equal(all[0].value, '2026-07-30T19-15-22')
-    assert.match(all[0].description, /"Write a Python script"  •  OpenAI/)
+    assert.match(all[0].description, /"Write a Python script" {2}• {2}OpenAI/)
     return all[0].value
   }
 

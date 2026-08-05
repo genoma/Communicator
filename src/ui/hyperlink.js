@@ -1,3 +1,6 @@
+// ANSI escape sequences are the domain of this module
+/* eslint-disable no-control-regex */
+
 function sanitize(text) {
   return String(text ?? '')
     .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')

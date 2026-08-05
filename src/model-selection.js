@@ -89,7 +89,6 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
 
     const ep = await selectProvider(zdrEndpoints, zdrActive)
     if (ep === BACK_SENTINEL) {
-      effort = undefined
       continue
     }
     return {
