@@ -272,7 +272,7 @@ export async function loadSession(dir, id) {
     throw err
   }
 
-  if (!data || typeof data !== 'object' || !data.model || !Array.isArray(data.messages)) {
+  if (!data || !data.model || !Array.isArray(data.messages)) {
     throw new CliError(`Error: Session file is corrupt: ${filePath}`)
   }
 
