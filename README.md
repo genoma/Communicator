@@ -33,15 +33,15 @@ Each topic has its own page in the [`docs/`](docs/) folder:
 
 | Page | Covers |
 |------|--------|
-| 📘 [`docs/commands.md`](docs/commands.md) | The full CLI flag reference table, usage examples for every flag, and the in-chat slash commands with autocomplete behavior |
-| 💬 [`docs/chat.md`](docs/chat.md) | The interactive flow, one-shot mode, chat session output (CTX indicator), markdown rendering, smooth streaming, budget caps, and the system prompt |
-| 🔎 [`docs/web-search.md`](docs/web-search.md) | Web search modes, OpenRouter vs Venice behavior, result counts, and clickable sources |
-| 📎 [`docs/attachments.md`](docs/attachments.md) | File & image attachments: supported formats, interactive and one-shot usage, gating, limits |
-| 🏗️ [`docs/providers.md`](docs/providers.md) | The OpenRouter and Venice.ai backends, and zero-data-retention (ZDR) routing |
-| 💾 [`docs/sessions.md`](docs/sessions.md) | Session persistence: listing, resuming, deleting, exporting, and the on-disk session file format |
-| ⚙️ [`docs/preferences.md`](docs/preferences.md) | The preferences file (`~/.communicator.json`), per-model defaults, and standalone config commands |
-| 🖥️ [`docs/platforms.md`](docs/platforms.md) | Platform support, clipboard tools, terminals, data locations, per-OS install notes, and uninstalling |
-| 🔧 [`docs/development.md`](docs/development.md) | Internal architecture, the module layout, and the provider contract for contributors |
+| [`docs/commands.md`](docs/commands.md) | The full CLI flag reference table, usage examples for every flag, and the in-chat slash commands with autocomplete behavior |
+| [`docs/chat.md`](docs/chat.md) | The interactive flow, one-shot mode, chat session output (CTX indicator), markdown rendering, smooth streaming, budget caps, and the system prompt |
+| [`docs/web-search.md`](docs/web-search.md) | Web search modes, OpenRouter vs Venice behavior, result counts, and clickable sources |
+| [`docs/attachments.md`](docs/attachments.md) | File & image attachments: supported formats, interactive and one-shot usage, gating, limits |
+| [`docs/providers.md`](docs/providers.md) | The OpenRouter and Venice.ai backends, and zero-data-retention (ZDR) routing |
+| [`docs/sessions.md`](docs/sessions.md) | Session persistence: listing, resuming, deleting, exporting, and the on-disk session file format |
+| [`docs/preferences.md`](docs/preferences.md) | The preferences file (`~/.communicator.json`), per-model defaults, and standalone config commands |
+| [`docs/platforms.md`](docs/platforms.md) | Platform support, clipboard tools, terminals, data locations, per-OS install notes, and uninstalling |
+| [`docs/development.md`](docs/development.md) | Internal architecture, the module layout, and the provider contract for contributors |
 
 ## Requirements
 
