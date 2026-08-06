@@ -144,7 +144,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
       tracker.printTurn(result.usage, selection.pricing, selection.contextLength)
       if (budget != null) {
         const line = budgetLine(tracker.cost, budget)
-        if (line) console.log(line)
+        if (line) console.log(`  ${line}`)
       }
     }
   } else {

@@ -118,7 +118,8 @@ test('printTurn aligns labels and shows cache hits with ratio', (t) => {
   )
 
   const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
-  assert.match(plain, /^  Tokens ↑ 200 prompt  ↓ 50 completion  = 250 total  \|  CTX: \?$/m)
+  assert.match(plain, /^  Tokens ↑ 200 prompt  ↓ 50 completion  = 250 total$/m)
+  assert.doesNotMatch(plain, /CTX/)
   assert.match(plain, /^  Cache  ⚡ 100 cached tokens \(50% of prompt\)$/m)
   assert.match(plain, /^  Cost   \$0\.000600 this turn  \|  \$0\.000600 session$/m)
   const greenCache = logs.find((l) => l.includes('⚡'))
@@ -135,7 +136,8 @@ test('printTurn omits the cache line on a miss', (t) => {
 
   const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
   assert.doesNotMatch(plain, /Cache/)
-  assert.match(plain, /^  Tokens ↑ 200 prompt  ↓ 50 completion  = 250 total  \|  CTX: \?$/m)
+  assert.match(plain, /^  Tokens ↑ 200 prompt  ↓ 50 completion  = 250 total$/m)
+  assert.doesNotMatch(plain, /CTX/)
 })
 
 test('contextSegment renders the bar and percentage for a known window', () => {
@@ -164,37 +166,48 @@ test('contextSegment applies the yellow threshold at 80% and red at 95%', () => 
   assert.equal(contextSegment(1900, 2000), red('CTX ██████████ 95%'))
 })
 
-test('printTurn appends the CTX segment when a context window is known', (t) => {
+test('printTurn shows the CTX row when a context window is known', (t) => {
   const logs = []
   t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
 
   new UsageTracker().printTurn({ prompt_tokens: 200, completion_tokens: 50 }, PRICING, 2500)
 
   const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
-  assert.match(plain, /^  Tokens ↑ 200 prompt  ↓ 50 completion  = 250 total  \|  CTX █░░░░░░░░░ 10%$/m)
+  assert.match(plain, /^  Tokens ↑ 200 prompt  ↓ 50 completion  = 250 total$/m)
+  assert.match(plain, /^  CTX    █░░░░░░░░░ 10%$/m)
 })
 
-test('printTurn shows a question mark segment when the context window is unknown', (t) => {
+test('printTurn omits the CTX row when the context window is unknown', (t) => {
   const logs = []
   t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
 
   new UsageTracker().printTurn({ prompt_tokens: 200, completion_tokens: 50 }, PRICING)
 
   const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
-  assert.match(plain, /\|  CTX: \?$/m)
+  assert.doesNotMatch(plain, /CTX/)
 })
 
-test('printTurn shows a question mark segment for zeroed cache hits', (t) => {
+test('printTurn omits the CTX row for zeroed cache hits', (t) => {
   const logs = []
   t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
 
   new UsageTracker().printTurn({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cacheHit: true }, PRICING, 2500)
 
   const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
-  assert.match(plain, /\|  CTX: \?$/m)
+  assert.doesNotMatch(plain, /CTX/)
 })
 
-test('printTurn keeps the CTX segment at the session peak when a later turn shrinks', (t) => {
+test('printTurn hides the CTX row below 5% occupancy', (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+
+  new UsageTracker().printTurn({ prompt_tokens: 30, completion_tokens: 10 }, PRICING, 1000)
+
+  const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
+  assert.doesNotMatch(plain, /CTX/)
+})
+
+test('printTurn keeps the CTX row at the session peak when a later turn shrinks', (t) => {
   const logs = []
   t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
 
@@ -207,6 +220,29 @@ test('printTurn keeps the CTX segment at the session peak when a later turn shri
   tracker.printTurn({ prompt_tokens: 1200, completion_tokens: 200 }, PRICING, 100000)
 
   const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
-  const segments = plain.match(/\|  CTX █░░░░░░░░░ 5%/g)
-  assert.equal(segments.length, 2)
+  const rows = plain.match(/^  CTX    █░░░░░░░░░ 5%$/gm)
+  assert.equal(rows.length, 2)
+})
+
+test('printTurn joins the budget warning onto the CTX row', (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+
+  const tracker = new UsageTracker()
+  tracker.record({ prompt_tokens: 200, completion_tokens: 50 }, PRICING)
+  tracker.printTurn({ prompt_tokens: 200, completion_tokens: 50 }, PRICING, 2500, budgetLine(0.9, 1))
+
+  const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
+  assert.match(plain, /^  CTX    █░░░░░░░░░ 10%  \|  Budget  █████████░ 90% used \(\$0\.9000 of \$1\.0000\), \$0\.1000 remaining$/m)
+})
+
+test('printTurn shows the budget warning alone when the CTX row is gated', (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+
+  new UsageTracker().printTurn({ prompt_tokens: 10, completion_tokens: 5 }, PRICING, 1000, budgetLine(0.9, 1))
+
+  const plain = logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '')
+  assert.doesNotMatch(plain, /CTX/)
+  assert.match(plain, /^  Budget  █████████░ 90% used \(\$0\.9000 of \$1\.0000\), \$0\.1000 remaining$/m)
 })

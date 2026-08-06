@@ -2,6 +2,7 @@ import { formatCost } from './constants.js'
 import { sep, green, cyan, yellow, red } from './ui/style.js'
 
 const BAR_WIDTH = 10
+const CTX_MIN_PCT = 5
 
 export function computeTurnCost(usage, pricing) {
   if (!usage || pricing?.prompt == null || pricing?.completion == null) return 0
@@ -46,13 +47,21 @@ export function contextSegment(peakTokens, contextLength, hit = false) {
   return style(`CTX ${renderBar(pct)} ${pct.toFixed(0)}%`)
 }
 
+export function contextLine(peakTokens, contextLength) {
+  if (!contextLength || contextLength <= 0) return null
+  const pct = Math.min(100, (peakTokens / contextLength) * 100)
+  if (pct < CTX_MIN_PCT) return null
+  const style = pct >= 95 ? red : pct >= 80 ? yellow : (t) => t
+  return style(`${'CTX'.padEnd(6)} ${renderBar(pct)} ${pct.toFixed(0)}%`)
+}
+
 export function budgetLine(cost, budget) {
   const status = budgetStatus(cost, budget)
   if (!status || status.pct < 80) return null
   const pct = status.pct.toFixed(0)
   const style = status.pct >= 95 ? red : yellow
   return style(
-    `  Budget  ${renderBar(status.pct)} ${pct}% used (${formatCompactCost(cost)} of ${formatCompactCost(budget)}), ${formatCompactCost(status.remaining)} remaining`
+    `Budget  ${renderBar(status.pct)} ${pct}% used (${formatCompactCost(cost)} of ${formatCompactCost(budget)}), ${formatCompactCost(status.remaining)} remaining`
   )
 }
 
@@ -96,7 +105,7 @@ export class UsageTracker {
     this.peakContext = Math.max(this.peakContext, pt + ct)
   }
 
-  printTurn(usage, pricing, contextLength) {
+  printTurn(usage, pricing, contextLength, budgetNote = null) {
     if (!usage) return
 
     const { pt, ct, tt, cached, hit, turnCost } = computeMetrics(usage, pricing)
@@ -111,7 +120,7 @@ export class UsageTracker {
     const label = (text) => `  ${text.padEnd(6)} `
 
     console.log(
-      `${label('Tokens')}${arrowUp} ${pt.toLocaleString()} prompt  ${arrowDown} ${ct.toLocaleString()} completion  ${eq} ${tt.toLocaleString()} total  |  ${contextSegment(this.peakContext, contextLength, hit)}`
+      `${label('Tokens')}${arrowUp} ${pt.toLocaleString()} prompt  ${arrowDown} ${ct.toLocaleString()} completion  ${eq} ${tt.toLocaleString()} total`
     )
 
     if (hit) {
@@ -129,6 +138,11 @@ export class UsageTracker {
       const turnPart = formatCost(turnCost)
       const sessionPart = formatCost(this.cost)
       console.log(cyan(`${label('Cost')}${turnPart} this turn  |  ${sessionPart} session`))
+    }
+
+    const ctx = contextLine(this.peakContext, contextLength)
+    if (ctx || budgetNote) {
+      console.log(`  ${[ctx, budgetNote].filter(Boolean).join('  |  ')}`)
     }
   }
 

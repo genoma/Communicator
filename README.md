@@ -167,12 +167,12 @@ The user is asking about the capital of France...
 The capital of France is Paris.
 
 ───────────────────────────────────────
-  Tokens  ↑ 12 prompt  ↓ 28 completion  = 40 total  |  CTX ░░░░░░░░░░ 2%
+  Tokens  ↑ 12 prompt  ↓ 28 completion  = 40 total
   Cost    $0.000034 this turn  |  $0.000124 session
 ───────────────────────────────────────
 ```
 
-The `Tokens` line includes a **CTX indicator**: the session's peak context usage — the most context a single turn has occupied (`prompt + completion` divided by the endpoint's advertised context length). It never decreases as the conversation grows, even when web search results transiently inflate a turn's prompt. The bar turns yellow at 80% and red at 95%. Models that don't disclose a context window (e.g. some Venice models) show `CTX: ?`.
+The last footer row holds the **CTX indicator**: the session's peak context usage — the most context a single turn has occupied (`prompt + completion` divided by the endpoint's advertised context length). It never decreases as the conversation grows, even when web search results transiently inflate a turn's prompt. The row appears only when the context window is known and at least 5% occupied (`CTX    ██████░░░░ 60%`; with a 1M-token model like DeepSeek V4 Flash, ordinary chats rarely show it); the bar turns yellow at 80% and red at 95%. When the budget warning fires (see below), the budget bar joins the same row instead of adding a line.
 
 The `Cache ⚡` line appears only when OpenRouter serves a cached response; on a cache miss it is omitted entirely.
 
@@ -194,7 +194,7 @@ While the model is working, a dim indicator appears on the response line roughly
 
 ### Budget caps
 
-`--budget <usd>` (or `/budget <usd>` mid-chat) sets a per-session spending cap based on accumulated tracked cost. When 80% is crossed, the usage footer shows a budget line (`Budget  83% used ($0.0005 of $0.0006), $0.0001 remaining`). At 100% the next turn is refused with `Budget exhausted ($X of $Y). /new to start fresh or /quit.`. `/budget` with no value prints used/remaining. Budgets are stored in the session file and restored on `--resume`; `/new` clears the budget for the fresh session.
+`--budget <usd>` (or `/budget <usd>` mid-chat) sets a per-session spending cap based on accumulated tracked cost. When 80% is crossed, the last footer row shows the budget bar (`Budget  83% used ($0.0005 of $0.0006), $0.0001 remaining`), joined with the CTX bar on the same row when both are visible. At 100% the next turn is refused with `Budget exhausted ($X of $Y). /new to start fresh or /quit.`. `/budget` with no value prints used/remaining. Budgets are stored in the session file and restored on `--resume`; `/new` clears the budget for the fresh session.
 
 ### Zero data retention (ZDR)
 

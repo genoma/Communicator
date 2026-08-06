@@ -400,6 +400,6 @@ test('one-shot TTY output prints the banner, sources and the skipped-chunk warni
     const saved = JSON.parse(await readFile(join(sessionsDir, f), 'utf-8'))
     assert.equal(saved.contextLength, 1000)
   }
-  assert.ok(logs.some((l) => l.includes('CTX ░░░░░░░░░░ 2%')))
+  assert.ok(!logs.some((l) => l.includes('CTX')))
 })
 

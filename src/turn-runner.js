@@ -68,14 +68,15 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
 
       if (apiResult.usage) {
         sessionState.tracker.record(apiResult.usage, state.pricing)
-        sessionState.tracker.printTurn(apiResult.usage, state.pricing, state.contextLength)
+        let budgetNote = null
         if (state.budget != null && !sessionState.budgetWarned) {
           const line = budgetLine(sessionState.tracker.cost, state.budget)
           if (line) {
             sessionState.budgetWarned = true
-            console.log(line)
+            budgetNote = line
           }
         }
+        sessionState.tracker.printTurn(apiResult.usage, state.pricing, state.contextLength, budgetNote)
       }
     } catch (err) {
       loader.stop()

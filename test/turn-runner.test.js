@@ -109,18 +109,18 @@ test('a successful turn streams tokens, records usage and appends the message', 
   assert.equal(exitCodes.length, 0)
 })
 
-test('printTurn receives the state context length for the CTX segment', async (t) => {
+test('printTurn receives the state context length for the CTX row', async (t) => {
   const logs = []
   t.mock.method(console, 'log', (msg) => logs.push(String(msg)))
   t.mock.method(console, 'error', () => {})
   const { deps } = makeDeps({ provider: okProvider() })
 
-  await runTurn(deps, fakeState({ contextLength: 1000 }))
+  await runTurn(deps, fakeState({ contextLength: 100 }))
 
-  assert.ok(logs.some((l) => l.includes('CTX ░░░░░░░░░░ 2%')))
+  assert.ok(logs.some((l) => l.includes('CTX    ██░░░░░░░░ 15%')))
 })
 
-test('printTurn shows an unknown CTX segment without a context length', async (t) => {
+test('printTurn omits the CTX row without a context length', async (t) => {
   const logs = []
   t.mock.method(console, 'log', (msg) => logs.push(String(msg)))
   t.mock.method(console, 'error', () => {})
@@ -128,7 +128,7 @@ test('printTurn shows an unknown CTX segment without a context length', async (t
 
   await runTurn(deps, fakeState({ contextLength: null }))
 
-  assert.ok(logs.some((l) => l.includes('CTX: ?')))
+  assert.ok(!logs.some((l) => l.includes('CTX')))
 })
 
 test('persists the provider sources on the appended assistant message', async (t) => {
