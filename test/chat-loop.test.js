@@ -527,6 +527,32 @@ test('resume path renders history, seeds the tracker and shows the previous sess
   assert.equal(calls[0].messages[3].content, 'next question')
 })
 
+test('resume summary omits CTX when the previous session occupancy is below 5%', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const stdoutWrites = []
+  const stdout = { write(chunk) { stdoutWrites.push(String(chunk)); return true } }
+  const { provider, calls } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['next question', '/quit']), stdout })
+
+  const initialMessages = [
+    { role: 'system', content: 'You are a helpful assistant.' },
+    { role: 'user', content: 'old question' },
+    { role: 'assistant', content: 'old answer', usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 } },
+  ]
+
+  await runChatSession(
+    baseCtx(provider, { initialMessages, createdAt: '2026-01-01T00:00:00.000Z', contextLength: 3000 }),
+    harness.deps
+  )
+
+  const summaryLine = consoleSpy.allLogs().find((l) => l.includes('Previous session:'))
+  assert.ok(summaryLine)
+  assert.match(summaryLine, /1 request\(s\)/)
+  assert.doesNotMatch(summaryLine, /CTX/)
+
+  assert.equal(calls.length, 1)
+})
+
 test('a retryable error pops the last user message', async (t) => {
   mockConsole(t)
   const { ApiError } = await import('../src/errors.js')

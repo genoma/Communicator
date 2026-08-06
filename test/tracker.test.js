@@ -142,7 +142,12 @@ test('printTurn omits the cache line on a miss', (t) => {
 
 test('contextSegment renders the bar and percentage for a known window', () => {
   assert.equal(contextSegment(200, 2000), 'CTX █░░░░░░░░░ 10%')
-  assert.equal(contextSegment(0, 2000), 'CTX ░░░░░░░░░░ 0%')
+})
+
+test('contextSegment is gated below 5% occupancy', () => {
+  assert.equal(contextSegment(0, 2000), null)
+  assert.equal(contextSegment(80, 2000), null)
+  assert.equal(contextSegment(100, 2000), 'CTX █░░░░░░░░░ 5%')
 })
 
 test('contextSegment shows a question mark without a context window', () => {
@@ -153,7 +158,6 @@ test('contextSegment shows a question mark without a context window', () => {
 
 test('contextSegment shows a question mark for zeroed OpenRouter cache hits', () => {
   assert.equal(contextSegment(0, 1000, true), 'CTX: ?')
-  assert.equal(contextSegment(0, 1000), 'CTX ░░░░░░░░░░ 0%')
 })
 
 test('contextSegment clamps the percentage at 100', () => {

@@ -43,6 +43,7 @@ export function contextSegment(peakTokens, contextLength, hit = false) {
   if (!contextLength || contextLength <= 0) return 'CTX: ?'
   if (hit && peakTokens === 0) return 'CTX: ?'
   const pct = Math.min(100, (peakTokens / contextLength) * 100)
+  if (pct < CTX_MIN_PCT) return null
   const style = pct >= 95 ? red : pct >= 80 ? yellow : (t) => t
   return style(`CTX ${renderBar(pct)} ${pct.toFixed(0)}%`)
 }
