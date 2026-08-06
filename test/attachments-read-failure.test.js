@@ -7,7 +7,7 @@ import * as realFs from 'node:fs/promises'
 
 let failRead = false
 mock.module('node:fs/promises', {
-  exports: {
+  namedExports: {
     readFile: async (...args) => {
       if (failRead) {
         const err = new Error('injected read failure')

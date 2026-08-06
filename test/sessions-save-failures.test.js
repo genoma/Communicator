@@ -7,7 +7,7 @@ import * as realFs from 'node:fs/promises'
 
 let failCode = null
 mock.module('node:fs/promises', {
-  exports: {
+  namedExports: {
     access: realFs.access,
     mkdir: realFs.mkdir,
     readdir: realFs.readdir,

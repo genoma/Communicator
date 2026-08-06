@@ -5,7 +5,7 @@ let fetchModelsImpl = async () => []
 let fetchEndpointsImpl = async () => []
 const saveCalls = []
 mock.module('../src/providers/index.js', {
-  exports: {
+  namedExports: {
     getProvider: () => ({
       meta: { name: 'openrouter', hasEndpoints: true, supportsWebSearchOnAll: true },
       fetchModels: async () => fetchModelsImpl(),
@@ -14,7 +14,7 @@ mock.module('../src/providers/index.js', {
   },
 })
 mock.module('../src/config.js', {
-  exports: {
+  namedExports: {
     applyPreferenceUpdates: (prefs, updates) => ({ ...prefs, ...updates }),
     savePreferences: async (prefs, path) => { saveCalls.push({ prefs, path }) },
   },
