@@ -1,8 +1,22 @@
 // assertions intentionally match ANSI-rendered output
 /* eslint-disable no-control-regex */
-import { test } from 'node:test'
+import { test, mock } from 'node:test'
 import assert from 'node:assert/strict'
-import { pickerTheme, BACK_SENTINEL, getEffortLabel, orderModelChoices, filterModelChoices, formatEndpointLabel, formatEndpointDescription } from '../src/prompts.js'
+
+let selectMessages = []
+let selectChoices = []
+mock.module('@inquirer/prompts', {
+  namedExports: {
+    search: async () => undefined,
+    select: async (opts) => {
+      selectMessages.push(opts?.message)
+      selectChoices.push(opts?.choices)
+      return opts?.default
+    },
+  },
+})
+
+const { pickerTheme, BACK_SENTINEL, getEffortLabel, orderModelChoices, filterModelChoices, formatEndpointLabel, formatEndpointDescription, selectReasoningEffort } = await import('../src/prompts.js')
 
 test('pickerTheme does not reuse the chat ❯ prefix', () => {
   assert.equal(pickerTheme.prefix, undefined)
@@ -90,4 +104,28 @@ test('formatEndpointDescription shows the tag and a privacy-policy hyperlink whe
   assert.equal(formatEndpointDescription({ ...ENDPOINT, privacyPolicyURL: 'https://example.com/privacy' }),
     '\x1b]8;;https://example.com/privacy\x1b\\privacy policy\x1b]8;;\x1b\\')
   assert.equal(formatEndpointDescription(ENDPOINT), undefined)
+})
+
+const EFFORT_REASONING = { supported: true, supportsEffort: true, supported_efforts: ['high', 'medium', 'low'], default_effort: 'medium' }
+
+test('selectReasoningEffort offers no back choice by default', async () => {
+  selectMessages = []
+  selectChoices = []
+  const answer = await selectReasoningEffort(EFFORT_REASONING, undefined)
+  assert.equal(answer, 'medium')
+  assert.deepEqual(selectMessages, ['Select reasoning effort:'])
+  assert.equal(selectChoices[0][0].name, 'Disabled')
+  assert.equal(selectChoices[0][0].value, null)
+  assert.ok(!selectChoices[0].some((c) => c.value === BACK_SENTINEL))
+})
+
+test('selectReasoningEffort puts the back choice first when withBack is set', async () => {
+  selectMessages = []
+  selectChoices = []
+  const answer = await selectReasoningEffort(EFFORT_REASONING, undefined, { withBack: true })
+  assert.equal(answer, 'medium')
+  assert.equal(selectChoices[0][0].name, '← Back to model selection')
+  assert.equal(selectChoices[0][0].value, BACK_SENTINEL)
+  assert.equal(selectChoices[0][1].type, 'separator')
+  assert.equal(selectChoices[0][2].name, 'Disabled')
 })

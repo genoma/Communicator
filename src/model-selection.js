@@ -49,36 +49,9 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
     const selected = await selectModel(pickable, prefs.lastModel, zdrActive)
     const modelId = selected.id
     const modelData = models.find((m) => m.id === modelId)
-    let effort = reasoningEffort
-
-    if (effort === undefined) {
-      const lastEffort = prefs.reasoningEffort?.[modelId]
-      if (modelData?.reasoning?.supportsEffort === false) {
-        // models that reason automatically without effort control
-        effort = undefined
-      } else {
-        effort = await selectReasoningEffort(modelData?.reasoning, lastEffort)
-      }
-    }
-
-    if (!provider.meta.hasEndpoints) {
-      const endpoints = await provider.fetchEndpoints(apiKey, modelId, models)
-      const ep = endpoints[0]
-      return {
-        modelId,
-        reasoningEffort: effort,
-        endpointProviderName: ep?.providerName || provider.meta.name,
-        pricing: ep?.pricing || null,
-        contextLength: ep?.contextLength ?? modelData?.contextLength ?? null,
-        supportsReasoning: !!ep?.supportedParameters?.supportsReasoningEffort,
-        modelReasoning: modelData?.reasoning || null,
-        webSearchSupported: isWebSearchSupported(provider.meta, modelData),
-        ...capabilityFlags(provider, modelData, ep),
-      }
-    }
 
     const endpoints = await provider.fetchEndpoints(apiKey, modelId, models)
-    if (!endpoints.length) {
+    if (provider.meta.hasEndpoints && endpoints.length === 0) {
       throw new CliError(`Error: No providers found for model: ${modelId}`)
     }
 
@@ -88,17 +61,37 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
       continue
     }
 
-    const ep = await selectProvider(zdrEndpoints, zdrActive)
-    if (ep === BACK_SENTINEL) {
-      continue
+    let ep
+    if (provider.meta.hasEndpoints) {
+      ep = await selectProvider(zdrEndpoints, zdrActive)
+      if (ep === BACK_SENTINEL) {
+        continue
+      }
+    } else {
+      ep = zdrEndpoints[0]
     }
+
+    let effort = reasoningEffort
+    if (effort === undefined) {
+      const lastEffort = prefs.reasoningEffort?.[modelId]
+      if (modelData?.reasoning?.supportsEffort === false) {
+        // models that reason automatically without effort control
+        effort = undefined
+      } else {
+        effort = await selectReasoningEffort(modelData?.reasoning, lastEffort, { withBack: true })
+        if (effort === BACK_SENTINEL) {
+          continue
+        }
+      }
+    }
+
     return {
       modelId,
       reasoningEffort: effort,
-      endpointProviderName: ep.providerName,
-      pricing: ep.pricing,
+      endpointProviderName: ep?.providerName || provider.meta.name,
+      pricing: ep?.pricing || null,
       contextLength: ep?.contextLength ?? modelData?.contextLength ?? null,
-      supportsReasoning: !!ep.supportedParameters?.supportsReasoningEffort,
+      supportsReasoning: !!ep?.supportedParameters?.supportsReasoningEffort,
       modelReasoning: modelData?.reasoning || null,
       webSearchSupported: isWebSearchSupported(provider.meta, modelData),
       ...capabilityFlags(provider, modelData, ep),

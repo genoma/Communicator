@@ -6,6 +6,9 @@ const zdrChosen = { providerName: 'ZDR Provider', pricing: { prompt: 2e-6, compl
 let searchQueue = []
 let searchMessages = []
 let searchChoices = []
+let selectQueue = []
+let selectMessages = []
+let selectChoices = []
 mock.module('@inquirer/prompts', {
   namedExports: {
     search: async (opts) => {
@@ -13,7 +16,11 @@ mock.module('@inquirer/prompts', {
       searchChoices.push(await opts.source(''))
       return searchQueue.shift()
     },
-    select: async () => 'medium',
+    select: async (opts) => {
+      selectMessages.push(opts?.message)
+      selectChoices.push(opts?.choices)
+      return selectQueue.length ? selectQueue.shift() : 'medium'
+    },
   },
 })
 
@@ -208,6 +215,8 @@ test('interactive selection loops back to the model picker when the provider pic
 test('interactive selection asks for the reasoning effort when the model supports effort control', async (t) => {
   const model = { id: 'org/effort', name: 'Effort', contextLength: 1000, reasoning: { supported: true, supportsEffort: true, supported_efforts: ['high', 'medium', 'low'], default_effort: 'medium' }, architecture: { input_modalities: [] }, supportedParameters: [] }
   searchQueue = [model, chosen]
+  selectMessages = []
+  selectChoices = []
   t.mock.method(console, 'log', () => {})
 
   const provider = {
@@ -220,6 +229,64 @@ test('interactive selection asks for the reasoning effort when the model support
 
   assert.equal(sel.reasoningEffort, 'medium')
   assert.equal(sel.modelReasoning.supportsEffort, true)
+  assert.deepEqual(selectMessages, ['Select reasoning effort:'])
+  assert.equal(selectChoices[0][0].name, '← Back to model selection')
+  assert.equal(selectChoices[0][0].value, BACK_SENTINEL)
+})
+
+test('interactive selection picks the provider before asking for the reasoning effort', async (t) => {
+  const model = { id: 'org/flow', name: 'Flow', contextLength: 1000, reasoning: { supported: true, supportsEffort: true, supported_efforts: ['high', 'medium', 'low'], default_effort: 'medium' }, architecture: { input_modalities: [] }, supportedParameters: [] }
+  const other = { providerName: 'ThirdProvider', pricing: { prompt: 3e-6, completion: 5e-6 }, supportedParameters: {} }
+  searchQueue = [model, chosen]
+  searchMessages = []
+  searchChoices = []
+  selectMessages = []
+  selectChoices = []
+  t.mock.method(console, 'log', () => {})
+
+  const provider = {
+    meta: { name: 'openrouter', hasEndpoints: true, supportsWebSearchOnAll: true },
+    async fetchModels() { return [model] },
+    async fetchEndpoints() { return [chosen, other] },
+  }
+
+  const sel = await selectModelAndEndpoint({ provider, apiKey: 'k', prefs: {}, reasoningEffort: undefined })
+
+  assert.equal(sel.endpointProviderName, 'SecondProvider')
+  assert.equal(sel.reasoningEffort, 'medium')
+  assert.equal(searchMessages[0], 'Select a model')
+  assert.equal(searchMessages[1], 'Select a provider (2 available)')
+  assert.deepEqual(selectMessages, ['Select reasoning effort:'])
+})
+
+test('interactive selection loops back to the model picker when the reasoning picker returns the back sentinel', async (t) => {
+  const model = { id: 'org/multi', name: 'Multi', contextLength: 1000, reasoning: { supported: true, supportsEffort: true, supported_efforts: ['high', 'medium', 'low'], default_effort: 'medium' }, architecture: { input_modalities: [] }, supportedParameters: [] }
+  const other = { providerName: 'ThirdProvider', pricing: { prompt: 3e-6, completion: 5e-6 }, supportedParameters: {} }
+  searchQueue = [model, chosen, model, chosen]
+  selectQueue = [BACK_SENTINEL, 'medium']
+  searchMessages = []
+  searchChoices = []
+  selectMessages = []
+  selectChoices = []
+  t.mock.method(console, 'log', () => {})
+
+  const provider = {
+    meta: { name: 'openrouter', hasEndpoints: true, supportsWebSearchOnAll: true },
+    async fetchModels() { return [model] },
+    async fetchEndpoints() { return [chosen, other] },
+  }
+
+  const sel = await selectModelAndEndpoint({ provider, apiKey: 'k', prefs: {}, reasoningEffort: undefined })
+
+  assert.equal(sel.modelId, 'org/multi')
+  assert.equal(sel.endpointProviderName, 'SecondProvider')
+  assert.equal(sel.reasoningEffort, 'medium')
+  assert.equal(searchMessages[0], 'Select a model')
+  assert.equal(searchMessages[1], 'Select a provider (2 available)')
+  assert.equal(searchMessages[2], 'Select a model')
+  assert.equal(searchMessages[3], 'Select a provider (2 available)')
+  assert.deepEqual(selectMessages, ['Select reasoning effort:', 'Select reasoning effort:'])
+  assert.equal(selectChoices[0][0].value, BACK_SENTINEL)
 })
 
 test('interactive selection throws when a model has no providers', async (t) => {

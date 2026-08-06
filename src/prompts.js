@@ -129,7 +129,7 @@ export function getEffortLabel(effort) {
   return EFFORT_LABELS[effort] || effort
 }
 
-export async function selectReasoningEffort(reasoning, lastEffort) {
+export async function selectReasoningEffort(reasoning, lastEffort, opts = {}) {
   if (!reasoning || reasoning.supportsEffort === false) return undefined
 
   const mandatory = reasoning.mandatory === true
@@ -155,13 +155,23 @@ export async function selectReasoningEffort(reasoning, lastEffort) {
     'medium'
   if (defaultEffort === 'none') defaultEffort = null
 
+  const effortChoices = efforts.map((e) => ({
+    name: getEffortLabel(e),
+    value: e === 'none' ? null : e,
+  }))
+
+  const choices = opts.withBack
+    ? [
+        { name: '← Back to model selection', value: BACK_SENTINEL, description: 'Return to the model picker' },
+        new Separator(),
+        ...effortChoices,
+      ]
+    : effortChoices
+
   const answer = await select({
     message: 'Select reasoning effort:',
     theme: pickerTheme,
-    choices: efforts.map((e) => ({
-      name: getEffortLabel(e),
-      value: e === 'none' ? null : e,
-    })),
+    choices,
     default: defaultEffort,
   })
 
