@@ -116,7 +116,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
   } else {
     out(`\nConnected to ${label}`)
   }
-  const hintParts = ['Send with Enter']
+  const hintParts = []
   if (state.visionSupported !== false) hintParts.push('/attach <path> to queue files')
   hintParts.push('/quit to exit')
   out(`${hintParts.join('  |  ')}\n`)
