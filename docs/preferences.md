@@ -1,0 +1,26 @@
+# Preferences
+
+Persisted settings in `~/.communicator.json` (customizable with `--config`). See the [README](../README.md#documentation) for the full docs index.
+
+```json
+{
+  "lastModel": "openai/gpt-4o",
+  "lastProvider": "OpenAI",
+  "reasoningEffort": {
+    "openai/o1-pro": "high"
+  },
+  "temperature": {
+    "openai/gpt-4o": 0.2
+  },
+  "webSearch": {
+    "openai/gpt-4o": "auto"
+  },
+  "smoothStreaming": true,
+  "smoothSpeed": "normal",
+  "budget": 2,
+  "webResults": 10,
+  "outputDir": "/home/user/Documents/CommunicatorExports"
+}
+```
+
+The last model and provider become defaults in the interactive pickers. Reasoning effort, temperature, and web search mode are saved per model ID and restored automatically. `smoothStreaming` and `smoothSpeed` are global defaults, and `budget`/`webResults` are the session defaults applied when no flag is given. Legacy `webSearch: true` values are read as `auto`. Preferences are currently scoped across both API backends — your last OpenRouter model will show as the favorite even when using Venice (this will be improved in a future release).

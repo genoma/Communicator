@@ -1,9 +1,36 @@
 # Commands
 
-Usage examples for every CLI flag. The flag reference table lives in the
-[README](../README.md#commands).
+Complete reference for the `communicator` CLI: the flag table, usage examples, and the in-chat slash commands. See the [README](../README.md#documentation) for the full docs index.
 
-## Quick start
+## CLI flags
+
+| Short | Flag                  | Args     | Description                                                                          |
+|-------|-----------------------|----------|--------------------------------------------------------------------------------------|
+| `-m`  | `--model`             | `<id>`   | Skip all pickers and use this model ID directly (non-interactive)                    |
+| `-p`  | `--provider`          | `<name>` | Select the API backend: `openrouter` (default) or `venice`                           |
+|       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`. `none` disables reasoning. With `--model` alone, saves the per-model default |
+|       | `--temperature`       | `<0-2>`  | Temperature override for the session (default: per-model preference, then 0.7). With `--model` alone, saves the per-model default |
+|       | `--budget`            | `<usd>`  | Per-session budget cap in USD. Warns at 80% used, refuses turns at 100%. Bare use saves the default |
+|       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `on`, `off` (`on` = `auto`; bare flag = `auto`). Per-model default is persisted in preferences |
+|       | `--web-results`       | `<n>`    | Number of web search results (OpenRouter only, default 10). Implies `auto` mode. Bare use saves the default |
+|       | `--zdr`               | —        | Force zero-data-retention routing (OpenRouter only). Filters model/provider selection to ZDR-capable endpoints; errors at selection if a model has none |
+|       | `--attach`            | `<path>` | Attach a file to the one-shot message (repeatable: images, pdf, xlsx/docx/pptx, txt, md, code, ...). Requires a prompt argument or piped stdin |
+|       | `--no-smooth-streaming` | —      | Disable smooth streaming (default: on in interactive sessions). Bare use saves the default |
+|       | `--smooth-speed`      | `<level\|cps>` | Smooth streaming speed: `slow`, `normal`, `fast`, or chars per second (default: `normal` ≈ 2000). Bare use saves the default |
+| `-V`  | `--version`           | —        | Print the version and exit                                                           |
+|       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
+|       | `--list-endpoints`    | `[model]`| List providers for a model (pricing, uptime, ZDR support, privacy policy link). No arg = picker, partial ID = fuzzy match |
+|       | `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, title) and exit                |
+| `-r`  | `--resume`            | `[id]`   | Resume a saved session. No arg = picker, partial ID = prefix match                   |
+| `-x`  | `--export`            | `[id]`   | Export a session to markdown. Same ID matching as `--resume`                         |
+|       | `--delete`            | `[id]`   | Delete a saved session (asks for confirmation). Same ID matching as `--resume`       |
+|       | `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences). Bare use saves it as the default (requires a TTY and no prompt) |
+|       | `--config`            | `[path]` | Custom path for the preferences JSON file (default: `~/.communicator.json`). Bare flag prints the current config |
+|       | `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
+
+Pass `--reasoning-effort none` to disable reasoning entirely.
+
+## Usage examples
 
 ```bash
 # OpenRouter (default)
@@ -61,6 +88,27 @@ communicator --smooth-speed fast                                       # set the
 communicator --no-smooth-streaming                                     # disable smooth streaming by default
 ```
 
-In-chat slash commands (`/model`, `/temp`, `/budget`, `/attach`, …) are
-documented in the [README](../README.md#slash-commands), including the Tab /
-Shift+Tab command-suggestion behavior.
+## Slash commands
+
+| Input          | Action                                                                              |
+|----------------|-------------------------------------------------------------------------------------|
+| `/quit`        | Save the session and exit the chat                                                  |
+| `/new`         | Save the current session and start a fresh one (same model and reasoning effort)    |
+| `/model`       | Save, then switch models mid-chat — re-picks reasoning effort and endpoint          |
+| `/reasoning`   | Re-run the reasoning effort picker for the current model                            |
+| `/temp`        | Set the session temperature (`/temp 0.4`), or show the current value with no args    |
+| `/budget`      | Show used/remaining budget, or set one with `/budget <usd>`                          |
+| `/web-search`  | Set the web search mode (`/web-search auto|always|off`; `on` = `auto`), show the current mode with no args |
+| `/web-results` | Set the web search result count (`/web-results <n>`, OpenRouter only), show it with no args |
+| `/attach`      | Queue files for the next message (`/attach <path>...`). No args = same as `/attachments` |
+| `/attachments` | List the queued attachments, or clear them with `/attachments clear` |
+| `/retry`       | Re-run the last user turn (regenerates the last answer)                             |
+| `/copy`        | Copy the last assistant response to the clipboard                                   |
+| `/markdown`    | Toggle terminal markdown rendering (default on)                                     |
+| `/smooth`      | Show smooth streaming state and speed, or set them with `/smooth on|off|<level>|<cps>` (a speed value implies on) |
+| `/cost`        | Print the running session cost/token totals and current reasoning effort            |
+| `Cmd+C` / `Ctrl+C` | During streaming: abort, save the partial response, and exit. At the prompt: cancel and exit |
+
+Unknown slash commands (anything starting with `/`) print a hint listing the available commands instead of being sent to the model.
+
+While typing at the prompt, a live list of matching commands appears below the input as soon as the line starts with `/` (single line, cursor at line end, not yet an exact match). **Tab** fills the first match, **Shift+Tab** fills the last one, and **Enter always submits**. The list hides once the line is an exact match — keep typing to refine, or backspace the `/` to dismiss it. Parameterized commands like `/temp 0.7` are typed manually after completion.
