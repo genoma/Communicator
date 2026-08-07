@@ -145,6 +145,6 @@ communicator --no-watermark                                            # hide th
 
 Unknown slash commands (anything starting with `/`) print a hint listing the available commands instead of being sent to the model.
 
-Image sessions additionally accept `/aspect <x:y>` and `/format <fmt>` (bare shows the model's supported values with the current one marked, e.g. `Aspect ratios: 1:1 [16:9] 3:2.`; `clear` unsets it) to set the aspect ratio and output format for the rest of the session — see [docs/images.md](images.md).
+Image sessions additionally accept `/model` (opens the unified picker: another image model switches the session in place, a text model continues the session as a chat with the same history), `/aspect <x:y>` and `/format <fmt>` (bare shows the model's supported values with the current one marked, e.g. `Aspect ratios: 1:1 [16:9] 3:2.`; `clear` unsets it) to set the aspect ratio and output format for the rest of the session — see [docs/images.md](images.md).
 
 While typing at the prompt, a live list of matching commands appears below the input as soon as the line starts with `/` (single line, cursor at line end, not yet an exact match). **Tab** fills the first match, **Shift+Tab** fills the last one, and **Enter always submits**. The list hides once the line is an exact match — keep typing to refine, or backspace the `/` to dismiss it. Parameterized commands like `/temp 0.7` are typed manually after completion.

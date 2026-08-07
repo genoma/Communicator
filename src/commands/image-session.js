@@ -1,13 +1,27 @@
 import { readInput as readInputFromInput } from '../input.js'
 import { persistSessionFile } from '../sessions.js'
 import { getImageDefaults, mergeImageDefaults, savePreferences, applyPreferenceUpdates } from '../config.js'
-import { findImageModel, selectImageEndpoint } from '../model-selection.js'
+import { findImageModel, selectImageEndpoint, selectModelAndEndpoint } from '../model-selection.js'
+import { sessionLabel } from '../ui/format.js'
 import { CliError, formatError } from '../errors.js'
 import { resolveAspectRatio, resolveImageFormat } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
 import { runImageGeneration, printImageOutcome, buildImageSessionPayload, handleWatermarkCommand } from './image-gen.js'
 
-const IMAGE_SESSION_COMMANDS = ['/help', '/exit', '/quit', '/watermark', '/aspect', '/format']
+const IMAGE_SESSION_COMMANDS = ['/help', '/model', '/exit', '/quit', '/watermark', '/aspect', '/format']
+
+// Replaces image_url parts with a text placeholder when the history is
+// handed to a text model that cannot take image input; text and other parts
+// pass through untouched.
+function stripImageParts(content) {
+  if (!Array.isArray(content)) return content
+  const parts = []
+  for (const part of content) {
+    if (part?.type === 'image_url') parts.push({ type: 'text', text: '[generated image]' })
+    else parts.push(part)
+  }
+  return parts
+}
 
 // Removes a persisted image-default key (aspectRatio/format) for the
 // provider and persists the change through the given saver.
@@ -51,7 +65,7 @@ function aspectPresetLine(presets, current) {
 }
 
 export async function startImageSession({ provider, apiKey, prefs, imageModelId, sessionId, createdAt, initialMessages = [], configPath, imageProviderName = null, pricing = null, stdout = process.stdout, readInput: read = readInputFromInput }) {
-  const model = await findImageModel(provider, apiKey, imageModelId)
+  let model = await findImageModel(provider, apiKey, imageModelId)
   if (!model) {
     throw new CliError(`Error: image model ${imageModelId} is no longer available. Use --list-image-models to see available models.`)
   }
@@ -110,6 +124,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
 
     if (input === '/help') {
       console.log('/help            show this help')
+      console.log('/model           switch image model, or pick a text model to continue in chat')
       console.log('/exit, /quit     leave the session')
       console.log('/watermark       hide the Venice watermark on generated images (on|off)')
       console.log('/aspect          show the supported aspect ratios and the session one')
@@ -117,6 +132,40 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       console.log('/format          show the supported output formats and the session one')
       console.log('/format <fmt>    set the output format for this session (clear to unset)')
       continue
+    }
+
+    if (input === '/model') {
+      await persist()
+      let sel
+      try {
+        sel = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: undefined, zdr: false })
+      } catch (err) {
+        console.error(err instanceof CliError ? `\n${err.message}\n` : `\nError: ${formatError(err)}\n`)
+        continue
+      }
+      if (sel.isImageModel === true) {
+        const next = await findImageModel(provider, apiKey, sel.modelId)
+        if (!next) {
+          console.error(`Error: image model ${sel.modelId} is no longer available.\n`)
+          continue
+        }
+        next.imageProvider = sel.imageProvider
+        next.endpointProviderName = sel.endpointProviderName
+        next.pricing = sel.pricing
+        model = next
+        imageModelId = next.id
+        await persist()
+        await savePrefs({ lastImageModel: next.id })
+        console.log(`Switched to ${sessionLabel(sel.endpointProviderName, sel.modelId)} [image]\n`)
+        continue
+      }
+      // A text-model pick hands the session off to the normal chat REPL,
+      // keeping the history; non-vision models get image parts replaced by a
+      // placeholder because the API would reject them.
+      const transitionMessages = sel.visionSupported === false
+        ? messages.map((m) => ({ ...m, content: stripImageParts(m.content) }))
+        : messages
+      return { switchToChat: { selection: sel, messages: transitionMessages, sessionId, createdAt } }
     }
 
     if (input === '/watermark' || input.startsWith('/watermark ')) {

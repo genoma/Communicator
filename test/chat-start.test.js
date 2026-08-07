@@ -61,9 +61,13 @@ mock.module(new URL('../src/model-selection.js', import.meta.url).href, {
 })
 
 const imageSessionCalls = []
+let imageSessionResult = null
 mock.module(new URL('../src/commands/image-session.js', import.meta.url).href, {
   namedExports: {
-    startImageSession: async (opts) => { imageSessionCalls.push(opts) },
+    startImageSession: async (opts) => {
+      imageSessionCalls.push(opts)
+      return imageSessionResult
+    },
   },
 })
 
@@ -388,4 +392,62 @@ test('chatStart routes a picked image model into the image session', async (t) =
   assert.match(call.sessionId, /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}(-\d+)?$/)
   assert.ok(call.createdAt)
   assert.equal(call.configPath, configFile)
+})
+
+test('chatStart hands an image session /model text pick into startChat with the same session', async (t) => {
+  resumeResult = resumeSession({ isImageModel: true })
+  imageSessionCalls.length = 0
+  startChatCalls.length = 0
+  imageSessionResult = {
+    switchToChat: {
+      selection: {
+        modelId: 'openrouter/auto',
+        endpointProviderName: 'OpenAI',
+        reasoningEffort: null,
+        supportsReasoning: true,
+        modelReasoning: null,
+        contextLength: 128000,
+        webSearchSupported: true,
+        visionSupported: false,
+        fileSupported: true,
+        imageOutputSupported: undefined,
+        pricing: { prompt: 0.000001, completion: 0.000002 },
+      },
+      messages: [
+        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'user', content: 'draw a cat' },
+        { role: 'assistant', content: [{ type: 'text', text: '[generated image]' }] },
+      ],
+      sessionId: '2026-01-01T00-00-00',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
+  }
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(console, 'log', () => {})
+
+  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: '2026-01-01', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'venice' })
+
+  assert.equal(startChatCalls.length, 1)
+  const call = startChatCalls[0]
+  assert.equal(call.model, 'openrouter/auto')
+  assert.equal(call.endpointProviderName, 'OpenAI')
+  assert.equal(call.reasoningEffort, null)
+  assert.equal(call.temperature, 0.7)
+  assert.equal(call.opts.sessionId, '2026-01-01T00-00-00')
+  assert.equal(call.opts.createdAt, '2026-01-01T00:00:00.000Z')
+  assert.equal(call.opts.initialMessages.length, 3)
+  assert.equal(call.opts.initialMessages[2].content[0].text, '[generated image]')
+  assert.equal(call.opts.budget, null)
+  assert.equal(call.opts.webSearch, 'off')
+  assert.equal(call.opts.webResults, null)
+  assert.equal(call.opts.zdr, false)
+  assert.equal(call.opts.contextLength, 128000)
+  assert.equal(call.opts.visionSupported, false)
+  assert.equal(call.opts.supportsReasoning, true)
+  assert.equal(call.opts.smoothStreaming, true)
+
+  const saved = JSON.parse(await readFile(configFile, 'utf-8'))
+  assert.equal(saved.lastModel, 'openrouter/auto')
+  imageSessionResult = null
 })

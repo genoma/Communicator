@@ -126,23 +126,9 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
   }
 }
 
-export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerType }) {
-  const ctx = await createSessionContext({ apiKey, opts, prefs, providerType })
-  if (ctx.imageModelId) {
-    await startImageSession({
-      provider: ctx.provider,
-      apiKey: ctx.apiKey,
-      prefs: ctx.prefs,
-      imageModelId: ctx.imageModelId,
-      sessionId: ctx.sessionId,
-      createdAt: ctx.createdAt,
-      initialMessages: ctx.initialMessages,
-      configPath: ctx.configPath,
-      imageProviderName: ctx.imageProviderName,
-      pricing: ctx.pricing,
-    })
-    return
-  }
+// Runs a chat session to completion and persists the final state; used by
+// both the new-session path and the image-session /model handoff.
+async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
   const finalState = await startChat(ctx.apiKey, ctx.modelId, ctx.endpointProviderName, ctx.reasoningEffort, ctx.temperature, ctx.pricing, ctx.provider, {
     systemPrompt,
     initialMessages: ctx.initialMessages,
@@ -165,4 +151,54 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerTyp
     configPath: opts.config,
   })
   await persistSession({ finalState, prefs, config: opts.config })
+}
+
+export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerType }) {
+  const ctx = await createSessionContext({ apiKey, opts, prefs, providerType })
+  if (ctx.imageModelId) {
+    const imageResult = await startImageSession({
+      provider: ctx.provider,
+      apiKey: ctx.apiKey,
+      prefs: ctx.prefs,
+      imageModelId: ctx.imageModelId,
+      sessionId: ctx.sessionId,
+      createdAt: ctx.createdAt,
+      initialMessages: ctx.initialMessages,
+      configPath: ctx.configPath,
+      imageProviderName: ctx.imageProviderName,
+      pricing: ctx.pricing,
+    })
+    // /model with a text-model pick transitions the image session into the
+    // chat REPL, same session id and history.
+    if (!imageResult?.switchToChat) return
+    const { selection, messages, sessionId, createdAt } = imageResult.switchToChat
+    const { budget, smoothSpeed, zdr } = resolveSessionFlags(opts, prefs)
+    await runChatToEnd({
+      apiKey,
+      provider: ctx.provider,
+      modelId: selection.modelId,
+      endpointProviderName: selection.endpointProviderName,
+      reasoningEffort: selection.reasoningEffort,
+      temperature: prefs.temperature?.[selection.modelId] ?? DEFAULT_TEMPERATURE,
+      pricing: selection.pricing,
+      initialMessages: messages,
+      sessionId,
+      sessionCreatedAt: createdAt,
+      supportsReasoning: selection.supportsReasoning,
+      modelReasoning: selection.modelReasoning,
+      budget,
+      webSearch: 'off',
+      webResults: null,
+      zdr,
+      contextLength: selection.contextLength,
+      webSearchSupported: selection.webSearchSupported,
+      visionSupported: selection.visionSupported,
+      fileSupported: selection.fileSupported,
+      imageOutputSupported: selection.imageOutputSupported,
+      smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
+      smoothSpeed,
+    }, { systemPrompt, opts, prefs })
+    return
+  }
+  await runChatToEnd(ctx, { systemPrompt, opts, prefs })
 }

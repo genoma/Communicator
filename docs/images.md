@@ -24,7 +24,7 @@ Image models
 - `/help` lists the commands; `/exit` and `/quit` (or Ctrl+C / EOF) leave the session.
 - Each turn is persisted to the session (system + prompt + image messages), so the session shows up in `--list-sessions`, is exportable, and `--resume <id>` re-enters the image session to keep generating. Your last-used image model is remembered (`lastImageModel`).
 - `-m <image-model> "prompt"` runs the same generation as a one-shot (persisted + printed, `--attach` rejected), and `--image`/`/image` keep working as before for one-off generations inside text sessions.
-- Inside an image session, `/aspect <x:y>` and `/format <fmt>` set the sizing for the rest of the session (see [Sizing defaults](#sizing-defaults)); `/watermark` is Venice-only.
+- Inside an image session, `/model` opens the same unified picker: picking another image model switches the session to it, while picking a text model continues the session as a normal chat with the same session id and history (image parts are replaced by a `[generated image]` placeholder for non-vision models). `/aspect <x:y>` and `/format <fmt>` set the sizing for the rest of the session (see [Sizing defaults](#sizing-defaults)); `/watermark` is Venice-only.
 
 ## One-shot: `--image`
 

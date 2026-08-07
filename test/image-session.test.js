@@ -13,6 +13,7 @@ mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 const genCalls = []
 const genPrefs = []
 const genOpts = []
+const genModels = []
 const printed = []
 const payloadArgs = []
 mock.module(new URL('../src/commands/image-gen.js', import.meta.url).href, {
@@ -20,6 +21,7 @@ mock.module(new URL('../src/commands/image-gen.js', import.meta.url).href, {
     runImageGeneration: async ({ prompt, model, prefs, opts, sizingInteractive }) => {
       genCalls.push(prompt)
       genPrefs.push(prefs?.hideWatermark)
+      genModels.push(model?.id)
       genOpts.push({ aspectRatio: opts?.aspectRatio, imageFormat: opts?.imageFormat, sizingInteractive })
       if (prompt === 'boom') throw new CliError('Error: venice exploded.')
       return {
@@ -63,6 +65,32 @@ mock.module(new URL('../src/commands/image-gen.js', import.meta.url).href, {
   },
 })
 
+// /model in the image session opens the same combined picker as chat's
+// /model; only selectModelAndEndpoint is stubbed. findImageModel and
+// selectImageEndpoint keep their real behavior (provider-driven) so the
+// existing provider-based tests pass.
+let modelSelectionQueue = []
+let modelSelectionError = null
+mock.module(new URL('../src/model-selection.js', import.meta.url).href, {
+  namedExports: {
+    selectModelAndEndpoint: async () => {
+      if (modelSelectionError) throw modelSelectionError
+      const sel = modelSelectionQueue.shift()
+      if (!sel) throw new Error('no selection mocked')
+      return sel
+    },
+    findImageModel: async (provider, apiKey, modelId) => {
+      if (typeof provider.fetchImageModels !== 'function') return null
+      const models = await provider.fetchImageModels(apiKey)
+      return models.find((m) => m.id === modelId) || null
+    },
+    selectImageEndpoint: async ({ provider, apiKey, model }) => {
+      const endpoints = await provider.fetchImageModelEndpoints(apiKey, model.id)
+      return endpoints[0] || null
+    },
+  },
+})
+
 const { startImageSession } = await import('../src/commands/image-session.js')
 
 const fakeProvider = {
@@ -94,6 +122,44 @@ const openRouterEndpointProvider = {
       { providerName: 'Azure', slug: 'azure', pricing: { perImage: 0.12 } },
     ]
   },
+}
+
+const twoImageModelsProvider = {
+  meta: { name: 'venice' },
+  async fetchImageModels() {
+    return [
+      { id: 'venice-sd35', name: 'SD 3.5', pricing: { perImage: 0.02 }, constraints: { aspectRatios: ['1:1', '16:9', '3:2'], formats: ['png', 'jpeg', 'webp'] } },
+      { id: 'z-image-turbo', name: 'Z-Image Turbo', pricing: { perImage: 0.01 }, constraints: { aspectRatios: null, formats: ['png', 'jpeg', 'webp'], widthHeightDivisor: 8 } },
+    ]
+  },
+}
+
+const openRouterTwoImageModelsProvider = {
+  meta: { name: 'openrouter' },
+  async fetchImageModels() {
+    return [
+      { id: 'openai/gpt-5-image', name: 'GPT-5 Image', pricing: null, constraints: { aspectRatios: null, formats: null } },
+      { id: 'openai/gpt-image-1-mini', name: 'GPT Image 1 Mini', pricing: null, constraints: { aspectRatios: null, formats: null } },
+    ]
+  },
+}
+
+function textSelection(overrides = {}) {
+  return {
+    modelId: 'openrouter/auto',
+    isImageModel: false,
+    endpointProviderName: 'OpenAI',
+    reasoningEffort: null,
+    supportsReasoning: true,
+    modelReasoning: null,
+    contextLength: 128000,
+    webSearchSupported: true,
+    visionSupported: false,
+    fileSupported: true,
+    imageOutputSupported: undefined,
+    pricing: { prompt: 0.000001, completion: 0.000002 },
+    ...overrides,
+  }
 }
 
 function scriptedInput(values) {
@@ -713,5 +779,153 @@ test('/aspect and /format are listed in /help and /size is not', async (t) => {
   assert.ok(logs.some((l) => l.includes('/aspect')))
   assert.ok(logs.some((l) => l.includes('/format')))
   assert.ok(!logs.some((l) => l.includes('/size')))
+})
+
+test('/help lists /model', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/help', '/quit']) }))
+
+  assert.ok(logs.some((l) => l.includes('/model')))
+})
+
+test('/model with an image-model pick switches the session model and persists it', async (t) => {
+  genCalls.length = 0
+  genModels.length = 0
+  printed.length = 0
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+  const file = await tempConfig(t)
+  modelSelectionQueue = [
+    { modelId: 'z-image-turbo', name: 'Z-Image Turbo', isImageModel: true, endpointProviderName: 'venice', imageProvider: null, pricing: { perImage: 0.01 } },
+  ]
+
+  await startImageSession(baseOpts({
+    provider: twoImageModelsProvider,
+    configPath: file,
+    readInput: scriptedInput(['/model', 'a cat', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Switched to venice / z-image-turbo [image]')))
+  assert.deepEqual(genModels, ['z-image-turbo'])
+  const saved = JSON.parse(await readFile(sessionFile('2026-01-01T00-00-00'), 'utf-8'))
+  assert.equal(saved.model, 'z-image-turbo')
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.lastImageModel, 'z-image-turbo')
+})
+
+test('/model with an image-model pick on OpenRouter persists the endpoint provider and pricing', async (t) => {
+  genCalls.length = 0
+  genModels.length = 0
+  printed.length = 0
+  payloadArgs.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+  modelSelectionQueue = [{
+    modelId: 'openai/gpt-5-image',
+    name: 'GPT-5 Image',
+    isImageModel: true,
+    endpointProviderName: 'Google Vertex',
+    imageProvider: 'google-vertex/global',
+    pricing: { perImage: 0.05 },
+  }]
+
+  await startImageSession(baseOpts({
+    provider: openRouterTwoImageModelsProvider,
+    imageModelId: 'openai/gpt-5-image',
+    configPath: file,
+    readInput: scriptedInput(['/model', 'a cat', '/quit']),
+  }))
+
+  assert.deepEqual(genModels, ['openai/gpt-5-image'])
+  const saved = JSON.parse(await readFile(sessionFile('2026-01-01T00-00-00'), 'utf-8'))
+  assert.equal(saved.model, 'openai/gpt-5-image')
+  assert.equal(saved.endpointProviderName, 'Google Vertex')
+  assert.deepEqual(saved.pricing, { perImage: 0.05 })
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.lastImageModel, 'openai/gpt-5-image')
+})
+
+test('/model with a vanished image model errors and the session continues', async (t) => {
+  genCalls.length = 0
+  genModels.length = 0
+  printed.length = 0
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+  modelSelectionQueue = [
+    { modelId: 'gone-model', name: 'Gone', isImageModel: true, endpointProviderName: 'venice', imageProvider: null, pricing: null },
+  ]
+
+  await startImageSession(baseOpts({
+    provider: twoImageModelsProvider,
+    readInput: scriptedInput(['/model', 'a cat', '/quit']),
+  }))
+
+  assert.ok(errors.some((e) => e.includes('image model gone-model is no longer available')))
+  assert.deepEqual(genCalls, ['a cat'])
+  assert.deepEqual(genModels, ['venice-sd35'])
+})
+
+test('/model with a text-model pick returns a chat handoff and replaces image parts for non-vision models', async (t) => {
+  mockConsole(t)
+  const file = await tempConfig(t)
+  modelSelectionQueue = [textSelection()]
+
+  const result = await startImageSession(baseOpts({
+    initialMessages: [
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'user', content: 'draw a cat' },
+      { role: 'assistant', content: [{ type: 'image_url', image_url: { url: 'ref://attachments/old.webp' } }, { type: 'text', text: 'here it is' }] },
+    ],
+    configPath: file,
+    readInput: scriptedInput(['/model']),
+  }))
+
+  assert.ok(result.switchToChat)
+  assert.equal(result.switchToChat.selection.modelId, 'openrouter/auto')
+  assert.equal(result.switchToChat.sessionId, '2026-01-01T00-00-00')
+  assert.equal(result.switchToChat.createdAt, '2026-01-01T00:00:00.000Z')
+  assert.equal(result.switchToChat.messages.length, 3)
+  assert.deepEqual(result.switchToChat.messages[2].content, [
+    { type: 'text', text: '[generated image]' },
+    { type: 'text', text: 'here it is' },
+  ])
+})
+
+test('/model with a vision-capable text model keeps the image parts in the handoff', async (t) => {
+  mockConsole(t)
+  modelSelectionQueue = [textSelection({ visionSupported: true })]
+
+  const result = await startImageSession(baseOpts({
+    initialMessages: [
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'user', content: 'draw a cat' },
+      { role: 'assistant', content: [{ type: 'image_url', image_url: { url: 'ref://attachments/old.webp' } }] },
+    ],
+    readInput: scriptedInput(['/model']),
+  }))
+
+  assert.equal(result.switchToChat.messages[2].content[0].type, 'image_url')
+})
+
+test('/model picker errors are reported and the session continues', async (t) => {
+  genCalls.length = 0
+  genModels.length = 0
+  printed.length = 0
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+  modelSelectionError = new CliError('Error: picker exploded.')
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/model', 'a cat', '/quit']) }))
+
+  assert.ok(errors.some((e) => e.includes('picker exploded.')))
+  assert.deepEqual(genCalls, ['a cat'])
+  assert.deepEqual(genModels, ['venice-sd35'])
+  modelSelectionError = null
 })
 
