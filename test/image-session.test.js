@@ -42,6 +42,24 @@ mock.module(new URL('../src/commands/image-gen.js', import.meta.url).href, {
         pricing: args.pricing,
       }
     },
+    handleWatermarkCommand: async ({ providerName, args, prefs, savePrefs, out = console.log, errOut = console.error }) => {
+      if (providerName !== 'venice') {
+        errOut('Error: /watermark is only supported on Venice sessions.\n')
+        return
+      }
+      if (!args) {
+        out(`Venice watermark is ${prefs.hideWatermark === true ? 'off' : 'on'}.\n`)
+        return
+      }
+      if (args === 'on' || args === 'off') {
+        const next = args === 'on'
+        prefs.hideWatermark = !next
+        await savePrefs({ hideWatermark: !next })
+        out(`Venice watermark ${next ? 'enabled' : 'disabled'}.\n`)
+        return
+      }
+      errOut('Error: /watermark expects "on" or "off".\n')
+    },
   },
 })
 

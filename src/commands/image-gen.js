@@ -7,7 +7,7 @@ import { selectImageModelNonInteractive, selectImageEndpoint } from '../model-se
 import { selectImageModel, selectSizingOption } from '../prompts.js'
 import { SESSIONS_DIR } from '../constants.js'
 import { CliError, formatError } from '../errors.js'
-import { readStdin } from '../cli-utils.js'
+import { readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { getImageDefaults, mergeImageDefaults, savePreferences, applyPreferenceUpdates } from '../config.js'
 import { createLoader } from '../ui/loader.js'
 import { resolveAspectRatio, resolveHeight, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants, resolveWidth } from '../flags.js'
@@ -51,7 +51,7 @@ function validateSizingConstraints(model, { aspectRatio, format, resolution, qua
   }
 }
 
-export function sizingDropNote(kind, value, modelId) {
+function sizingDropNote(kind, value, modelId) {
   return `note: saved ${kind} ${value} is not supported by ${modelId}; it was not sent.`
 }
 
@@ -323,6 +323,27 @@ export async function finalizeImageSession({ prefs, opts = {}, config, sessionId
   printImageOutcome(outcome, stdout)
 }
 
+// Shared /watermark handler for the chat registry and the image-session REPL:
+// toggles the global Venice watermark preference with identical wording.
+export async function handleWatermarkCommand({ providerName, args, prefs, savePrefs, out = console.log, errOut = console.error }) {
+  if (providerName !== 'venice') {
+    errOut('Error: /watermark is only supported on Venice sessions.\n')
+    return
+  }
+  if (!args) {
+    out(`Venice watermark is ${prefs.hideWatermark === true ? 'off' : 'on'}.\n`)
+    return
+  }
+  if (args === 'on' || args === 'off') {
+    const next = args === 'on'
+    prefs.hideWatermark = !next
+    await savePrefs({ hideWatermark: !next })
+    out(`Venice watermark ${next ? 'enabled' : 'disabled'}.\n`)
+    return
+  }
+  errOut('Error: /watermark expects "on" or "off".\n')
+}
+
 export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, stdout = process.stdout }) {
   const provider = getProvider(providerType)
   const stdinPiped = !process.stdin.isTTY
@@ -332,7 +353,7 @@ export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, s
     text = await readStdin()
   }
   if (!text) {
-    throw new CliError('Error: no prompt provided. Pass a prompt argument or pipe input via stdin.')
+    throw new CliError(NO_PROMPT_MESSAGE)
   }
 
   const dir = await ensureSessionsDir()

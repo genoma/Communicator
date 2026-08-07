@@ -5,9 +5,20 @@ import { findImageModel, selectImageEndpoint } from '../model-selection.js'
 import { CliError, formatError } from '../errors.js'
 import { resolveAspectRatio, resolveImageFormat } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
-import { runImageGeneration, printImageOutcome, buildImageSessionPayload } from './image-gen.js'
+import { runImageGeneration, printImageOutcome, buildImageSessionPayload, handleWatermarkCommand } from './image-gen.js'
 
 const IMAGE_SESSION_COMMANDS = ['/help', '/exit', '/quit', '/watermark', '/aspect', '/format']
+
+// Removes a persisted image-default key (aspectRatio/format) for the
+// provider and persists the change through the given saver.
+async function clearImageDefault(prefs, providerName, key, save, message) {
+  const defaults = { ...getImageDefaults(prefs, providerName) }
+  delete defaults[key]
+  const updated = { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [providerName]: defaults } }
+  Object.assign(prefs, updated)
+  await save(updated)
+  console.log(message)
+}
 
 function unsupportedListError(kind, value, model, list) {
   return `Error: ${kind} ${value} is not supported by ${model.id}. Supported: ${list.join(', ')}.`
@@ -109,23 +120,12 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     }
 
     if (input === '/watermark' || input.startsWith('/watermark ')) {
-      if (provider.meta.name !== 'venice') {
-        console.error('Error: /watermark is only supported on Venice sessions.\n')
-        continue
-      }
-      const value = input.slice('/watermark'.length).trim()
-      if (!value) {
-        console.log(`Venice watermark is ${prefs.hideWatermark === true ? 'off' : 'on'}.\n`)
-        continue
-      }
-      if (value === 'on' || value === 'off') {
-        const next = value === 'on'
-        prefs.hideWatermark = !next
-        await savePrefs(applyPreferenceUpdates(prefs, { hideWatermark: !next }), configPath)
-        console.log(`Venice watermark ${next ? 'enabled' : 'disabled'}.\n`)
-        continue
-      }
-      console.error('Error: /watermark expects "on" or "off".\n')
+      await handleWatermarkCommand({
+        providerName: provider.meta.name,
+        args: input.slice('/watermark'.length).trim(),
+        prefs,
+        savePrefs: (updates) => savePrefs(applyPreferenceUpdates(prefs, updates)),
+      })
       continue
     }
 
@@ -149,12 +149,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       }
       if (value === 'clear') {
         sessionAspectRatio = undefined
-        const defaults = { ...getImageDefaults(prefs, provider.meta.name) }
-        delete defaults.aspectRatio
-        const updated = { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [provider.meta.name]: defaults } }
-        Object.assign(prefs, updated)
-        await savePrefs(updated, configPath)
-        console.log('Aspect ratio cleared.\n')
+        await clearImageDefault(prefs, provider.meta.name, 'aspectRatio', savePrefs, 'Aspect ratio cleared.\n')
         continue
       }
       let parsed
@@ -212,12 +207,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       }
       if (value === 'clear') {
         sessionFormat = undefined
-        const defaults = { ...getImageDefaults(prefs, provider.meta.name) }
-        delete defaults.format
-        const updated = { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [provider.meta.name]: defaults } }
-        Object.assign(prefs, updated)
-        await savePrefs(updated, configPath)
-        console.log('Format cleared.\n')
+        await clearImageDefault(prefs, provider.meta.name, 'format', savePrefs, 'Format cleared.\n')
         continue
       }
       let parsed

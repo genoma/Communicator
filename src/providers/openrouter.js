@@ -1,16 +1,12 @@
 import { parseSSEStream } from '../sse-parser.js'
 import { fetchSafeBytes, fetchWithRetry } from '../http.js'
 import { ApiError, makeHandleHttpError } from '../errors.js'
-import { DEFAULT_TEMPERATURE, DEFAULT_WEB_SEARCH_RESULTS, MAX_IMAGE_ATTACHMENT_BYTES } from '../constants.js'
+import { DEFAULT_TEMPERATURE, DEFAULT_WEB_SEARCH_RESULTS, IMAGE_GEN_TIMEOUT_MS, MAX_IMAGE_ATTACHMENT_BYTES } from '../constants.js'
 import { getZdrIndex, getProviderPolicies } from './openrouter-meta.js'
 import { mimeForExt, extForMime } from '../attachments.js'
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 const CACHE_HEADER = 'x-openrouter-cache-status'
-
-// Image generations are synchronous and queue on the provider: live runs
-// took ~20 s to 2 min, far beyond the 30 s default timeout in http.js.
-export const IMAGE_GEN_TIMEOUT_MS = 600_000
 
 export const meta = {
   name: 'openrouter',

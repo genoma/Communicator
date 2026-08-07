@@ -2,15 +2,10 @@ import { parseSSEStream } from '../sse-parser.js'
 import { fetchWithRetry } from '../http.js'
 import { ApiError, makeHandleHttpError } from '../errors.js'
 import { formatPricePerM, formatImagePrice, imageUnitPrice } from '../ui/format.js'
-import { DEFAULT_TEMPERATURE } from '../constants.js'
+import { DEFAULT_TEMPERATURE, IMAGE_GEN_TIMEOUT_MS } from '../constants.js'
 import { mimeForExt, extForMime } from '../attachments.js'
 
 const VENICE_BASE = 'https://api.venice.ai/api/v1'
-
-// Generations are synchronous and queue on the server: live runs took 3 s
-// (venice-sd35) to 3–7 min (qwen-image-3, gpt-image-2), far beyond the
-// 30 s default timeout in http.js.
-export const IMAGE_GEN_TIMEOUT_MS = 600_000
 
 export const meta = {
   name: 'venice',

@@ -39,7 +39,7 @@ export async function resolveSessionInteractive(dir, partialId, opts = {}) {
 
   const sessions = await listSessions(dir)
   if (!sessions.length) {
-    throw new CliError('No saved sessions found.', { exitCode: 0 })
+    throw new CliError('Error: No saved sessions found.')
   }
   return selectSession(sessions, { message })
 }

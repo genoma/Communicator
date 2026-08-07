@@ -13,7 +13,7 @@ import { deleteCmd } from './commands/delete-cmd.js'
 import { chatStart } from './commands/chat-start.js'
 import { configViewCmd } from './commands/config-view.js'
 import { configSetCmd } from './commands/config-set.js'
-import { resolveSmoothSpeed } from './flags.js'
+import { resolveSmoothSpeed, resolveTemperatureFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
 import { isConfigSetter, hasConfigSetterFlags, validateCliFlags } from './cli-validation.js'
 
@@ -43,7 +43,14 @@ export async function runCli(opts, promptArg) {
 async function main(opts, promptArg) {
   const providerType = opts.provider || 'openrouter'
 
+  // Numeric session flags are validated up front so an invalid value errors
+  // with its own message regardless of the dispatch path (exit modes, image
+  // runs, non-TTY invocations). Every chat/config path re-resolves them.
   resolveFlagOrExit(resolveSmoothSpeed, opts.smoothSpeed)
+  resolveFlagOrExit(resolveTemperatureFlag, { temperature: opts.temperature })
+  resolveFlagOrExit(resolveBudget, opts.budget)
+  resolveFlagOrExit(resolveWebResultsFlag, { webResults: opts.webResults })
+  resolveFlagOrExit((value) => resolveReasoningFlag({ reasoningEffort: value }), opts.reasoningEffort)
 
   const validationErrors = validateCliFlags(opts, { promptArg, isTTY: process.stdin.isTTY })
   if (validationErrors.length > 0) {

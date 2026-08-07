@@ -1,6 +1,6 @@
 import { WEB_SEARCH_MODES } from './flags.js'
 
-const SESSION_FLAGS_LIST = '--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach'
+const SESSION_FLAGS_LIST = '--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach'
 
 export function hasAttachments(opts) {
   return (opts.attach?.length ?? 0) > 0
@@ -96,11 +96,11 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
   }
 
   if (opts.resume !== undefined && opts.export !== undefined) {
-    errors.push('Cannot use --resume and --export together. Use one at a time.')
+    errors.push('Error: Cannot use --resume and --export together. Use one at a time.')
   }
 
   if (opts.delete !== undefined && (opts.resume !== undefined || opts.export !== undefined)) {
-    errors.push('Cannot use --delete with --resume or --export. Use one at a time.')
+    errors.push('Error: Cannot use --delete with --resume or --export. Use one at a time.')
   }
 
   if (promptArg && (interactiveFlags || exitModeFlags)) {
@@ -112,15 +112,15 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
   }
 
   if (exitModeFlags && (sessionOnlyFlags || opts.model !== undefined || opts.outputDir !== undefined)) {
-    errors.push(exclusionError('--model, --output-dir, --system-prompt', '--list-* flags'))
+    errors.push(exclusionError('--model, --output-dir', '--list-* flags'))
   }
 
   if (opts.export !== undefined && (sessionOnlyFlags || opts.model !== undefined)) {
-    errors.push(exclusionError('--model, --system-prompt', '--export'))
+    errors.push(exclusionError('--model', '--export'))
   }
 
   if (opts.delete !== undefined && (sessionOnlyFlags || opts.model !== undefined || opts.outputDir !== undefined)) {
-    errors.push(exclusionError('--model, --output-dir, --system-prompt', '--delete'))
+    errors.push(exclusionError('--model, --output-dir', '--delete'))
   }
 
   if (opts.resume !== undefined && (opts.model !== undefined || opts.outputDir !== undefined || attachments)) {
@@ -137,6 +137,15 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
 
   if (opts.imageModel !== undefined && opts.image !== true) {
     errors.push('Error: --image-model requires --image.')
+  }
+
+  // Generation-only flags are meaningless outside --image (the /image command
+  // and image sessions validate them on their own paths). --aspect-ratio and
+  // --image-format are exempt: they double as persisted image defaults.
+  const imageOnlyFlags = ['variants', 'seed', 'resolution', 'quality', 'width', 'height']
+  const usedImageOnly = imageOnlyFlags.filter((f) => opts[f] !== undefined)
+  if (opts.image !== true && usedImageOnly.length > 0) {
+    errors.push(`Error: ${usedImageOnly.map((f) => `--${f}`).join(', ')} ${usedImageOnly.length === 1 ? 'requires' : 'require'} --image.`)
   }
 
   if (opts.image && (opts.resume !== undefined || opts.export !== undefined || opts.delete !== undefined || exitModeFlags)) {

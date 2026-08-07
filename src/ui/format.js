@@ -27,7 +27,7 @@ export function imageUnitPrice(pricing, { resolution, quality } = {}) {
   return null
 }
 
-export function imagePriceFloor(pricing) {
+function imagePriceFloor(pricing) {
   const p = pricing || {}
   const candidates = []
   if (p.byQuality) {

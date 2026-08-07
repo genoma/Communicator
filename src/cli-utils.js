@@ -2,6 +2,8 @@ import { CliError } from './errors.js'
 
 export const MAX_STDIN_BYTES = 10 * 1024 * 1024
 
+export const NO_PROMPT_MESSAGE = 'Error: no prompt provided. Pass a prompt argument or pipe input via stdin.'
+
 export async function readStdin({ maxBytes = MAX_STDIN_BYTES } = {}) {
   const chunks = []
   let total = 0

@@ -6,7 +6,7 @@ import { sessionLabel } from '../ui/format.js'
 import { UsageTracker, budgetLine } from '../tracker.js'
 import { ChatState } from '../chat-state.js'
 import { CliError, formatError } from '../errors.js'
-import { fail, readStdin } from '../cli-utils.js'
+import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { loadAttachments, buildContent, contentText } from '../attachments.js'
 import { resolveArtifacts, printArtifacts } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
@@ -22,7 +22,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     text = await readStdin()
   }
   if (!text) {
-    throw new CliError('Error: no prompt provided. Pass a prompt argument or pipe input via stdin.')
+    throw new CliError(NO_PROMPT_MESSAGE)
   }
 
   const { forcedEffort, forcedTemperature, budget, forcedWebResults, smoothSpeed, zdr } = resolveSessionFlags(opts, prefs)
@@ -131,7 +131,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
           render.sources = sources
         },
       })
-      await render.flush?.()
+      await render.flush()
     } else {
       result = await provider.chatCompletion({ ...completionOpts, onToken: () => {} })
     }

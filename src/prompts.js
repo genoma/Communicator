@@ -131,29 +131,13 @@ export async function selectProvider(endpoints, zdrOnly = false) {
     description: formatEndpointDescription(ep),
   }))
 
-  const fullChoices = [backChoice, new Separator(), ...providerChoices]
-
-  return searchPrompt(
+  return providerSearchPrompt(
     zdrOnly
       ? `Select a provider (${endpoints.length} available, ZDR only)`
       : `Select a provider (${endpoints.length} available)`,
-    fullChoices,
-    (_, input) => {
-      const q = input.toLowerCase()
-      const filtered = providerChoices.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.value.providerName.toLowerCase().includes(q) ||
-          (c.value.tag && c.value.tag.toLowerCase().includes(q))
-      )
-      if (filtered.length === 0) {
-        const backMatch =
-          '← back to model selection'.includes(q) ||
-          'back'.includes(q)
-        return backMatch ? [backChoice] : []
-      }
-      return filtered
-    }
+    providerChoices,
+    backChoice,
+    { withBack: true, filterFields: ['providerName', 'tag'] }
   )
 }
 
@@ -180,29 +164,33 @@ export async function selectImageProvider(endpoints, { withBack = false } = {}) 
     description: ep.tag ? `tag: ${ep.tag}` : undefined,
   }))
 
-  const fullChoices = withBack ? [backChoice, new Separator(), ...providerChoices] : providerChoices
-
-  return searchPrompt(
+  return providerSearchPrompt(
     `Select a provider (${endpoints.length} available)`,
-    fullChoices,
-    (_, input) => {
-      const q = input.toLowerCase()
-      const filtered = providerChoices.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.value.providerName.toLowerCase().includes(q) ||
-          (c.value.slug && c.value.slug.toLowerCase().includes(q)) ||
-          (c.value.tag && c.value.tag.toLowerCase().includes(q))
-      )
-      if (filtered.length === 0 && withBack) {
-        const backMatch =
-          '← back to model selection'.includes(q) ||
-          'back'.includes(q)
-        return backMatch ? [backChoice] : []
-      }
-      return filtered
-    }
+    providerChoices,
+    backChoice,
+    { withBack, filterFields: ['providerName', 'slug', 'tag'] }
   )
+}
+
+// Shared search-prompt machinery for provider pickers: back choice handling
+// and the case-insensitive filter over the given endpoint fields.
+function providerSearchPrompt(message, providerChoices, backChoice, { withBack, filterFields }) {
+  const fullChoices = withBack ? [backChoice, new Separator(), ...providerChoices] : providerChoices
+  return searchPrompt(message, fullChoices, (_, input) => {
+    const q = input.toLowerCase()
+    const filtered = providerChoices.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        filterFields.some((f) => (c.value[f] || '').toLowerCase().includes(q))
+    )
+    if (filtered.length === 0 && withBack) {
+      const backMatch =
+        '← back to model selection'.includes(q) ||
+        'back'.includes(q)
+      return backMatch ? [backChoice] : []
+    }
+    return filtered
+  })
 }
 
 const FULL_EFFORT_LIST = ['max', 'xhigh', 'high', 'medium', 'low', 'minimal', 'none']

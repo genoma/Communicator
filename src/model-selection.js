@@ -46,7 +46,7 @@ export async function findImageModel(provider, apiKey, modelId) {
   return models.find((m) => m.id === modelId) || null
 }
 
-export function imageModelSelection(model, provider, endpoint = null) {
+function imageModelSelection(model, provider, endpoint = null) {
   return {
     modelId: model.id,
     isImageModel: true,
@@ -145,13 +145,20 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
       }
     }
 
+    // Endpoint capabilities differ per provider: OpenRouter reports a raw
+    // parameter array, Venice a capability object.
+    const rawParams = ep?.supportedParameters
+    const endpointSupportsEffort = Array.isArray(rawParams)
+      ? rawParams.includes('reasoning')
+      : !!rawParams?.supportsReasoningEffort
+
     return {
       modelId,
       reasoningEffort: effort,
       endpointProviderName: ep?.providerName || provider.meta.name,
       pricing: ep?.pricing || null,
       contextLength: ep?.contextLength ?? modelData?.contextLength ?? null,
-      supportsReasoning: !!ep?.supportedParameters?.supportsReasoningEffort,
+      supportsReasoning: endpointSupportsEffort,
       modelReasoning: modelData?.reasoning || null,
       webSearchSupported: isWebSearchSupported(provider.meta, modelData),
       ...capabilityFlags(provider, modelData, ep),

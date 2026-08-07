@@ -706,7 +706,7 @@ test('/smooth shows status and /smooth off saves the pref and updates the render
   assert.equal(liveRender.smooth, false)
 })
 
-test('/smooth with a speed enables streaming, sets the speed and saves the raw pref', async (t) => {
+test('/smooth with a speed enables streaming, sets the speed and saves the canonical cps pref', async (t) => {
   const consoleSpy = mockConsole(t)
   let liveRender
   const renderer = (opts) => {
@@ -720,7 +720,7 @@ test('/smooth with a speed enables streaming, sets the speed and saves the raw p
 
   const enableLine = consoleSpy.allLogs().find((l) => l.startsWith('Smooth streaming enabled'))
   assert.equal(enableLine, 'Smooth streaming enabled (fast, ~8000 chars/s).\n')
-  assert.ok(harness.prefsCalls.some((p) => p.smoothStreaming === true && p.smoothSpeed === 'fast'))
+  assert.ok(harness.prefsCalls.some((p) => p.smoothStreaming === true && p.smoothSpeed === 8000))
   assert.equal(liveRender.smooth, true)
   assert.equal(liveRender.smoothCharsPerTick, 160)
 })

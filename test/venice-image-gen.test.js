@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { ApiError, TimeoutError } from '../src/errors.js'
+import { IMAGE_GEN_TIMEOUT_MS } from '../src/constants.js'
 import * as venice from '../src/providers/venice.js'
 
 function jsonResponse(body, status = 200, headers = {}) {
@@ -208,7 +209,7 @@ test('generateImage defaults to IMAGE_GEN_TIMEOUT_MS without timeoutMs', async (
 
   const result = await venice.generateImage({ apiKey: 'key', model: 'm', prompt: 'x' })
 
-  assert.equal(venice.IMAGE_GEN_TIMEOUT_MS, 600_000)
+  assert.equal(IMAGE_GEN_TIMEOUT_MS, 600_000)
   assert.equal(result.images.length, 1)
 })
 

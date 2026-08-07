@@ -615,7 +615,7 @@ test('/smooth rejects invalid values', async (t) => {
   assert.equal(ctx.render.smoothCharsPerTick, 40)
 })
 
-test('/smooth fast enables streaming, sets the speed and saves the raw value', async (t) => {
+test('/smooth fast enables streaming, sets the speed and saves the canonical cps', async (t) => {
   const consoleSpy = mockConsole(t)
   const harness = makeCtx()
   const { ctx, prefsUpdates } = harness
@@ -628,7 +628,7 @@ test('/smooth fast enables streaming, sets the speed and saves the raw value', a
   assert.equal(ctx.state.smoothSpeed, 8000)
   assert.equal(ctx.render.smooth, true)
   assert.equal(ctx.render.smoothCharsPerTick, 160)
-  assert.deepEqual(prefsUpdates, [{ smoothStreaming: true, smoothSpeed: 'fast' }])
+  assert.deepEqual(prefsUpdates, [{ smoothStreaming: true, smoothSpeed: 8000 }])
   assert.equal(consoleSpy.log(0), 'Smooth streaming enabled (fast, ~8000 chars/s).\n')
 })
 
@@ -643,7 +643,7 @@ test('/smooth with a numeric cps sets the speed and saves the raw value', async 
   assert.equal(ctx.state.smoothSpeed, 1500)
   assert.equal(ctx.render.smooth, true)
   assert.equal(ctx.render.smoothCharsPerTick, 30)
-  assert.deepEqual(prefsUpdates, [{ smoothStreaming: true, smoothSpeed: '1500' }])
+  assert.deepEqual(prefsUpdates, [{ smoothStreaming: true, smoothSpeed: 1500 }])
   assert.equal(consoleSpy.log(0), 'Smooth streaming enabled (1500 chars/s).\n')
 })
 

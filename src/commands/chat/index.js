@@ -9,7 +9,7 @@ import { dim } from '../../ui/style.js'
 import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
 import { getImageDefaults } from '../../config.js'
-import { runImageGeneration, printImageOutcome } from '../image-gen.js'
+import { runImageGeneration, printImageOutcome, handleWatermarkCommand } from '../image-gen.js'
 
 const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments', '/image', '/watermark'])
 
@@ -18,7 +18,7 @@ export const IMAGE_USAGE = 'Usage: /image [--ratio <x:y>] [--format <png|jpeg|we
 const RATIO_FLAGS = new Set(['--ratio', '--aspect-ratio'])
 const FORMAT_FLAGS = new Set(['--format'])
 
-export function parseImageArgs(args) {
+function parseImageArgs(args) {
   const tokens = args.trim().split(/\s+/)
   let ratio
   let format
@@ -295,7 +295,9 @@ const handlers = {
     ctx.state.setSmoothSpeed(cps)
     ctx.render.smooth = true
     ctx.render.smoothCharsPerTick = cpsToCharsPerTick(cps)
-    await ctx.savePrefs({ smoothStreaming: true, smoothSpeed: value })
+    // Persist the canonical cps number (same format as --smooth-speed and
+    // /config-set), not the raw preset label.
+    await ctx.savePrefs({ smoothStreaming: true, smoothSpeed: cps })
     console.log(`Smooth streaming enabled (${formatSmoothSpeed(cps)}).\n`)
   },
 
@@ -365,23 +367,12 @@ const handlers = {
   },
 
   '/watermark': async (ctx) => {
-    if (ctx.provider.meta.name !== 'venice') {
-      console.error('Error: /watermark is only supported on Venice sessions.\n')
-      return
-    }
-    const value = ctx.args
-    if (!value) {
-      console.log(`Venice watermark is ${ctx.prefs.hideWatermark === true ? 'off' : 'on'}.\n`)
-      return
-    }
-    if (value === 'on' || value === 'off') {
-      const next = value === 'on'
-      ctx.prefs.hideWatermark = !next
-      await ctx.savePrefs({ hideWatermark: !next })
-      console.log(`Venice watermark ${next ? 'enabled' : 'disabled'}.\n`)
-      return
-    }
-    console.error('Error: /watermark expects "on" or "off".\n')
+    await handleWatermarkCommand({
+      providerName: ctx.provider.meta.name,
+      args: ctx.args,
+      prefs: ctx.prefs,
+      savePrefs: ctx.savePrefs,
+    })
   },
 }
 

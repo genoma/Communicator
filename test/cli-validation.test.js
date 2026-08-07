@@ -48,18 +48,18 @@ test('rejects an invalid --web-search mode', () => {
 test('rejects --resume combined with --export', () => {
   assert.deepEqual(
     validateCliFlags(opts({ resume: 'x', export: 'y' }), TTY),
-    ['Cannot use --resume and --export together. Use one at a time.']
+    ['Error: Cannot use --resume and --export together. Use one at a time.']
   )
 })
 
 test('rejects --delete combined with --resume or --export', () => {
   assert.deepEqual(
     validateCliFlags(opts({ delete: 'x', resume: 'y' }), TTY),
-    ['Cannot use --delete with --resume or --export. Use one at a time.']
+    ['Error: Cannot use --delete with --resume or --export. Use one at a time.']
   )
   assert.deepEqual(
     validateCliFlags(opts({ delete: 'x', export: 'y' }), TTY),
-    ['Cannot use --delete with --resume or --export. Use one at a time.']
+    ['Error: Cannot use --delete with --resume or --export. Use one at a time.']
   )
 })
 
@@ -84,11 +84,11 @@ test('rejects interactive flags with piped stdin', () => {
 test('rejects exit-mode flags combined with session flags', () => {
   assert.deepEqual(
     validateCliFlags(opts({ listSessions: true, temperature: 0.5 }), TTY),
-    ['Error: --model, --output-dir, --system-prompt and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach) cannot be combined with --list-* flags.']
+    ['Error: --model, --output-dir and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach) cannot be combined with --list-* flags.']
   )
   assert.deepEqual(
     validateCliFlags(opts({ listModels: true, model: 'm' }), TTY),
-    ['Error: --model, --output-dir, --system-prompt and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach) cannot be combined with --list-* flags.']
+    ['Error: --model, --output-dir and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach) cannot be combined with --list-* flags.']
   )
 })
 
@@ -115,7 +115,7 @@ test('rejects interactive flags combined with exit-mode flags', () => {
 test('rejects --export combined with session flags', () => {
   assert.deepEqual(
     validateCliFlags(opts({ export: 'x', budget: 5 }), TTY),
-    ['Error: --model, --system-prompt and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach) cannot be combined with --export.']
+    ['Error: --model and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach) cannot be combined with --export.']
   )
 })
 
@@ -123,7 +123,7 @@ test('rejects --delete combined with session flags', () => {
   assert.deepEqual(
     validateCliFlags(opts({ delete: 'x', attach: ['a.txt'] }), TTY),
     [
-      'Error: --model, --output-dir, --system-prompt and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach) cannot be combined with --delete.',
+      'Error: --model, --output-dir and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach) cannot be combined with --delete.',
       'Error: --attach requires a prompt argument or piped stdin.',
     ]
   )
@@ -198,8 +198,8 @@ test('reports every violated combination in order', () => {
     validateCliFlags(opts({ resume: 'x', export: 'y', webSearch: 'bogus' }), TTY),
     [
       'Error: --web-search expects "auto", "always", "on", or "off" (bare flag = auto).',
-      'Cannot use --resume and --export together. Use one at a time.',
-      'Error: --model, --system-prompt and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --attach) cannot be combined with --export.',
+      'Error: Cannot use --resume and --export together. Use one at a time.',
+      'Error: --model and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach) cannot be combined with --export.',
     ]
   )
 })

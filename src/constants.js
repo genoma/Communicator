@@ -47,6 +47,10 @@ export const LOADER_TICK_MS = 150
 
 export const STREAM_IDLE_TIMEOUT_MS = 60_000
 
+// Image generations are synchronous and queue on the provider: live runs
+// took ~20 s to 2 min, far beyond the default 30 s request timeout.
+export const IMAGE_GEN_TIMEOUT_MS = 600_000
+
 export const EFFORT_LABELS = {
   max: 'X-High (max)',
   xhigh: 'X-High',

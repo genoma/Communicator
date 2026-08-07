@@ -18,6 +18,6 @@ export async function exportCmd(partialId, outputDir) {
     await exportSession(sessionData, outputPath)
     console.log(`Exported to ${outputPath}`)
   } catch (err) {
-    fail(`Export failed: ${err.message}`)
+    fail(`Error: Export failed: ${err.message}`)
   }
 }

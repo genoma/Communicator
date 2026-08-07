@@ -39,21 +39,23 @@ function renderBar(pct) {
   return '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled)
 }
 
+function contextStyle(pct) {
+  return pct >= 95 ? red : pct >= 80 ? yellow : (t) => t
+}
+
 export function contextSegment(peakTokens, contextLength, hit = false) {
   if (!contextLength || contextLength <= 0) return 'CTX: ?'
   if (hit && peakTokens === 0) return 'CTX: ?'
   const pct = Math.min(100, (peakTokens / contextLength) * 100)
   if (pct < CTX_MIN_PCT) return null
-  const style = pct >= 95 ? red : pct >= 80 ? yellow : (t) => t
-  return style(`CTX ${renderBar(pct)} ${pct.toFixed(0)}%`)
+  return contextStyle(pct)(`CTX ${renderBar(pct)} ${pct.toFixed(0)}%`)
 }
 
 export function contextLine(peakTokens, contextLength) {
   if (!contextLength || contextLength <= 0) return null
   const pct = Math.min(100, (peakTokens / contextLength) * 100)
   if (pct < CTX_MIN_PCT) return null
-  const style = pct >= 95 ? red : pct >= 80 ? yellow : (t) => t
-  return style(`${'CTX'.padEnd(6)} ${renderBar(pct)} ${pct.toFixed(0)}%`)
+  return contextStyle(pct)(`${'CTX'.padEnd(6)} ${renderBar(pct)} ${pct.toFixed(0)}%`)
 }
 
 export function budgetLine(cost, budget) {
