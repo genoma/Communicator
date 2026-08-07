@@ -94,7 +94,7 @@ test('fetchImageModels with pricing fetches endpoints and takes the minimum', as
 
   assert.equal(calls.length, 2)
   assert.ok(calls[1].endsWith('/images/models/openai/gpt-image-1-mini/endpoints'), calls[1])
-  assert.deepEqual(models[0].pricing, { perImage: 0.015, byResolution: null, byQuality: null })
+  assert.deepEqual(models[0].pricing, { perImage: 0.015, perToken: null, byResolution: null, byQuality: null })
 })
 
 test('fetchImageModels pricing falls back to the variant-tier minimum when no flat entry exists', async (t) => {
@@ -110,10 +110,10 @@ test('fetchImageModels pricing falls back to the variant-tier minimum when no fl
 
   const models = await fetchImageModels('key', { withPricing: true })
 
-  assert.deepEqual(models[0].pricing, { perImage: 0.03, byResolution: null, byQuality: null })
+  assert.deepEqual(models[0].pricing, { perImage: 0.03, perToken: null, byResolution: null, byQuality: null })
 })
 
-test('fetchImageModels pricing ignores token-billed output_image entries', async (t) => {
+test('fetchImageModels pricing captures token-billed output_image entries', async (t) => {
   t.mock.method(globalThis, 'fetch', async (url) => {
     if (String(url).includes('/endpoints')) {
       return jsonResponse({
@@ -126,7 +126,7 @@ test('fetchImageModels pricing ignores token-billed output_image entries', async
 
   const models = await fetchImageModels('key', { withPricing: true })
 
-  assert.deepEqual(models[0].pricing, { perImage: null, byResolution: null, byQuality: null })
+  assert.deepEqual(models[0].pricing, { perImage: null, perToken: 0.000108, byResolution: null, byQuality: null })
 })
 
 test('fetchImageModels pricing falls back to nulls when no output_image entries exist', async (t) => {
@@ -139,7 +139,7 @@ test('fetchImageModels pricing falls back to nulls when no output_image entries 
 
   const models = await fetchImageModels('key', { withPricing: true })
 
-  assert.deepEqual(models[0].pricing, { perImage: null, byResolution: null, byQuality: null })
+  assert.deepEqual(models[0].pricing, { perImage: null, perToken: null, byResolution: null, byQuality: null })
 })
 
 test('fetchImageModels maps 400 bodies through handleHttpError with the message', async (t) => {

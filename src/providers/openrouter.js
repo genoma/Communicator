@@ -108,18 +108,21 @@ async function fetchImageModelPricing(apiKey, modelId) {
   }, { errorResponse: handleHttpError })
   const parsed = await res.json()
   const endpoints = Array.isArray(parsed.data) ? parsed.data : parsed.endpoints || parsed.data?.endpoints || []
-  const outputPrices = []
+  const perImage = []
+  const perToken = []
   for (const ep of endpoints) {
     for (const p of ep.pricing || []) {
-      if (p.billable === 'output_image' && (p.unit === undefined || p.unit === 'image') && typeof p.cost_usd === 'number') {
-        outputPrices.push(p)
-      }
+      if (p.billable !== 'output_image' || typeof p.cost_usd !== 'number') continue
+      if (p.unit === 'token') perToken.push(p)
+      else if (p.unit === undefined || p.unit === 'image') perImage.push(p)
     }
   }
-  const noVariant = outputPrices.filter((p) => !p.variant)
-  const chosen = noVariant.length > 0 ? noVariant : outputPrices
-  if (chosen.length === 0) return { perImage: null, byResolution: null, byQuality: null }
-  return { perImage: Math.min(...chosen.map((p) => p.cost_usd)), byResolution: null, byQuality: null }
+  const cheapest = (prices) => {
+    const noVariant = prices.filter((p) => !p.variant)
+    const chosen = noVariant.length > 0 ? noVariant : prices
+    return chosen.length === 0 ? null : Math.min(...chosen.map((p) => p.cost_usd))
+  }
+  return { perImage: cheapest(perImage), perToken: cheapest(perToken), byResolution: null, byQuality: null }
 }
 
 export async function fetchImageModels(apiKey, { withPricing = false } = {}) {

@@ -75,6 +75,39 @@ test('listImageModelsCmd prints name, id, per-image price and sizing constraints
   assert.ok(lines[1].includes('[offline]'))
 })
 
+test('listImageModelsCmd prints token-billed prices per 1M tokens', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const provider = {
+    async fetchImageModels() {
+      return [
+        {
+          id: 'openai/gpt-image-1',
+          name: 'GPT Image 1',
+          pricing: { perImage: null, perToken: 0.00004, byResolution: null, byQuality: null },
+          constraints: { aspectRatios: null, resolutions: null, qualities: null },
+          privacy: null,
+          offline: false,
+        },
+        {
+          id: 'unknown/price',
+          name: 'No Price',
+          pricing: { perImage: null, perToken: null, byResolution: null, byQuality: null },
+          constraints: { aspectRatios: null, resolutions: null, qualities: null },
+          privacy: null,
+          offline: false,
+        },
+      ]
+    },
+  }
+
+  await listImageModelsCmd(provider, 'key')
+
+  const lines = consoleSpy.allLogs()
+  assert.equal(lines.length, 2)
+  assert.ok(lines[0].includes('$40.00 per 1M tokens'))
+  assert.ok(lines[1].includes('?'))
+})
+
 test('listImageModelsCmd requests pricing for OpenRouter and prints from-price rows with tags', async (t) => {
   const consoleSpy = mockConsole(t)
   let pricingRequested = false
