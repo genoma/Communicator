@@ -88,7 +88,11 @@ async function main(opts, promptArg) {
     const partialId = typeof opts.export === 'string' ? opts.export : null
     await exportCmd(partialId, outputDir)
     if (opts.outputDir && opts.outputDir !== prefs.outputDir) {
-      await savePreferences({ ...prefs, outputDir: opts.outputDir }, opts.config)
+      try {
+        await savePreferences({ ...prefs, outputDir: opts.outputDir }, opts.config)
+      } catch (err) {
+        fail(`Error: could not save the output directory preference: ${err.message}`)
+      }
     }
     process.exit(0)
   }
@@ -140,7 +144,11 @@ async function main(opts, promptArg) {
 
   if (opts.safeMode === false) {
     prefs.safeMode = false
-    await savePreferences(prefs, opts.config)
+    try {
+      await savePreferences(prefs, opts.config)
+    } catch (err) {
+      fail(`Error: could not save the safe mode preference: ${err.message}`)
+    }
     console.log('Venice safe mode disabled')
   }
 

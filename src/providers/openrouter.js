@@ -1,7 +1,7 @@
 import { parseSSEStream } from '../sse-parser.js'
-import { fetchWithRetry } from '../http.js'
+import { fetchSafeBytes, fetchWithRetry } from '../http.js'
 import { ApiError, makeHandleHttpError } from '../errors.js'
-import { DEFAULT_TEMPERATURE, DEFAULT_WEB_SEARCH_RESULTS } from '../constants.js'
+import { DEFAULT_TEMPERATURE, DEFAULT_WEB_SEARCH_RESULTS, MAX_IMAGE_ATTACHMENT_BYTES } from '../constants.js'
 import { getZdrIndex, getProviderPolicies } from './openrouter-meta.js'
 import { mimeForExt, extForMime } from '../attachments.js'
 
@@ -192,8 +192,17 @@ export async function generateImage({ apiKey, model, prompt, format, variants = 
     throw new ApiError('OpenRouter returned no images.', { provider: 'openrouter', retryable: false })
   }
 
-  const images = rawImages.map((d) => {
-    const b64 = d.b64_json || d.b64
+  const images = await Promise.all(rawImages.map(async (d) => {
+    let b64 = d.b64_json || d.b64
+    if (!b64 && typeof d.url === 'string') {
+      // URL-only responses (no base64 payload) are downloaded the same way
+      // produced artifacts are: SSRF-checked, redirect re-validated, size-capped.
+      const fetched = await fetchSafeBytes(d.url, { maxBytes: MAX_IMAGE_ATTACHMENT_BYTES })
+      if (fetched) b64 = fetched.toString('base64')
+    }
+    if (!b64) {
+      throw new ApiError('OpenRouter returned an image without base64 data or a usable URL.', { provider: 'openrouter', retryable: false })
+    }
     const mime = d.media_type || mimeForExt(format || 'png')
     const ext = extForMime(mime)
     return {
@@ -202,7 +211,7 @@ export async function generateImage({ apiKey, model, prompt, format, variants = 
       mime,
       ext,
     }
-  })
+  }))
 
   const count = images.length
   const cost = parsed.usage?.cost != null ? parsed.usage.cost / count : null

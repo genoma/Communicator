@@ -65,7 +65,17 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
   }
 
   let messages = initialMessages.length > 0 ? [...initialMessages] : [{ role: 'system', content: 'You are a helpful assistant.' }]
-  const persist = () => persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: imageModelId, createdAt, providerName: provider.meta.name }))
+  const persist = () => persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: imageModelId, createdAt, providerName: provider.meta.name, endpointProviderName: model.endpointProviderName, pricing: model.pricing }))
+
+  // Preference writes are non-fatal here: a failing disk must not take the
+  // whole session down with a raw fs error.
+  const savePrefs = async (updates) => {
+    try {
+      await savePreferences(updates, configPath)
+    } catch (err) {
+      console.warn(`Warning: could not save preferences: ${err.message}`)
+    }
+  }
 
   let sessionAspectRatio
   let sessionFormat
@@ -111,7 +121,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       if (value === 'on' || value === 'off') {
         const next = value === 'on'
         prefs.hideWatermark = !next
-        await savePreferences(applyPreferenceUpdates(prefs, { hideWatermark: !next }), configPath)
+        await savePrefs(applyPreferenceUpdates(prefs, { hideWatermark: !next }), configPath)
         console.log(`Venice watermark ${next ? 'enabled' : 'disabled'}.\n`)
         continue
       }
@@ -143,7 +153,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         delete defaults.aspectRatio
         const updated = { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [provider.meta.name]: defaults } }
         Object.assign(prefs, updated)
-        await savePreferences(updated, configPath)
+        await savePrefs(updated, configPath)
         console.log('Aspect ratio cleared.\n')
         continue
       }
@@ -174,14 +184,14 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         sessionAspectRatio = parsed
         const updated = mergeImageDefaults(prefs, provider.meta.name, { aspectRatio: parsed })
         Object.assign(prefs, updated)
-        await savePreferences(updated, configPath)
+        await savePrefs(updated, configPath)
         console.log(`Aspect ratio set to ${parsed} (${formatSize(computed.width, computed.height)}).\n`)
         continue
       }
       sessionAspectRatio = parsed
       const updated = mergeImageDefaults(prefs, provider.meta.name, { aspectRatio: parsed })
       Object.assign(prefs, updated)
-      await savePreferences(updated, configPath)
+      await savePrefs(updated, configPath)
       console.log(`Aspect ratio set to ${parsed}.\n`)
       continue
     }
@@ -206,7 +216,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         delete defaults.format
         const updated = { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [provider.meta.name]: defaults } }
         Object.assign(prefs, updated)
-        await savePreferences(updated, configPath)
+        await savePrefs(updated, configPath)
         console.log('Format cleared.\n')
         continue
       }
@@ -230,7 +240,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       sessionFormat = parsed
       const updated = mergeImageDefaults(prefs, provider.meta.name, { format: parsed })
       Object.assign(prefs, updated)
-      await savePreferences(updated, configPath)
+      await savePrefs(updated, configPath)
       console.log(`Format set to ${parsed}.\n`)
       continue
     }
@@ -267,7 +277,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     const updated = applyPreferenceUpdates(prefs, { lastImageModel: outcome.modelId })
     const withImageDefaults = outcome.prefsUpdates ? mergeImageDefaults(updated, provider.meta.name, outcome.prefsUpdates) : updated
     Object.assign(prefs, withImageDefaults)
-    await savePreferences(withImageDefaults, configPath)
+    await savePrefs(withImageDefaults, configPath)
     printImageOutcome(outcome, stdout)
   }
 }

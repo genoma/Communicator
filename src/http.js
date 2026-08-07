@@ -54,6 +54,42 @@ export async function assertSafeUrl(url) {
   return addresses.some((entry) => isPrivateAddress(entry.address)) ? 'blocked URL (private or loopback address)' : null
 }
 
+// Fetches a URL with the SSRF guard and a hard byte cap. Follows redirects
+// manually so every hop is re-validated. Returns null on any unsafe/invalid/
+// oversized outcome and throws only on unexpected body-read errors.
+export async function fetchSafeBytes(url, { maxBytes, timeoutMs = 30_000 } = {}) {
+  let res = null
+  let current = url
+  for (let hop = 0; hop <= 5; hop++) {
+    const unsafe = await assertSafeUrl(current)
+    if (unsafe) return null
+    try {
+      res = await fetchWithTimeout(current, { redirect: 'manual' }, { timeoutMs })
+    } catch {
+      return null
+    }
+    if (res.status < 300 || res.status >= 400) break
+    const location = res.headers.get('location')
+    await res.body?.cancel?.()
+    if (!location) return null
+    try {
+      current = new URL(location, current).href
+    } catch {
+      return null
+    }
+  }
+  if (res.status >= 400) return null
+  const contentLength = Number(res.headers.get('content-length') || 0)
+  if (contentLength > maxBytes) return null
+  let bytes
+  try {
+    bytes = Buffer.from(await res.arrayBuffer())
+  } catch {
+    return null
+  }
+  return bytes.length <= maxBytes ? bytes : null
+}
+
 export function sleep(ms, signal) {
   return new Promise((resolve, reject) => {
     const onAbort = () => {

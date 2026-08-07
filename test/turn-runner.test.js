@@ -53,7 +53,7 @@ function makeDeps(overrides = {}) {
   return { deps, exitCodes, saves }
 }
 
-function runTurn(deps, state) {
+function runTurn(deps, state, opts) {
   const runner = createTurnRunner({
     state,
     provider: deps.provider,
@@ -67,7 +67,7 @@ function runTurn(deps, state) {
     exit: deps.exit,
     sessionState: deps.sessionState ?? createSessionState(),
   })
-  return runner.runTurn()
+  return runner.runTurn(opts)
 }
 
 function okProvider(overrides = {}) {
@@ -253,7 +253,22 @@ test('warns once via the budget line when the cap is 90% crossed', async (t) => 
   assert.match(budgetLines[0], /Budget/)
 })
 
-test('a retryable error pops the last user message', async (t) => {
+test('a retryable error pops the last user message when the turn appended it', async (t) => {
+  mockConsole(t)
+  const provider = okProvider({
+    async chatCompletion() {
+      throw new ApiError('Rate limited', { status: 429, retryable: true })
+    },
+  })
+  const state = fakeState()
+  const { deps } = makeDeps({ provider })
+
+  await runTurn(deps, state, { userAppended: true })
+
+  assert.equal(state.messages.length, 1)
+})
+
+test('a retryable error keeps the user message when the turn did not append it (/retry)', async (t) => {
   mockConsole(t)
   const provider = okProvider({
     async chatCompletion() {
@@ -265,7 +280,8 @@ test('a retryable error pops the last user message', async (t) => {
 
   await runTurn(deps, state)
 
-  assert.equal(state.messages.length, 1)
+  assert.equal(state.messages.length, 2)
+  assert.equal(state.messages[1].role, 'user')
 })
 
 test('a non-retryable error keeps the user message', async (t) => {

@@ -111,6 +111,51 @@ test('skips unparseable lines and counts them', async () => {
   assert.equal(skippedChunks, 2)
 })
 
+test('throws an ApiError on SSE-level error events instead of an empty success', async () => {
+  await assert.rejects(
+    parseSSEStream(
+      streamReader([
+        event({ choices: [{ delta: { content: 'partial' } }] }),
+        event({ error: { message: 'model overloaded', code: 503 } }),
+      ]),
+      () => {}
+    ),
+    (err) => err instanceof ApiError && err.message === 'model overloaded' && err.retryable === false
+  )
+  await assert.rejects(
+    parseSSEStream(streamReader([event({ choices: [{ error: { message: 'bad' } }] })]), () => {}),
+    (err) => err instanceof ApiError && err.message === 'bad'
+  )
+})
+
+test('propagates renderer errors instead of counting them as malformed chunks', async () => {
+  await assert.rejects(
+    parseSSEStream(
+      streamReader([event({ choices: [{ delta: { content: 'boom' } }] })]),
+      () => { throw new Error('renderer exploded') }
+    ),
+    /renderer exploded/
+  )
+})
+
+test('emits end_reasoning before final-only content after streamed reasoning', async () => {
+  const tokens = []
+  const { fullText } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { reasoning_content: 'think' } }] }),
+      event({ choices: [{ message: { content: 'Final answer' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t])
+  )
+  assert.equal(fullText, 'Final answer')
+  assert.deepEqual(tokens, [
+    ['start_reasoning', '\n'],
+    ['reasoning', 'think'],
+    ['end_reasoning', null],
+    ['content', 'Final answer'],
+  ])
+})
+
 test('rethrows reader errors with the pending buffer attached', async () => {
   const partial = 'data: {"choices":[{"delta":{"content":"par'
   let first = true

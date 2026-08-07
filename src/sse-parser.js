@@ -127,77 +127,94 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     if (!match) return
     const data = match[2]
     if (data === SSE_DONE) return
+    let parsed
     try {
-      const parsed = JSON.parse(data)
+      parsed = JSON.parse(data)
+    } catch {
+      skippedChunks++
+      return
+    }
 
-      collectSources(parsed, fullSources, seenUrls, onSources)
+    // Some providers surface errors as 200-status SSE events; without this
+    // they would silently end the stream as an empty success.
+    const streamError = parsed.error ?? parsed.choices?.[0]?.error
+    if (streamError) {
+      throw new ApiError(typeof streamError === 'string' ? streamError : (streamError?.message || 'Provider error'), { retryable: false })
+    }
 
-      if (parsed.usage) {
-        finalUsage = parsed.usage
-        return
-      }
+    collectSources(parsed, fullSources, seenUrls, onSources)
 
-      const choice = parsed.choices?.[0]
-      const delta = choice?.delta
-      const finalContent = choice?.message?.content
+    if (parsed.usage) {
+      finalUsage = parsed.usage
+      return
+    }
 
-      // Some providers attach the full message only on the final chunk; its
-      // text duplicates what deltas already streamed, so non-text parts are
-      // always collected but text is only emitted when nothing was streamed.
-      // The delta may be an empty object on the final chunk, so the dedup
-      // gate is based solely on the streamed text, never on the delta shape.
-      if (Array.isArray(finalContent)) {
-        const noTextYet = fullText === ''
-        for (const part of finalContent) {
-          if (part?.type === 'text' && typeof part.text === 'string') {
-            if (noTextYet) {
-              fullText += part.text
-              onToken(part.text, 'content')
+    const choice = parsed.choices?.[0]
+    const delta = choice?.delta
+    const finalContent = choice?.message?.content
+
+    // Some providers attach the full message only on the final chunk; its
+    // text duplicates what deltas already streamed, so non-text parts are
+    // always collected but text is only emitted when nothing was streamed.
+    // The delta may be an empty object on the final chunk, so the dedup
+    // gate is based solely on the streamed text, never on the delta shape.
+    if (Array.isArray(finalContent)) {
+      const noTextYet = fullText === ''
+      for (const part of finalContent) {
+        if (part?.type === 'text' && typeof part.text === 'string') {
+          if (noTextYet) {
+            if (inThinking) {
+              inThinking = false
+              onToken(null, 'end_reasoning')
             }
+            fullText += part.text
+            onToken(part.text, 'content')
+          }
+        } else {
+          addPart(part)
+        }
+      }
+    } else if (typeof finalContent === 'string' && fullText === '') {
+      if (inThinking) {
+        inThinking = false
+        onToken(null, 'end_reasoning')
+      }
+      fullText += finalContent
+      onToken(finalContent, 'content')
+    }
+
+    if (!delta) return
+
+    const reasoningToken = delta.reasoning_content ?? (typeof delta.reasoning === 'string' ? delta.reasoning : undefined)
+    if (reasoningToken) {
+      fullReasoning += reasoningToken
+      if (!inThinking) {
+        inThinking = true
+        onToken('\n', 'start_reasoning')
+      }
+      onToken(reasoningToken, 'reasoning')
+      return
+    }
+
+    const contentToken = delta.content
+    if (contentToken != null) {
+      if (inThinking) {
+        inThinking = false
+        onToken(null, 'end_reasoning')
+      }
+      if (typeof contentToken === 'string' && contentToken) {
+        fullText += contentToken
+        onToken(contentToken, 'content')
+      } else if (Array.isArray(contentToken)) {
+        for (const part of contentToken) {
+          if (part?.type === 'text' && typeof part.text === 'string') {
+            fullText += part.text
+            onToken(part.text, 'content')
           } else {
             addPart(part)
           }
         }
-      } else if (typeof finalContent === 'string' && fullText === '') {
-        fullText += finalContent
-        onToken(finalContent, 'content')
       }
-
-      if (!delta) return
-
-      const reasoningToken = delta.reasoning_content ?? (typeof delta.reasoning === 'string' ? delta.reasoning : undefined)
-      if (reasoningToken) {
-        fullReasoning += reasoningToken
-        if (!inThinking) {
-          inThinking = true
-          onToken('\n', 'start_reasoning')
-        }
-        onToken(reasoningToken, 'reasoning')
-        return
-      }
-
-      const contentToken = delta.content
-      if (contentToken != null) {
-        if (inThinking) {
-          inThinking = false
-          onToken(null, 'end_reasoning')
-        }
-        if (typeof contentToken === 'string' && contentToken) {
-          fullText += contentToken
-          onToken(contentToken, 'content')
-        } else if (Array.isArray(contentToken)) {
-          for (const part of contentToken) {
-            if (part?.type === 'text' && typeof part.text === 'string') {
-              fullText += part.text
-              onToken(part.text, 'content')
-            } else {
-              addPart(part)
-            }
-          }
-        }
-      }
-    } catch {
-      skippedChunks++
     }
   }
 

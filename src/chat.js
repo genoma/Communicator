@@ -280,7 +280,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
         const content = buildContent(trailing, state.pendingAttachments)
         state.pendingAttachments = []
         state.appendUser(content)
-        await runTurn()
+        await runTurn({ userAppended: true })
       }
       continue
     }
@@ -294,7 +294,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     const content = buildContent(input, state.pendingAttachments)
     state.pendingAttachments = []
     state.appendUser(content)
-    await runTurn()
+    await runTurn({ userAppended: true })
   }
 }
 

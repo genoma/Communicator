@@ -189,8 +189,8 @@ export async function persistSessionFile(id, payload) {
   try {
     const dir = await ensureSessionsDir()
     await saveSession(dir, id, payload)
-  } catch {
-    // save failures are non-fatal
+  } catch (err) {
+    console.error(`Warning: could not save session: ${err.message}`)
   }
 }
 
@@ -279,7 +279,7 @@ export async function loadSession(dir, id) {
     if (err instanceof SyntaxError) {
       throw new CliError(`Error: Session file is corrupt: ${filePath}`)
     }
-    throw err
+    throw new CliError(`Error: Could not read session file: ${filePath} (${err.message})`)
   }
 
   if (!data || !data.model || !Array.isArray(data.messages)) {

@@ -14,6 +14,7 @@ const genCalls = []
 const genPrefs = []
 const genOpts = []
 const printed = []
+const payloadArgs = []
 mock.module(new URL('../src/commands/image-gen.js', import.meta.url).href, {
   namedExports: {
     runImageGeneration: async ({ prompt, model, prefs, opts, sizingInteractive }) => {
@@ -30,7 +31,17 @@ mock.module(new URL('../src/commands/image-gen.js', import.meta.url).href, {
       }
     },
     printImageOutcome: async (outcome) => { printed.push(outcome) },
-    buildImageSessionPayload: ({ messages, modelId, createdAt }) => ({ model: modelId, providerType: 'venice', createdAt, messages }),
+    buildImageSessionPayload: (args) => {
+      payloadArgs.push(args)
+      return {
+        model: args.modelId,
+        providerType: args.providerName || 'venice',
+        createdAt: args.createdAt,
+        messages: args.messages,
+        endpointProviderName: args.endpointProviderName,
+        pricing: args.pricing,
+      }
+    },
   },
 })
 
@@ -54,6 +65,16 @@ const openRouterNoListsProvider = {
   meta: { name: 'openrouter' },
   async fetchImageModels() {
     return [{ id: 'openai/gpt-5-image', name: 'GPT-5 Image', pricing: { perImage: 0.1 }, constraints: { aspectRatios: null, formats: null } }]
+  },
+}
+
+const openRouterEndpointProvider = {
+  ...openRouterNoListsProvider,
+  async fetchImageModelEndpoints() {
+    return [
+      { providerName: 'OpenAI', slug: 'openai', pricing: { perImage: 0.1 } },
+      { providerName: 'Azure', slug: 'azure', pricing: { perImage: 0.12 } },
+    ]
   },
 }
 
@@ -120,6 +141,27 @@ test('two prompts generate two images, persist the session and save prefs', asyn
 
   const prefs = JSON.parse(await readFile(file, 'utf-8'))
   assert.equal(prefs.lastImageModel, 'venice-sd35')
+})
+
+test('persists the endpoint provider and pricing for resumed OpenRouter sessions', async (t) => {
+  payloadArgs.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    provider: openRouterEndpointProvider,
+    imageModelId: 'openai/gpt-5-image',
+    imageProviderName: 'OpenAI',
+    pricing: { perImage: 0.09 },
+    configPath: file,
+    readInput: scriptedInput(['draw a cat', '/quit']),
+  }))
+
+  const saved = JSON.parse(await readFile(sessionFile('2026-01-01T00-00-00'), 'utf-8'))
+  assert.equal(saved.endpointProviderName, 'OpenAI')
+  assert.deepEqual(saved.pricing, { perImage: 0.09 })
+  assert.equal(payloadArgs[0].endpointProviderName, 'OpenAI')
+  assert.deepEqual(payloadArgs[0].pricing, { perImage: 0.09 })
 })
 
 test('resume continues from initialMessages without re-adding a system message', async (t) => {

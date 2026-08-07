@@ -237,6 +237,14 @@ export async function selectReasoningEffort(reasoning, lastEffort, opts = {}) {
     (reasoning.default_enabled === false ? null : reasoning.default_effort) ??
     'medium'
   if (defaultEffort === 'none') defaultEffort = null
+  // The saved pref or provider default may not be in the model's current
+  // effort list (list shrank, or 'none' is not offered); clamp to a valid
+  // choice so the picker never receives an out-of-list default.
+  if (defaultEffort === null && !efforts.includes('none')) {
+    defaultEffort = efforts.includes('medium') ? 'medium' : efforts[0]
+  } else if (defaultEffort !== null && !efforts.includes(defaultEffort)) {
+    defaultEffort = efforts.includes('medium') ? 'medium' : efforts[0]
+  }
 
   const effortChoices = efforts.map((e) => ({
     name: getEffortLabel(e),

@@ -132,6 +132,23 @@ test('selectReasoningEffort puts the back choice first when withBack is set', as
   assert.equal(selectChoices[0][2].name, 'Disabled')
 })
 
+test('selectReasoningEffort clamps a saved effort outside the current list', async () => {
+  selectDefaults = []
+  const answer = await selectReasoningEffort(EFFORT_REASONING, 'max')
+  assert.equal(answer, 'medium')
+  assert.equal(selectDefaults[0], 'medium')
+})
+
+test('selectReasoningEffort clamps a null default when no disabled choice exists', async () => {
+  selectDefaults = []
+  selectChoices = []
+  const mandatory = { supportsEffort: true, mandatory: true, supported_efforts: ['high', 'low'], default_enabled: false }
+  const answer = await selectReasoningEffort(mandatory, undefined)
+  assert.equal(answer, 'high')
+  assert.equal(selectDefaults[0], 'high')
+  assert.ok(!selectChoices[0].some((c) => c.value === null))
+})
+
 test('ratioLabel humanizes common ratios and falls back to the raw value', () => {
   assert.equal(ratioLabel('16:9'), '16:9 (widescreen)')
   assert.equal(ratioLabel('1:1'), '1:1 (square)')

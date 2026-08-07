@@ -19,10 +19,15 @@ export function createSessionState() {
 }
 
 export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState }) {
-  const runTurn = async () => {
+  const runTurn = async (opts = {}) => {
     let apiResult
     let streamedContent = ''
     let streamedReasoning = ''
+
+    // When the caller appended the user message for this turn, a retryable
+    // failure pops it so the user can re-send. /retry re-runs an existing
+    // user message without appending, so the pop must not fire there.
+    const userAppended = opts.userAppended === true
 
     render.sources = []
     sessionState.streaming = true
@@ -109,7 +114,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       render.flush({ sync: true })
       debug(err?.stack)
       console.error(`\nError: ${formatError(err)}\n`)
-      if (err instanceof ApiError && err.retryable) {
+      if (err instanceof ApiError && err.retryable && userAppended) {
         state.messages.pop()
       }
       return

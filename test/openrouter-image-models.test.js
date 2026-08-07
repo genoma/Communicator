@@ -177,6 +177,31 @@ test('generateImage routes through the chosen provider when one is given', async
   assert.equal(bodies[1].provider, undefined)
 })
 
+test('generateImage downloads URL-only image responses', async (t) => {
+  let fetchCount = 0
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    fetchCount++
+    if (fetchCount === 1) {
+      return jsonResponse({ data: [{ url: 'https://example.com/img.png', media_type: 'image/png' }], usage: { cost: 0.01 } })
+    }
+    assert.equal(String(url), 'https://example.com/img.png')
+    return new Response(Buffer.from('fetched-bytes'), { status: 200, headers: { 'Content-Type': 'image/png' } })
+  })
+
+  const result = await generateImage({ apiKey: 'key', model: 'qwen/qwen-image-3', prompt: 'p' })
+  assert.equal(fetchCount, 2)
+  assert.equal(result.images.length, 1)
+  assert.equal(result.images[0].dataUrl, `data:image/png;base64,${Buffer.from('fetched-bytes').toString('base64')}`)
+})
+
+test('generateImage throws when an image has neither base64 data nor a usable URL', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => jsonResponse({ data: [{ media_type: 'image/png' }], usage: { cost: 0.01 } }))
+  await assert.rejects(
+    generateImage({ apiKey: 'key', model: 'qwen/qwen-image-3', prompt: 'p' }),
+    /without base64 data or a usable URL/
+  )
+})
+
 test('fetchImageModels maps 400 bodies through handleHttpError with the message', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ error: { message: 'Invalid model' } }), { status: 400 }))
 
