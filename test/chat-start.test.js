@@ -44,6 +44,7 @@ mock.module(new URL('../src/chat.js', import.meta.url).href, {
 })
 
 let nonInteractiveSelection = null
+let findImageModelResult = null
 mock.module(new URL('../src/model-selection.js', import.meta.url).href, {
   namedExports: {
     selectModelAndEndpoint: async () => { throw new Error('unexpected picker') },
@@ -51,6 +52,14 @@ mock.module(new URL('../src/model-selection.js', import.meta.url).href, {
       if (nonInteractiveSelection === null) throw new Error('no selection mocked')
       return nonInteractiveSelection
     },
+    findImageModel: async () => findImageModelResult,
+  },
+})
+
+const imageSessionCalls = []
+mock.module(new URL('../src/commands/image-session.js', import.meta.url).href, {
+  namedExports: {
+    startImageSession: async (opts) => { imageSessionCalls.push(opts) },
   },
 })
 
@@ -109,6 +118,15 @@ function withApiKey(t, value = 'test-key') {
   t.after(() => {
     if (previous === undefined) delete process.env.OPENROUTER_API_KEY
     else process.env.OPENROUTER_API_KEY = previous
+  })
+}
+
+function withVeniceApiKey(t, value = 'venice-key') {
+  const previous = process.env.VENICE_API_KEY
+  process.env.VENICE_API_KEY = value
+  t.after(() => {
+    if (previous === undefined) delete process.env.VENICE_API_KEY
+    else process.env.VENICE_API_KEY = previous
   })
 }
 
@@ -243,4 +261,86 @@ test('chatStart non-resume branch builds the context from selection and prefs', 
   assert.equal(call.opts.contextLength, 64000)
   assert.match(call.opts.sessionId, /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/)
   assert.ok(call.opts.createdAt)
+})
+
+test('chatStart routes a resumed venice image session into the image session', async (t) => {
+  resumeResult = resumeSession({
+    providerType: 'venice',
+    modelId: 'venice-sd35',
+    providerName: 'venice',
+    reasoningEffort: 'auto',
+  })
+  findImageModelResult = { id: 'venice-sd35', name: 'SD 3.5' }
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(console, 'log', () => {})
+  const chatCallsBefore = startChatCalls.length
+  const imageCallsBefore = imageSessionCalls.length
+
+  const { chatStart: fresh } = await import(`../src/commands/chat-start.js?t=${Date.now()}`)
+  await fresh({ apiKey: 'k', opts: baseOpts({ resume: '2026-01-01', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'venice' })
+
+  assert.equal(startChatCalls.length, chatCallsBefore)
+  assert.equal(imageSessionCalls.length, imageCallsBefore + 1)
+  const call = imageSessionCalls[imageSessionCalls.length - 1]
+  assert.equal(call.imageModelId, 'venice-sd35')
+  assert.equal(call.sessionId, '2026-01-01T00-00-00')
+  assert.equal(call.createdAt, '2026-01-01T00:00:00.000Z')
+  assert.equal(call.initialMessages.length, 3)
+  assert.equal(call.configPath, configFile)
+})
+
+test('chatStart resumes venice text sessions into the chat as before', async (t) => {
+  resumeResult = resumeSession({
+    providerType: 'venice',
+    modelId: 'venice/llama',
+    providerName: 'venice',
+  })
+  findImageModelResult = null
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(console, 'log', () => {})
+  const chatCallsBefore = startChatCalls.length
+  const imageCallsBefore = imageSessionCalls.length
+
+  const { chatStart: fresh } = await import(`../src/commands/chat-start.js?t=${Date.now()}`)
+  await fresh({ apiKey: 'k', opts: baseOpts({ resume: '2026-01-01', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'venice' })
+
+  assert.equal(startChatCalls.length, chatCallsBefore + 1)
+  assert.equal(imageSessionCalls.length, imageCallsBefore)
+  assert.equal(startChatCalls[startChatCalls.length - 1].model, 'venice/llama')
+})
+
+test('chatStart routes a picked image model into the image session', async (t) => {
+  resumeResult = null
+  nonInteractiveSelection = {
+    modelId: 'venice-sd35',
+    isImageModel: true,
+    endpointProviderName: 'venice',
+    reasoningEffort: null,
+    webSearchSupported: false,
+    visionSupported: false,
+    fileSupported: false,
+    pricing: { perImage: 0.02 },
+    contextLength: null,
+    supportsReasoning: false,
+    modelReasoning: null,
+  }
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(console, 'log', () => {})
+  const chatCallsBefore = startChatCalls.length
+  const imageCallsBefore = imageSessionCalls.length
+
+  const { chatStart: fresh } = await import(`../src/commands/chat-start.js?t=${Date.now()}`)
+  await fresh({ apiKey: 'k', opts: baseOpts({ model: 'venice-sd35', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'venice' })
+
+  assert.equal(startChatCalls.length, chatCallsBefore)
+  assert.equal(imageSessionCalls.length, imageCallsBefore + 1)
+  const call = imageSessionCalls[imageSessionCalls.length - 1]
+  assert.equal(call.imageModelId, 'venice-sd35')
+  assert.deepEqual(call.initialMessages, [])
+  assert.match(call.sessionId, /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}(-\d+)?$/)
+  assert.ok(call.createdAt)
+  assert.equal(call.configPath, configFile)
 })

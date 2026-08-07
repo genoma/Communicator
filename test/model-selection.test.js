@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { selectModelNonInteractive } from '../src/model-selection.js'
+import { selectModelNonInteractive, findImageModel } from '../src/model-selection.js'
 import { CliError } from '../src/errors.js'
 
 function fakeProvider(overrides = {}) {
@@ -339,4 +339,53 @@ test('non-interactive selection with zdr and a degraded index skips filtering an
 test('non-interactive selection with zdr ignores the flag for providers without supportsZdr', async () => {
   const sel = await selectModelNonInteractive({ provider: fakeProvider(), apiKey: '', prefs: {}, modelId: 'auto-reasoner', zdr: true })
   assert.equal(sel.endpointProviderName, 'venice')
+})
+
+test('findImageModel returns null when the provider has no image models', async () => {
+  assert.equal(await findImageModel(fakeProvider(), 'k', 'venice-sd35'), null)
+})
+
+test('findImageModel finds an image model by id and null for unknown ids', async () => {
+  const provider = fakeProvider({
+    async fetchImageModels() {
+      return [{ id: 'venice-sd35', name: 'SD 3.5' }, { id: 'flux-1-1', name: 'Flux' }]
+    },
+  })
+  assert.equal((await findImageModel(provider, 'k', 'flux-1-1')).id, 'flux-1-1')
+  assert.equal(await findImageModel(provider, 'k', 'missing'), null)
+})
+
+test('non-interactive selection falls back to the image shape for image model ids', async () => {
+  const provider = fakeProvider({
+    async fetchImageModels() {
+      return [{ id: 'venice-sd35', name: 'SD 3.5', pricing: { perImage: 0.02 } }]
+    },
+  })
+  const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'venice-sd35' })
+  assert.equal(sel.modelId, 'venice-sd35')
+  assert.equal(sel.isImageModel, true)
+  assert.equal(sel.endpointProviderName, 'venice')
+  assert.equal(sel.reasoningEffort, null)
+  assert.equal(sel.supportsReasoning, false)
+  assert.equal(sel.modelReasoning, null)
+  assert.equal(sel.webSearchSupported, false)
+  assert.equal(sel.visionSupported, false)
+  assert.equal(sel.fileSupported, false)
+  assert.equal(sel.imageOutputSupported, undefined)
+  assert.equal(sel.contextLength, null)
+  assert.deepEqual(sel.pricing, { perImage: 0.02 })
+})
+
+test('non-interactive selection does not fall back to image models under --zdr', async () => {
+  const provider = fakeProvider({
+    meta: { name: 'venice', hasEndpoints: false, supportsZdr: true },
+    isZdrIndexDegraded: async () => false,
+    async fetchImageModels() {
+      return [{ id: 'venice-sd35', name: 'SD 3.5' }]
+    },
+  })
+  await assert.rejects(
+    selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'venice-sd35', zdr: true }),
+    (err) => err instanceof CliError && err.message.includes('no zero-retention providers')
+  )
 })

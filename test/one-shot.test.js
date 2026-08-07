@@ -404,3 +404,84 @@ test('one-shot TTY output prints the banner, sources and the skipped-chunk warni
   assert.ok(!logs.some((l) => l.includes('CTX')))
 })
 
+const IMAGE_BYTES = Buffer.from('one-shot image')
+const IMAGE_B64 = IMAGE_BYTES.toString('base64')
+
+function mockVeniceImageFetch(t, fetchCalls = []) {
+  const bodies = []
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    const u = String(url)
+    fetchCalls.push(u)
+    if (u.includes('/models?type=text')) {
+      return jsonResponse({ data: [] })
+    }
+    if (u.includes('/models?type=image')) {
+      return jsonResponse({ data: [{
+        id: 'venice-sd35',
+        model_spec: {
+          name: 'SD 3.5',
+          constraints: {},
+          pricing: { generation: { usd: 0.02 } },
+        },
+      }] })
+    }
+    if (u.includes('/image/generate')) {
+      bodies.push(JSON.parse(opts.body))
+      return jsonResponse({ id: 'gen-1', images: [IMAGE_B64], timing: {} })
+    }
+    throw new Error(`unexpected fetch: ${u}`)
+  })
+  return { bodies, fetchCalls }
+}
+
+test('-m with an image model id routes to one-shot image generation', async (t) => {
+  const { bodies, fetchCalls } = mockVeniceImageFetch(t)
+  const file = await tempConfig(t)
+  const writes = []
+  const originalWrite = process.stdout.write.bind(process.stdout)
+  t.mock.method(process.stdout, 'write', function (chunk, ...rest) {
+    writes.push(String(chunk))
+    return originalWrite(chunk, ...rest)
+  })
+  t.mock.method(console, 'log', () => {})
+
+  const sessionsDir = join(tempHome, '.communicator', 'sessions')
+  const before = new Set((await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.')))
+
+  const { oneShotCmd } = await import('../src/commands/one-shot.js')
+  await oneShotCmd({ apiKey: 'venice-key', opts: opts({ model: 'venice-sd35', config: file }), prefs: {}, systemPrompt: null, providerType: 'venice', prompt: 'a red cat' })
+
+  assert.ok(fetchCalls.every((u) => !u.includes('/chat/completions')), fetchCalls.join('\n'))
+  assert.equal(bodies.length, 1)
+  assert.equal(bodies[0].model, 'venice-sd35')
+  assert.equal(bodies[0].prompt, 'a red cat')
+  assert.ok(writes.some((w) => w.includes('saved to ')), writes.join('\n'))
+
+  const created = (await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.') && !before.has(f))
+  assert.equal(created.length, 1)
+  const saved = JSON.parse(await readFile(join(sessionsDir, created[0]), 'utf-8'))
+  assert.equal(saved.model, 'venice-sd35')
+  assert.equal(saved.providerType, 'venice')
+  assert.equal(saved.messages.length, 3)
+  assert.equal(saved.messages[0].role, 'system')
+  assert.equal(saved.messages[1].role, 'user')
+  assert.equal(saved.messages[1].content, 'a red cat')
+  assert.equal(saved.messages[2].role, 'assistant')
+  assert.equal(saved.messages[2].content[0].type, 'image_url')
+
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.lastImageModel, 'venice-sd35')
+})
+
+test('-m with an image model rejects --attach before any generation', async (t) => {
+  const { bodies, fetchCalls } = mockVeniceImageFetch(t)
+
+  const { oneShotCmd } = await import('../src/commands/one-shot.js')
+  await assert.rejects(
+    oneShotCmd({ apiKey: 'venice-key', opts: opts({ model: 'venice-sd35', attach: ['photo.png'] }), prefs: {}, systemPrompt: null, providerType: 'venice', prompt: 'a red cat' }),
+    (e) => e instanceof CliError && e.message === 'Error: --attach is not supported with image models.'
+  )
+  assert.equal(bodies.length, 0)
+  assert.ok(fetchCalls.every((u) => !u.includes('/image/generate')))
+})
+

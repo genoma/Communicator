@@ -33,19 +33,19 @@ function validateSizingConstraints(model, { aspectRatio, resolution, quality, wi
   }
 }
 
-export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, prefs = {}, sessionId, selectImage, stdout = process.stdout }) {
+export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, prefs = {}, sessionId, selectImage, model = null, stdout = process.stdout }) {
   const picker = selectImage ?? selectImageModel
 
-  let model
-  let modelId = opts.imageModel || null
-  if (opts.imageModel) {
-    model = await selectImageModelNonInteractive({ provider, apiKey, imageModelId: opts.imageModel })
-  } else if (selectImage || stdout.isTTY === true) {
+  let resolved = model
+  let modelId = (resolved?.modelId ?? resolved?.id) || opts.imageModel || null
+  if (!resolved && opts.imageModel) {
+    resolved = await selectImageModelNonInteractive({ provider, apiKey, imageModelId: opts.imageModel })
+  } else if (!resolved && (selectImage || stdout.isTTY === true)) {
     const models = await provider.fetchImageModels(apiKey)
     const chosen = await picker(models, prefs.lastImageModel)
-    model = models.find((m) => m.id === chosen?.id) || null
+    resolved = models.find((m) => m.id === chosen?.id) || null
     modelId = chosen?.id || null
-  } else {
+  } else if (!resolved) {
     throw new CliError('Error: interactive model selection needs a TTY. Use --image-model <id> when piping input.')
   }
   if (!modelId) {
@@ -73,7 +73,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
     throw new CliError(`Error: ${err.message}`)
   }
 
-  validateSizingConstraints(model, { aspectRatio, resolution, quality, width, height })
+  validateSizingConstraints(resolved, { aspectRatio, resolution, quality, width, height })
 
   const loader = createLoader({ stdout })
   loader.start(variants > 1 ? `Generating image (${variants} variants)` : 'Generating image')
@@ -92,7 +92,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
       seed,
       width,
       height,
-      pricing: model?.pricing || null,
+      pricing: resolved?.pricing || null,
     })
   } finally {
     loader.stop({ done: true })
@@ -141,6 +141,32 @@ export function printImageOutcome({ savedPaths = [], blurred = false, costLine =
   if (blurred) process.stderr.write('Warning: the generated image was returned blurred (safe mode).\n')
 }
 
+export function buildImageSessionPayload({ messages, modelId, createdAt }) {
+  return buildSessionPayload({
+    messages,
+    modelId,
+    endpointProviderName: 'venice',
+    providerType: 'venice',
+    reasoningEffort: 'auto',
+    temperature: null,
+    budget: null,
+    webSearch: 'off',
+    webResults: null,
+    pricing: null,
+    contextLength: null,
+    createdAt,
+  })
+}
+
+export async function finalizeImageSession({ prefs, opts = {}, config, sessionId, messages, outcome, createdAt, stdout = process.stdout }) {
+  await persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: outcome.modelId, createdAt }))
+  await savePreferences(applyPreferenceUpdates(prefs, {
+    lastImageModel: outcome.modelId,
+    outputDir: opts.outputDir,
+  }), config)
+  printImageOutcome(outcome, stdout)
+}
+
 export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, stdout = process.stdout }) {
   const provider = getProvider(providerType)
   const stdinPiped = !process.stdin.isTTY
@@ -170,25 +196,14 @@ export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, s
     outcome.message,
   ]
 
-  await persistSessionFile(sessionId, buildSessionPayload({
+  await finalizeImageSession({
+    prefs,
+    opts,
+    config: opts.config,
+    sessionId,
     messages,
-    modelId: outcome.modelId,
-    endpointProviderName: 'venice',
-    providerType: 'venice',
-    reasoningEffort: 'auto',
-    temperature: null,
-    budget: null,
-    webSearch: 'off',
-    webResults: null,
-    pricing: null,
-    contextLength: null,
+    outcome,
     createdAt: new Date().toISOString(),
-  }))
-
-  await savePreferences(applyPreferenceUpdates(prefs, {
-    lastImageModel: outcome.modelId,
-    outputDir: opts.outputDir,
-  }), opts.config)
-
-  printImageOutcome(outcome, stdout)
+    stdout,
+  })
 }

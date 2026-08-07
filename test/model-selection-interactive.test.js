@@ -326,3 +326,99 @@ test('interactive selection for endpointless providers returns the model route',
   assert.equal(sel.supportsReasoning, false)
   assert.deepEqual(sel.pricing, { prompt: 1e-6, completion: 2e-6 })
 })
+
+function veniceImageProvider() {
+  return {
+    meta: { name: 'venice', hasEndpoints: false, supportsWebSearchOnAll: false },
+    async fetchModels() {
+      return [{ id: 'venice/llama', name: 'Llama', contextLength: 32000, reasoning: null, capabilities: {} }]
+    },
+    async fetchImageModels() {
+      return [{ id: 'venice-sd35', name: 'SD 3.5', pricing: { perImage: 0.02 } }]
+    },
+    async fetchEndpoints() {
+      return [{ providerName: 'venice', pricing: { prompt: 1e-6, completion: 2e-6 }, supportedParameters: {} }]
+    },
+  }
+}
+
+test('interactive selection with image models merges them into one picker and returns the image shape', async (t) => {
+  searchQueue = [{ id: 'venice-sd35', name: 'SD 3.5' }]
+  searchMessages = []
+  searchChoices = []
+  selectMessages = []
+  t.mock.method(console, 'log', () => {})
+
+  const sel = await selectModelAndEndpoint({ provider: veniceImageProvider(), apiKey: 'k', prefs: {}, reasoningEffort: undefined })
+
+  assert.equal(sel.modelId, 'venice-sd35')
+  assert.equal(sel.isImageModel, true)
+  assert.equal(sel.endpointProviderName, 'venice')
+  assert.equal(sel.reasoningEffort, null)
+  assert.equal(sel.supportsReasoning, false)
+  assert.equal(sel.modelReasoning, null)
+  assert.equal(sel.webSearchSupported, false)
+  assert.equal(sel.visionSupported, false)
+  assert.equal(sel.fileSupported, false)
+  assert.equal(sel.imageOutputSupported, undefined)
+  assert.equal(sel.contextLength, null)
+  assert.deepEqual(sel.pricing, { perImage: 0.02 })
+
+  assert.equal(searchMessages.length, 1)
+  assert.equal(searchMessages[0], 'Select a model')
+  assert.equal(selectMessages.length, 0)
+  const choices = searchChoices[0]
+  assert.equal(choices[0].value.id, 'venice/llama')
+  assert.equal(choices[1].separator, 'Image models')
+  assert.equal(choices[2].value.id, 'venice-sd35')
+  assert.equal(choices[2].name, 'SD 3.5  (venice-sd35)  [image]')
+})
+
+test('interactive selection with image models keeps the text flow for text picks', async (t) => {
+  searchQueue = [{ id: 'venice/llama', name: 'Llama' }]
+  searchMessages = []
+  searchChoices = []
+  t.mock.method(console, 'log', () => {})
+
+  const sel = await selectModelAndEndpoint({ provider: veniceImageProvider(), apiKey: 'k', prefs: {}, reasoningEffort: undefined })
+
+  assert.equal(sel.modelId, 'venice/llama')
+  assert.equal(sel.isImageModel, undefined)
+  assert.equal(sel.endpointProviderName, 'venice')
+  assert.equal(searchMessages.length, 1)
+})
+
+test('interactive selection degrades to text-only when the image listing fails', async (t) => {
+  const provider = veniceImageProvider()
+  provider.fetchImageModels = async () => { throw new Error('image listing down') }
+  searchQueue = [{ id: 'venice/llama', name: 'Llama' }]
+  searchMessages = []
+  searchChoices = []
+  const errorSpy = t.mock.method(console, 'error', () => {})
+  t.mock.method(console, 'log', () => {})
+
+  const sel = await selectModelAndEndpoint({ provider, apiKey: 'k', prefs: {}, reasoningEffort: undefined })
+
+  assert.equal(sel.modelId, 'venice/llama')
+  assert.equal(sel.isImageModel, undefined)
+  assert.ok(errorSpy.mock.calls.some((c) => String(c.arguments[0]).includes('could not load image models')))
+  assert.deepEqual(searchChoices[0].map((c) => c.value.id), ['venice/llama'])
+})
+
+test('interactive selection skips the image merge when zdr is active', async (t) => {
+  const provider = veniceImageProvider()
+  provider.meta = { ...provider.meta, supportsZdr: true }
+  provider.isZdrIndexDegraded = async () => false
+  provider.fetchModels = async () => [{ id: 'venice/llama', name: 'Llama', zdr: true, contextLength: 32000, reasoning: null, capabilities: {} }]
+  provider.fetchEndpoints = async () => [{ providerName: 'venice', pricing: { prompt: 1e-6, completion: 2e-6 }, supportedParameters: {}, zdr: true }]
+  searchQueue = [{ id: 'venice/llama', name: 'Llama' }]
+  searchMessages = []
+  searchChoices = []
+  t.mock.method(console, 'log', () => {})
+
+  const sel = await selectModelAndEndpoint({ provider, apiKey: 'k', prefs: {}, reasoningEffort: undefined, zdr: true })
+
+  assert.equal(sel.modelId, 'venice/llama')
+  assert.equal(sel.isImageModel, undefined)
+  assert.deepEqual(searchChoices[0].map((c) => c.value.id), ['venice/llama'])
+})

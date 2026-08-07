@@ -1,6 +1,6 @@
-import { selectModel, selectProvider, selectReasoningEffort, BACK_SENTINEL } from './prompts.js'
+import { selectModel, selectModelWithImages, selectProvider, selectReasoningEffort, BACK_SENTINEL } from './prompts.js'
 import { resolveEffortDefault, isWebSearchSupported } from './reasoning.js'
-import { CliError } from './errors.js'
+import { CliError, formatError } from './errors.js'
 
 async function zdrGate(provider, zdr) {
   if (zdr !== true || provider.meta.supportsZdr !== true) return false
@@ -40,17 +40,57 @@ function capabilityFlags(provider, modelData, endpoint) {
   return { visionSupported, fileSupported, imageOutputSupported }
 }
 
+export async function findImageModel(provider, apiKey, modelId) {
+  if (typeof provider.fetchImageModels !== 'function') return null
+  const models = await provider.fetchImageModels(apiKey)
+  return models.find((m) => m.id === modelId) || null
+}
+
+export function imageModelSelection(model, provider) {
+  return {
+    modelId: model.id,
+    isImageModel: true,
+    endpointProviderName: provider.meta.name,
+    pricing: model.pricing || null,
+    contextLength: null,
+    reasoningEffort: null,
+    supportsReasoning: false,
+    modelReasoning: null,
+    webSearchSupported: false,
+    visionSupported: false,
+    fileSupported: false,
+    imageOutputSupported: undefined,
+  }
+}
+
 export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort, zdr = false }) {
   const models = await provider.fetchModels(apiKey)
   const zdrActive = await zdrGate(provider, zdr)
+  let imageModels = null
+  if (!zdrActive && typeof provider.fetchImageModels === 'function') {
+    try {
+      imageModels = await provider.fetchImageModels(apiKey)
+    } catch (err) {
+      console.error(`Warning: could not load image models; showing text models only. (${formatError(err)})`)
+    }
+  }
+  const withImages = imageModels !== null
   const pickable = zdrActive ? models.filter((m) => m.zdr === true) : models
   if (zdrActive && pickable.length === 0) {
     throw new CliError('Error: No zero-retention models available on OpenRouter right now.')
   }
 
   for (;;) {
-    const selected = await selectModel(pickable, prefs.lastModel, zdrActive)
+    const selected = withImages
+      ? await selectModelWithImages(pickable, imageModels, prefs.lastModel, prefs.lastImageModel, zdrActive)
+      : await selectModel(pickable, prefs.lastModel, zdrActive)
     const modelId = selected.id
+
+    const imageModel = withImages ? (imageModels.find((m) => m.id === modelId) || null) : null
+    if (imageModel) {
+      return imageModelSelection(imageModel, provider)
+    }
+
     const modelData = models.find((m) => m.id === modelId)
 
     const endpoints = await provider.fetchEndpoints(apiKey, modelId, models)
@@ -130,6 +170,10 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
   const models = await provider.fetchModels(apiKey)
   const zdrActive = await zdrGate(provider, zdr)
   const modelData = models.find((m) => m.id === modelId)
+  if (!modelData && !zdrActive) {
+    const imageModel = await findImageModel(provider, apiKey, modelId)
+    if (imageModel) return imageModelSelection(imageModel, provider)
+  }
   const reasoning = modelData?.reasoning || null
 
   const effort = resolveEffortDefault({ reasoning, forcedEffort, prefs, modelId })

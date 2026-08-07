@@ -66,6 +66,11 @@ communicator -p venice --image --variants 2 --image-format png --seed 42 "cyberp
 communicator -p venice --image --image-model gpt-image-2 --resolution 2K --quality high "wide shot"
 communicator -p venice --image --output-dir ~/Pictures "a red cat"   # also copy the images there
 communicator -p venice --list-image-models                           # list image models (no API key needed)
+communicator -p venice -m venice-sd35 "a red cat"                    # one-shot image generation via -m
+communicator -p venice --resume <image-session-id>                   # re-enter an image session
+
+# Image sessions (interactive): pick an image model from the unified picker (tagged [image]);
+# every prompt generates an image; /help, /exit and /quit control the session.
 
 # One-shot mode (non-interactive, no chat loop)
 communicator -m "openai/gpt-4o" "What is the capital of France?"     # positional prompt

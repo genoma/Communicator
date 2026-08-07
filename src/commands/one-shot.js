@@ -10,6 +10,7 @@ import { fail, readStdin } from '../cli-utils.js'
 import { loadAttachments, buildContent, contentText } from '../attachments.js'
 import { resolveArtifacts, printArtifacts } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
+import { runImageGeneration, finalizeImageSession } from './image-gen.js'
 
 export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt }) {
   const provider = getProvider(providerType)
@@ -45,6 +46,38 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     fail(`Error: ${formatError(err)}`)
   }
   const { selection, temperature, webSearch, webResults } = context
+
+  if (selection.isImageModel === true) {
+    if (opts.attach?.length) {
+      throw new CliError('Error: --attach is not supported with image models.')
+    }
+    const dir = await ensureSessionsDir()
+    const sessionId = await generateSessionId(dir)
+    const createdAt = new Date().toISOString()
+
+    let outcome
+    try {
+      outcome = await runImageGeneration({ provider, apiKey, prompt: text, opts, prefs, sessionId, model: selection, stdout: process.stdout })
+    } catch (err) {
+      if (err instanceof CliError) throw err
+      throw new CliError(`Error: ${formatError(err)}`)
+    }
+
+    await finalizeImageSession({
+      prefs,
+      opts,
+      config: opts.config,
+      sessionId,
+      messages: [
+        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'user', content: text },
+        outcome.message,
+      ],
+      outcome,
+      createdAt,
+    })
+    return
+  }
 
   const attachments = []
   if (opts.attach?.length) {

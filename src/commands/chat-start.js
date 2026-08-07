@@ -6,6 +6,12 @@ import { ensureSessionsDir, generateSessionId } from '../sessions.js'
 import { resumeCmd } from './resume.js'
 import { getApiKey } from '../config.js'
 import { resolveSessionFlags, persistSession, buildSessionContext } from '../session-setup.js'
+import { findImageModel } from '../model-selection.js'
+import { startImageSession } from './image-session.js'
+
+function imageSessionContext({ provider, apiKey, prefs, imageModelId, sessionId, createdAt, initialMessages, configPath }) {
+  return { imageModelId, provider, apiKey, prefs, sessionId, createdAt, initialMessages, configPath }
+}
 
 async function createSessionContext({ apiKey, opts, prefs, providerType }) {
   const { forcedEffort, forcedTemperature, forcedBudget, budget, forcedWebResults, smoothSpeed, zdr } = resolveSessionFlags(opts, prefs)
@@ -15,6 +21,20 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
     if (!result) process.exit(0)
 
     const provider = getProvider(result.providerType || providerType)
+    const apiKey = getApiKey(result.providerType || providerType)
+    if (result.providerType === 'venice' && (await findImageModel(provider, apiKey, result.modelId))) {
+      return imageSessionContext({
+        provider,
+        apiKey,
+        prefs,
+        imageModelId: result.modelId,
+        sessionId: result.sessionId,
+        createdAt: result.sessionCreatedAt,
+        initialMessages: result.initialMessages,
+        configPath: opts.config,
+      })
+    }
+
     const resumedEffort = result.reasoningEffort === 'auto' ? undefined : (result.reasoningEffort ?? null)
     return {
       modelId: result.modelId,
@@ -33,7 +53,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
       sessionId: result.sessionId,
       sessionCreatedAt: result.sessionCreatedAt,
       provider,
-      apiKey: getApiKey(result.providerType || providerType),
+      apiKey,
       supportsReasoning: true,
       modelReasoning: null,
     }
@@ -54,6 +74,19 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
 
   const dir = await ensureSessionsDir()
   const sessionId = await generateSessionId(dir)
+
+  if (selection.isImageModel === true) {
+    return imageSessionContext({
+      provider,
+      apiKey,
+      prefs,
+      imageModelId: selection.modelId,
+      sessionId,
+      createdAt: new Date().toISOString(),
+      initialMessages: [],
+      configPath: opts.config,
+    })
+  }
 
   return {
     modelId: selection.modelId,
@@ -83,6 +116,19 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
 
 export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerType }) {
   const ctx = await createSessionContext({ apiKey, opts, prefs, providerType })
+  if (ctx.imageModelId) {
+    await startImageSession({
+      provider: ctx.provider,
+      apiKey: ctx.apiKey,
+      prefs: ctx.prefs,
+      imageModelId: ctx.imageModelId,
+      sessionId: ctx.sessionId,
+      createdAt: ctx.createdAt,
+      initialMessages: ctx.initialMessages,
+      configPath: ctx.configPath,
+    })
+    return
+  }
   const finalState = await startChat(ctx.apiKey, ctx.modelId, ctx.endpointProviderName, ctx.reasoningEffort, ctx.temperature, ctx.pricing, ctx.provider, {
     systemPrompt,
     initialMessages: ctx.initialMessages,

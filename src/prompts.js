@@ -37,8 +37,9 @@ export function filterModelChoices(choices, input) {
   const q = input.toLowerCase()
   return choices.filter(
     (c) =>
-      c.name.toLowerCase().includes(q) ||
-      c.value.id.toLowerCase().includes(q)
+      c.name &&
+      c.value?.id &&
+      (c.name.toLowerCase().includes(q) || c.value.id.toLowerCase().includes(q))
   )
 }
 
@@ -60,7 +61,7 @@ export async function selectModel(models, lastModel, zdrOnly = false) {
 
 export function orderImageModelChoices(models, lastImageModel) {
   const choices = models.map((m) => ({
-    name: `${m.name}  (${m.id})${m.offline === true ? '  [offline]' : ''}`,
+    name: `${m.name}  (${m.id})  [image]${m.offline === true ? '  [offline]' : ''}`,
     value: { id: m.id, name: m.name },
     description: m.description || m.id,
   }))
@@ -77,6 +78,19 @@ export function orderImageModelChoices(models, lastImageModel) {
 
 export async function selectImageModel(models, lastImageModel) {
   return searchPrompt('Select an image model', orderImageModelChoices(models, lastImageModel), filterModelChoices)
+}
+
+export function orderModelWithImages(textModels, imageModels, lastModel, lastImageModel) {
+  return [
+    ...orderModelChoices(textModels, lastModel),
+    new Separator('Image models'),
+    ...orderImageModelChoices(imageModels, lastImageModel),
+  ]
+}
+
+export async function selectModelWithImages(textModels, imageModels, lastModel, lastImageModel, zdrOnly = false) {
+  const choices = orderModelWithImages(textModels, imageModels, lastModel, lastImageModel)
+  return searchPrompt(zdrOnly ? 'Select a model (ZDR-capable only)' : 'Select a model', choices, filterModelChoices)
 }
 
 export function formatEndpointLabel(ep) {

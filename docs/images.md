@@ -2,9 +2,29 @@
 
 See the [README](../README.md#documentation) for the full docs index.
 
-Generate images directly from the terminal with Venice's image models (Flux, Nano Banana, GPT Image, ...). Venice exposes image generation on a **separate non-streaming endpoint** with per-image pricing, so this works as its own standalone flow — it does not go through the chat model picker.
+Generate images directly from the terminal with Venice's image models (Flux, Nano Banana, GPT Image, ...). Venice exposes image generation on a **separate non-streaming endpoint** with per-image pricing, so this works as its own standalone flow — it does not go through a chat completion.
 
-**Venice only** — `--image`, `--list-image-models`, and `/image` fail with a clear error on OpenRouter (OpenRouter image output already works through the chat artifact flow).
+**Venice only** — `--image`, `--list-image-models`, `/image`, image sessions, and `-m <image-model>` fail with a clear error on OpenRouter (OpenRouter image output already works through the chat artifact flow).
+
+## Unified model picker & image sessions
+
+The interactive model picker (Venice) now shows **text models and image models together**: image models appear after an `Image models` separator, tagged `[image]`, with your last-used image model pinned first. Picking an image model starts an **image session** instead of a chat:
+
+```text
+Select a model
+❯ venice/llama-3.3-70b
+  flux-1-1  (flux-1-1)  [image]
+  ...
+──────────────────────────
+Image models
+  venice-sd35  (venice-sd35)  [image]
+  gpt-image-2  (gpt-image-2)  [image]  [offline]
+```
+
+- Every prompt you type generates an image (`saved to …` lines after each turn).
+- `/help` lists the commands; `/exit` and `/quit` (or Ctrl+C / EOF) leave the session.
+- Each turn is persisted to the session (system + prompt + image messages), so the session shows up in `--list-sessions`, is exportable, and `--resume <id>` re-enters the image session to keep generating. Your last-used image model is remembered (`lastImageModel`).
+- `-m <image-model> "prompt"` runs the same generation as a one-shot (persisted + printed, `--attach` rejected), and `--image`/`/image` keep working as before for one-off generations inside text sessions.
 
 ## One-shot: `--image`
 
