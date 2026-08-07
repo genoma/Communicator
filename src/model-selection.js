@@ -1,4 +1,4 @@
-import { selectModel, selectModelWithImages, selectProvider, selectReasoningEffort, BACK_SENTINEL } from './prompts.js'
+import { selectModel, selectModelWithImages, selectProvider, selectImageProvider, selectReasoningEffort, BACK_SENTINEL } from './prompts.js'
 import { resolveEffortDefault, isWebSearchSupported } from './reasoning.js'
 import { CliError, formatError } from './errors.js'
 
@@ -46,12 +46,13 @@ export async function findImageModel(provider, apiKey, modelId) {
   return models.find((m) => m.id === modelId) || null
 }
 
-export function imageModelSelection(model, provider) {
+export function imageModelSelection(model, provider, endpoint = null) {
   return {
     modelId: model.id,
     isImageModel: true,
-    endpointProviderName: provider.meta.name,
-    pricing: model.pricing || null,
+    endpointProviderName: endpoint?.providerName || provider.meta.name,
+    pricing: endpoint?.pricing || model.pricing || null,
+    imageProvider: endpoint?.slug || endpoint?.providerName || null,
     contextLength: null,
     reasoningEffort: null,
     supportsReasoning: false,
@@ -61,6 +62,20 @@ export function imageModelSelection(model, provider) {
     fileSupported: false,
     imageOutputSupported: undefined,
   }
+}
+
+// Image providers route through their own endpoints API; picks a provider
+// interactively (or the cheapest when non-interactive), mirroring the text
+// flow. Returns BACK_SENTINEL when the user backs out of the picker.
+export async function selectImageEndpoint({ provider, apiKey, model, interactive = true }) {
+  if (typeof provider.fetchImageModelEndpoints !== 'function') return null
+  const endpoints = await provider.fetchImageModelEndpoints(apiKey, model.id)
+  if (endpoints.length === 0) return null
+  if (!interactive) {
+    const price = (ep) => ep.pricing?.perImage ?? ep.pricing?.perToken ?? Infinity
+    return endpoints.reduce((best, ep) => (price(ep) < price(best) ? ep : best))
+  }
+  return selectImageProvider(endpoints)
 }
 
 export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort, zdr = false }) {
@@ -88,7 +103,9 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
 
     const imageModel = withImages ? (imageModels.find((m) => m.id === modelId) || null) : null
     if (imageModel) {
-      return imageModelSelection(imageModel, provider)
+      const endpoint = await selectImageEndpoint({ provider, apiKey, model: imageModel })
+      if (endpoint === BACK_SENTINEL) continue
+      return imageModelSelection(imageModel, provider, endpoint)
     }
 
     const modelData = models.find((m) => m.id === modelId)
@@ -172,7 +189,10 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
   const modelData = models.find((m) => m.id === modelId)
   if (!modelData && !zdrActive) {
     const imageModel = await findImageModel(provider, apiKey, modelId)
-    if (imageModel) return imageModelSelection(imageModel, provider)
+    if (imageModel) {
+      const endpoint = await selectImageEndpoint({ provider, apiKey, model: imageModel, interactive: false })
+      return imageModelSelection(imageModel, provider, endpoint)
+    }
   }
   const reasoning = modelData?.reasoning || null
 

@@ -374,6 +374,82 @@ test('interactive selection with image models merges them into one picker and re
   assert.equal(choices[2].name, 'SD 3.5  (venice-sd35)  [image]')
 })
 
+function openRouterImageProvider(endpoints) {
+  return {
+    meta: { name: 'openrouter', hasEndpoints: true, supportsWebSearchOnAll: true, supportsZdr: true },
+    async fetchModels() {
+      return [{ id: 'openai/gpt-5-image', name: 'GPT-5 Image', contextLength: 400000, reasoning: null, architecture: { input_modalities: ['text', 'image'] }, supportedParameters: ['image_url'] }]
+    },
+    async fetchImageModels() {
+      return [{ id: 'openai/gpt-5-image', name: 'GPT-5 Image', pricing: { perImage: 0.05 }, constraints: null, privacy: null, offline: false }]
+    },
+    async fetchImageModelEndpoints() {
+      return endpoints
+    },
+    async fetchEndpoints() {
+      return []
+    },
+    async isZdrIndexDegraded() {
+      return false
+    },
+  }
+}
+
+test('interactive selection asks for a provider when an image model has multiple endpoints', async (t) => {
+  searchQueue = [{ id: 'openai/gpt-5-image', name: 'GPT-5 Image' }, { providerName: 'Google AI Studio', slug: 'google-ai-studio', tag: 'google-ai-studio', pricing: { perImage: 0.04 } }]
+  searchMessages = []
+  searchChoices = []
+  t.mock.method(console, 'log', () => {})
+
+  const sel = await selectModelAndEndpoint({ provider: openRouterImageProvider([
+    { providerName: 'Google AI Studio', slug: 'google-ai-studio', tag: 'google-ai-studio', pricing: { perImage: 0.04 } },
+    { providerName: 'Google Vertex', slug: 'google-vertex/global', tag: 'google-vertex/global', pricing: { perImage: 0.05 } },
+  ]), apiKey: 'k', prefs: {}, reasoningEffort: undefined })
+
+  assert.equal(sel.modelId, 'openai/gpt-5-image')
+  assert.equal(sel.isImageModel, true)
+  assert.equal(sel.endpointProviderName, 'Google AI Studio')
+  assert.equal(sel.imageProvider, 'google-ai-studio')
+  assert.deepEqual(sel.pricing, { perImage: 0.04 })
+  assert.equal(searchMessages[1], 'Select a provider (2 available)')
+})
+
+test('interactive selection auto-uses the only image provider and prints its price', async (t) => {
+  searchQueue = [{ id: 'openai/gpt-5-image', name: 'GPT-5 Image' }]
+  searchMessages = []
+  searchChoices = []
+  const logged = []
+  t.mock.method(console, 'log', (msg) => logged.push(msg))
+
+  const sel = await selectModelAndEndpoint({ provider: openRouterImageProvider([
+    { providerName: 'OpenAI', slug: 'openai', tag: 'openai', pricing: { perImage: null, perToken: 0.00004 } },
+  ]), apiKey: 'k', prefs: {}, reasoningEffort: undefined })
+
+  assert.equal(sel.endpointProviderName, 'OpenAI')
+  assert.equal(sel.imageProvider, 'openai')
+  assert.deepEqual(sel.pricing, { perImage: null, perToken: 0.00004 })
+  assert.ok(logged.includes('Only one provider available: OpenAI ($40.00 per 1M tokens)'))
+  assert.equal(searchMessages.length, 1)
+})
+
+test('interactive selection backs out of the image provider picker and re-prompts', async (t) => {
+  searchQueue = [{ id: 'openai/gpt-5-image', name: 'GPT-5 Image' }, BACK_SENTINEL, { id: 'openai/gpt-5-image', name: 'GPT-5 Image' }, { providerName: 'Google Vertex', slug: 'google-vertex/global', tag: 'google-vertex/global', pricing: { perImage: 0.05 } }]
+  searchMessages = []
+  searchChoices = []
+  t.mock.method(console, 'log', () => {})
+
+  const sel = await selectModelAndEndpoint({ provider: openRouterImageProvider([
+    { providerName: 'Google AI Studio', slug: 'google-ai-studio', tag: 'google-ai-studio', pricing: { perImage: 0.04 } },
+    { providerName: 'Google Vertex', slug: 'google-vertex/global', tag: 'google-vertex/global', pricing: { perImage: 0.05 } },
+  ]), apiKey: 'k', prefs: {}, reasoningEffort: undefined })
+
+  assert.equal(sel.endpointProviderName, 'Google Vertex')
+  assert.equal(sel.imageProvider, 'google-vertex/global')
+  assert.equal(searchMessages.length, 4)
+  assert.equal(searchMessages[1], 'Select a provider (2 available)')
+  assert.equal(searchMessages[3], 'Select a provider (2 available)')
+})
+
 test('interactive selection with image models keeps the text flow for text picks', async (t) => {
   searchQueue = [{ id: 'venice/llama', name: 'Llama' }]
   searchMessages = []

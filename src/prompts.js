@@ -1,7 +1,7 @@
 import { search, select } from '@inquirer/prompts'
 import { Separator } from '@inquirer/core'
 import { EFFORT_LABELS } from './constants.js'
-import { formatModelPrice } from './ui/format.js'
+import { formatModelPrice, formatImagePrice } from './ui/format.js'
 import { hyperlink } from './ui/hyperlink.js'
 import { bold, dim } from './ui/style.js'
 
@@ -147,6 +147,54 @@ export async function selectProvider(endpoints, zdrOnly = false) {
           (c.value.tag && c.value.tag.toLowerCase().includes(q))
       )
       if (filtered.length === 0) {
+        const backMatch =
+          '← back to model selection'.includes(q) ||
+          'back'.includes(q)
+        return backMatch ? [backChoice] : []
+      }
+      return filtered
+    }
+  )
+}
+
+export function formatImageEndpointLabel(ep) {
+  return `${ep.providerName}  —  ${formatImagePrice(ep.pricing)}`
+}
+
+export async function selectImageProvider(endpoints, { withBack = false } = {}) {
+  if (endpoints.length === 1) {
+    const ep = endpoints[0]
+    console.log(`Only one provider available: ${ep.providerName} (${formatImagePrice(ep.pricing)})`)
+    return ep
+  }
+
+  const backChoice = {
+    name: '← Back to model selection',
+    value: BACK_SENTINEL,
+    description: 'Return to the model picker',
+  }
+
+  const providerChoices = endpoints.map((ep) => ({
+    name: formatImageEndpointLabel(ep),
+    value: ep,
+    description: ep.tag ? `tag: ${ep.tag}` : undefined,
+  }))
+
+  const fullChoices = withBack ? [backChoice, new Separator(), ...providerChoices] : providerChoices
+
+  return searchPrompt(
+    `Select a provider (${endpoints.length} available)`,
+    fullChoices,
+    (_, input) => {
+      const q = input.toLowerCase()
+      const filtered = providerChoices.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.value.providerName.toLowerCase().includes(q) ||
+          (c.value.slug && c.value.slug.toLowerCase().includes(q)) ||
+          (c.value.tag && c.value.tag.toLowerCase().includes(q))
+      )
+      if (filtered.length === 0 && withBack) {
         const backMatch =
           '← back to model selection'.includes(q) ||
           'back'.includes(q)

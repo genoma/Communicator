@@ -3,7 +3,7 @@ import { copyFile, mkdir } from 'node:fs/promises'
 import { getProvider } from '../providers/index.js'
 import { ensureSessionsDir, generateSessionId, persistSessionFile, buildSessionPayload } from '../sessions.js'
 import { attachmentDirFor, externalizeAttachments, savedAttachmentPath } from '../attachment-store.js'
-import { selectImageModelNonInteractive } from '../model-selection.js'
+import { selectImageModelNonInteractive, selectImageEndpoint } from '../model-selection.js'
 import { selectImageModel, selectSizingOption } from '../prompts.js'
 import { SESSIONS_DIR } from '../constants.js'
 import { CliError, formatError } from '../errors.js'
@@ -107,6 +107,23 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
   }
   if (!modelId) {
     throw new CliError('Error: no image model selected.')
+  }
+
+  // OpenRouter image models route through their own endpoints: pick a
+  // provider (interactively on a TTY, cheapest otherwise) unless the model
+  // already carries one from the selection layer or a resumed session.
+  if (resolved && !resolved.imageProvider && typeof provider.fetchImageModelEndpoints === 'function') {
+    const endpoint = await selectImageEndpoint({
+      provider,
+      apiKey,
+      model: resolved,
+      interactive: selectImage != null || stdout.isTTY === true,
+    })
+    if (endpoint) {
+      resolved.imageProvider = endpoint.slug || endpoint.providerName
+      resolved.endpointProviderName = endpoint.providerName
+      resolved.pricing = endpoint.pricing || resolved.pricing
+    }
   }
 
   let format
@@ -215,6 +232,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
       seed,
       width,
       height,
+      provider: resolved?.imageProvider || undefined,
       pricing: resolved?.pricing || null,
     })
   } finally {
@@ -258,6 +276,8 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
     blurred: result.blurred === true,
     costLine,
     modelId,
+    endpointProviderName: resolved?.endpointProviderName || provider.meta.name,
+    pricing: resolved?.pricing || null,
     ...(Object.keys(prefsUpdates).length > 0 && { prefsUpdates }),
     ...(sizingParts.length > 0 && { sizing: sizingParts.join(' · ') }),
   }
@@ -272,25 +292,25 @@ export function printImageOutcome({ savedPaths = [], blurred = false, costLine =
   if (blurred) process.stderr.write('Warning: the generated image was returned blurred (safe mode).\n')
 }
 
-export function buildImageSessionPayload({ messages, modelId, createdAt, providerName = 'venice' }) {
+export function buildImageSessionPayload({ messages, modelId, createdAt, providerName = 'venice', endpointProviderName = providerName, pricing = null }) {
   return buildSessionPayload({
     messages,
     modelId,
-    endpointProviderName: providerName,
+    endpointProviderName,
     providerType: providerName,
     reasoningEffort: 'auto',
     temperature: null,
     budget: null,
     webSearch: 'off',
     webResults: null,
-    pricing: null,
+    pricing,
     contextLength: null,
     createdAt,
   })
 }
 
 export async function finalizeImageSession({ prefs, opts = {}, config, sessionId, messages, outcome, createdAt, providerName = 'venice', stdout = process.stdout }) {
-  await persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: outcome.modelId, createdAt, providerName }))
+  await persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: outcome.modelId, createdAt, providerName, endpointProviderName: outcome.endpointProviderName, pricing: outcome.pricing }))
   const updated = applyPreferenceUpdates(prefs, {
     lastImageModel: outcome.modelId,
     outputDir: opts.outputDir,

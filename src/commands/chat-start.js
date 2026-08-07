@@ -9,8 +9,8 @@ import { resolveSessionFlags, persistSession, buildSessionContext } from '../ses
 import { findImageModel } from '../model-selection.js'
 import { startImageSession } from './image-session.js'
 
-function imageSessionContext({ provider, apiKey, prefs, imageModelId, sessionId, createdAt, initialMessages, configPath }) {
-  return { imageModelId, provider, apiKey, prefs, sessionId, createdAt, initialMessages, configPath }
+function imageSessionContext({ provider, apiKey, prefs, imageModelId, sessionId, createdAt, initialMessages, configPath, imageProviderName = null, pricing = null }) {
+  return { imageModelId, provider, apiKey, prefs, sessionId, createdAt, initialMessages, configPath, imageProviderName, pricing }
 }
 
 async function createSessionContext({ apiKey, opts, prefs, providerType }) {
@@ -32,6 +32,8 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
         createdAt: result.sessionCreatedAt,
         initialMessages: result.initialMessages,
         configPath: opts.config,
+        imageProviderName: result.providerName,
+        pricing: result.pricing,
       })
     }
 
@@ -85,6 +87,8 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
       createdAt: new Date().toISOString(),
       initialMessages: [],
       configPath: opts.config,
+      imageProviderName: selection.endpointProviderName,
+      pricing: selection.pricing,
     })
   }
 
@@ -126,6 +130,8 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerTyp
       createdAt: ctx.createdAt,
       initialMessages: ctx.initialMessages,
       configPath: ctx.configPath,
+      imageProviderName: ctx.imageProviderName,
+      pricing: ctx.pricing,
     })
     return
   }

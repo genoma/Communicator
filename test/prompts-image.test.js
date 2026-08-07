@@ -13,7 +13,7 @@ mock.module('@inquirer/prompts', {
   },
 })
 
-const { orderImageModelChoices, orderModelWithImages, selectImageModel, selectModelWithImages, filterModelChoices } = await import('../src/prompts.js')
+const { orderImageModelChoices, orderModelWithImages, selectImageModel, selectModelWithImages, filterModelChoices, selectImageProvider, formatImageEndpointLabel, BACK_SENTINEL } = await import('../src/prompts.js')
 
 const MODELS = [
   {
@@ -99,4 +99,56 @@ test('selectImageModel runs a search prompt for image models', async () => {
   assert.equal(chosen.id, 'flux-1-1')
   assert.equal(searchCalls.length, 1)
   assert.equal(searchCalls[0].message, 'Select an image model')
+})
+
+test('formatImageEndpointLabel shows the provider with its image price', () => {
+  assert.equal(formatImageEndpointLabel({ providerName: 'Google AI Studio', pricing: { perImage: 0.03, perToken: null, byResolution: null, byQuality: null } }), 'Google AI Studio  —  $0.03 per image')
+  assert.equal(formatImageEndpointLabel({ providerName: 'OpenAI', pricing: { perImage: null, perToken: 0.00004, byResolution: null, byQuality: null } }), 'OpenAI  —  $40.00 per 1M tokens')
+})
+
+test('selectImageProvider prints the single provider line without a picker', async () => {
+  const logged = []
+  const consoleMock = mock.method(console, 'log', (msg) => logged.push(msg))
+  const ep = { providerName: 'Google AI Studio', tag: 'google-ai-studio', pricing: { perImage: 0.03 } }
+
+  const chosen = await selectImageProvider([ep])
+
+  consoleMock.mock.restore()
+  assert.equal(chosen, ep)
+  assert.deepEqual(logged, ['Only one provider available: Google AI Studio ($0.03 per image)'])
+})
+
+test('selectImageProvider runs a search prompt over priced providers', async () => {
+  searchCalls = []
+  const eps = [
+    { providerName: 'Google AI Studio', tag: 'google-ai-studio', pricing: { perImage: 0.03 } },
+    { providerName: 'Google Vertex', tag: 'google-vertex', pricing: { perImage: 0.04 } },
+  ]
+
+  await selectImageProvider(eps)
+
+  assert.equal(searchCalls.length, 1)
+  assert.equal(searchCalls[0].message, 'Select a provider (2 available)')
+  const choices = await searchCalls[0].source('')
+  assert.equal(choices[0].name, 'Google AI Studio  —  $0.03 per image')
+  assert.equal(choices[1].name, 'Google Vertex  —  $0.04 per image')
+  const filtered = await searchCalls[0].source('vertex')
+  assert.equal(filtered.length, 1)
+  assert.equal(filtered[0].value.providerName, 'Google Vertex')
+})
+
+test('selectImageProvider adds the back choice only when withBack is set', async () => {
+  searchCalls = []
+  const eps = [
+    { providerName: 'A', tag: 'a', pricing: { perImage: 0.03 } },
+    { providerName: 'B', tag: 'b', pricing: { perImage: 0.04 } },
+  ]
+
+  await selectImageProvider(eps, { withBack: true })
+  const withBackChoices = await searchCalls[0].source('')
+  assert.equal(withBackChoices[0].value, BACK_SENTINEL)
+
+  await selectImageProvider(eps)
+  const noBackChoices = await searchCalls[1].source('')
+  assert.ok(!noBackChoices.some((c) => c.value === BACK_SENTINEL))
 })

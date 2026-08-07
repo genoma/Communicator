@@ -95,7 +95,6 @@ test('fetchImageModels with pricing fetches endpoints and takes the minimum', as
   assert.equal(calls.length, 2)
   assert.ok(calls[1].endsWith('/images/models/openai/gpt-image-1-mini/endpoints'), calls[1])
   assert.deepEqual(models[0].pricing, { perImage: 0.015, perToken: null, byResolution: null, byQuality: null })
-  assert.equal(models[0].description, '$0.015 per image  |  aspect: 1:1, 3:2, 2:3, auto  |  res: 1024x1024, 2048x2048  |  quality: low, high\nSmall fast image model')
 })
 
 test('fetchImageModels pricing falls back to the variant-tier minimum when no flat entry exists', async (t) => {
@@ -128,7 +127,6 @@ test('fetchImageModels pricing captures token-billed output_image entries', asyn
   const models = await fetchImageModels('key', { withPricing: true })
 
   assert.deepEqual(models[0].pricing, { perImage: null, perToken: 0.000108, byResolution: null, byQuality: null })
-  assert.ok(models[0].description.startsWith('$108.00 per 1M tokens'))
 })
 
 test('fetchImageModels pricing falls back to nulls when no output_image entries exist', async (t) => {
@@ -142,6 +140,41 @@ test('fetchImageModels pricing falls back to nulls when no output_image entries 
   const models = await fetchImageModels('key', { withPricing: true })
 
   assert.deepEqual(models[0].pricing, { perImage: null, perToken: null, byResolution: null, byQuality: null })
+})
+
+test('fetchImageModelEndpoints maps provider names, tags and per-endpoint pricing', async (t) => {
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    assert.ok(String(url).endsWith('/images/models/qwen/qwen-image-3/endpoints'), String(url))
+    return jsonResponse({
+      id: 'qwen/qwen-image-3',
+      endpoints: [
+        { provider_name: 'Alibaba Cloud Int.', provider_slug: 'alibaba', provider_tag: 'alibaba', pricing: [{ billable: 'output_image', unit: 'image', cost_usd: 0.03 }, { billable: 'output_image', unit: 'image', cost_usd: 0.05, variant: '2k' }] },
+        { provider_name: 'Another Host', provider_slug: 'another', provider_tag: 'another', pricing: [{ billable: 'output_image', unit: 'token', cost_usd: 0.00004 }] },
+      ],
+    })
+  })
+
+  const { fetchImageModelEndpoints } = await import('../src/providers/openrouter.js')
+  const endpoints = await fetchImageModelEndpoints('key', 'qwen/qwen-image-3')
+
+  assert.deepEqual(endpoints, [
+    { providerName: 'Alibaba Cloud Int.', slug: 'alibaba', tag: 'alibaba', pricing: { perImage: 0.03, perToken: null, byResolution: null, byQuality: null } },
+    { providerName: 'Another Host', slug: 'another', tag: 'another', pricing: { perImage: null, perToken: 0.00004, byResolution: null, byQuality: null } },
+  ])
+})
+
+test('generateImage routes through the chosen provider when one is given', async (t) => {
+  const bodies = []
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    bodies.push(JSON.parse(opts.body))
+    return jsonResponse({ data: [{ b64_json: Buffer.from('img').toString('base64'), media_type: 'image/png' }], usage: { cost: 0.01 } })
+  })
+
+  await generateImage({ apiKey: 'key', model: 'qwen/qwen-image-3', prompt: 'p', provider: 'Alibaba Cloud Int.' })
+  await generateImage({ apiKey: 'key', model: 'qwen/qwen-image-3', prompt: 'p' })
+
+  assert.deepEqual(bodies[0].provider, { order: ['Alibaba Cloud Int.'], allow_fallbacks: false })
+  assert.equal(bodies[1].provider, undefined)
 })
 
 test('fetchImageModels maps 400 bodies through handleHttpError with the message', async (t) => {

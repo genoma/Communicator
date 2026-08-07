@@ -376,6 +376,29 @@ test('non-interactive selection falls back to the image shape for image model id
   assert.deepEqual(sel.pricing, { perImage: 0.02 })
 })
 
+test('non-interactive selection picks the cheapest image endpoint silently', async () => {
+  const provider = fakeProvider({
+    meta: { name: 'openrouter', hasEndpoints: true },
+    async fetchModels() {
+      return [{ id: 'openai/gpt-5-image', name: 'GPT-5 Image', contextLength: 400000, reasoning: null }]
+    },
+    async fetchImageModels() {
+      return [{ id: 'image-only/foo', name: 'Image Only', pricing: null }]
+    },
+    async fetchImageModelEndpoints() {
+      return [
+        { providerName: 'Expensive', slug: 'exp', tag: 'exp', pricing: { perImage: 0.1 } },
+        { providerName: 'Cheap', slug: 'cheap', tag: 'cheap', pricing: { perImage: 0.02 } },
+      ]
+    },
+  })
+  const sel = await selectModelNonInteractive({ provider, apiKey: 'k', prefs: {}, modelId: 'image-only/foo' })
+  assert.equal(sel.isImageModel, true)
+  assert.equal(sel.endpointProviderName, 'Cheap')
+  assert.equal(sel.imageProvider, 'cheap')
+  assert.deepEqual(sel.pricing, { perImage: 0.02 })
+})
+
 test('non-interactive selection does not fall back to image models under --zdr', async () => {
   const provider = fakeProvider({
     meta: { name: 'venice', hasEndpoints: false, supportsZdr: true },

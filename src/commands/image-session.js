@@ -1,7 +1,7 @@
 import { readInput as readInputFromInput } from '../input.js'
 import { persistSessionFile } from '../sessions.js'
 import { getImageDefaults, mergeImageDefaults, savePreferences, applyPreferenceUpdates } from '../config.js'
-import { findImageModel } from '../model-selection.js'
+import { findImageModel, selectImageEndpoint } from '../model-selection.js'
 import { CliError, formatError } from '../errors.js'
 import { resolveAspectRatio, resolveImageFormat } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
@@ -39,10 +39,29 @@ function aspectPresetLine(presets, current) {
   return `Aspect ratios: ${marked} (none set).`
 }
 
-export async function startImageSession({ provider, apiKey, prefs, imageModelId, sessionId, createdAt, initialMessages = [], configPath, stdout = process.stdout, readInput: read = readInputFromInput }) {
+export async function startImageSession({ provider, apiKey, prefs, imageModelId, sessionId, createdAt, initialMessages = [], configPath, imageProviderName = null, pricing = null, stdout = process.stdout, readInput: read = readInputFromInput }) {
   const model = await findImageModel(provider, apiKey, imageModelId)
   if (!model) {
     throw new CliError(`Error: image model ${imageModelId} is no longer available. Use --list-image-models to see available models.`)
+  }
+
+  // OpenRouter sessions route through a provider endpoint: reuse the one
+  // persisted for the session, or pick one interactively once at session
+  // start (the picker prints the price, mirroring text sessions).
+  if (typeof provider.fetchImageModelEndpoints === 'function') {
+    const endpoints = await provider.fetchImageModelEndpoints(apiKey, model.id)
+    const saved = endpoints.find((ep) => ep.providerName === imageProviderName)
+    let chosen
+    if (saved) {
+      chosen = saved
+    } else if (endpoints.length > 0) {
+      chosen = await selectImageEndpoint({ provider, apiKey, model })
+    }
+    if (chosen) {
+      model.imageProvider = chosen.slug || chosen.providerName
+      model.endpointProviderName = chosen.providerName
+      model.pricing = pricing ?? chosen.pricing
+    }
   }
 
   let messages = initialMessages.length > 0 ? [...initialMessages] : [{ role: 'system', content: 'You are a helpful assistant.' }]

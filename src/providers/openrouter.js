@@ -4,7 +4,6 @@ import { ApiError, makeHandleHttpError } from '../errors.js'
 import { DEFAULT_TEMPERATURE, DEFAULT_WEB_SEARCH_RESULTS } from '../constants.js'
 import { getZdrIndex, getProviderPolicies } from './openrouter-meta.js'
 import { mimeForExt, extForMime } from '../attachments.js'
-import { formatImagePrice } from '../ui/format.js'
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 const CACHE_HEADER = 'x-openrouter-cache-status'
@@ -103,37 +102,47 @@ function imageModelConstraints(m) {
   }
 }
 
-async function fetchImageModelPricing(apiKey, modelId) {
+function cheapestImagePrice(prices) {
+  const noVariant = prices.filter((p) => !p.variant)
+  const chosen = noVariant.length > 0 ? noVariant : prices
+  return chosen.length === 0 ? null : Math.min(...chosen.map((p) => p.cost_usd))
+}
+
+function imagePricingFromEntries(entries) {
+  const perImage = []
+  const perToken = []
+  for (const p of entries) {
+    if (p.billable !== 'output_image' || typeof p.cost_usd !== 'number') continue
+    if (p.unit === 'token') perToken.push(p)
+    else if (p.unit === undefined || p.unit === 'image') perImage.push(p)
+  }
+  return { perImage: cheapestImagePrice(perImage), perToken: cheapestImagePrice(perToken), byResolution: null, byQuality: null }
+}
+
+export async function fetchImageModelEndpoints(apiKey, modelId) {
   const res = await fetchWithRetry(`${OPENROUTER_BASE}/images/models/${modelId}/endpoints`, {
     headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
   }, { errorResponse: handleHttpError })
   const parsed = await res.json()
   const endpoints = Array.isArray(parsed.data) ? parsed.data : parsed.endpoints || parsed.data?.endpoints || []
-  const perImage = []
-  const perToken = []
-  for (const ep of endpoints) {
-    for (const p of ep.pricing || []) {
-      if (p.billable !== 'output_image' || typeof p.cost_usd !== 'number') continue
-      if (p.unit === 'token') perToken.push(p)
-      else if (p.unit === undefined || p.unit === 'image') perImage.push(p)
-    }
-  }
-  const cheapest = (prices) => {
-    const noVariant = prices.filter((p) => !p.variant)
-    const chosen = noVariant.length > 0 ? noVariant : prices
-    return chosen.length === 0 ? null : Math.min(...chosen.map((p) => p.cost_usd))
-  }
-  return { perImage: cheapest(perImage), perToken: cheapest(perToken), byResolution: null, byQuality: null }
+  return endpoints.map((ep) => ({
+    providerName: ep.provider_name,
+    slug: ep.provider_slug || null,
+    tag: ep.provider_tag || null,
+    pricing: imagePricingFromEntries(ep.pricing || []),
+  }))
 }
 
-function imageMetaStr(constraints, pricing) {
-  const parts = []
-  const priceText = formatImagePrice(pricing)
-  if (priceText !== '?') parts.push(priceText)
-  if (constraints.aspectRatios?.length) parts.push(`aspect: ${constraints.aspectRatios.join(', ')}`)
-  if (constraints.resolutions?.length) parts.push(`res: ${constraints.resolutions.join(', ')}`)
-  if (constraints.qualities?.length) parts.push(`quality: ${constraints.qualities.join(', ')}`)
-  return parts.join('  |  ')
+async function fetchImageModelPricing(apiKey, modelId) {
+  const endpoints = await fetchImageModelEndpoints(apiKey, modelId)
+  const perImage = endpoints.map((ep) => ep.pricing.perImage).filter((v) => v != null)
+  const perToken = endpoints.map((ep) => ep.pricing.perToken).filter((v) => v != null)
+  return {
+    perImage: perImage.length > 0 ? Math.min(...perImage) : null,
+    perToken: perToken.length > 0 ? Math.min(...perToken) : null,
+    byResolution: null,
+    byQuality: null,
+  }
 }
 
 export async function fetchImageModels(apiKey, { withPricing = false } = {}) {
@@ -141,33 +150,25 @@ export async function fetchImageModels(apiKey, { withPricing = false } = {}) {
     headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
   }, { errorResponse: handleHttpError })
   const { data } = await res.json()
-  const models = (data || []).map((m) => {
-    const constraints = imageModelConstraints(m)
-    return {
-      id: m.id,
-      name: m.name,
-      provider: m.id.split('/')[0],
-      description: m.description || null,
-      privacy: null,
-      pricing: null,
-      constraints,
-      offline: false,
-    }
-  })
-  if (!withPricing) return models
-  return Promise.all(models.map(async (m) => {
-    const pricing = await fetchImageModelPricing(apiKey, m.id)
-    const metaStr = imageMetaStr(m.constraints, pricing)
-    return {
-      ...m,
-      pricing,
-      description: m.description ? `${metaStr}\n${m.description}` : metaStr || m.description,
-    }
+  const models = (data || []).map((m) => ({
+    id: m.id,
+    name: m.name,
+    provider: m.id.split('/')[0],
+    description: m.description || null,
+    privacy: null,
+    pricing: null,
+    constraints: imageModelConstraints(m),
+    offline: false,
   }))
+  if (!withPricing) return models
+  return Promise.all(models.map(async (m) => ({ ...m, pricing: await fetchImageModelPricing(apiKey, m.id) })))
 }
 
-export async function generateImage({ apiKey, model, prompt, format, variants = 1, aspectRatio, resolution, quality, seed, width, height, signal, timeoutMs = IMAGE_GEN_TIMEOUT_MS }) {
+export async function generateImage({ apiKey, model, prompt, format, variants = 1, aspectRatio, resolution, quality, seed, width, height, provider, signal, timeoutMs = IMAGE_GEN_TIMEOUT_MS }) {
   const body = { model, prompt, n: variants }
+  if (provider) {
+    body.provider = { order: [provider], allow_fallbacks: false }
+  }
   if (aspectRatio) body.aspect_ratio = aspectRatio
   if (format) body.output_format = format
   if (resolution) body.resolution = resolution
