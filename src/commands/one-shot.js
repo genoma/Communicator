@@ -7,7 +7,8 @@ import { UsageTracker, budgetLine } from '../tracker.js'
 import { ChatState } from '../chat-state.js'
 import { CliError, formatError } from '../errors.js'
 import { fail } from '../cli-utils.js'
-import { loadAttachments, buildContent } from '../attachments.js'
+import { loadAttachments, buildContent, contentText } from '../attachments.js'
+import { resolveArtifacts, printArtifacts } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
 
 const MAX_STDIN_BYTES = 10 * 1024 * 1024
@@ -109,13 +110,6 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
         },
       })
       await render.flush?.()
-      process.stdout.write('\n\n')
-      if (result.sources?.length > 0) {
-        printSources(result.sources, process.stdout)
-      }
-      if (result.skippedChunks > 0) {
-        process.stdout.write(`${result.skippedChunks} malformed stream chunk${result.skippedChunks > 1 ? 's' : ''} skipped\n`)
-      }
     } else {
       result = await provider.chatCompletion({ ...completionOpts, onToken: () => {} })
     }
@@ -130,7 +124,28 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     process.off('SIGINT', onSigint)
   }
 
-  if (result.content) {
+  if (ttyOut) {
+    process.stdout.write('\n\n')
+  }
+
+  const producedResults = await resolveArtifacts(result, {
+    sessionId,
+    imageOutputSupported: selection.imageOutputSupported,
+  })
+
+  if (ttyOut) {
+    if (producedResults.length > 0) {
+      printArtifacts(producedResults, process.stdout)
+    }
+    if (result.sources?.length > 0) {
+      printSources(result.sources, process.stdout)
+    }
+    if (result.skippedChunks > 0) {
+      process.stdout.write(`${result.skippedChunks} malformed stream chunk${result.skippedChunks > 1 ? 's' : ''} skipped\n`)
+    }
+  }
+
+  if (result.content || result.parts?.length > 0) {
     const msg = { role: 'assistant', content: result.content }
     if (result.reasoning) msg.reasoning = result.reasoning
     if (result.usage) msg.usage = result.usage
@@ -148,7 +163,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
       }
     }
   } else {
-    const content = result.content || ''
+    const content = Array.isArray(result.content) ? contentText(result.content) : (result.content || '')
     process.stdout.write(content)
     if (!content.endsWith('\n')) process.stdout.write('\n')
   }

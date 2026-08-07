@@ -63,6 +63,10 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   }
 
   const render = (token, type) => {
+    // Produced artifact parts render after the turn (printArtifacts in
+    // turn-runner/one-shot); skip them here so the smooth queue never sees
+    // object tokens.
+    if (type === 'image' || type === 'file') return
     if (!render.smooth) {
       writeSegment(type, token)
       return
@@ -148,6 +152,9 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
         stdout.write(`\n${answer()}\n\n`)
       }
       stdout.write(`${markdown ? renderText(contentText(msg.content), msg.sources || []) : contentText(msg.content)}\n\n`)
+      for (const att of contentAttachments(msg.content)) {
+        stdout.write(`${dim(`${italic('output')}: ${att.filename}`)}\n`)
+      }
       if (msg.sources?.length) {
         printSources(msg.sources, stdout)
       }

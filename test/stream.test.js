@@ -86,6 +86,46 @@ test('renderHistory prints attachment lines under parts-based user messages', (t
   assert.match(plain(), /attached: report\.pdf/)
 })
 
+test('renderHistory prints output lines under parts-based assistant messages', (t) => {
+  enableAnsi(t)
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'You are helpful.' },
+    { role: 'user', content: 'make an image' },
+    {
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'Here you go' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
+        { type: 'file', file: { filename: 'report.pdf', file_data: 'data:application/pdf;base64,BBBB' } },
+      ],
+    },
+  ], { markdown: false, stdout })
+  assert.match(plain(), /Here you go/)
+  assert.match(plain(), /output: image\.png/)
+  assert.match(plain(), /output: report\.pdf/)
+})
+
+test('renderHistory prints no output lines for string-only assistant messages', () => {
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'You are helpful.' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: 'Answer here' },
+  ], { markdown: false, stdout })
+  assert.match(plain(), /Answer here/)
+  assert.doesNotMatch(plain(), /output:/)
+})
+
+test('renderHistory skips produced image tokens during streaming', () => {
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout })
+  render('hello', 'content')
+  render({ type: 'image_url', image_url: { url: 'https://img.example/a.png' } }, 'image')
+  render(' world', 'content')
+  assert.equal(plain(), 'hello world')
+})
+
 test('renderHistory passes plain strings through unchanged', () => {
   const { stdout, plain } = capture()
   renderHistory([

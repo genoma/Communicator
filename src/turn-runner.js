@@ -4,6 +4,7 @@ import { extractPartialToken } from './sse-parser.js'
 import { printSources } from './ui/stream.js'
 import { dim } from './ui/style.js'
 import { debug } from './ui/io.js'
+import { resolveArtifacts, printArtifacts } from './artifacts.js'
 
 // Shared per-session mutable state: the runner and the signal handlers in
 // chat.js both touch these fields, and /new replaces the tracker.
@@ -57,6 +58,12 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       loader.stop()
       await render.flush()
       stdout.write('\n\n')
+
+      const results = await resolveArtifacts(apiResult, {
+        sessionId: state.sessionId,
+        imageOutputSupported: state.imageOutputSupported,
+      })
+      if (results.length > 0) printArtifacts(results, stdout)
 
       if (apiResult.sources?.length > 0) {
         printSources(apiResult.sources, stdout)

@@ -59,12 +59,31 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
   const decoder = new TextDecoder()
   let fullText = ''
   let fullReasoning = ''
+  const fullParts = []
+  const seenParts = new Set()
   let buffer = ''
   let inThinking = false
   let finalUsage = null
   let skippedChunks = 0
   const fullSources = []
   const seenUrls = new Set()
+
+  // Non-text content parts (image_url / file) are surfaced as typed tokens so
+  // the caller can save and render produced artifacts. Deduped by part shape
+  // because some providers repeat parts between delta and final message.
+  const addPart = (part) => {
+    if (!part || typeof part !== 'object') return
+    let key = null
+    if (part.type === 'image_url' && typeof part.image_url?.url === 'string') {
+      key = `image:${part.image_url.url}`
+    } else if (part.type === 'file' && typeof part.file?.file_data === 'string') {
+      key = `file:${part.file.file_data}`
+    }
+    if (key === null || seenParts.has(key)) return
+    seenParts.add(key)
+    fullParts.push(part)
+    onToken(part, part.type === 'image_url' ? 'image' : 'file')
+  }
 
   const readChunk = () => new Promise((resolve, reject) => {
     let timer = null
@@ -103,7 +122,27 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
         return
       }
 
-      const delta = parsed.choices?.[0]?.delta
+      const choice = parsed.choices?.[0]
+      const delta = choice?.delta
+      const finalContent = choice?.message?.content
+
+      // Some providers attach the full message only on the final chunk; its
+      // text duplicates what deltas already streamed, so non-text parts are
+      // always collected but text is only emitted when nothing was streamed.
+      if (Array.isArray(finalContent)) {
+        const noTextYet = !delta && fullText === ''
+        for (const part of finalContent) {
+          if (part?.type === 'text' && typeof part.text === 'string') {
+            if (noTextYet) {
+              fullText += part.text
+              onToken(part.text, 'content')
+            }
+          } else {
+            addPart(part)
+          }
+        }
+      }
+
       if (!delta) return
 
       const reasoningToken = delta.reasoning_content ?? (typeof delta.reasoning === 'string' ? delta.reasoning : undefined)
@@ -118,13 +157,24 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
       }
 
       const contentToken = delta.content
-      if (contentToken) {
+      if (contentToken != null) {
         if (inThinking) {
           inThinking = false
           onToken(null, 'end_reasoning')
         }
-        fullText += contentToken
-        onToken(contentToken, 'content')
+        if (typeof contentToken === 'string' && contentToken) {
+          fullText += contentToken
+          onToken(contentToken, 'content')
+        } else if (Array.isArray(contentToken)) {
+          for (const part of contentToken) {
+            if (part?.type === 'text' && typeof part.text === 'string') {
+              fullText += part.text
+              onToken(part.text, 'content')
+            } else {
+              addPart(part)
+            }
+          }
+        }
       }
     } catch {
       skippedChunks++
@@ -158,5 +208,5 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     handleLine(line)
   }
 
-  return { fullText, fullReasoning, finalUsage, fullSources, skippedChunks }
+  return { fullText, fullReasoning, finalUsage, fullSources, skippedChunks, fullParts }
 }

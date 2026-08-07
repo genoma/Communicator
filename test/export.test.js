@@ -75,6 +75,44 @@ test('formats user attachments as blockquoted attachment lines', () => {
   assert.match(md, /> \*\*Attachment:\*\* `report\.pdf`/)
 })
 
+test('exports produced image and file parts under assistant answers', () => {
+  const md = formatMarkdown(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'Make an image' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Done.' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
+          { type: 'file', file: { filename: 'out.pdf', file_data: 'data:application/pdf;base64,BBBB' } },
+        ],
+      },
+    ],
+  }))
+  assert.match(md, /Done\./)
+  assert.doesNotMatch(md, /\[object Object\]/)
+  assert.match(md, /> \*\*Image:\*\* `image\.png`/)
+  assert.match(md, /> \*\*File:\*\* `out\.pdf`/)
+})
+
+test('exports remote artifact URLs as markdown links', () => {
+  const md = formatMarkdown(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'Make an image' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Done.' },
+          { type: 'image_url', image_url: { url: 'https://img.example/photo.png' } },
+        ],
+      },
+    ],
+  }))
+  assert.match(md, /> \*\*Image:\*\* \[photo\.png\]\(https:\/\/img\.example\/photo\.png\)/)
+})
+
 test('exports a Sources list with markdown links and converts inline citations', () => {
   const md = formatMarkdown(session({
     messages: [

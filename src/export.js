@@ -84,7 +84,13 @@ export function formatMarkdown(sessionData) {
         md += `${msg.reasoning}\n\n`
       }
       md += '### Answer\n\n'
-      md += `${citationLinks(msg.content, msg.sources)}\n\n`
+      md += `${citationLinks(contentText(msg.content), msg.sources)}\n\n`
+      for (const att of contentAttachments(msg.content)) {
+        const kind = att.kind === 'image' ? 'Image' : 'File'
+        md += att.url
+          ? `> **${kind}:** [${att.filename}](${att.url})\n\n`
+          : `> **${kind}:** \`${att.filename}\`\n\n`
+      }
       const list = sourcesList(msg.sources)
       if (list) md += `${list}\n\n`
     }

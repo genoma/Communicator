@@ -223,10 +223,10 @@ test('openrouter fetchModels captures architecture and supported parameters', as
   }))
 
   const models = await openrouter.fetchModels('key')
-  assert.deepEqual(models[0].architecture, { input_modalities: ['text', 'image'] })
+  assert.deepEqual(models[0].architecture, { input_modalities: ['text', 'image'], output_modalities: [] })
   assert.deepEqual(models[0].supportedParameters, ['image_url', 'temperature'])
   assert.equal(models[0].visionSupported, true)
-  assert.deepEqual(models[1].architecture, { input_modalities: [] })
+  assert.deepEqual(models[1].architecture, { input_modalities: [], output_modalities: [] })
   assert.equal(models[1].supportedParameters, null)
   assert.equal(models[1].visionSupported, undefined)
   assert.equal(models[2].visionSupported, false)

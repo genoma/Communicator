@@ -133,7 +133,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
   }, { errorResponse: handleHttpError, signal })
 
   const reader = res.body.getReader()
-  const { fullText, fullReasoning, finalUsage, fullSources, skippedChunks } = await parseSSEStream(reader, onToken, onSources)
+  const { fullText, fullReasoning, finalUsage, fullSources, skippedChunks, fullParts } = await parseSSEStream(reader, onToken, onSources)
 
-  return { content: fullText, reasoning: fullReasoning || undefined, usage: finalUsage, sources: fullSources, skippedChunks }
+  return { content: fullText, reasoning: fullReasoning || undefined, usage: finalUsage, sources: fullSources, skippedChunks, parts: fullParts.length > 0 ? fullParts : undefined }
 }

@@ -188,6 +188,21 @@ test('contentAttachments synthesizes image.<ext> names from the data-URL mime', 
   ])
 })
 
+test('contentAttachments derives filenames from remote URLs and keeps the url', () => {
+  assert.deepEqual(contentAttachments([{ type: 'image_url', image_url: { url: 'https://img.example/photo.png' } }]), [
+    { filename: 'photo.png', kind: 'image', url: 'https://img.example/photo.png' },
+  ])
+  assert.deepEqual(contentAttachments([{ type: 'file', file: { filename: 'doc.pdf', file_data: 'https://files.example/doc.pdf' } }]), [
+    { filename: 'doc.pdf', kind: 'file', url: 'https://files.example/doc.pdf' },
+  ])
+  assert.deepEqual(contentAttachments([{ type: 'image_url', image_url: { url: 'https://img.example/noext' } }]), [
+    { filename: 'image', kind: 'image', url: 'https://img.example/noext' },
+  ])
+  assert.deepEqual(contentAttachments([{ type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }]), [
+    { filename: 'image.png', kind: 'image' },
+  ])
+})
+
 test('attachmentGate blocks images when vision is explicitly unsupported', () => {
   const err = attachmentGate([{ kind: 'image' }], { visionSupported: false, fileSupported: true, providerName: 'openrouter' })
   assert.equal(err, 'The selected model does not support image input.')

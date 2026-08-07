@@ -2,7 +2,7 @@ import { DEFAULT_TEMPERATURE } from './constants.js'
 import { normalizeSmoothSpeed, normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
-  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, webSearchSupported, visionSupported, fileSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent }) {
+  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent }) {
     this.modelId = modelId
     this.endpointProviderName = endpointProviderName
     this.reasoningEffort = reasoningEffort
@@ -17,6 +17,7 @@ export class ChatState {
     this.webSearchSupported = webSearchSupported
     this.visionSupported = visionSupported
     this.fileSupported = fileSupported
+    this.imageOutputSupported = imageOutputSupported
     this.pendingAttachments = []
     this.sessionId = sessionId
     this.createdAt = createdAt
@@ -87,6 +88,7 @@ export class ChatState {
     this.webSearch = sel.webSearchSupported === false ? 'off' : normalizeWebSearchMode(prefs.webSearch?.[sel.modelId])
     this.visionSupported = sel.visionSupported
     this.fileSupported = sel.fileSupported
+    this.imageOutputSupported = sel.imageOutputSupported
   }
 
   toggleMarkdown() {

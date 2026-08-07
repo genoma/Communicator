@@ -213,18 +213,40 @@ export function messageText(content) {
   return textParts(content)[0] ?? ''
 }
 
+export function partUrl(part) {
+  if (!part || typeof part !== 'object') return null
+  if (part.type === 'image_url') return part.image_url?.url || null
+  if (part.type === 'file') return part.file?.file_data || null
+  return null
+}
+
+export function partLabel(part) {
+  if (part?.type === 'file') return part.file?.filename || 'file'
+  if (part?.type === 'image_url') {
+    const url = part.image_url?.url || ''
+    const mime = /^data:([^;,]+)/.exec(url)?.[1]
+    if (mime) return `image.${mime.split('/')[1]}`
+    let last = ''
+    try {
+      last = decodeURIComponent(new URL(url).pathname.split('/').pop() || '')
+    } catch { /* invalid URL: fall back to the generic label */ }
+    if (last && /\.\w{1,5}$/.test(last)) return last
+    return 'image'
+  }
+  return 'file'
+}
+
 export function contentAttachments(content) {
   if (!Array.isArray(content)) return []
   return content.flatMap((p) => {
-    if (p.type === 'file') {
-      return [{ filename: p.file?.filename || 'file', kind: 'file' }]
+    if (p.type !== 'file' && p.type !== 'image_url') return []
+    const url = partUrl(p)
+    const entry = {
+      filename: partLabel(p),
+      kind: p.type === 'image_url' ? 'image' : 'file',
     }
-    if (p.type === 'image_url') {
-      const mime = /^data:([^;,]+)/.exec(p.image_url?.url || '')?.[1]
-      const ext = mime?.split('/')[1]
-      return [{ filename: ext ? `image.${ext}` : 'image', kind: 'image' }]
-    }
-    return []
+    if (url && /^https?:\/\//.test(url)) entry.url = url
+    return [entry]
   })
 }
 

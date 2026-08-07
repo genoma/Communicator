@@ -283,3 +283,91 @@ test('returns empty sources when no citations are present', async () => {
   )
   assert.deepEqual(fullSources, [])
 })
+
+test('emits image and file parts from array content deltas and folds text in', async () => {
+  const tokens = []
+  const imagePart = { type: 'image_url', image_url: { url: 'https://img.example/a.png' } }
+  const filePart = { type: 'file', file: { filename: 'doc.pdf', file_data: 'https://files.example/doc.pdf' } }
+  const { fullText, fullParts } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: [{ type: 'text', text: 'Here is ' }, imagePart, { type: 'text', text: 'your file' }] } }] }),
+      event({ choices: [{ delta: { content: [filePart] } }] }),
+    ]),
+    (t, type) => tokens.push([type, t])
+  )
+  assert.equal(fullText, 'Here is your file')
+  assert.deepEqual(fullParts, [imagePart, filePart])
+  assert.deepEqual(tokens, [
+    ['content', 'Here is '],
+    ['image', imagePart],
+    ['content', 'your file'],
+    ['file', filePart],
+  ])
+})
+
+test('treats data-url image parts as parts', async () => {
+  const part = { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }
+  const { fullParts } = await parseSSEStream(
+    streamReader([event({ choices: [{ delta: { content: [part] } }] })]),
+    () => {}
+  )
+  assert.deepEqual(fullParts, [part])
+})
+
+test('ignores unknown part types without corrupting the stream', async () => {
+  const tokens = []
+  const { fullText, fullParts } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: [{ type: 'audio', audio: { url: 'https://a.example/x.mp3' } }, { type: 'text', text: 'ok' }] } }] }),
+    ]),
+    (t, type) => tokens.push([type, t])
+  )
+  assert.equal(fullText, 'ok')
+  assert.deepEqual(fullParts, [])
+  assert.deepEqual(tokens, [['content', 'ok']])
+})
+
+test('collects non-text parts from a final message.content without duplicating streamed text', async () => {
+  const imagePart = { type: 'image_url', image_url: { url: 'https://img.example/b.png' } }
+  const { fullText, fullParts } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: 'Done' } }] }),
+      event({ choices: [{ message: { content: [{ type: 'text', text: 'Done' }, imagePart] } }] }),
+    ]),
+    () => {}
+  )
+  assert.equal(fullText, 'Done')
+  assert.deepEqual(fullParts, [imagePart])
+})
+
+test('emits text from a final message.content when the chunk carries no delta', async () => {
+  const { fullText, fullParts } = await parseSSEStream(
+    streamReader([
+      event({
+        choices: [{
+          message: {
+            content: [
+              { type: 'text', text: 'Only answer' },
+              { type: 'image_url', image_url: { url: 'https://img.example/x.png' } },
+            ],
+          },
+        }],
+      }),
+    ]),
+    () => {}
+  )
+  assert.equal(fullText, 'Only answer')
+  assert.equal(fullParts.length, 1)
+})
+
+test('dedupes repeated parts between delta and final message', async () => {
+  const part = { type: 'image_url', image_url: { url: 'https://img.example/c.png' } }
+  const { fullParts } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: [part] } }] }),
+      event({ choices: [{ message: { content: [part] } }] }),
+    ]),
+    () => {}
+  )
+  assert.equal(fullParts.length, 1)
+})

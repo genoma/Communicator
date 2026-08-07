@@ -202,6 +202,28 @@ test('selection reports vision support from openrouter architecture modalities',
   assert.equal(sel.fileSupported, true)
 })
 
+test('selection reports image output support from openrouter output modalities', async () => {
+  const provider = fakeProvider({
+    meta: { name: 'openrouter', hasEndpoints: true },
+    async fetchModels() {
+      return [
+        { id: 'image-maker', reasoning: null, pricing: null, architecture: { input_modalities: ['text'], output_modalities: ['text', 'image'] }, supportedParameters: null },
+        { id: 'text-only', reasoning: null, pricing: null, architecture: { input_modalities: ['text'], output_modalities: ['text'] }, supportedParameters: null },
+        { id: 'no-meta', reasoning: null, pricing: null },
+      ]
+    },
+    async fetchEndpoints() {
+      return [{ providerName: 'P', pricing: null, supportedParameters: [] }]
+    },
+  })
+  const imageMaker = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'image-maker' })
+  assert.equal(imageMaker.imageOutputSupported, true)
+  const textOnly = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'text-only' })
+  assert.equal(textOnly.imageOutputSupported, undefined)
+  const noMeta = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'no-meta' })
+  assert.equal(noMeta.imageOutputSupported, undefined)
+})
+
 test('selection reports no vision when modalities exclude image', async () => {
   const provider = fakeProvider({
     meta: { name: 'openrouter', hasEndpoints: true },

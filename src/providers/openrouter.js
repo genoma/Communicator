@@ -47,6 +47,7 @@ export async function fetchModels(apiKey) {
     const r = m.reasoning
     const aliasTarget = m.alias_target?.slug || null
     const inputModalities = m.architecture?.input_modalities || []
+    const outputModalities = m.architecture?.output_modalities || []
     const supportedParams = Array.isArray(m.supported_parameters) ? m.supported_parameters : null
 
     let visionSupported
@@ -63,7 +64,7 @@ export async function fetchModels(apiKey) {
       aliasTarget,
       contextLength: m.context_length,
       description: m.description,
-      architecture: { input_modalities: inputModalities },
+      architecture: { input_modalities: inputModalities, output_modalities: outputModalities },
       supportedParameters: supportedParams,
       visionSupported,
       zdr: zdr.modelIds.has(m.id) || (aliasTarget != null && zdr.modelIds.has(aliasTarget)) || undefined,
@@ -179,7 +180,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
   const cacheStatus = res.headers.get(CACHE_HEADER)
   const reader = res.body.getReader()
 
-  const { fullText, fullReasoning, finalUsage, fullSources, skippedChunks } = await parseSSEStream(reader, onToken, onSources)
+  const { fullText, fullReasoning, finalUsage, fullSources, skippedChunks, fullParts } = await parseSSEStream(reader, onToken, onSources)
 
   const usage = finalUsage
 
@@ -190,6 +191,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
       usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cacheHit: true },
       sources: fullSources,
       skippedChunks,
+      parts: fullParts.length > 0 ? fullParts : undefined,
     }
   }
 
@@ -197,5 +199,5 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
     usage.cacheHit = true
   }
 
-  return { content: fullText, reasoning: fullReasoning || undefined, usage, sources: fullSources, skippedChunks }
+  return { content: fullText, reasoning: fullReasoning || undefined, usage, sources: fullSources, skippedChunks, parts: fullParts.length > 0 ? fullParts : undefined }
 }

@@ -34,7 +34,10 @@ function capabilityFlags(provider, modelData, endpoint) {
 
   const fileSupported = isVenice ? capabilities?.supportsFileInput !== false : true
 
-  return { visionSupported, fileSupported }
+  const outputModalities = modelData?.architecture?.output_modalities ?? modelData?.outputModalities ?? null
+  const imageOutputSupported = Array.isArray(outputModalities) && outputModalities.includes('image') ? true : undefined
+
+  return { visionSupported, fileSupported, imageOutputSupported }
 }
 
 export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort, zdr = false }) {
