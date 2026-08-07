@@ -129,6 +129,16 @@ test('applyPreferenceUpdates skips undefined budget, webResults and outputDir', 
   assert.deepEqual(Object.keys(updated).sort(), ['lastModel'])
 })
 
+test('applyPreferenceUpdates sets lastImageModel', () => {
+  const updated = applyPreferenceUpdates({}, { lastImageModel: 'flux-1-1' })
+  assert.equal(updated.lastImageModel, 'flux-1-1')
+})
+
+test('applyPreferenceUpdates skips undefined lastImageModel', () => {
+  const updated = applyPreferenceUpdates({ lastImageModel: 'flux-1-1' }, { lastImageModel: undefined })
+  assert.deepEqual(Object.keys(updated), ['lastImageModel'])
+})
+
 async function tempDir(t) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-config-'))
   t.after(() => rm(dir, { recursive: true, force: true }))

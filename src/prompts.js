@@ -58,6 +58,27 @@ export async function selectModel(models, lastModel, zdrOnly = false) {
   return searchPrompt(zdrOnly ? 'Select a model (ZDR-capable only)' : 'Select a model', choices, filterModelChoices)
 }
 
+export function orderImageModelChoices(models, lastImageModel) {
+  const choices = models.map((m) => ({
+    name: `${m.name}  (${m.id})${m.offline === true ? '  [offline]' : ''}`,
+    value: { id: m.id, name: m.name },
+    description: m.description || m.id,
+  }))
+
+  if (lastImageModel) {
+    const idx = choices.findIndex((c) => c.value.id === lastImageModel)
+    if (idx >= 0) {
+      const fav = choices[idx]
+      return [fav, ...choices.filter((_, i) => i !== idx)]
+    }
+  }
+  return choices
+}
+
+export async function selectImageModel(models, lastImageModel) {
+  return searchPrompt('Select an image model', orderImageModelChoices(models, lastImageModel), filterModelChoices)
+}
+
 export function formatEndpointLabel(ep) {
   const priceText = formatModelPrice(ep.pricing?.prompt, ep.pricing?.completion)
   const uptime = ep.uptime30m != null ? `${ep.uptime30m.toFixed(0)}% uptime` : '?'

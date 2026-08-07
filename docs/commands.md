@@ -24,9 +24,21 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 | `-r`  | `--resume`            | `[id]`   | Resume a saved session. No arg = picker, partial ID = prefix match                   |
 | `-x`  | `--export`            | `[id]`   | Export a session to markdown. Same ID matching as `--resume`                         |
 |       | `--delete`            | `[id]`   | Delete a saved session (asks for confirmation). Same ID matching as `--resume`       |
-|       | `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences). Bare use saves it as the default (requires a TTY and no prompt) |
+|       | `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences). Bare use saves it as the default (requires a TTY and no prompt). With `--image`, generated images are also copied there |
 |       | `--config`            | `[path]` | Custom path for the preferences JSON file (default: `~/.communicator.json`). Bare flag prints the current config |
 |       | `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
+|       | `--image`             | —        | Generate an image with a Venice image model and exit (Venice only). See [docs/images.md](images.md) |
+|       | `--image-model`       | `<id>`   | Image model ID, skipping the interactive image model picker (required when piping input) |
+|       | `--image-format`      | `<fmt>`  | Image output format: `png`, `jpeg`, `webp` (default `webp`) |
+|       | `--variants`          | `<n>`    | Number of images to generate, 1–4 (default 1) |
+|       | `--aspect-ratio`      | `<x:y>`  | Image aspect ratio, model-dependent (e.g. `16:9`). Conflicts with `--width`/`--height` |
+|       | `--resolution`        | `<tier>` | Image resolution tier, model-dependent: `1K`, `2K`, `4K`. Conflicts with `--width`/`--height` |
+|       | `--quality`           | `<level>`| Image quality tier, model-dependent: `low`, `medium`, `high` |
+|       | `--seed`              | `<int>`  | Random seed for image generation |
+|       | `--width`             | `<px>`   | Image width in pixels, 1–1280 (pixel-based models) |
+|       | `--height`            | `<px>`   | Image height in pixels, 1–1280 (pixel-based models) |
+|       | `--no-safe-mode`      | —        | Disable safe mode for image generation (adult content returned unblurred) |
+|       | `--list-image-models` | —        | List Venice image models (name, id, per-image price, sizing options) and exit |
 
 Pass `--reasoning-effort none` to disable reasoning entirely.
 
@@ -46,6 +58,14 @@ communicator -p venice                                  # Venice interactive flo
 communicator -p venice -m "qwen-3-7-max" "Hello"        # one-shot chat with a fixed model
 communicator -p venice --list-models                             # list Venice models (no API key needed)
 communicator -p venice --list-endpoints "qwen-3-7-max"           # show Venice endpoint info
+
+# Image generation (Venice only)
+communicator -p venice --image "a red cat"                        # interactive image model picker
+communicator -p venice --image --image-model flux-1-1 "a red cat" # fixed image model, no picker
+communicator -p venice --image --variants 2 --image-format png --seed 42 "cyberpunk city"
+communicator -p venice --image --image-model gpt-image-2 --resolution 2K --quality high "wide shot"
+communicator -p venice --image --output-dir ~/Pictures "a red cat"   # also copy the images there
+communicator -p venice --list-image-models                           # list image models (no API key needed)
 
 # One-shot mode (non-interactive, no chat loop)
 communicator -m "openai/gpt-4o" "What is the capital of France?"     # positional prompt
@@ -107,6 +127,7 @@ communicator --no-smooth-streaming                                     # disable
 | `/markdown`    | Toggle terminal markdown rendering (default on)                                     |
 | `/smooth`      | Show smooth streaming state and speed, or set them with `/smooth on|off|<level>|<cps>` (a speed value implies on) |
 | `/cost`        | Print the running session cost/token totals and current reasoning effort            |
+| `/image`       | Generate an image with a Venice image model (`/image <description>`; Venice sessions only) |
 | `Cmd+C` / `Ctrl+C` | During streaming: abort, save the partial response, and exit. At the prompt: cancel and exit |
 
 Unknown slash commands (anything starting with `/`) print a hint listing the available commands instead of being sent to the model.

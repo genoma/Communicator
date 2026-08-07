@@ -24,6 +24,12 @@ function refName(ref) {
   return dot === -1 ? { file: name, ext: 'bin' } : { file: name, ext: name.slice(dot + 1) }
 }
 
+export function savedAttachmentPath(ref, sessionId) {
+  if (typeof ref !== 'string' || !ref.startsWith(REF_PREFIX)) return null
+  const { file } = refName(ref)
+  return join(attachmentDirFor(SESSIONS_DIR, sessionId), file)
+}
+
 async function externalizeDataUrl(value, dir) {
   const info = dataUrlInfo(value)
   if (!info) return value

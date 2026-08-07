@@ -117,6 +117,11 @@ export function cheapestEndpoint(endpoints) {
   return best
 }
 
+export async function selectImageModelNonInteractive({ provider, apiKey, imageModelId }) {
+  const models = await provider.fetchImageModels(apiKey)
+  return models.find((m) => m.id === imageModelId) || null
+}
+
 export async function selectModelNonInteractive({ provider, apiKey, prefs, modelId, forcedEffort, zdr = false }) {
   const models = await provider.fetchModels(apiKey)
   const zdrActive = await zdrGate(provider, zdr)

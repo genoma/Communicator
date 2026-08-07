@@ -6,25 +6,10 @@ import { sessionLabel } from '../ui/format.js'
 import { UsageTracker, budgetLine } from '../tracker.js'
 import { ChatState } from '../chat-state.js'
 import { CliError, formatError } from '../errors.js'
-import { fail } from '../cli-utils.js'
+import { fail, readStdin } from '../cli-utils.js'
 import { loadAttachments, buildContent, contentText } from '../attachments.js'
 import { resolveArtifacts, printArtifacts } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
-
-const MAX_STDIN_BYTES = 10 * 1024 * 1024
-
-async function readStdin() {
-  const chunks = []
-  let total = 0
-  for await (const chunk of process.stdin) {
-    total += chunk.length
-    if (total > MAX_STDIN_BYTES) {
-      throw new CliError('Error: stdin input exceeds the 10MB limit.')
-    }
-    chunks.push(chunk)
-  }
-  return Buffer.concat(chunks).toString('utf-8').trim()
-}
 
 export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt }) {
   const provider = getProvider(providerType)

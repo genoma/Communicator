@@ -11,7 +11,7 @@ export function isInteractiveFlag(opts) {
 }
 
 export function isExitMode(opts) {
-  return Boolean(opts.listModels || opts.listEndpoints !== undefined || opts.listSessions)
+  return Boolean(opts.listModels || opts.listImageModels || opts.listEndpoints !== undefined || opts.listSessions)
 }
 
 export function isSessionOnly(opts) {
@@ -51,6 +51,7 @@ function hasBareConfigOtherFlags(opts, promptArg) {
     opts.model !== undefined ||
     opts.provider !== 'openrouter' ||
     opts.listModels ||
+    opts.listImageModels ||
     opts.listEndpoints !== undefined ||
     opts.resume !== undefined ||
     opts.export !== undefined ||
@@ -65,6 +66,7 @@ function hasBareConfigOtherFlags(opts, promptArg) {
     opts.smoothStreaming === false ||
     opts.smoothSpeed !== undefined ||
     opts.delete !== undefined ||
+    opts.image === true ||
     hasAttachments(opts)
   )
 }
@@ -118,8 +120,37 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --resume, --export and --delete cannot be combined with --list-* flags.')
   }
 
-  if (opts.outputDir !== undefined && opts.export === undefined && (promptArg || !isTTY)) {
+  if (opts.outputDir !== undefined && opts.export === undefined && opts.image !== true && (promptArg || !isTTY)) {
     errors.push('Error: --output-dir sets the default export directory. Use it alone (with a TTY) or with --export.')
+  }
+
+  if (opts.image && opts.provider !== 'venice') {
+    errors.push('Error: --image is only supported on Venice. Use --provider venice.')
+  }
+
+  if (opts.listImageModels && opts.provider !== 'venice') {
+    errors.push('Error: --list-image-models is only supported on Venice. Use --provider venice.')
+  }
+
+  if (opts.imageModel !== undefined && opts.image !== true) {
+    errors.push('Error: --image-model requires --image.')
+  }
+
+  if (opts.image && (opts.resume !== undefined || opts.export !== undefined || opts.delete !== undefined || exitModeFlags)) {
+    errors.push('Error: --image cannot be combined with --resume, --export, --delete, or --list-* flags.')
+  }
+
+  if (opts.image && (opts.model !== undefined || opts.zdr === true || sessionOnlyFlags)) {
+    errors.push('Error: --image cannot be combined with chat session flags (--model, --attach, --system-prompt, --temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --zdr).')
+  }
+
+  if (opts.image && (opts.width !== undefined || opts.height !== undefined)) {
+    if (opts.aspectRatio !== undefined) {
+      errors.push('Error: --width and --height cannot be combined with --aspect-ratio.')
+    }
+    if (opts.resolution !== undefined) {
+      errors.push('Error: --width and --height cannot be combined with --resolution.')
+    }
   }
 
   if (opts.config === true && hasBareConfigOtherFlags(opts, promptArg)) {

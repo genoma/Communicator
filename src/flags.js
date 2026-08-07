@@ -93,3 +93,76 @@ export function normalizeSmoothSpeed(value) {
     return SMOOTH_SPEED_PRESETS[SMOOTH_DEFAULT_SPEED]
   }
 }
+
+const IMAGE_FORMATS = new Set(['png', 'jpeg', 'webp'])
+const IMAGE_RESOLUTIONS = new Set(['1K', '2K', '4K'])
+const IMAGE_QUALITIES = new Set(['low', 'medium', 'high'])
+const MAX_IMAGE_DIMENSION = 1280
+const MAX_SEED = 999999999
+
+export function resolveImageFormat(value) {
+  if (value === undefined || value === null || value === '') return undefined
+  if (!IMAGE_FORMATS.has(value)) {
+    throw new Error('--image-format must be one of: png, jpeg, webp.')
+  }
+  return value
+}
+
+export function resolveVariants(value) {
+  if (value === undefined || value === null || value === '') return undefined
+  const num = Number(value)
+  if (!Number.isInteger(num) || num < 1 || num > 4) {
+    throw new Error('--variants must be an integer between 1 and 4.')
+  }
+  return num
+}
+
+export function resolveAspectRatio(value) {
+  if (value === undefined || value === null || value === '') return undefined
+  if (!/^\d+:\d+$/.test(value)) {
+    throw new Error('--aspect-ratio must be in the form W:H (e.g. 16:9).')
+  }
+  return value
+}
+
+export function resolveResolution(value) {
+  if (value === undefined || value === null || value === '') return undefined
+  if (!IMAGE_RESOLUTIONS.has(value)) {
+    throw new Error('--resolution must be one of: 1K, 2K, 4K.')
+  }
+  return value
+}
+
+export function resolveQuality(value) {
+  if (value === undefined || value === null || value === '') return undefined
+  if (!IMAGE_QUALITIES.has(value)) {
+    throw new Error('--quality must be one of: low, medium, high.')
+  }
+  return value
+}
+
+export function resolveSeed(value) {
+  if (value === undefined || value === null || value === '') return undefined
+  const num = Number(value)
+  if (!Number.isInteger(num) || num < -MAX_SEED || num > MAX_SEED) {
+    throw new Error(`--seed must be an integer between -${MAX_SEED} and ${MAX_SEED}.`)
+  }
+  return num
+}
+
+function resolveImageDimension(name, value) {
+  if (value === undefined || value === null || value === '') return undefined
+  const num = Number(value)
+  if (!Number.isInteger(num) || num < 1 || num > MAX_IMAGE_DIMENSION) {
+    throw new Error(`--${name} must be an integer between 1 and ${MAX_IMAGE_DIMENSION}.`)
+  }
+  return num
+}
+
+export function resolveWidth(value) {
+  return resolveImageDimension('width', value)
+}
+
+export function resolveHeight(value) {
+  return resolveImageDimension('height', value)
+}

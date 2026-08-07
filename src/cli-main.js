@@ -3,11 +3,12 @@ import { getApiKey, loadPreferences, loadSystemPrompt, savePreferences } from '.
 import { getProvider } from './providers/index.js'
 import { ApiError, CliError, formatError } from './errors.js'
 import { err, debug } from './ui/io.js'
-import { listModelsCmd } from './commands/list-models.js'
+import { listModelsCmd, listImageModelsCmd } from './commands/list-models.js'
 import { listEndpointsCmd } from './commands/list-endpoints.js'
 import { listSessionsCmd } from './commands/list-sessions.js'
 import { exportCmd } from './commands/export-cmd.js'
 import { oneShotCmd } from './commands/one-shot.js'
+import { imageGenCmd } from './commands/image-gen.js'
 import { deleteCmd } from './commands/delete-cmd.js'
 import { chatStart } from './commands/chat-start.js'
 import { configViewCmd } from './commands/config-view.js'
@@ -57,6 +58,11 @@ async function main(opts, promptArg) {
   const provider = getProvider(providerType)
   const apiKeyOptional = process.env[provider.meta.apiKeyEnv]?.trim() || ''
 
+  if (opts.listImageModels) {
+    await listImageModelsCmd(provider, apiKeyOptional)
+    process.exit(0)
+  }
+
   if (opts.listModels) {
     await listModelsCmd(provider, apiKeyOptional)
     process.exit(0)
@@ -90,7 +96,7 @@ async function main(opts, promptArg) {
     process.exit(0)
   }
 
-  if (isConfigSetter(opts) && !promptArg && process.stdin.isTTY && opts.resume === undefined) {
+  if (isConfigSetter(opts) && !promptArg && process.stdin.isTTY && opts.resume === undefined && opts.image !== true) {
     const prefs = await loadPreferences(opts.config)
     const apiKey = opts.model !== undefined ? getApiKey(providerType) : ''
     try {
@@ -99,6 +105,13 @@ async function main(opts, promptArg) {
       if (err instanceof CliError) throw err
       fail(`Error: ${formatError(err)}`)
     }
+    process.exit(0)
+  }
+
+  if (opts.image) {
+    const apiKey = getApiKey(providerType)
+    const prefs = await loadPreferences(opts.config)
+    await imageGenCmd({ apiKey, opts, prefs, providerType, prompt: promptArg })
     process.exit(0)
   }
 

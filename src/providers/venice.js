@@ -1,8 +1,9 @@
 import { parseSSEStream } from '../sse-parser.js'
 import { fetchWithRetry } from '../http.js'
-import { makeHandleHttpError } from '../errors.js'
-import { formatPricePerM } from '../ui/format.js'
+import { ApiError, makeHandleHttpError } from '../errors.js'
+import { formatPricePerM, formatImagePrice, imageUnitPrice } from '../ui/format.js'
 import { DEFAULT_TEMPERATURE } from '../constants.js'
+import { mimeForExt, extForMime } from '../attachments.js'
 
 const VENICE_BASE = 'https://api.venice.ai/api/v1'
 
@@ -25,15 +26,64 @@ export function normalizePricing(raw) {
   }
 }
 
-export async function fetchModels(apiKey) {
+function pricingUsd(value) {
+  return value && typeof value.usd === 'number' ? value.usd : null
+}
+
+export function normalizeImagePricing(raw) {
+  if (!raw || typeof raw !== 'object') return { perImage: null, byResolution: null, byQuality: null }
+
+  const perImage = pricingUsd(raw.generation)
+
+  let byResolution = null
+  if (raw.resolutions && typeof raw.resolutions === 'object') {
+    const entries = Object.entries(raw.resolutions).filter(([, v]) => pricingUsd(v) != null)
+    if (entries.length > 0) byResolution = Object.fromEntries(entries.map(([k, v]) => [k, pricingUsd(v)]))
+  }
+
+  let byQuality = null
+  if (raw.quality && typeof raw.quality === 'object') {
+    const tiers = Object.entries(raw.quality)
+      .map(([resolution, tier]) => {
+        if (!tier || typeof tier !== 'object') return null
+        const qualities = Object.entries(tier)
+          .filter(([, v]) => pricingUsd(v) != null)
+          .map(([q, v]) => [q, pricingUsd(v)])
+        if (qualities.length === 0) return null
+        return [resolution, Object.fromEntries(qualities)]
+      })
+      .filter(Boolean)
+    if (tiers.length > 0) byQuality = Object.fromEntries(tiers)
+  }
+
+  return { perImage, byResolution, byQuality }
+}
+
+function imageMetaStr(m) {
+  const spec = m.model_spec || {}
+  const constraints = spec.constraints || {}
+  const parts = [formatImagePrice(normalizeImagePricing(spec.pricing || null))]
+  if (constraints.aspectRatios?.length) parts.push(`aspect: ${constraints.aspectRatios.join(', ')}`)
+  if (constraints.resolutions?.length) parts.push(`res: ${constraints.resolutions.join(', ')}`)
+  if (constraints.qualities?.length) parts.push(`quality: ${constraints.qualities.join(', ')}`)
+  if (spec.privacy) parts.push(spec.privacy)
+  if (spec.offline) parts.push('offline')
+  return parts.join('  |  ')
+}
+
+export async function fetchModelsByType(apiKey, type) {
   const headers = {}
   if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`
   }
 
-  const res = await fetchWithRetry(`${VENICE_BASE}/models?type=text`, { headers }, { errorResponse: handleHttpError })
+  const res = await fetchWithRetry(`${VENICE_BASE}/models?type=${type}`, { headers }, { errorResponse: handleHttpError })
 
-  const { data } = await res.json()
+  return res.json()
+}
+
+export async function fetchModels(apiKey) {
+  const { data } = await fetchModelsByType(apiKey, 'text')
 
   return (data || []).map((m) => {
     const spec = m.model_spec || {}
@@ -73,6 +123,85 @@ export async function fetchModels(apiKey) {
       maxCompletionTokens: spec.constraints?.max_tokens || null,
     }
   })
+}
+
+export async function fetchImageModels(apiKey) {
+  const { data } = await fetchModelsByType(apiKey, 'image')
+  return (data || []).map((m) => {
+    const spec = m.model_spec || {}
+    const constraints = spec.constraints || {}
+    const metaStr = imageMetaStr(m)
+    const modelDesc = spec.description || null
+    return {
+      id: m.id,
+      name: spec.name || m.id,
+      provider: 'venice',
+      description: modelDesc ? `${metaStr}\n${modelDesc}` : metaStr,
+      privacy: spec.privacy || null,
+      pricing: normalizeImagePricing(spec.pricing || null),
+      constraints: {
+        aspectRatios: constraints.aspectRatios || null,
+        defaultAspectRatio: constraints.defaultAspectRatio || null,
+        resolutions: constraints.resolutions || null,
+        defaultResolution: constraints.defaultResolution || null,
+        qualities: constraints.qualities || null,
+        defaultQuality: constraints.defaultQuality || null,
+        promptCharacterLimit: constraints.promptCharacterLimit || null,
+        steps: constraints.steps || null,
+        widthHeightDivisor: constraints.widthHeightDivisor || null,
+        maxStyleReferences: constraints.maxStyleReferences || null,
+      },
+      supportsStyleReferences: spec.supportsStyleReferences === true,
+      offline: spec.offline === true,
+    }
+  })
+}
+
+export async function generateImage({ apiKey, model, prompt, format = 'webp', variants = 1, safeMode = true, aspectRatio, resolution, quality, seed, width, height, pricing, signal }) {
+  const body = {
+    model,
+    prompt,
+    format,
+    variants,
+    safe_mode: safeMode,
+  }
+  if (aspectRatio) body.aspect_ratio = aspectRatio
+  if (resolution) body.resolution = resolution
+  if (quality) body.quality = quality
+  if (seed !== undefined && seed !== null) body.seed = seed
+  if (width !== undefined && width !== null && !aspectRatio) body.width = width
+  if (height !== undefined && height !== null && !aspectRatio) body.height = height
+
+  const res = await fetchWithRetry(`${VENICE_BASE}/image/generate`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  }, { errorResponse: handleHttpError, signal })
+
+  const parsed = await res.json()
+  const rawImages = Array.isArray(parsed.images) ? parsed.images : []
+  if (rawImages.length === 0) {
+    throw new ApiError('Venice returned no images.', { provider: 'venice', retryable: false })
+  }
+
+  const mime = mimeForExt(format)
+  const ext = extForMime(mime)
+  const images = rawImages.map((b64) => ({
+    bytes: Buffer.from(b64, 'base64'),
+    dataUrl: `data:${mime};base64,${b64}`,
+    mime,
+    ext,
+  }))
+
+  return {
+    id: parsed.id,
+    images,
+    blurred: res.headers.get('x-venice-is-blurred') === 'true',
+    cost: imageUnitPrice(pricing, { resolution, quality }),
+  }
 }
 
 export async function fetchEndpoints(apiKey, modelId, allModels) {

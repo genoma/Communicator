@@ -8,8 +8,9 @@ import { sessionLabel } from '../../ui/format.js'
 import { dim } from '../../ui/style.js'
 import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
+import { runImageGeneration, printImageOutcome } from '../image-gen.js'
 
-const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments'])
+const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments', '/image'])
 
 export function budgetGuard(ctx) {
   const { state, tracker } = ctx
@@ -271,6 +272,38 @@ const handlers = {
   '/cost': async (ctx) => {
     console.log(`${dim('Current session:')} ${ctx.tracker.summary()}`)
     console.log(`${dim('Reasoning:')} ${ctx.state.reasoningEffort === undefined ? 'auto' : getEffortLabel(ctx.state.reasoningEffort)}\n`)
+  },
+
+  '/image': async (ctx) => {
+    if (ctx.provider.meta.name !== 'venice') {
+      console.error('Error: /image is only supported on Venice sessions.\n')
+      return
+    }
+    if (!ctx.args) {
+      console.log('Usage: /image <description>\n')
+      return
+    }
+    await ctx.saveSession()
+    let outcome
+    try {
+      outcome = await runImageGeneration({
+        provider: ctx.provider,
+        apiKey: ctx.apiKey,
+        prompt: ctx.args,
+        opts: {},
+        prefs: ctx.prefs,
+        sessionId: ctx.state.sessionId,
+        selectImage: ctx.selectImageModel,
+      })
+    } catch (err) {
+      console.error(err instanceof CliError ? `\n${err.message}\n` : `\nError: ${formatError(err)}\n`)
+      return
+    }
+    ctx.state.appendUser(ctx.args)
+    ctx.state.appendAssistant(outcome.message)
+    await ctx.saveSession()
+    await ctx.savePrefs({ lastImageModel: outcome.modelId })
+    printImageOutcome(outcome)
   },
 }
 
