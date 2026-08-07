@@ -15,7 +15,7 @@ import { configViewCmd } from './commands/config-view.js'
 import { configSetCmd } from './commands/config-set.js'
 import { resolveSmoothSpeed } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
-import { isConfigSetter, validateCliFlags } from './cli-validation.js'
+import { isConfigSetter, hasConfigSetterFlags, validateCliFlags } from './cli-validation.js'
 
 export async function runCli(opts, promptArg) {
   try {
@@ -99,7 +99,11 @@ async function main(opts, promptArg) {
     process.exit(0)
   }
 
-  if (isConfigSetter(opts) && !promptArg && process.stdin.isTTY && opts.resume === undefined && opts.image !== true) {
+  // --no-safe-mode alone is a chat-launch flag: it flows into the chat path,
+  // which persists the pref; combined with other config-setter flags it keeps
+  // the save-and-exit config-set behavior.
+  const onlySafeModeSetter = opts.safeMode === false && !hasConfigSetterFlags(opts)
+  if (isConfigSetter(opts) && !onlySafeModeSetter && !promptArg && process.stdin.isTTY && opts.resume === undefined && opts.image !== true) {
     const prefs = await loadPreferences(opts.config)
     const apiKey = opts.model !== undefined ? getApiKey(providerType) : ''
     try {
@@ -132,6 +136,12 @@ async function main(opts, promptArg) {
   if (promptArg || !process.stdin.isTTY) {
     await oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt: promptArg })
     process.exit(0)
+  }
+
+  if (opts.safeMode === false) {
+    prefs.safeMode = false
+    await savePreferences(prefs, opts.config)
+    console.log('Venice safe mode disabled')
   }
 
   await chatStart({ apiKey, opts, prefs, systemPrompt, providerType })

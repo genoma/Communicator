@@ -108,6 +108,15 @@ Venice stamps generated images with a watermark unless `hide_watermark: true` is
 - The persisted `hideWatermark` pref applies to all Venice image generation; `/watermark on` (or removing the pref) re-enables the watermark.
 - Venice may ignore the request for some content or models.
 
+## Safe mode (Venice)
+
+Venice blurs adult-content results unless `safe_mode: false` is sent. This CLI exposes it as a **global setting** (not per model):
+
+- `--no-safe-mode` disables it for the current `--image`/`-m <image-model>` one-shot and persists `safeMode: false` in the preferences file.
+- Launching the chat with the flag (`communicator -p venice --no-safe-mode`) opens the session and persists the setting in the same run.
+- The persisted `safeMode` pref applies to all Venice image generation; removing the pref from the preferences file re-enables safe mode.
+- OpenRouter image generation has no safe-mode parameter, so the setting only affects Venice.
+
 ## Provider differences
 
 - **Venice** (`POST /image/generate`): per-image pricing (`$X per image`, sometimes a resolution/quality matrix); every model accepts `png|jpeg|webp`; safe mode + watermark options; `auto` aspect ratio only on some models.
@@ -119,7 +128,7 @@ Venice stamps generated images with a watermark unless `hide_watermark: true` is
 - Every generated image is saved as a blob in the session's attachment directory (`~/.communicator/sessions/attachments/<session-id>/`), referenced from the assistant message, and `saved to <path>` lines print the locations. `--output-dir` also copies the files there.
 - The session is a normal session: it appears in `--list-sessions`, resumes, and exports.
 - Image generation has no tokens, so no usage/cost is recorded in the tracker — instead a cost line prints the per-image price times the number of images returned (`Cost: $0.18 per image × 2 = $0.36`), derived from the model's pricing (resolution/quality matrix on Venice; total `usage.cost` divided by the returned count on OpenRouter).
-- With safe mode on (default), Venice adult-content results are returned blurred and a warning line prints. The last used image model (`lastImageModel`) is remembered and shown first in the picker. Watermark hiding (`hideWatermark`) is a global preference applied to every Venice generation (see [Watermark hiding](#watermark-hiding-(venice))).
+- With safe mode on (default), Venice adult-content results are returned blurred and a warning line prints. Safe mode is a global preference (`safeMode`, see [Safe mode (Venice)](#safe-mode-(venice))). The last used image model (`lastImageModel`) is remembered and shown first in the picker. Watermark hiding (`hideWatermark`) is a global preference applied to every Venice generation (see [Watermark hiding](#watermark-hiding-(venice))).
 - Generations are synchronous and can take minutes on high-end models (`gpt-image-2`, `nano-banana-2`, ...); the client waits up to 10 minutes per request.
 
 Out of scope for now: `style_references`, `negative_prompt`, `enhance_prompt`, `steps`, `cfg_scale`, OpenRouter `background`/`output_compression`/`input_references`, image edit/upscale, per-model defaults, and resolution/quality pickers (the flags keep working where supported).

@@ -279,6 +279,28 @@ test('--no-smooth-streaming alone persists the default', async (t) => {
   assert.equal(saved.smoothStreaming, false)
 })
 
+test('--no-safe-mode alone routes into the chat instead of config-set mode', async (t) => {
+  withTTY(t, true)
+  const previous = process.env.VENICE_API_KEY
+  delete process.env.VENICE_API_KEY
+  t.after(() => {
+    if (previous === undefined) delete process.env.VENICE_API_KEY
+    else process.env.VENICE_API_KEY = previous
+  })
+  const { err } = await runAndExit(t, { provider: 'venice', safeMode: false }, undefined, 1)
+  assert.match(err[0], /VENICE_API_KEY environment variable is not set/)
+})
+
+test('--no-safe-mode combined with another config setter keeps config-set mode', async (t) => {
+  withTTY(t, true)
+  const file = await tempConfig(t)
+  const { out } = await runAndExit(t, { config: file, safeMode: false, outputDir: '/tmp/x' }, undefined, 0)
+  assert.match(out[0], /Export directory set to \/tmp\/x/)
+  const saved = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(saved.safeMode, false)
+  assert.equal(saved.outputDir, '/tmp/x')
+})
+
 test('per-model setters without --model are rejected', async (t) => {
   withTTY(t, true)
   const file = await tempConfig(t)

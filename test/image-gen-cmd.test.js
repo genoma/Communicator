@@ -455,6 +455,49 @@ test('--image without the flag and no pref sends no hide_watermark and adds no p
   assert.equal(prefs.hideWatermark, undefined)
 })
 
+test('--image --no-safe-mode sends safe_mode false and persists the pref', async (t) => {
+  const { bodies } = mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  const { exited } = await runImageGen(t, { overrides: { config: file, safeMode: false } })
+
+  assert.equal(exited, false)
+  assert.equal(bodies[0].safe_mode, false)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.safeMode, false)
+})
+
+test('--image without the flag honors a persisted safeMode pref without rewriting it', async (t) => {
+  const { bodies } = mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  const { exited } = await runImageGen(t, { overrides: { config: file }, prefs: { safeMode: false } })
+
+  assert.equal(exited, false)
+  assert.equal(bodies[0].safe_mode, false)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.safeMode, false)
+  assert.equal(Object.keys(prefs).includes('safeMode'), true)
+})
+
+test('--image without the flag and no pref sends safe_mode true and adds no pref key', async (t) => {
+  const { bodies } = mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  const { exited } = await runImageGen(t, { overrides: { config: file } })
+
+  assert.equal(exited, false)
+  assert.equal(bodies[0].safe_mode, true)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.safeMode, undefined)
+})
+
 test('--image rejects an invalid flag value with a CliError', async (t) => {
   mockVeniceFetch(t)
   withApiKey(t)

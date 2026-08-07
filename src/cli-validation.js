@@ -28,7 +28,7 @@ export function isSessionOnly(opts) {
   )
 }
 
-export function isConfigSetter(opts) {
+export function hasConfigSetterFlags(opts) {
   return (
     opts.model !== undefined ||
     opts.outputDir !== undefined ||
@@ -43,6 +43,10 @@ export function isConfigSetter(opts) {
     opts.aspectRatio !== undefined ||
     opts.imageFormat !== undefined
   )
+}
+
+export function isConfigSetter(opts) {
+  return hasConfigSetterFlags(opts) || opts.safeMode === false
 }
 
 const exclusionError = (prefix, forbidden) =>
@@ -69,6 +73,7 @@ function hasBareConfigOtherFlags(opts, promptArg) {
     opts.smoothStreaming === false ||
     opts.smoothSpeed !== undefined ||
     opts.watermark === false ||
+    opts.safeMode === false ||
     opts.aspectRatio !== undefined ||
     opts.imageFormat !== undefined ||
     opts.delete !== undefined ||

@@ -59,7 +59,7 @@ export function mergeImageDefaults(prefs, providerName, { aspectRatio, format } 
   return { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [providerName]: merged } }
 }
 
-export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageModel, lastProvider, reasoningEffort, temperature, webSearch, smoothStreaming, smoothSpeed, budget, webResults, outputDir, hideWatermark, imageDefaults } = {}) {
+export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageModel, lastProvider, reasoningEffort, temperature, webSearch, smoothStreaming, smoothSpeed, budget, webResults, outputDir, hideWatermark, safeMode, imageDefaults } = {}) {
   const merged = { ...prefs }
   if (lastModel !== undefined) merged.lastModel = lastModel
   if (lastImageModel !== undefined) merged.lastImageModel = lastImageModel
@@ -79,6 +79,7 @@ export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageMod
   if (webResults !== undefined) merged.webResults = webResults
   if (outputDir !== undefined) merged.outputDir = outputDir
   if (hideWatermark !== undefined) merged.hideWatermark = hideWatermark
+  if (safeMode !== undefined) merged.safeMode = safeMode
   if (imageDefaults !== undefined) merged.imageDefaults = { ...prefs.imageDefaults, ...imageDefaults }
   return merged
 }

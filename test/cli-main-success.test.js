@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { ExitPromptError } from '@inquirer/core'
 
 const tempHome = await mkdtemp(join(tmpdir(), 'communicator-home-'))
 after(() => rm(tempHome, { recursive: true, force: true }))
@@ -10,8 +11,8 @@ after(() => rm(tempHome, { recursive: true, force: true }))
 mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 mock.module('@inquirer/prompts', {
   namedExports: {
-    search: async () => { throw new Error('unexpected picker in this test') },
-    select: async () => { throw new Error('unexpected picker in this test') },
+    search: async () => { throw new ExitPromptError() },
+    select: async () => { throw new ExitPromptError() },
     confirm: async () => true,
   },
 })
@@ -143,6 +144,15 @@ function withApiKey(t, value = 'test-key') {
   t.after(() => {
     if (previous === undefined) delete process.env.OPENROUTER_API_KEY
     else process.env.OPENROUTER_API_KEY = previous
+  })
+}
+
+function withVeniceApiKey(t, value = 'venice-test-key') {
+  const previous = process.env.VENICE_API_KEY
+  process.env.VENICE_API_KEY = value
+  t.after(() => {
+    if (previous === undefined) delete process.env.VENICE_API_KEY
+    else process.env.VENICE_API_KEY = previous
   })
 }
 
@@ -281,4 +291,33 @@ test('--resume with no matching sessions exits 1 with a friendly error', async (
   withApiKey(t)
   const { err } = await runAndExit(t, { resume: 'zzz' }, undefined, 1)
   assert.match(err.join('\n'), /No session found matching "zzz"/)
+})
+
+test('--no-safe-mode alone opens the chat and persists the pref', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  )
+
+  const { out } = await runAndExit(t, { provider: 'venice', config: configFile, safeMode: false }, undefined, 0)
+
+  assert.ok(out.join('\n').includes('Venice safe mode disabled'))
+  assert.ok(out.join('\n').includes('Aborted.'))
+  const saved = JSON.parse(await readFile(configFile, 'utf-8'))
+  assert.equal(saved.safeMode, false)
+})
+
+test('--no-safe-mode with --resume persists the pref before the chat resumes', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  await seedSession('2026-01-09T00-00-00')
+  const configFile = await tempConfig(t)
+  const callsBefore = startChatCalls.length
+  await runCliNoExit(t, { config: configFile, resume: '2026-01-09', safeMode: false }, undefined)
+
+  assert.equal(startChatCalls.length, callsBefore + 1)
+  const saved = JSON.parse(await readFile(configFile, 'utf-8'))
+  assert.equal(saved.safeMode, false)
 })

@@ -72,6 +72,7 @@ test('resolveConfigValues leaves unset values undefined', () => {
     webSearch: undefined,
     smoothStreaming: undefined,
     hideWatermark: undefined,
+    safeMode: undefined,
     outputDir: undefined,
     aspectRatio: undefined,
     imageFormat: undefined,

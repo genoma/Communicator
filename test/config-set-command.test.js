@@ -94,6 +94,27 @@ test('configSetCmd without --no-watermark does not add the hideWatermark key', a
   assert.equal(saveCalls[0].prefs.hideWatermark, undefined)
 })
 
+test('configSetCmd with --no-safe-mode persists safeMode and prints the confirmation', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  saveCalls.length = 0
+
+  await configSetCmd({ opts: opts({ safeMode: false }), prefs: {}, providerType: 'openrouter', apiKey: 'k' })
+
+  assert.equal(saveCalls.length, 1)
+  assert.equal(saveCalls[0].prefs.safeMode, false)
+  assert.ok(logs.some((l) => l.includes('Venice safe mode disabled')))
+})
+
+test('configSetCmd without --no-safe-mode does not add the safeMode key', async () => {
+  saveCalls.length = 0
+
+  await configSetCmd({ opts: opts(), prefs: {}, providerType: 'openrouter', apiKey: 'k' })
+
+  assert.equal(saveCalls.length, 1)
+  assert.equal(saveCalls[0].prefs.safeMode, undefined)
+})
+
 test('configSetCmd writes per-provider image defaults and prints confirmations', async (t) => {
   const logs = []
   t.mock.method(console, 'log', (line) => { logs.push(String(line)) })

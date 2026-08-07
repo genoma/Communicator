@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { hasAttachments, isConfigSetter, isExitMode, isInteractiveFlag, isSessionOnly, validateCliFlags } from '../src/cli-validation.js'
+import { hasAttachments, hasConfigSetterFlags, isConfigSetter, isExitMode, isInteractiveFlag, isSessionOnly, validateCliFlags } from '../src/cli-validation.js'
 
 const BASE_OPTS = {
   model: undefined,
@@ -176,6 +176,14 @@ test('bare --config rejects --no-watermark but --image accepts it', () => {
   assert.deepEqual(validateCliFlags(opts({ image: true, watermark: false, provider: 'venice' }), TTY), [])
 })
 
+test('bare --config rejects --no-safe-mode but --image accepts it', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ config: true, safeMode: false }), TTY),
+    ['Error: bare --config (config view) cannot be combined with other flags.']
+  )
+  assert.deepEqual(validateCliFlags(opts({ image: true, safeMode: false, provider: 'venice' }), TTY), [])
+})
+
 test('rejects --attach without a prompt in a TTY', () => {
   assert.deepEqual(
     validateCliFlags(opts({ attach: ['a.txt'] }), TTY),
@@ -218,6 +226,12 @@ test('predicates classify flags', () => {
   assert.equal(isConfigSetter(opts({ outputDir: '/x' })), true)
   assert.equal(isConfigSetter(opts({ webResults: 5 })), true)
   assert.equal(isConfigSetter(opts({ watermark: false })), true)
+  assert.equal(isConfigSetter(opts({ safeMode: false })), true)
+
+  assert.equal(hasConfigSetterFlags(opts()), false)
+  assert.equal(hasConfigSetterFlags(opts({ safeMode: false })), false)
+  assert.equal(hasConfigSetterFlags(opts({ watermark: false })), true)
+  assert.equal(hasConfigSetterFlags(opts({ outputDir: '/x' })), true)
 
   assert.equal(hasAttachments(opts()), false)
   assert.equal(hasAttachments(opts({ attach: [] })), false)
