@@ -74,3 +74,39 @@ test('listImageModelsCmd prints name, id, per-image price and sizing constraints
   assert.ok(lines[1].includes('from $0.01 per image'))
   assert.ok(lines[1].includes('[offline]'))
 })
+
+test('listImageModelsCmd requests pricing for OpenRouter and prints from-price rows with tags', async (t) => {
+  const consoleSpy = mockConsole(t)
+  let pricingRequested = false
+  const provider = {
+    async fetchImageModels(apiKey, { withPricing } = {}) {
+      pricingRequested = withPricing === true
+      return [
+        {
+          id: 'openai/gpt-image-1-mini',
+          name: 'GPT Image 1 Mini',
+          pricing: { perImage: 0.0085, byResolution: null, byQuality: null },
+          constraints: {
+            aspectRatios: ['1:1', '3:2', '2:3', 'auto'],
+            formats: null,
+            resolutions: ['1024x1024'],
+            qualities: null,
+          },
+          privacy: null,
+          offline: false,
+        },
+      ]
+    },
+  }
+
+  await listImageModelsCmd(provider, 'key')
+
+  assert.equal(pricingRequested, true)
+  const lines = consoleSpy.allLogs()
+  assert.equal(lines.length, 1)
+  assert.ok(lines[0].includes('GPT Image 1 Mini'))
+  assert.ok(lines[0].includes('openai/gpt-image-1-mini'))
+  assert.ok(lines[0].includes('$0.009 per image'))
+  assert.ok(lines[0].includes('[aspect: 1:1, 3:2, 2:3, auto]'))
+  assert.ok(lines[0].includes('[resolution: 1024x1024]'))
+})

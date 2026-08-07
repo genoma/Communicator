@@ -52,6 +52,9 @@ test('fetchImageModels requests ?type=image and normalizes constraints', async (
   assert.equal(m.privacy, 'anonymized')
   assert.equal(m.offline, false)
   assert.deepEqual(m.constraints.aspectRatios, ['1:1', '16:9', '9:16'])
+  assert.deepEqual(m.constraints.formats, ['png', 'jpeg', 'webp'])
+  assert.equal(m.constraints.defaultAspectRatio, '1:1')
+  assert.equal(m.constraints.maxN, null)
   assert.deepEqual(m.constraints.resolutions, ['1K', '2K'])
   assert.deepEqual(m.constraints.qualities, ['low', 'medium', 'high'])
   assert.equal(m.constraints.widthHeightDivisor, 8)
@@ -69,6 +72,8 @@ test('fetchImageModels falls back to the id for the name and defaults optional f
   assert.equal(models[0].privacy, null)
   assert.equal(models[0].offline, false)
   assert.equal(models[0].constraints.aspectRatios, null)
+  assert.equal(models[0].constraints.defaultAspectRatio, null)
+  assert.deepEqual(models[0].constraints.formats, ['png', 'jpeg', 'webp'])
   assert.equal(models[0].description, '?')
 })
 

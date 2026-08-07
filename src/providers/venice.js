@@ -146,9 +146,12 @@ export async function fetchImageModels(apiKey) {
       pricing: normalizeImagePricing(spec.pricing || null),
       constraints: {
         aspectRatios: constraints.aspectRatios || null,
+        formats: ['png', 'jpeg', 'webp'],
         resolutions: constraints.resolutions || null,
         qualities: constraints.qualities || null,
         widthHeightDivisor: constraints.widthHeightDivisor || null,
+        maxN: null,
+        defaultAspectRatio: constraints.defaultAspectRatio || null,
       },
       offline: spec.offline === true,
     }

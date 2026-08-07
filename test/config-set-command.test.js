@@ -34,6 +34,8 @@ function opts(overrides = {}) {
     smoothStreaming: true,
     watermark: true,
     outputDir: undefined,
+    aspectRatio: undefined,
+    imageFormat: undefined,
     config: undefined,
     ...overrides,
   }
@@ -90,4 +92,38 @@ test('configSetCmd without --no-watermark does not add the hideWatermark key', a
 
   assert.equal(saveCalls.length, 1)
   assert.equal(saveCalls[0].prefs.hideWatermark, undefined)
+})
+
+test('configSetCmd writes per-provider image defaults and prints confirmations', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  saveCalls.length = 0
+
+  await configSetCmd({ opts: opts({ aspectRatio: '16:9', imageFormat: 'png' }), prefs: {}, providerType: 'venice', apiKey: 'k' })
+
+  assert.equal(saveCalls.length, 1)
+  assert.deepEqual(saveCalls[0].prefs.imageDefaults, { venice: { aspectRatio: '16:9', format: 'png' } })
+  assert.ok(logs.some((l) => l.includes('Aspect ratio set to 16:9 (venice image defaults)')))
+  assert.ok(logs.some((l) => l.includes('Image format set to png (venice image defaults)')))
+})
+
+test('configSetCmd merges existing provider defaults instead of replacing them', async () => {
+  saveCalls.length = 0
+
+  await configSetCmd({
+    opts: opts({ aspectRatio: '3:2' }),
+    prefs: { imageDefaults: { venice: { aspectRatio: '1:1', format: 'webp' } } },
+    providerType: 'venice',
+    apiKey: 'k',
+  })
+
+  assert.deepEqual(saveCalls[0].prefs.imageDefaults, { venice: { aspectRatio: '3:2', format: 'webp' } })
+})
+
+test('configSetCmd without image flags adds no imageDefaults key', async () => {
+  saveCalls.length = 0
+
+  await configSetCmd({ opts: opts(), prefs: {}, providerType: 'venice', apiKey: 'k' })
+
+  assert.equal(saveCalls[0].prefs.imageDefaults, undefined)
 })

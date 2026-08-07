@@ -119,8 +119,8 @@ export function resolveVariants(value) {
 
 export function resolveAspectRatio(value) {
   if (value === undefined || value === null || value === '') return undefined
-  if (!/^\d+:\d+$/.test(value)) {
-    throw new Error('--aspect-ratio must be in the form W:H (e.g. 16:9).')
+  if (!/^(auto|\d+(\.\d+)?:\d+(\.\d+)?)$/.test(value)) {
+    throw new Error('--aspect-ratio must be in the form W:H (e.g. 16:9) or "auto".')
   }
   return value
 }

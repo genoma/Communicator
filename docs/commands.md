@@ -27,11 +27,11 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences). Bare use saves it as the default (requires a TTY and no prompt). With `--image`, generated images are also copied there |
 |       | `--config`            | `[path]` | Custom path for the preferences JSON file (default: `~/.communicator.json`). Bare flag prints the current config |
 |       | `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
-|       | `--image`             | —        | Generate an image with a Venice image model and exit (Venice only). See [docs/images.md](images.md) |
+|       | `--image`             | —        | Generate an image with an image model and exit (both providers). See [docs/images.md](images.md) |
 |       | `--image-model`       | `<id>`   | Image model ID, skipping the interactive image model picker (required when piping input) |
-|       | `--image-format`      | `<fmt>`  | Image output format: `png`, `jpeg`, `webp` (default `webp`) |
+|       | `--image-format`      | `<fmt>`  | Image output format: `png`, `jpeg`, `webp` (default `webp` on Venice, `png` on OpenRouter; only sent when the model supports it). Bare use saves the per-provider default |
 |       | `--variants`          | `<n>`    | Number of images to generate, 1–4 (default 1) |
-|       | `--aspect-ratio`      | `<x:y>`  | Image aspect ratio, model-dependent (e.g. `16:9`). Conflicts with `--width`/`--height` |
+|       | `--aspect-ratio`      | `<x:y>`  | Image aspect ratio, model-dependent (e.g. `16:9`, `auto`; decimal ratios like `9:19.5` accepted). Bare use saves the per-provider default. Conflicts with `--width`/`--height` |
 |       | `--resolution`        | `<tier>` | Image resolution tier, model-dependent: `1K`, `2K`, `4K`. Conflicts with `--width`/`--height` |
 |       | `--quality`           | `<level>`| Image quality tier, model-dependent: `low`, `medium`, `high` |
 |       | `--seed`              | `<int>`  | Random seed for image generation |
@@ -39,7 +39,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--height`            | `<px>`   | Image height in pixels, 1–1280 (pixel-based models) |
 |       | `--no-safe-mode`      | —        | Disable safe mode for image generation (adult content returned unblurred) |
 |       | `--no-watermark`      | —        | Hide the Venice watermark on generated images. Bare use saves the default (global setting) |
-|       | `--list-image-models` | —        | List Venice image models (name, id, per-image price, sizing options) and exit |
+|       | `--list-image-models` | —        | List image models (name, id, per-image price, sizing options) and exit |
 
 Pass `--reasoning-effort none` to disable reasoning entirely.
 
@@ -60,14 +60,18 @@ communicator -p venice -m "qwen-3-7-max" "Hello"        # one-shot chat with a f
 communicator -p venice --list-models                             # list Venice models (no API key needed)
 communicator -p venice --list-endpoints "qwen-3-7-max"           # show Venice endpoint info
 
-# Image generation (Venice only)
+# Image generation (both providers)
 communicator -p venice --image "a red cat"                        # interactive image model picker
+communicator -p openrouter --image "a red cat"                    # OpenRouter image models
 communicator -p venice --image --image-model flux-1-1 "a red cat" # fixed image model, no picker
+communicator -p openrouter --image --image-model "openai/gpt-image-1-mini" --aspect-ratio 16:9 "a red cat"
 communicator -p venice --image --variants 2 --image-format png --seed 42 "cyberpunk city"
 communicator -p venice --image --image-model gpt-image-2 --resolution 2K --quality high "wide shot"
 communicator -p venice --image --output-dir ~/Pictures "a red cat"   # also copy the images there
 communicator -p venice --list-image-models                           # list image models (no API key needed)
+communicator -p openrouter --list-image-models                       # includes per-model pricing
 communicator -p venice -m venice-sd35 "a red cat"                    # one-shot image generation via -m
+communicator -p venice --aspect-ratio 16:9 --image-format png        # save per-provider image defaults
 communicator -p venice --resume <image-session-id>                   # re-enter an image session
 
 # Image sessions (interactive): pick an image model from the unified picker (tagged [image]);
@@ -134,10 +138,12 @@ communicator --no-watermark                                            # hide th
 | `/markdown`    | Toggle terminal markdown rendering (default on)                                     |
 | `/smooth`      | Show smooth streaming state and speed, or set them with `/smooth on|off|<level>|<cps>` (a speed value implies on) |
 | `/cost`        | Print the running session cost/token totals and current reasoning effort            |
-| `/image`       | Generate an image with a Venice image model (`/image <description>`; Venice sessions only) |
-| `/watermark`   | Show whether the Venice watermark is on/off, or set it with `/watermark on|off` (`off` hides it; persisted as a global setting) |
+| `/image`       | Generate an image (`/image [--ratio <x:y>] [--format <png|jpeg|webp>] <description>`; leading flags are stripped from the appended message; without them compact pickers appear with the saved default preselected) |
+| `/watermark`   | Show whether the Venice watermark is on/off, or set it with `/watermark on|off` (`off` hides it; persisted as a global setting; Venice sessions only) |
 | `Cmd+C` / `Ctrl+C` | During streaming: abort, save the partial response, and exit. At the prompt: cancel and exit |
 
 Unknown slash commands (anything starting with `/`) print a hint listing the available commands instead of being sent to the model.
+
+Image sessions additionally accept `/aspect <x:y>` and `/format <fmt>` (bare shows the current value; `clear` unsets it) to set the aspect ratio and output format for the rest of the session — see [docs/images.md](images.md).
 
 While typing at the prompt, a live list of matching commands appears below the input as soon as the line starts with `/` (single line, cursor at line end, not yet an exact match). **Tab** fills the first match, **Shift+Tab** fills the last one, and **Enter always submits**. The list hides once the line is an exact match — keep typing to refine, or backspace the `/` to dismiss it. Parameterized commands like `/temp 0.7` are typed manually after completion.

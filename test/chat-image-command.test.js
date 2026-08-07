@@ -22,7 +22,7 @@ function fakeVeniceProvider(overrides = {}) {
           id: 'flux-1-1',
           name: 'Flux 1.1',
           pricing: { perImage: 0.02, byResolution: null, byQuality: null },
-          constraints: { aspectRatios: ['1:1'], resolutions: null, qualities: null, widthHeightDivisor: 8 },
+          constraints: { aspectRatios: ['1:1', '16:9', '3:2'], formats: ['png', 'jpeg', 'webp'], resolutions: null, qualities: null, widthHeightDivisor: 8 },
           offline: false,
         },
       ]
@@ -76,6 +76,7 @@ function makeCtx(overrides = {}) {
     newSessionId: async () => '2026-01-02T00-00-00',
     copyText: async () => ({ ok: true }),
     selectImageModel: undefined,
+    selectImageSizing: async (_message, values) => values[0],
     stdout: { write: (chunk) => stdoutChunks.push(String(chunk)) },
     ...overrides,
   }
@@ -118,7 +119,7 @@ test('/image generates, appends user + assistant messages and saves the session'
   assert.equal(assistantMsg.content.length, 1)
   assert.equal(assistantMsg.content[0].type, 'image_url')
   assert.ok(assistantMsg.content[0].image_url.url.startsWith('ref://attachments/'), assistantMsg.content[0].image_url.url)
-  assert.deepEqual(prefsUpdates, [{ lastImageModel: 'flux-1-1' }])
+  assert.deepEqual(prefsUpdates, [{ lastImageModel: 'flux-1-1', imageDefaults: { venice: { aspectRatio: '1:1', format: 'png' } } }])
 
   const logs = stdoutChunks.join('').split('\n').filter(Boolean)
   assert.ok(logs.some((l) => l.includes('saved to ')), logs.join('\n'))
@@ -135,23 +136,23 @@ test('/image with no args prints a usage hint and does nothing else', async (t) 
 
   await chatCommands['/image'](ctx)
 
-  assert.equal(consoleSpy.log(0), 'Usage: /image <description>\n')
+  assert.equal(consoleSpy.log(0), 'Usage: /image [--ratio <x:y>] [--format <png|jpeg|webp>] <description>\n')
   assert.equal(ctx.state.messages.length, before)
   assert.deepEqual(savedSessions, [])
   assert.equal(pickerCalls, 0)
 })
 
-test('/image on an openrouter session errors without calling the API', async (t) => {
+test('/image on a provider without image models errors without calling the API', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx, savedSessions } = makeCtx({
-    provider: fakeVeniceProvider({ meta: { name: 'openrouter' } }),
+    provider: { meta: { name: 'openrouter' } },
     selectImageModel: async () => { throw new Error('picker should not run') },
   })
   const before = ctx.state.messages.length
 
   await chatCommands['/image']({ ...ctx, input: '/image a red cat', args: 'a red cat' })
 
-  assert.equal(consoleSpy.error(0), 'Error: /image is only supported on Venice sessions.\n')
+  assert.equal(consoleSpy.error(0), 'Error: /image is not supported by openrouter.\n')
   assert.equal(ctx.state.messages.length, before)
   assert.deepEqual(savedSessions, [])
 })
@@ -257,4 +258,97 @@ test('/watermark is a registered, args-accepting command visible regardless of v
   assert.equal(commandAcceptsArgs('/watermark'), true)
   assert.ok(visibleChatCommands({ visionSupported: false }).includes('/watermark'))
   assert.ok(visibleChatCommands({ visionSupported: true }).includes('/watermark'))
+})
+
+test('/image --ratio and --format are parsed, validated and stripped from the appended message', async (t) => {
+  mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx({
+    prefs: { imageDefaults: { venice: { aspectRatio: '1:1', format: 'webp' } } },
+    selectImageModel: async (models) => ({ id: models[0].id, name: models[0].name }),
+  })
+
+  await chatCommands['/image']({ ...ctx, input: '/image --ratio 16:9 --format png a red cat', args: '--ratio 16:9 --format png a red cat' })
+
+  assert.equal(ctx.provider.generateCalls.length, 1)
+  assert.equal(ctx.provider.generateCalls[0].aspectRatio, '16:9')
+  assert.equal(ctx.provider.generateCalls[0].format, 'png')
+  assert.equal(ctx.state.messages[1].content, 'a red cat')
+  assert.deepEqual(prefsUpdates, [
+    { lastImageModel: 'flux-1-1', imageDefaults: { venice: { aspectRatio: '16:9', format: 'png' } } },
+  ])
+})
+
+test('/image --aspect-ratio is an alias of --ratio', async (t) => {
+  mockConsole(t)
+  const { ctx } = makeCtx({
+    selectImageModel: async (models) => ({ id: models[0].id, name: models[0].name }),
+  })
+
+  await chatCommands['/image']({ ...ctx, input: '/image --aspect-ratio 3:2 a cat', args: '--aspect-ratio 3:2 a cat' })
+
+  assert.equal(ctx.provider.generateCalls[0].aspectRatio, '3:2')
+  assert.equal(ctx.provider.generateCalls[0].format, 'png')
+  assert.equal(ctx.state.messages[1].content, 'a cat')
+})
+
+test('/image flags without a description print the usage hint', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+
+  await chatCommands['/image']({ ...ctx, input: '/image --ratio 16:9', args: '--ratio 16:9' })
+
+  assert.equal(consoleSpy.log(0), 'Usage: /image [--ratio <x:y>] [--format <png|jpeg|webp>] <description>\n')
+  assert.equal(ctx.provider.generateCalls.length, 0)
+})
+
+test('/image with an unknown leading option errors with the usage hint', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, savedSessions } = makeCtx()
+
+  await chatCommands['/image']({ ...ctx, input: '/image --red a cat', args: '--red a cat' })
+
+  assert.equal(consoleSpy.error(0), 'Error: unknown /image option --red. Usage: /image [--ratio <x:y>] [--format <png|jpeg|webp>] <description>\n')
+  assert.equal(ctx.provider.generateCalls.length, 0)
+  assert.deepEqual(savedSessions, [])
+})
+
+test('/image --ratio without a value errors', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+
+  await chatCommands['/image']({ ...ctx, input: '/image --ratio --format png a cat', args: '--ratio --format png a cat' })
+
+  assert.equal(consoleSpy.error(0), 'Error: --ratio expects a value like 16:9.\n')
+  assert.equal(ctx.provider.generateCalls.length, 0)
+})
+
+test('/image rejects an invalid ratio value before any generation', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+
+  await chatCommands['/image']({ ...ctx, input: '/image --ratio wide a cat', args: '--ratio wide a cat' })
+
+  assert.equal(consoleSpy.error(0), '\nError: --aspect-ratio must be in the form W:H (e.g. 16:9) or "auto".\n')
+  assert.equal(ctx.provider.generateCalls.length, 0)
+})
+
+test('/image sizing pickers preselect the saved provider default', async (t) => {
+  mockConsole(t)
+  const pickerCalls = []
+  const { ctx } = makeCtx({
+    prefs: { imageDefaults: { venice: { aspectRatio: '1:1' } } },
+    selectImageModel: async (models) => ({ id: models[0].id, name: models[0].name }),
+    selectImageSizing: async (message, values, defaultValue) => {
+      pickerCalls.push({ message, values, defaultValue })
+      return values[0]
+    },
+  })
+
+  await chatCommands['/image']({ ...ctx, input: '/image a red cat', args: 'a red cat' })
+
+  assert.equal(pickerCalls.length, 2)
+  assert.equal(pickerCalls[0].message, 'Select an aspect ratio:')
+  assert.equal(pickerCalls[0].defaultValue, '1:1')
+  assert.equal(pickerCalls[1].message, 'Select an image format:')
+  assert.equal(pickerCalls[1].defaultValue, 'webp')
 })

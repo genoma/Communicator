@@ -4,19 +4,22 @@ import { getProvider } from '../providers/index.js'
 import { ensureSessionsDir, generateSessionId, persistSessionFile, buildSessionPayload } from '../sessions.js'
 import { attachmentDirFor, externalizeAttachments, savedAttachmentPath } from '../attachment-store.js'
 import { selectImageModelNonInteractive } from '../model-selection.js'
-import { selectImageModel } from '../prompts.js'
+import { selectImageModel, selectSizingOption } from '../prompts.js'
 import { SESSIONS_DIR } from '../constants.js'
 import { CliError, formatError } from '../errors.js'
 import { readStdin } from '../cli-utils.js'
-import { savePreferences, applyPreferenceUpdates } from '../config.js'
+import { getImageDefaults, mergeImageDefaults, savePreferences, applyPreferenceUpdates } from '../config.js'
 import { createLoader } from '../ui/loader.js'
 import { resolveAspectRatio, resolveHeight, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants, resolveWidth } from '../flags.js'
 
-function validateSizingConstraints(model, { aspectRatio, resolution, quality, width, height }) {
+function validateSizingConstraints(model, { aspectRatio, format, resolution, quality, width, height }) {
   if (!model) return
   const constraints = model.constraints || {}
   if (aspectRatio && Array.isArray(constraints.aspectRatios) && !constraints.aspectRatios.includes(aspectRatio)) {
     throw new CliError(`Error: --aspect-ratio ${aspectRatio} is not supported by ${model.id}. Supported: ${constraints.aspectRatios.join(', ')}.`)
+  }
+  if (format && Array.isArray(constraints.formats) && !constraints.formats.includes(format)) {
+    throw new CliError(`Error: --image-format ${format} is not supported by ${model.id}. Supported: ${constraints.formats.join(', ')}.`)
   }
   if (resolution && Array.isArray(constraints.resolutions) && !constraints.resolutions.includes(resolution)) {
     throw new CliError(`Error: --resolution ${resolution} is not supported by ${model.id}. Supported: ${constraints.resolutions.join(', ')}.`)
@@ -33,8 +36,44 @@ function validateSizingConstraints(model, { aspectRatio, resolution, quality, wi
   }
 }
 
-export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, prefs = {}, sessionId, selectImage, model = null, stdout = process.stdout }) {
+export function sizingDropNote(kind, value, modelId) {
+  return `note: saved ${kind} ${value} is not supported by ${modelId}; it was not sent.`
+}
+
+// Applies a saved default only when the model supports it. A null list
+// means the model cannot take the parameter at all (OpenRouter models that
+// lack the param entirely); Venice models without an advertised list pass
+// the value through as before.
+function applySizingDefault(list, value, providerName, kind, modelId) {
+  if (value === undefined) return { value: undefined, note: null }
+  if (Array.isArray(list)) {
+    if (list.includes(value)) return { value, note: null }
+    return { value: undefined, note: sizingDropNote(kind, value, modelId) }
+  }
+  if (providerName === 'openrouter') {
+    return { value: undefined, note: sizingDropNote(kind, value, modelId) }
+  }
+  return { value, note: null }
+}
+
+function ratioPreselect(list, savedDefault, modelDefault) {
+  if (savedDefault && list.includes(savedDefault)) return savedDefault
+  if (modelDefault && list.includes(modelDefault)) return modelDefault
+  if (list.includes('auto')) return 'auto'
+  return undefined
+}
+
+function formatPreselect(list, savedDefault, providerName) {
+  if (savedDefault && list.includes(savedDefault)) return savedDefault
+  const fallback = providerName === 'venice' ? 'webp' : 'png'
+  if (list.includes(fallback)) return fallback
+  return undefined
+}
+
+export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, prefs = {}, sessionId, selectImage, selectImageSizing, sizingInteractive, model = null, stdout = process.stdout }) {
   const picker = selectImage ?? selectImageModel
+  const sizingPicker = selectImageSizing ?? selectSizingOption
+  const providerName = provider.meta.name
 
   let resolved = model
   let modelId = (resolved?.modelId ?? resolved?.id) || opts.imageModel || null
@@ -61,7 +100,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
   let width
   let height
   try {
-    format = resolveImageFormat(opts.imageFormat) ?? 'webp'
+    format = resolveImageFormat(opts.imageFormat)
     variants = resolveVariants(opts.variants) ?? 1
     aspectRatio = resolveAspectRatio(opts.aspectRatio)
     resolution = resolveResolution(opts.resolution)
@@ -73,7 +112,50 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
     throw new CliError(`Error: ${err.message}`)
   }
 
-  validateSizingConstraints(resolved, { aspectRatio, resolution, quality, width, height })
+  validateSizingConstraints(resolved, { aspectRatio, format, resolution, quality, width, height })
+
+  const savedDefaults = getImageDefaults(prefs, providerName)
+  const interactive = sizingInteractive === true || (sizingInteractive !== false && (selectImage != null || stdout.isTTY === true))
+  const notes = []
+  const prefsUpdates = {}
+  let pickedRatio = false
+  let pickedFormat = false
+
+  if (interactive) {
+    const ratios = resolved?.constraints?.aspectRatios
+    if (aspectRatio === undefined && Array.isArray(ratios)) {
+      aspectRatio = await sizingPicker('Select an aspect ratio:', ratios, ratioPreselect(ratios, savedDefaults.aspectRatio, resolved?.constraints?.defaultAspectRatio))
+      pickedRatio = true
+    }
+    const formats = resolved?.constraints?.formats
+    if (format === undefined && Array.isArray(formats)) {
+      format = await sizingPicker('Select an image format:', formats, formatPreselect(formats, savedDefaults.format, providerName))
+      pickedFormat = true
+    }
+  }
+
+  if (!pickedRatio && opts.aspectRatio === undefined) {
+    const applied = applySizingDefault(resolved?.constraints?.aspectRatios, savedDefaults.aspectRatio, providerName, 'aspect ratio', resolved?.id)
+    aspectRatio = applied.value
+    if (applied.note) notes.push(applied.note)
+  }
+  if (!pickedFormat && opts.imageFormat === undefined) {
+    const formats = resolved?.constraints?.formats
+    if (savedDefaults.format) {
+      const applied = applySizingDefault(formats, savedDefaults.format, providerName, 'format', resolved?.id)
+      format = applied.value
+      if (applied.note) notes.push(applied.note)
+    } else if (Array.isArray(formats)) {
+      const fallback = providerName === 'venice' ? 'webp' : 'png'
+      if (formats.includes(fallback)) format = fallback
+    }
+  }
+
+  if (opts.aspectRatio !== undefined) prefsUpdates.aspectRatio = aspectRatio
+  else if (pickedRatio && aspectRatio !== savedDefaults.aspectRatio) prefsUpdates.aspectRatio = aspectRatio
+  if (opts.imageFormat !== undefined) prefsUpdates.format = format
+  else if (pickedFormat && format !== savedDefaults.format) prefsUpdates.format = format
+  for (const note of notes) console.warn(note)
 
   const loader = createLoader({ stdout })
   loader.start(variants > 1 ? `Generating image (${variants} variants)` : 'Generating image')
@@ -125,29 +207,36 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
     costLine = `Cost: $${String(Math.round(unit * 1000) / 1000)} per image × ${count} = $${String(Math.round(unit * count * 10000) / 10000)}`
   }
 
+  const sizingParts = []
+  if (aspectRatio) sizingParts.push(aspectRatio)
+  if (format) sizingParts.push(format)
+
   return {
     message: externalized,
     savedPaths,
     blurred: result.blurred === true,
     costLine,
     modelId,
+    ...(Object.keys(prefsUpdates).length > 0 && { prefsUpdates }),
+    ...(sizingParts.length > 0 && { sizing: sizingParts.join(' · ') }),
   }
 }
 
-export function printImageOutcome({ savedPaths = [], blurred = false, costLine = null } = {}, stdout = process.stdout) {
+export function printImageOutcome({ savedPaths = [], blurred = false, costLine = null, sizing = null } = {}, stdout = process.stdout) {
   for (const path of savedPaths) {
     stdout.write(`saved to ${path}\n`)
   }
+  if (sizing) stdout.write(`${sizing}\n`)
   if (costLine) stdout.write(`${costLine}\n`)
   if (blurred) process.stderr.write('Warning: the generated image was returned blurred (safe mode).\n')
 }
 
-export function buildImageSessionPayload({ messages, modelId, createdAt }) {
+export function buildImageSessionPayload({ messages, modelId, createdAt, providerName = 'venice' }) {
   return buildSessionPayload({
     messages,
     modelId,
-    endpointProviderName: 'venice',
-    providerType: 'venice',
+    endpointProviderName: providerName,
+    providerType: providerName,
     reasoningEffort: 'auto',
     temperature: null,
     budget: null,
@@ -159,13 +248,14 @@ export function buildImageSessionPayload({ messages, modelId, createdAt }) {
   })
 }
 
-export async function finalizeImageSession({ prefs, opts = {}, config, sessionId, messages, outcome, createdAt, stdout = process.stdout }) {
-  await persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: outcome.modelId, createdAt }))
-  await savePreferences(applyPreferenceUpdates(prefs, {
+export async function finalizeImageSession({ prefs, opts = {}, config, sessionId, messages, outcome, createdAt, providerName = 'venice', stdout = process.stdout }) {
+  await persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: outcome.modelId, createdAt, providerName }))
+  const updated = applyPreferenceUpdates(prefs, {
     lastImageModel: outcome.modelId,
     outputDir: opts.outputDir,
     hideWatermark: opts.watermark === false ? true : undefined,
-  }), config)
+  })
+  await savePreferences(mergeImageDefaults(updated, providerName, outcome.prefsUpdates), config)
   printImageOutcome(outcome, stdout)
 }
 
@@ -206,6 +296,7 @@ export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, s
     messages,
     outcome,
     createdAt: new Date().toISOString(),
+    providerName: providerType,
     stdout,
   })
 }

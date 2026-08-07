@@ -22,7 +22,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
 
     const provider = getProvider(result.providerType || providerType)
     const apiKey = getApiKey(result.providerType || providerType)
-    if (result.providerType === 'venice' && (await findImageModel(provider, apiKey, result.modelId))) {
+    if (await findImageModel(provider, apiKey, result.modelId)) {
       return imageSessionContext({
         provider,
         apiKey,

@@ -23,7 +23,7 @@ mock.module('@inquirer/prompts', {
   },
 })
 
-const { imageGenCmd } = await import('../src/commands/image-gen.js')
+const { imageGenCmd, runImageGeneration } = await import('../src/commands/image-gen.js')
 
 function jsonResponse(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } })
@@ -464,4 +464,185 @@ test('--image rejects an invalid flag value with a CliError', async (t) => {
 
   assert.equal(exited, true)
   assert.equal(message, 'Error: --variants must be an integer between 1 and 4.')
+})
+
+function fakeSizingProvider(overrides = {}) {
+  return {
+    meta: { name: 'venice' },
+    async fetchImageModels() {
+      return [
+        {
+          id: 'flux-1-1',
+          name: 'Flux 1.1',
+          pricing: { perImage: 0.02, byResolution: null, byQuality: null },
+          constraints: {
+            aspectRatios: ['1:1', '16:9'],
+            formats: ['png', 'jpeg', 'webp'],
+            resolutions: null,
+            qualities: null,
+            widthHeightDivisor: null,
+          },
+        },
+      ]
+    },
+    async generateImage(args) {
+      this.genArgs = args
+      return {
+        id: 'gen-1',
+        images: [{ bytes: IMG1, dataUrl: `data:image/png;base64,${B64_1}`, mime: 'image/png', ext: 'png' }],
+        blurred: false,
+        cost: 0.02,
+      }
+    },
+    ...overrides,
+  }
+}
+
+const plainStdout = { write: () => {}, isTTY: false }
+
+test('runImageGeneration validates an explicit format against the model list', async (t) => {
+  mockConsole(t)
+  const provider = fakeSizingProvider({
+    async fetchImageModels() {
+      return [{ id: 'flux-1-1', name: 'Flux 1.1', pricing: null, constraints: { aspectRatios: null, formats: ['png', 'jpeg'], resolutions: null, qualities: null, widthHeightDivisor: null } }]
+    },
+  })
+
+  await assert.rejects(
+    runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'flux-1-1', imageFormat: 'webp' }, prefs: {}, sessionId: '2026-01-01T00-00-00', stdout: plainStdout }),
+    (err) => err instanceof CliError && err.message === 'Error: --image-format webp is not supported by flux-1-1. Supported: png, jpeg.'
+  )
+})
+
+test('runImageGeneration drops unsupported saved defaults with a note on OpenRouter', async (t) => {
+  const warns = []
+  t.mock.method(console, 'warn', (m) => { warns.push(String(m)) })
+  const provider = fakeSizingProvider({
+    meta: { name: 'openrouter' },
+    async fetchImageModels() {
+      return [{ id: 'openai/gpt-image-1-mini', name: 'Mini', pricing: null, constraints: { aspectRatios: ['1:1', '3:2'], formats: null, resolutions: null, qualities: null, widthHeightDivisor: null } }]
+    },
+    async generateImage(args) {
+      this.genArgs = args
+      return { id: 'g1', images: [{ bytes: IMG1, dataUrl: `data:image/png;base64,${B64_1}`, mime: 'image/png', ext: 'png' }], blurred: false, cost: null }
+    },
+  })
+  const prefs = { imageDefaults: { openrouter: { aspectRatio: '16:9', format: 'png' } } }
+
+  const outcome = await runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'openai/gpt-image-1-mini' }, prefs, sessionId: '2026-01-01T00-00-00', stdout: plainStdout })
+
+  assert.equal(provider.genArgs.aspectRatio, undefined)
+  assert.equal(provider.genArgs.format, undefined)
+  assert.equal(outcome.prefsUpdates, undefined)
+  assert.ok(warns.some((w) => w.includes('saved aspect ratio 16:9 is not supported by openai/gpt-image-1-mini; it was not sent.')), warns.join('\n'))
+  assert.ok(warns.some((w) => w.includes('saved format png is not supported by openai/gpt-image-1-mini; it was not sent.')), warns.join('\n'))
+})
+
+test('runImageGeneration applies a supported saved default without pickers when piped', async (t) => {
+  mockConsole(t)
+  const provider = fakeSizingProvider()
+  const prefs = { imageDefaults: { venice: { aspectRatio: '1:1', format: 'webp' } } }
+
+  const outcome = await runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'flux-1-1' }, prefs, sessionId: '2026-01-01T00-00-00', stdout: plainStdout })
+
+  assert.equal(provider.genArgs.aspectRatio, '1:1')
+  assert.equal(provider.genArgs.format, 'webp')
+  assert.equal(outcome.prefsUpdates, undefined)
+  assert.equal(outcome.sizing, '1:1 · webp')
+})
+
+test('runImageGeneration sizing pickers preselect the saved default and persist non-default choices', async (t) => {
+  mockConsole(t)
+  const pickerCalls = []
+  const answers = ['16:9', 'png']
+  const provider = fakeSizingProvider()
+  const prefs = { imageDefaults: { venice: { aspectRatio: '1:1', format: 'webp' } } }
+
+  const outcome = await runImageGeneration({
+    provider,
+    apiKey: 'k',
+    prompt: 'x',
+    opts: { imageModel: 'flux-1-1' },
+    prefs,
+    sessionId: '2026-01-01T00-00-00',
+    selectImage: async (models) => models[0],
+    selectImageSizing: async (message, values, defaultValue) => {
+      pickerCalls.push({ message, values, defaultValue })
+      return answers.shift()
+    },
+    stdout: plainStdout,
+  })
+
+  assert.equal(pickerCalls.length, 2)
+  assert.equal(pickerCalls[0].message, 'Select an aspect ratio:')
+  assert.equal(pickerCalls[0].defaultValue, '1:1')
+  assert.equal(pickerCalls[1].message, 'Select an image format:')
+  assert.equal(pickerCalls[1].defaultValue, 'webp')
+  assert.equal(provider.genArgs.aspectRatio, '16:9')
+  assert.equal(provider.genArgs.format, 'png')
+  assert.deepEqual(outcome.prefsUpdates, { aspectRatio: '16:9', format: 'png' })
+  assert.equal(outcome.sizing, '16:9 · png')
+})
+
+test('sizing pickers are skipped when sizingInteractive is false', async (t) => {
+  mockConsole(t)
+  let pickerCalls = 0
+  const provider = fakeSizingProvider()
+  const prefs = { imageDefaults: { venice: { aspectRatio: '1:1', format: 'webp' } } }
+
+  const outcome = await runImageGeneration({
+    provider,
+    apiKey: 'k',
+    prompt: 'x',
+    opts: { imageModel: 'flux-1-1' },
+    prefs,
+    sessionId: '2026-01-01T00-00-00',
+    selectImage: async (models) => models[0],
+    selectImageSizing: async () => { pickerCalls++ },
+    stdout: plainStdout,
+    sizingInteractive: false,
+  })
+
+  assert.equal(pickerCalls, 0)
+  assert.equal(provider.genArgs.aspectRatio, '1:1')
+  assert.equal(provider.genArgs.format, 'webp')
+  assert.equal(outcome.prefsUpdates, undefined)
+})
+
+test('--image --aspect-ratio/--image-format persist the provider defaults', async (t) => {
+  mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  const { exited } = await runImageGen(t, { overrides: { config: file, aspectRatio: '16:9', imageFormat: 'png' } })
+
+  assert.equal(exited, false)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { aspectRatio: '16:9', format: 'png' } })
+})
+
+test('--image without sizing flags adds no imageDefaults key', async (t) => {
+  mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  const { exited } = await runImageGen(t, { overrides: { config: file } })
+
+  assert.equal(exited, false)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.imageDefaults, undefined)
+})
+
+test('--image prints the sizing line', async (t) => {
+  mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+
+  const { exited, stdoutChunks } = await runImageGen(t, { overrides: { aspectRatio: '16:9', imageFormat: 'png' } })
+
+  assert.equal(exited, false)
+  const logs = stdoutChunks.join('').split('\n').filter(Boolean)
+  assert.ok(logs.includes('16:9 · png'), logs.join('\n'))
 })

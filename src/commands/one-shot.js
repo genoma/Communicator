@@ -75,6 +75,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
       ],
       outcome,
       createdAt,
+      providerName: provider.meta.name,
     })
     return
   }

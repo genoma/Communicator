@@ -1,11 +1,16 @@
 import { readInput as readInputFromInput } from '../input.js'
 import { persistSessionFile } from '../sessions.js'
-import { savePreferences, applyPreferenceUpdates } from '../config.js'
+import { getImageDefaults, mergeImageDefaults, savePreferences, applyPreferenceUpdates } from '../config.js'
 import { findImageModel } from '../model-selection.js'
 import { CliError, formatError } from '../errors.js'
+import { resolveAspectRatio, resolveImageFormat } from '../flags.js'
 import { runImageGeneration, printImageOutcome, buildImageSessionPayload } from './image-gen.js'
 
-const IMAGE_SESSION_COMMANDS = ['/help', '/exit', '/quit', '/watermark']
+const IMAGE_SESSION_COMMANDS = ['/help', '/exit', '/quit', '/watermark', '/aspect', '/format']
+
+function unsupportedListError(kind, value, model, list) {
+  return `Error: ${kind} ${value} is not supported by ${model.id}. Supported: ${list.join(', ')}.`
+}
 
 export async function startImageSession({ provider, apiKey, prefs, imageModelId, sessionId, createdAt, initialMessages = [], configPath, stdout = process.stdout, readInput: read = readInputFromInput }) {
   const model = await findImageModel(provider, apiKey, imageModelId)
@@ -14,7 +19,10 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
   }
 
   let messages = initialMessages.length > 0 ? [...initialMessages] : [{ role: 'system', content: 'You are a helpful assistant.' }]
-  const persist = () => persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: imageModelId, createdAt }))
+  const persist = () => persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: imageModelId, createdAt, providerName: provider.meta.name }))
+
+  let sessionAspectRatio
+  let sessionFormat
 
   console.log(`Image session with ${imageModelId}. Describe an image to generate it; /help lists the available commands.\n`)
 
@@ -37,10 +45,18 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       console.log('/help            show this help')
       console.log('/exit, /quit     leave the session')
       console.log('/watermark       hide the Venice watermark on generated images (on|off)')
+      console.log('/aspect          show the session aspect ratio')
+      console.log('/aspect <x:y>    set the aspect ratio for this session (clear to unset)')
+      console.log('/format          show the session output format')
+      console.log('/format <fmt>    set the output format for this session (clear to unset)')
       continue
     }
 
     if (input === '/watermark' || input.startsWith('/watermark ')) {
+      if (provider.meta.name !== 'venice') {
+        console.error('Error: /watermark is only supported on Venice sessions.\n')
+        continue
+      }
       const value = input.slice('/watermark'.length).trim()
       if (!value) {
         console.log(`Venice watermark is ${prefs.hideWatermark === true ? 'off' : 'on'}.\n`)
@@ -57,6 +73,90 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       continue
     }
 
+    if (input === '/aspect' || input.startsWith('/aspect ')) {
+      const value = input.slice('/aspect'.length).trim()
+      if (!value) {
+        const current = getImageDefaults(prefs, provider.meta.name).aspectRatio
+        console.log(current ? `Aspect ratio: ${current}.\n` : 'Aspect ratio: not set.\n')
+        continue
+      }
+      if (value === 'clear') {
+        sessionAspectRatio = undefined
+        const defaults = { ...getImageDefaults(prefs, provider.meta.name) }
+        delete defaults.aspectRatio
+        const updated = { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [provider.meta.name]: defaults } }
+        Object.assign(prefs, updated)
+        await savePreferences(updated, configPath)
+        console.log('Aspect ratio cleared.\n')
+        continue
+      }
+      let parsed
+      try {
+        parsed = resolveAspectRatio(value)
+      } catch (err) {
+        console.error(`Error: ${err.message}\n`)
+        continue
+      }
+      const constraints = model.constraints
+      const ratios = constraints?.aspectRatios
+      if (constraints && !Array.isArray(ratios)) {
+        console.error(`Error: aspect ratio is not supported by ${model.id}.\n`)
+        continue
+      }
+      if (Array.isArray(ratios) && !ratios.includes(parsed)) {
+        console.error(`${unsupportedListError('aspect ratio', parsed, model, ratios)}\n`)
+        continue
+      }
+      sessionAspectRatio = parsed
+      const updated = mergeImageDefaults(prefs, provider.meta.name, { aspectRatio: parsed })
+      Object.assign(prefs, updated)
+      await savePreferences(updated, configPath)
+      console.log(`Aspect ratio set to ${parsed}.\n`)
+      continue
+    }
+
+    if (input === '/format' || input.startsWith('/format ')) {
+      const value = input.slice('/format'.length).trim()
+      if (!value) {
+        const current = getImageDefaults(prefs, provider.meta.name).format
+        console.log(current ? `Format: ${current}.\n` : 'Format: not set.\n')
+        continue
+      }
+      if (value === 'clear') {
+        sessionFormat = undefined
+        const defaults = { ...getImageDefaults(prefs, provider.meta.name) }
+        delete defaults.format
+        const updated = { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [provider.meta.name]: defaults } }
+        Object.assign(prefs, updated)
+        await savePreferences(updated, configPath)
+        console.log('Format cleared.\n')
+        continue
+      }
+      let parsed
+      try {
+        parsed = resolveImageFormat(value)
+      } catch (err) {
+        console.error(`Error: ${err.message}\n`)
+        continue
+      }
+      const constraints = model.constraints
+      const formats = constraints?.formats
+      if (constraints && !Array.isArray(formats)) {
+        console.error(`Error: format is not supported by ${model.id}.\n`)
+        continue
+      }
+      if (Array.isArray(formats) && !formats.includes(parsed)) {
+        console.error(`${unsupportedListError('format', parsed, model, formats)}\n`)
+        continue
+      }
+      sessionFormat = parsed
+      const updated = mergeImageDefaults(prefs, provider.meta.name, { format: parsed })
+      Object.assign(prefs, updated)
+      await savePreferences(updated, configPath)
+      console.log(`Format set to ${parsed}.\n`)
+      continue
+    }
+
     if (input.startsWith('/')) {
       console.log(`Unknown command "${input}". Available: ${IMAGE_SESSION_COMMANDS.join(', ')}`)
       continue
@@ -64,7 +164,20 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
 
     let outcome
     try {
-      outcome = await runImageGeneration({ provider, apiKey, prompt: input, opts: {}, prefs, sessionId, model, stdout })
+      outcome = await runImageGeneration({
+        provider,
+        apiKey,
+        prompt: input,
+        opts: {
+          ...(sessionAspectRatio !== undefined && { aspectRatio: sessionAspectRatio }),
+          ...(sessionFormat !== undefined && { imageFormat: sessionFormat }),
+        },
+        prefs,
+        sessionId,
+        model,
+        stdout,
+        sizingInteractive: false,
+      })
     } catch (err) {
       console.error(err instanceof CliError ? `\n${err.message}\n` : `\nError: ${formatError(err)}\n`)
       continue
@@ -73,7 +186,10 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     messages.push({ role: 'user', content: input })
     messages.push(outcome.message)
     await persist()
-    await savePreferences(applyPreferenceUpdates(prefs, { lastImageModel: outcome.modelId }), configPath)
+    const updated = applyPreferenceUpdates(prefs, { lastImageModel: outcome.modelId })
+    const withImageDefaults = outcome.prefsUpdates ? mergeImageDefaults(updated, provider.meta.name, outcome.prefsUpdates) : updated
+    Object.assign(prefs, withImageDefaults)
+    await savePreferences(withImageDefaults, configPath)
     printImageOutcome(outcome, stdout)
   }
 }

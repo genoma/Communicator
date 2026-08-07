@@ -12,12 +12,14 @@ mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 
 const genCalls = []
 const genPrefs = []
+const genOpts = []
 const printed = []
 mock.module(new URL('../src/commands/image-gen.js', import.meta.url).href, {
   namedExports: {
-    runImageGeneration: async ({ prompt, model, prefs }) => {
+    runImageGeneration: async ({ prompt, model, prefs, opts, sizingInteractive }) => {
       genCalls.push(prompt)
       genPrefs.push(prefs?.hideWatermark)
+      genOpts.push({ aspectRatio: opts?.aspectRatio, imageFormat: opts?.imageFormat, sizingInteractive })
       if (prompt === 'boom') throw new CliError('Error: venice exploded.')
       return {
         message: { role: 'assistant', content: [{ type: 'image_url', image_url: { url: `ref://attachments/${genCalls.length}.webp` } }] },
@@ -37,7 +39,7 @@ const { startImageSession } = await import('../src/commands/image-session.js')
 const fakeProvider = {
   meta: { name: 'venice' },
   async fetchImageModels() {
-    return [{ id: 'venice-sd35', name: 'SD 3.5', pricing: { perImage: 0.02 } }]
+    return [{ id: 'venice-sd35', name: 'SD 3.5', pricing: { perImage: 0.02 }, constraints: { aspectRatios: ['1:1', '16:9', '3:2'], formats: ['png', 'jpeg', 'webp'] } }]
   },
 }
 
@@ -268,4 +270,181 @@ test('/watermark with an invalid argument errors and continues', async (t) => {
   assert.deepEqual(genCalls, ['a cat'])
   const prefs = JSON.parse(await readFile(file, 'utf-8'))
   assert.equal(prefs.hideWatermark, undefined)
+})
+
+test('/watermark on an openrouter session errors and continues', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    provider: { meta: { name: 'openrouter' }, fetchImageModels: fakeProvider.fetchImageModels },
+    configPath: file,
+    readInput: scriptedInput(['/watermark off', 'a cat', '/quit']),
+  }))
+
+  assert.ok(errors.some((e) => e.includes('/watermark is only supported on Venice sessions.')))
+  assert.deepEqual(genCalls, ['a cat'])
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.hideWatermark, undefined)
+})
+
+test('/aspect sets the session ratio, persists the provider default and passes it as opts', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    readInput: scriptedInput(['/aspect 16:9', 'a cat', '/quit']),
+  }))
+
+  assert.deepEqual(genCalls, ['a cat'])
+  assert.equal(genOpts[0].aspectRatio, '16:9')
+  assert.equal(genOpts[0].imageFormat, undefined)
+  assert.equal(genOpts[0].sizingInteractive, false)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { aspectRatio: '16:9' } })
+})
+
+test('/aspect bare shows the current session ratio', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    prefs: { imageDefaults: { venice: { aspectRatio: '16:9' } } },
+    readInput: scriptedInput(['/aspect', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Aspect ratio: 16:9.')))
+})
+
+test('/aspect bare reports when no ratio is set', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/aspect', '/quit']) }))
+
+  assert.ok(logs.some((l) => l.includes('Aspect ratio: not set.')))
+})
+
+test('/aspect clear unsets the ratio and removes the persisted key', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    prefs: { imageDefaults: { venice: { aspectRatio: '16:9', format: 'webp' } } },
+    readInput: scriptedInput(['/aspect clear', 'a cat', '/quit']),
+  }))
+
+  assert.equal(genOpts[0].aspectRatio, undefined)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { format: 'webp' } })
+})
+
+test('/aspect with an unsupported ratio errors listing the supported values', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/aspect 21:9', '/quit']) }))
+
+  assert.ok(errors.some((e) => e.includes('Error: aspect ratio 21:9 is not supported by venice-sd35. Supported: 1:1, 16:9, 3:2.')))
+  assert.deepEqual(genCalls, [])
+})
+
+test('/aspect with an invalid shape errors', async (t) => {
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/aspect wide', '/quit']) }))
+
+  assert.ok(errors.some((e) => e.includes('--aspect-ratio must be in the form W:H')))
+})
+
+test('/format sets the session format, persists the provider default and passes it as opts', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    readInput: scriptedInput(['/format png', 'a cat', '/quit']),
+  }))
+
+  assert.deepEqual(genCalls, ['a cat'])
+  assert.equal(genOpts[0].imageFormat, 'png')
+  assert.equal(genOpts[0].aspectRatio, undefined)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { format: 'png' } })
+})
+
+test('/format bare shows the current session format', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    prefs: { imageDefaults: { venice: { format: 'png' } } },
+    readInput: scriptedInput(['/format', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Format: png.')))
+})
+
+test('/format clear unsets the format and removes the persisted key', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    prefs: { imageDefaults: { venice: { aspectRatio: '16:9', format: 'png' } } },
+    readInput: scriptedInput(['/format clear', 'a cat', '/quit']),
+  }))
+
+  assert.equal(genOpts[0].imageFormat, undefined)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { aspectRatio: '16:9' } })
+})
+
+test('/format with an invalid value errors', async (t) => {
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/format gif', '/quit']) }))
+
+  assert.ok(errors.some((e) => e.includes('--image-format must be one of: png, jpeg, webp.')))
+})
+
+test('/aspect and /format are listed in /help', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/help', '/quit']) }))
+
+  assert.ok(logs.some((l) => l.includes('/aspect')))
+  assert.ok(logs.some((l) => l.includes('/format')))
 })

@@ -212,3 +212,30 @@ export async function selectReasoningEffort(reasoning, lastEffort, opts = {}) {
 
   return answer
 }
+
+const RATIO_LABELS = {
+  '1:1': '1:1 (square)',
+  '16:9': '16:9 (widescreen)',
+  '9:16': '9:16 (vertical)',
+  '3:2': '3:2 (photo)',
+  '2:3': '2:3 (portrait photo)',
+  '4:3': '4:3 (classic)',
+  '3:4': '3:4 (portrait)',
+  '4:5': '4:5 (social portrait)',
+  '21:9': '21:9 (ultrawide)',
+  auto: 'auto (provider decides)',
+}
+
+export function ratioLabel(value) {
+  return RATIO_LABELS[value] || value
+}
+
+export async function selectSizingOption(message, values, defaultValue) {
+  const choices = values.map((v) => ({ name: ratioLabel(v), value: v }))
+  return select({
+    message,
+    theme: pickerTheme,
+    choices,
+    ...(defaultValue !== undefined && values.includes(defaultValue) ? { default: defaultValue } : {}),
+  })
+}

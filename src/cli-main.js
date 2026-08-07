@@ -59,6 +59,9 @@ async function main(opts, promptArg) {
   const apiKeyOptional = process.env[provider.meta.apiKeyEnv]?.trim() || ''
 
   if (opts.listImageModels) {
+    if (typeof provider.fetchImageModels !== 'function') {
+      throw new CliError(`Error: --list-image-models is not supported by provider ${providerType}.`)
+    }
     await listImageModelsCmd(provider, apiKeyOptional)
     process.exit(0)
   }
@@ -109,6 +112,9 @@ async function main(opts, promptArg) {
   }
 
   if (opts.image) {
+    if (typeof provider.fetchImageModels !== 'function') {
+      throw new CliError(`Error: --image is not supported by provider ${providerType}.`)
+    }
     const apiKey = getApiKey(providerType)
     const prefs = await loadPreferences(opts.config)
     await imageGenCmd({ apiKey, opts, prefs, providerType, prompt: promptArg })

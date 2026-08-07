@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { validateCliFlags, isExitMode } from '../src/cli-validation.js'
+import { validateCliFlags, isExitMode, isConfigSetter } from '../src/cli-validation.js'
 
 const BASE_OPTS = {
   model: undefined,
@@ -51,18 +51,13 @@ test('--image with a prompt validates cleanly on venice', () => {
   assert.deepEqual(validateCliFlags(opts({ image: true }), { ...NO_TTY, ...PROMPT() }), [])
 })
 
-test('--image is rejected on openrouter', () => {
-  assert.deepEqual(
-    validateCliFlags(opts({ provider: 'openrouter', image: true }), { ...TTY, ...PROMPT() }),
-    ['Error: --image is only supported on Venice. Use --provider venice.']
-  )
+test('--image validates cleanly on any provider', () => {
+  assert.deepEqual(validateCliFlags(opts({ image: true, provider: 'openrouter' }), { ...TTY, ...PROMPT() }), [])
+  assert.deepEqual(validateCliFlags(opts({ image: true, provider: 'openrouter' }), { ...NO_TTY, ...PROMPT() }), [])
 })
 
-test('--list-image-models is rejected on openrouter', () => {
-  assert.deepEqual(
-    validateCliFlags(opts({ provider: 'openrouter', listImageModels: true }), TTY),
-    ['Error: --list-image-models is only supported on Venice. Use --provider venice.']
-  )
+test('--list-image-models validates cleanly on any provider', () => {
+  assert.deepEqual(validateCliFlags(opts({ provider: 'openrouter', listImageModels: true }), TTY), [])
 })
 
 test('--image-model requires --image', () => {
@@ -163,4 +158,21 @@ test('--image-model alone with --list-image-models still requires --image', () =
 test('isExitMode includes --list-image-models', () => {
   assert.equal(isExitMode(opts({ listImageModels: true })), true)
   assert.equal(isExitMode(opts({ image: true })), false)
+})
+
+test('--aspect-ratio and --image-format make the invocation a config setter', () => {
+  assert.equal(isConfigSetter(opts({ aspectRatio: '16:9' })), true)
+  assert.equal(isConfigSetter(opts({ imageFormat: 'png' })), true)
+  assert.equal(isConfigSetter(opts()), false)
+})
+
+test('bare --config cannot be combined with the image default flags', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ config: true, aspectRatio: '16:9' }), TTY),
+    ['Error: bare --config (config view) cannot be combined with other flags.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ config: true, imageFormat: 'png' }), TTY),
+    ['Error: bare --config (config view) cannot be combined with other flags.']
+  )
 })

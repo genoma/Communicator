@@ -45,6 +45,22 @@ test('resolveConfigValues maps --no-smooth-streaming to false', () => {
   assert.equal(v.needsModel, false)
 })
 
+test('resolveConfigValues resolves per-provider image defaults without needsModel', () => {
+  const v = resolveConfigValues({ aspectRatio: '16:9', imageFormat: 'png' })
+  assert.equal(v.aspectRatio, '16:9')
+  assert.equal(v.imageFormat, 'png')
+  assert.equal(v.needsModel, false)
+})
+
+test('resolveConfigValues accepts auto aspect ratios', () => {
+  assert.equal(resolveConfigValues({ aspectRatio: 'auto' }).aspectRatio, 'auto')
+})
+
+test('resolveConfigValues throws on invalid image default values', () => {
+  assert.throws(() => resolveConfigValues({ aspectRatio: 'wide' }), /W:H/)
+  assert.throws(() => resolveConfigValues({ imageFormat: 'gif' }), /png, jpeg, webp/)
+})
+
 test('resolveConfigValues leaves unset values undefined', () => {
   const v = resolveConfigValues({})
   assert.deepEqual(v, {
@@ -57,6 +73,8 @@ test('resolveConfigValues leaves unset values undefined', () => {
     smoothStreaming: undefined,
     hideWatermark: undefined,
     outputDir: undefined,
+    aspectRatio: undefined,
+    imageFormat: undefined,
     needsModel: false,
   })
 })

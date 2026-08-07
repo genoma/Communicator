@@ -16,7 +16,7 @@ export async function listModelsCmd(provider, apiKey) {
 }
 
 export async function listImageModelsCmd(provider, apiKey) {
-  const models = await provider.fetchImageModels(apiKey)
+  const models = await provider.fetchImageModels(apiKey, { withPricing: true })
   for (const m of models) {
     const priceCol = `  ${formatImagePrice(m.pricing)}`
     const aspectTag = m.constraints?.aspectRatios?.length ? `  [aspect: ${m.constraints.aspectRatios.join(', ')}]` : ''

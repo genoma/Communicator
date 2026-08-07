@@ -2,7 +2,7 @@ import { getProvider } from '../providers/index.js'
 import { cheapestEndpoint } from '../model-selection.js'
 import { isWebSearchSupported } from '../reasoning.js'
 import { applyPreferenceUpdates, savePreferences } from '../config.js'
-import { resolveFlagValues, normalizeWebSearchMode, webSearchGate } from '../flags.js'
+import { resolveFlagValues, normalizeWebSearchMode, webSearchGate, resolveAspectRatio, resolveImageFormat } from '../flags.js'
 import { getEffortLabel } from '../prompts.js'
 import { formatModelPrice } from '../ui/format.js'
 import { CliError } from '../errors.js'
@@ -16,8 +16,10 @@ export function resolveConfigValues(opts) {
   const smoothStreaming = opts.smoothStreaming === false ? false : undefined
   const hideWatermark = opts.watermark === false ? true : undefined
   const outputDir = opts.outputDir
+  const aspectRatio = opts.aspectRatio !== undefined ? resolveAspectRatio(opts.aspectRatio) : undefined
+  const imageFormat = opts.imageFormat !== undefined ? resolveImageFormat(opts.imageFormat) : undefined
   const needsModel = temperature !== undefined || reasoningEffort !== undefined || webSearch !== undefined
-  return { temperature, budget, webResults, smoothSpeed, reasoningEffort, webSearch, smoothStreaming, hideWatermark, outputDir, needsModel }
+  return { temperature, budget, webResults, smoothSpeed, reasoningEffort, webSearch, smoothStreaming, hideWatermark, outputDir, aspectRatio, imageFormat, needsModel }
 }
 
 export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
@@ -49,7 +51,7 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
     }
   }
 
-  const updated = applyPreferenceUpdates(prefs, {
+  const updates = {
     modelId: opts.model,
     lastModel: opts.model,
     lastProvider: opts.model !== undefined ? (endpoint?.providerName || provider.meta.name) : undefined,
@@ -62,7 +64,15 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
     webResults: values.webResults,
     outputDir: values.outputDir,
     hideWatermark: values.hideWatermark,
-  })
+  }
+  if (values.aspectRatio !== undefined || values.imageFormat !== undefined) {
+    const providerDefaults = { ...(prefs.imageDefaults?.[providerType] || {}) }
+    if (values.aspectRatio !== undefined) providerDefaults.aspectRatio = values.aspectRatio
+    if (values.imageFormat !== undefined) providerDefaults.format = values.imageFormat
+    updates.imageDefaults = { [providerType]: providerDefaults }
+  }
+
+  const updated = applyPreferenceUpdates(prefs, updates)
 
   await savePreferences(updated, opts.config)
 
@@ -87,5 +97,7 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
   if (values.smoothSpeed !== undefined) console.log(`Smooth speed set to ${formatSmoothSpeed(values.smoothSpeed)}`)
   if (values.smoothStreaming === false) console.log('Smooth streaming disabled')
   if (values.hideWatermark === true) console.log('Venice watermark disabled')
+  if (values.aspectRatio !== undefined) console.log(`Aspect ratio set to ${values.aspectRatio} (${providerType} image defaults)`)
+  if (values.imageFormat !== undefined) console.log(`Image format set to ${values.imageFormat} (${providerType} image defaults)`)
   console.log(`Saved to ${opts.config || DEFAULT_CONFIG_FILE}`)
 }

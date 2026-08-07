@@ -3,9 +3,14 @@ import { fetchWithRetry } from '../http.js'
 import { ApiError, makeHandleHttpError } from '../errors.js'
 import { DEFAULT_TEMPERATURE, DEFAULT_WEB_SEARCH_RESULTS } from '../constants.js'
 import { getZdrIndex, getProviderPolicies } from './openrouter-meta.js'
+import { mimeForExt, extForMime } from '../attachments.js'
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 const CACHE_HEADER = 'x-openrouter-cache-status'
+
+// Image generations are synchronous and queue on the provider: live runs
+// took ~20 s to 2 min, far beyond the 30 s default timeout in http.js.
+export const IMAGE_GEN_TIMEOUT_MS = 600_000
 
 export const meta = {
   name: 'openrouter',
@@ -81,6 +86,107 @@ export async function fetchModels(apiKey) {
       pricing: null,
     }
   })
+}
+
+function imageModelConstraints(m) {
+  const sp = m.supported_parameters || {}
+  const enumValues = (d) => (Array.isArray(d?.values) && d.values.length > 0 ? [...d.values] : Array.isArray(d?.enum?.values) && d.enum.values.length > 0 ? [...d.enum.values] : null)
+  return {
+    aspectRatios: enumValues(sp.aspect_ratio),
+    formats: enumValues(sp.output_format),
+    resolutions: enumValues(sp.resolution),
+    qualities: enumValues(sp.quality),
+    widthHeightDivisor: null,
+    maxN: sp.n?.max ?? sp.n?.range?.max ?? null,
+    defaultAspectRatio: null,
+  }
+}
+
+async function fetchImageModelPricing(apiKey, modelId) {
+  const res = await fetchWithRetry(`${OPENROUTER_BASE}/images/models/${modelId}/endpoints`, {
+    headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+  }, { errorResponse: handleHttpError })
+  const parsed = await res.json()
+  const endpoints = Array.isArray(parsed.data) ? parsed.data : parsed.endpoints || parsed.data?.endpoints || []
+  const outputPrices = []
+  for (const ep of endpoints) {
+    for (const p of ep.pricing || []) {
+      if (p.billable === 'output_image' && (p.unit === undefined || p.unit === 'image') && typeof p.cost_usd === 'number') {
+        outputPrices.push(p)
+      }
+    }
+  }
+  const noVariant = outputPrices.filter((p) => !p.variant)
+  const chosen = noVariant.length > 0 ? noVariant : outputPrices
+  if (chosen.length === 0) return { perImage: null, byResolution: null, byQuality: null }
+  return { perImage: Math.min(...chosen.map((p) => p.cost_usd)), byResolution: null, byQuality: null }
+}
+
+export async function fetchImageModels(apiKey, { withPricing = false } = {}) {
+  const res = await fetchWithRetry(`${OPENROUTER_BASE}/images/models`, {
+    headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+  }, { errorResponse: handleHttpError })
+  const { data } = await res.json()
+  const models = (data || []).map((m) => ({
+    id: m.id,
+    name: m.name,
+    provider: m.id.split('/')[0],
+    description: m.description || null,
+    privacy: null,
+    pricing: null,
+    constraints: imageModelConstraints(m),
+    offline: false,
+  }))
+  if (!withPricing) return models
+  return Promise.all(models.map(async (m) => ({ ...m, pricing: await fetchImageModelPricing(apiKey, m.id) })))
+}
+
+export async function generateImage({ apiKey, model, prompt, format, variants = 1, aspectRatio, resolution, quality, seed, width, height, signal, timeoutMs = IMAGE_GEN_TIMEOUT_MS }) {
+  const body = { model, prompt, n: variants }
+  if (aspectRatio) body.aspect_ratio = aspectRatio
+  if (format) body.output_format = format
+  if (resolution) body.resolution = resolution
+  if (quality) body.quality = quality
+  if (seed !== undefined && seed !== null) body.seed = seed
+  if (width !== undefined && width !== null && height !== undefined && height !== null && !aspectRatio) {
+    body.size = `${width}x${height}`
+  }
+
+  const res = await fetchWithRetry(`${OPENROUTER_BASE}/images`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  }, { errorResponse: handleHttpError, signal, timeoutMs })
+  const parsed = await res.json()
+  const rawImages = Array.isArray(parsed.data) ? parsed.data : []
+  if (rawImages.length === 0) {
+    throw new ApiError('OpenRouter returned no images.', { provider: 'openrouter', retryable: false })
+  }
+
+  const images = rawImages.map((d) => {
+    const b64 = d.b64_json || d.b64
+    const mime = d.media_type || mimeForExt(format || 'png')
+    const ext = extForMime(mime)
+    return {
+      bytes: Buffer.from(b64, 'base64'),
+      dataUrl: `data:${mime};base64,${b64}`,
+      mime,
+      ext,
+    }
+  })
+
+  const count = images.length
+  const cost = parsed.usage?.cost != null ? parsed.usage.cost / count : null
+
+  return {
+    id: parsed.id || null,
+    images,
+    blurred: false,
+    cost,
+  }
 }
 
 export async function fetchEndpoints(apiKey, modelId, allModels) {

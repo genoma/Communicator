@@ -5,18 +5,20 @@ import assert from 'node:assert/strict'
 
 let selectMessages = []
 let selectChoices = []
+let selectDefaults = []
 mock.module('@inquirer/prompts', {
   namedExports: {
     search: async () => undefined,
     select: async (opts) => {
       selectMessages.push(opts?.message)
       selectChoices.push(opts?.choices)
+      selectDefaults.push(opts?.default)
       return opts?.default
     },
   },
 })
 
-const { pickerTheme, BACK_SENTINEL, getEffortLabel, orderModelChoices, filterModelChoices, formatEndpointLabel, formatEndpointDescription, selectReasoningEffort } = await import('../src/prompts.js')
+const { pickerTheme, BACK_SENTINEL, getEffortLabel, orderModelChoices, filterModelChoices, formatEndpointLabel, formatEndpointDescription, selectReasoningEffort, ratioLabel, selectSizingOption } = await import('../src/prompts.js')
 
 test('pickerTheme does not reuse the chat ❯ prefix', () => {
   assert.equal(pickerTheme.prefix, undefined)
@@ -128,4 +130,33 @@ test('selectReasoningEffort puts the back choice first when withBack is set', as
   assert.equal(selectChoices[0][0].value, BACK_SENTINEL)
   assert.equal(selectChoices[0][1].type, 'separator')
   assert.equal(selectChoices[0][2].name, 'Disabled')
+})
+
+test('ratioLabel humanizes common ratios and falls back to the raw value', () => {
+  assert.equal(ratioLabel('16:9'), '16:9 (widescreen)')
+  assert.equal(ratioLabel('1:1'), '1:1 (square)')
+  assert.equal(ratioLabel('9:16'), '9:16 (vertical)')
+  assert.equal(ratioLabel('auto'), 'auto (provider decides)')
+  assert.equal(ratioLabel('9:19.5'), '9:19.5')
+  assert.equal(ratioLabel('8:1'), '8:1')
+})
+
+test('selectSizingOption builds labeled choices and preselects an in-list default', async () => {
+  selectMessages = []
+  selectChoices = []
+  selectDefaults = []
+  const answer = await selectSizingOption('Select an aspect ratio:', ['1:1', '16:9', 'auto'], '16:9')
+  assert.equal(answer, '16:9')
+  assert.equal(selectMessages[0], 'Select an aspect ratio:')
+  assert.deepEqual(selectChoices[0].map((c) => c.name), ['1:1 (square)', '16:9 (widescreen)', 'auto (provider decides)'])
+  assert.deepEqual(selectChoices[0].map((c) => c.value), ['1:1', '16:9', 'auto'])
+  assert.equal(selectDefaults[0], '16:9')
+})
+
+test('selectSizingOption omits the default when it is not in the list', async () => {
+  selectChoices = []
+  selectDefaults = []
+  await selectSizingOption('Select an image format:', ['png', 'jpeg'], 'webp')
+  assert.equal(selectDefaults[0], undefined)
+  assert.deepEqual(selectChoices[0].map((c) => c.value), ['png', 'jpeg'])
 })

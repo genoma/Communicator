@@ -39,7 +39,9 @@ export function isConfigSetter(opts) {
     opts.webResults !== undefined ||
     opts.smoothSpeed !== undefined ||
     opts.smoothStreaming === false ||
-    opts.watermark === false
+    opts.watermark === false ||
+    opts.aspectRatio !== undefined ||
+    opts.imageFormat !== undefined
   )
 }
 
@@ -67,6 +69,8 @@ function hasBareConfigOtherFlags(opts, promptArg) {
     opts.smoothStreaming === false ||
     opts.smoothSpeed !== undefined ||
     opts.watermark === false ||
+    opts.aspectRatio !== undefined ||
+    opts.imageFormat !== undefined ||
     opts.delete !== undefined ||
     opts.image === true ||
     hasAttachments(opts)
@@ -124,14 +128,6 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
 
   if (opts.outputDir !== undefined && opts.export === undefined && opts.image !== true && (promptArg || !isTTY)) {
     errors.push('Error: --output-dir sets the default export directory. Use it alone (with a TTY) or with --export.')
-  }
-
-  if (opts.image && opts.provider !== 'venice') {
-    errors.push('Error: --image is only supported on Venice. Use --provider venice.')
-  }
-
-  if (opts.listImageModels && opts.provider !== 'venice') {
-    errors.push('Error: --list-image-models is only supported on Venice. Use --provider venice.')
   }
 
   if (opts.imageModel !== undefined && opts.image !== true) {

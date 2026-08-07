@@ -46,7 +46,20 @@ export async function savePreferences(prefs, customPath) {
   await writeFile(configFile, JSON.stringify(prefs, null, 2) + '\n', 'utf-8')
 }
 
-export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageModel, lastProvider, reasoningEffort, temperature, webSearch, smoothStreaming, smoothSpeed, budget, webResults, outputDir, hideWatermark } = {}) {
+export function getImageDefaults(prefs, providerName) {
+  return prefs?.imageDefaults?.[providerName] || {}
+}
+
+export function mergeImageDefaults(prefs, providerName, { aspectRatio, format } = {}) {
+  if (aspectRatio === undefined && format === undefined) return prefs
+  const current = getImageDefaults(prefs, providerName)
+  const merged = { ...current }
+  if (aspectRatio !== undefined) merged.aspectRatio = aspectRatio
+  if (format !== undefined) merged.format = format
+  return { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [providerName]: merged } }
+}
+
+export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageModel, lastProvider, reasoningEffort, temperature, webSearch, smoothStreaming, smoothSpeed, budget, webResults, outputDir, hideWatermark, imageDefaults } = {}) {
   const merged = { ...prefs }
   if (lastModel !== undefined) merged.lastModel = lastModel
   if (lastImageModel !== undefined) merged.lastImageModel = lastImageModel
@@ -66,5 +79,6 @@ export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageMod
   if (webResults !== undefined) merged.webResults = webResults
   if (outputDir !== undefined) merged.outputDir = outputDir
   if (hideWatermark !== undefined) merged.hideWatermark = hideWatermark
+  if (imageDefaults !== undefined) merged.imageDefaults = { ...prefs.imageDefaults, ...imageDefaults }
   return merged
 }

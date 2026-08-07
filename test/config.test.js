@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { applyPreferenceUpdates, loadSystemPrompt, getApiKey } from '../src/config.js'
+import { applyPreferenceUpdates, loadSystemPrompt, getApiKey, getImageDefaults, mergeImageDefaults } from '../src/config.js'
 import { CliError } from '../src/errors.js'
 
 test('applyPreferenceUpdates merges per-model maps by spread', () => {
@@ -132,6 +132,48 @@ test('applyPreferenceUpdates skips undefined budget, webResults and outputDir', 
 test('applyPreferenceUpdates sets lastImageModel', () => {
   const updated = applyPreferenceUpdates({}, { lastImageModel: 'flux-1-1' })
   assert.equal(updated.lastImageModel, 'flux-1-1')
+})
+
+test('applyPreferenceUpdates merges provider-keyed imageDefaults', () => {
+  const prefs = { imageDefaults: { venice: { aspectRatio: '1:1' } } }
+  const updated = applyPreferenceUpdates(prefs, { imageDefaults: { openrouter: { format: 'png' } } })
+  assert.deepEqual(updated.imageDefaults, { venice: { aspectRatio: '1:1' }, openrouter: { format: 'png' } })
+})
+
+test('applyPreferenceUpdates skips undefined imageDefaults', () => {
+  const prefs = { lastModel: 'm' }
+  const updated = applyPreferenceUpdates(prefs, { imageDefaults: undefined })
+  assert.equal(updated.imageDefaults, undefined)
+})
+
+test('getImageDefaults returns the provider entry or an empty object', () => {
+  assert.deepEqual(getImageDefaults({ imageDefaults: { venice: { aspectRatio: '16:9' } } }, 'venice'), { aspectRatio: '16:9' })
+  assert.deepEqual(getImageDefaults({ imageDefaults: { venice: { aspectRatio: '16:9' } } }, 'openrouter'), {})
+  assert.deepEqual(getImageDefaults({}, 'venice'), {})
+  assert.deepEqual(getImageDefaults(undefined, 'venice'), {})
+})
+
+test('mergeImageDefaults merges per-provider entries and keeps others', () => {
+  const prefs = { imageDefaults: { venice: { aspectRatio: '1:1', format: 'webp' } } }
+  const updated = mergeImageDefaults(prefs, 'venice', { aspectRatio: '16:9' })
+  assert.deepEqual(updated.imageDefaults, { venice: { aspectRatio: '16:9', format: 'webp' } })
+  const withOther = mergeImageDefaults(updated, 'openrouter', { format: 'png' })
+  assert.deepEqual(withOther.imageDefaults, {
+    venice: { aspectRatio: '16:9', format: 'webp' },
+    openrouter: { format: 'png' },
+  })
+})
+
+test('mergeImageDefaults leaves prefs untouched when nothing is set', () => {
+  const prefs = { lastModel: 'm' }
+  assert.equal(mergeImageDefaults(prefs, 'venice', {}), prefs)
+  assert.equal(mergeImageDefaults(prefs, 'venice', { aspectRatio: undefined }), prefs)
+})
+
+test('mergeImageDefaults does not mutate the input prefs', () => {
+  const prefs = { imageDefaults: { venice: { aspectRatio: '1:1' } } }
+  mergeImageDefaults(prefs, 'venice', { aspectRatio: '16:9' })
+  assert.deepEqual(prefs.imageDefaults.venice, { aspectRatio: '1:1' })
 })
 
 test('applyPreferenceUpdates skips undefined lastImageModel', () => {

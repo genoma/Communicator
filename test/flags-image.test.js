@@ -37,10 +37,17 @@ test('resolveAspectRatio accepts W:H shapes', () => {
   assert.equal(resolveAspectRatio('1024:768'), '1024:768')
 })
 
+test('resolveAspectRatio accepts auto and decimal ratios', () => {
+  assert.equal(resolveAspectRatio('auto'), 'auto')
+  assert.equal(resolveAspectRatio('9:19.5'), '9:19.5')
+  assert.equal(resolveAspectRatio('19.5:9'), '19.5:9')
+})
+
 test('resolveAspectRatio rejects malformed shapes', () => {
-  throws(() => resolveAspectRatio('16x9'), '--aspect-ratio must be in the form W:H (e.g. 16:9).')
-  throws(() => resolveAspectRatio('16:'), '--aspect-ratio must be in the form W:H (e.g. 16:9).')
-  throws(() => resolveAspectRatio('wide'), '--aspect-ratio must be in the form W:H (e.g. 16:9).')
+  throws(() => resolveAspectRatio('16x9'), '--aspect-ratio must be in the form W:H (e.g. 16:9) or "auto".')
+  throws(() => resolveAspectRatio('16:'), '--aspect-ratio must be in the form W:H (e.g. 16:9) or "auto".')
+  throws(() => resolveAspectRatio('wide'), '--aspect-ratio must be in the form W:H (e.g. 16:9) or "auto".')
+  throws(() => resolveAspectRatio(':9'), '--aspect-ratio must be in the form W:H (e.g. 16:9) or "auto".')
   assert.equal(resolveAspectRatio(undefined), undefined)
 })
 

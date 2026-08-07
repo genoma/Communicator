@@ -1,16 +1,45 @@
 import { formatError, CliError } from '../../errors.js'
 import { selectModelAndEndpoint } from '../../model-selection.js'
 import { getEffortLabel, selectReasoningEffort } from '../../prompts.js'
-import { resolveTemperatureFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, webSearchGate } from '../../flags.js'
+import { resolveTemperatureFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, webSearchGate, resolveAspectRatio, resolveImageFormat } from '../../flags.js'
 import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed } from '../../constants.js'
 import { budgetStatusLine, budgetExhaustedMessage } from '../../tracker.js'
 import { sessionLabel } from '../../ui/format.js'
 import { dim } from '../../ui/style.js'
 import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
+import { getImageDefaults } from '../../config.js'
 import { runImageGeneration, printImageOutcome } from '../image-gen.js'
 
 const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments', '/image', '/watermark'])
+
+export const IMAGE_USAGE = 'Usage: /image [--ratio <x:y>] [--format <png|jpeg|webp>] <description>'
+
+const RATIO_FLAGS = new Set(['--ratio', '--aspect-ratio'])
+const FORMAT_FLAGS = new Set(['--format'])
+
+export function parseImageArgs(args) {
+  const tokens = args.trim().split(/\s+/)
+  let ratio
+  let format
+  let i = 0
+  while (i < tokens.length && tokens[i].startsWith('--')) {
+    const token = tokens[i]
+    const value = tokens[i + 1]
+    if (RATIO_FLAGS.has(token)) {
+      if (!value || value.startsWith('--')) throw new CliError(`Error: ${token} expects a value like 16:9.`)
+      ratio = value
+      i += 2
+    } else if (FORMAT_FLAGS.has(token)) {
+      if (!value || value.startsWith('--')) throw new CliError(`Error: ${token} expects a value like png.`)
+      format = value
+      i += 2
+    } else {
+      throw new CliError(`Error: unknown /image option ${token}. ${IMAGE_USAGE}`)
+    }
+  }
+  return { ratio, format, description: tokens.slice(i).join(' ') }
+}
 
 export function budgetGuard(ctx) {
   const { state, tracker } = ctx
@@ -275,12 +304,33 @@ const handlers = {
   },
 
   '/image': async (ctx) => {
-    if (ctx.provider.meta.name !== 'venice') {
-      console.error('Error: /image is only supported on Venice sessions.\n')
+    if (typeof ctx.provider.fetchImageModels !== 'function') {
+      console.error(`Error: /image is not supported by ${ctx.provider.meta.name}.\n`)
       return
     }
     if (!ctx.args) {
-      console.log('Usage: /image <description>\n')
+      console.log(`${IMAGE_USAGE}\n`)
+      return
+    }
+    let parsed
+    try {
+      parsed = parseImageArgs(ctx.args)
+    } catch (err) {
+      console.error(err instanceof CliError ? `${err.message}\n` : `\nError: ${formatError(err)}\n`)
+      return
+    }
+    const { ratio, format, description } = parsed
+    if (!description) {
+      console.log(`${IMAGE_USAGE}\n`)
+      return
+    }
+    let resolvedRatio
+    let resolvedFormat
+    try {
+      resolvedRatio = resolveAspectRatio(ratio)
+      resolvedFormat = resolveImageFormat(format)
+    } catch (err) {
+      console.error(`\nError: ${err.message}\n`)
       return
     }
     await ctx.saveSession()
@@ -289,20 +339,27 @@ const handlers = {
       outcome = await runImageGeneration({
         provider: ctx.provider,
         apiKey: ctx.apiKey,
-        prompt: ctx.args,
-        opts: {},
+        prompt: description,
+        opts: { aspectRatio: resolvedRatio, imageFormat: resolvedFormat },
         prefs: ctx.prefs,
         sessionId: ctx.state.sessionId,
         selectImage: ctx.selectImageModel,
+        selectImageSizing: ctx.selectImageSizing,
       })
     } catch (err) {
       console.error(err instanceof CliError ? `\n${err.message}\n` : `\nError: ${formatError(err)}\n`)
       return
     }
-    ctx.state.appendUser(ctx.args)
+    ctx.state.appendUser(description)
     ctx.state.appendAssistant(outcome.message)
     await ctx.saveSession()
-    await ctx.savePrefs({ lastImageModel: outcome.modelId })
+    const prefsUpdates = { lastImageModel: outcome.modelId }
+    if (outcome.prefsUpdates) {
+      prefsUpdates.imageDefaults = {
+        [ctx.provider.meta.name]: { ...getImageDefaults(ctx.prefs, ctx.provider.meta.name), ...outcome.prefsUpdates },
+      }
+    }
+    await ctx.savePrefs(prefsUpdates)
     printImageOutcome(outcome, ctx.stdout)
   },
 
