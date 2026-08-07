@@ -97,11 +97,11 @@ export function normalizeSmoothSpeed(value) {
   }
 }
 
-const IMAGE_FORMATS = new Set(['png', 'jpeg', 'webp'])
-const IMAGE_RESOLUTIONS = new Set(['1K', '2K', '4K'])
-const IMAGE_QUALITIES = new Set(['low', 'medium', 'high'])
+export const IMAGE_FORMATS = new Set(['png', 'jpeg', 'webp'])
+export const IMAGE_RESOLUTIONS = new Set(['1K', '2K', '4K'])
+export const IMAGE_QUALITIES = new Set(['low', 'medium', 'high'])
 export const MAX_IMAGE_DIMENSION = 1280
-const MAX_SEED = 999999999
+export const MAX_SEED = 999999999
 
 export function resolveImageFormat(value) {
   if (value === undefined || value === null || value === '') return undefined

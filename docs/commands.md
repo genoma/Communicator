@@ -34,7 +34,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--aspect-ratio`      | `<x:y>`  | Image aspect ratio, model-dependent (e.g. `16:9`, `auto`; decimal ratios like `9:19.5` accepted). Bare use saves the per-provider default. Conflicts with `--width`/`--height` |
 |       | `--resolution`        | `<tier>` | Image resolution tier, model-dependent: `1K`, `2K`, `4K`. Conflicts with `--width`/`--height` |
 |       | `--quality`           | `<level>`| Image quality tier, model-dependent: `low`, `medium`, `high` |
-|       | `--seed`              | `<int>`  | Random seed for image generation |
+|       | `--seed`              | `<int>`  | Random seed for image generation (between -999999999 and 999999999) |
 |       | `--width`             | `<px>`   | Image width in pixels, 1–1280, multiples of the model's divisor (pixel-based models). Must be given with `--height` |
 |       | `--height`            | `<px>`   | Image height in pixels, 1–1280, multiples of the model's divisor (pixel-based models). Must be given with `--width` |
 |       | `--no-safe-mode`      | —        | Disable safe mode for image generation (adult content returned unblurred). Bare use saves the default (global setting) and opens a chat session |

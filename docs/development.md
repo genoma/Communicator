@@ -92,3 +92,22 @@ export function handleHttpError(status, body) → throws ApiError
 - HTTP calls should go through `fetchWithRetry` from `src/http.js`; errors must be thrown as `ApiError`, never `process.exit`
 
 See `src/providers/openrouter.js` and `src/providers/venice.js` for reference implementations.
+
+## Documentation maintenance
+
+`test/docs-consistency.test.js` mechanically verifies that the user-facing docs (`README.md`, `docs/`) stay in line with the code: CLI flags and slash commands match their registries, env vars / data paths / Node version / key defaults are mentioned, example flags exist, and every markdown link resolves. It runs as part of `npm test` — keep it green whenever a flag, command, default, path, or doc page changes.
+
+The check cannot verify behavioral prose. When touching related code, re-verify these documented behaviors (each is correct as of v3.20.2):
+
+- CTX indicator: hidden below 5% occupancy, yellow at ≥80%, red at ≥95%, peak never decreases (`src/tracker.js`).
+- Budget: warning row at ≥80% used, turns refused at ≥100% (`src/tracker.js`, `src/commands/chat/index.js`).
+- Smooth streaming: default on in TTY sessions, ~40 chars per 20 ms tick, presets slow/normal/fast = 500/2000/8000 chars/s, piped output never paced (`src/constants.js`).
+- One-shot mode: piped stdin capped at 10 MB; exit codes 0 / 1 / 130 (`src/cli-utils.js`, `src/cli-main.js`, `src/turn-runner.js`).
+- Attachment limits: images 20 MB, pdf/office/text 25 MB, inline text 256 KB warning; office formats are Venice-only.
+- Clipboard probe order: macOS `pbcopy`, Windows `clip`, Linux `wl-copy` → `xclip` → `xsel` (`src/clipboard.js`).
+- Reasoning effort: `EFFORT_LABELS` mapping; `none` disables reasoning; Venice uses `reasoning_effort`, OpenRouter its native format.
+- Web search: modes `off`/`auto`/`always` (`on` maps to `auto`); OpenRouter `auto` = server tool with a total result cap, `always` = legacy plugin; Venice maps to `enable_web_search`; the chat banner shows a `[web: <mode>]` badge.
+- ZDR: OpenRouter-only, filters pickers to ZDR-capable endpoints, runtime error kept as a safety net, not persisted.
+- Venice watermark (`/watermark off` hides it → `hideWatermark: true`) and safe-mode are global preferences.
+- Session file format: `providerName`/`providerType`/`usage`/`sources` fields, `ref://attachments/` blobs, the `.index.json` sidecar rebuild, title from the first user message truncated to 50 chars.
+- Command autocomplete: hints appear on `/`, Tab fills the first match, Shift+Tab the last, Enter always submits.

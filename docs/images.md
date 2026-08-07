@@ -44,7 +44,7 @@ The description is the positional prompt; piped stdin works too (`echo "a red ca
 | `--resolution <tier>` | Resolution tier (model-dependent): `1K`, `2K`, `4K` on Venice; OpenRouter tiers like `1024x1024` |
 | `--quality <level>`  | Quality tier (model-dependent): `low`, `medium`, `high`                    |
 | `--width <px>` / `--height <px>` | Exact pixel dimensions, 1–1280, multiples of the model's divisor (pixel-based models; cannot be combined with `--aspect-ratio` or `--resolution`) |
-| `--seed <int>`       | Random seed for reproducible generations                                   |
+| `--seed <int>`       | Random seed for reproducible generations (between -999999999 and 999999999) |
 | `--no-safe-mode`     | Disable safe mode (Venice; adult content is returned unblurred)            |
 | `--no-watermark`     | Hide the Venice watermark on the generated images (persisted as the global `hideWatermark` pref) |
 | `--output-dir <path>`| Also copy the generated images to this directory (saved as the default for later runs) |
