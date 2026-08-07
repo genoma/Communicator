@@ -43,7 +43,7 @@ export async function loadSystemPrompt(customPath) {
 export async function savePreferences(prefs, customPath) {
   const configFile = customPath || DEFAULT_CONFIG_FILE
   await mkdir(dirname(configFile), { recursive: true })
-  await writeFile(configFile, JSON.stringify(prefs, null, 2) + '\n', 'utf-8')
+  await writeFile(configFile, JSON.stringify(prefs, null, 2) + '\n', { encoding: 'utf-8', mode: 0o600 })
 }
 
 export function getImageDefaults(prefs, providerName) {

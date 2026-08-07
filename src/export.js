@@ -23,13 +23,26 @@ function calculateCost(pricing, messages) {
 
 const CITATION = /\^(\d+(?:,\d+)*)\^/g
 
+const SAFE_LINK_RE = /^https?:\/\//i
+
+// Exported markdown is opened in HTML-capable viewers, so raw HTML from
+// model/user content and non-http(s) link schemes are neutralized.
+function escapeHtml(text) {
+  return String(text ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function safeLink(url) {
+  return typeof url === 'string' && SAFE_LINK_RE.test(url) ? url : null
+}
+
 function citationLinks(text, sources) {
   const raw = String(text ?? '')
   if (!sources || sources.length === 0) return raw
   return raw.replace(CITATION, (marker, nums) => {
     return nums.split(',').map((n) => {
       const source = sources[Number(n) - 1]
-      return source?.url ? `[${n}](${source.url})` : `^${n}^`
+      const url = safeLink(source?.url)
+      return url ? `[${n}](${url})` : `^${n}^`
     }).join(' ')
   })
 }
@@ -38,17 +51,17 @@ function sourcesList(sources) {
   if (!sources || sources.length === 0) return ''
   const lines = ['**Sources:**']
   for (const source of sources) {
-    const url = source?.url || ''
+    const url = safeLink(source?.url)
     let parsed
     try {
       parsed = url ? new URL(url) : null
     } catch {
       parsed = null
     }
-    const label = source?.title || (parsed ? parsed.hostname : null)
+    const label = escapeHtml(source?.title) || (parsed ? parsed.hostname : null)
     if (parsed && label) lines.push(`- [${label}](${url})`)
     else if (label) lines.push(`- ${label}`)
-    else lines.push(`- ${url}`)
+    else lines.push(`- ${escapeHtml(source?.url || '')}`)
   }
   return lines.join('\n')
 }
@@ -62,34 +75,34 @@ export function formatMarkdown(sessionData) {
 
   const time = formatSessionTime(createdAt, { utc: true })
   md += `# Chat Session — ${time}\n\n`
-  if (title) md += `**Title:** ${title}\n\n`
-  md += `**Model:** \`${model || 'unknown'}\``
-  if (providerName) md += ` | **Provider:** ${providerName}`
+  if (title) md += `**Title:** ${escapeHtml(title)}\n\n`
+  md += `**Model:** \`${escapeHtml(model) || 'unknown'}\``
+  if (providerName) md += ` | **Provider:** ${escapeHtml(providerName)}`
   md += ` | **Messages:** ${visibleMessages.length}`
-  if (reasoningEffort) md += ` | **Reasoning:** ${reasoningEffort}`
+  if (reasoningEffort) md += ` | **Reasoning:** ${escapeHtml(reasoningEffort)}`
   md += ` | **Cost:** ${formatCost(cost)}`
   md += '\n\n---\n\n'
 
   for (const msg of visibleMessages) {
     if (msg.role === 'user') {
       md += '## You\n\n'
-      md += `> ${contentText(msg.content)}\n\n`
+      md += `> ${escapeHtml(contentText(msg.content))}\n\n`
       for (const att of contentAttachments(msg.content)) {
-        md += `> **Attachment:** \`${att.filename}\`\n\n`
+        md += `> **Attachment:** \`${escapeHtml(att.filename)}\`\n\n`
       }
     } else if (msg.role === 'assistant') {
       md += '## Assistant\n\n'
       if (msg.reasoning) {
         md += '### thinking\n\n'
-        md += `${msg.reasoning}\n\n`
+        md += `${escapeHtml(msg.reasoning)}\n\n`
       }
       md += '### Answer\n\n'
-      md += `${citationLinks(contentText(msg.content), msg.sources)}\n\n`
+      md += `${citationLinks(escapeHtml(contentText(msg.content)), msg.sources)}\n\n`
       for (const att of contentAttachments(msg.content)) {
         const kind = att.kind === 'image' ? 'Image' : 'File'
         md += att.url
-          ? `> **${kind}:** [${att.filename}](${att.url})\n\n`
-          : `> **${kind}:** \`${att.filename}\`\n\n`
+          ? `> **${kind}:** [${escapeHtml(att.filename)}](${att.url})\n\n`
+          : `> **${kind}:** \`${escapeHtml(att.filename)}\`\n\n`
       }
       const list = sourcesList(msg.sources)
       if (list) md += `${list}\n\n`

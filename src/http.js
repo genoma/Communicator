@@ -1,7 +1,58 @@
+import { lookup } from 'node:dns/promises'
+import { isIP } from 'node:net'
 import { ApiError, TimeoutError } from './errors.js'
 
 const DEFAULT_TIMEOUT_MS = 30_000
 const RETRY_DELAYS = [500, 1000]
+
+function isPrivateAddress(address) {
+  if (isIP(address) === 4) {
+    const [a, b] = address.split('.').map(Number)
+    if (a === 127 || a === 10 || a === 0) return true
+    if (a === 172 && b >= 16 && b <= 31) return true
+    if (a === 192 && b === 168) return true
+    if (a === 169 && b === 254) return true
+    if (a === 100 && b >= 64 && b <= 127) return true
+    if (a === 192 && (b === 0 || b === 18 || b === 19)) return true
+    if (a >= 224) return true
+    return false
+  }
+  if (isIP(address) === 6) {
+    const lower = address.toLowerCase().split('%')[0]
+    if (lower === '::1' || lower === '::' || lower === '0:0:0:0:0:0:0:1') return true
+    if (lower.startsWith('::ffff:')) return isPrivateAddress(lower.slice(7))
+    if (lower.startsWith('fc') || lower.startsWith('fd')) return true
+    if (lower.startsWith('fe8') || lower.startsWith('fe9') || lower.startsWith('fea') || lower.startsWith('feb')) return true
+    if (lower.startsWith('ff')) return true
+    return false
+  }
+  return false
+}
+
+// Guards outbound fetches of model/provider-supplied URLs against SSRF: only
+// http(s) targets resolving to public addresses are allowed. Redirect targets
+// must pass the same check (callers re-validate each hop).
+export async function assertSafeUrl(url) {
+  let parsed
+  try {
+    parsed = new URL(url)
+  } catch {
+    return 'invalid URL'
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return 'unsupported URL scheme'
+  const host = parsed.hostname
+  if (!host) return 'invalid URL'
+  if (isIP(host) !== 0) {
+    return isPrivateAddress(host) ? 'blocked URL (private or loopback address)' : null
+  }
+  let addresses
+  try {
+    addresses = await lookup(host, { all: true })
+  } catch {
+    return 'blocked URL (unresolvable host)'
+  }
+  return addresses.some((entry) => isPrivateAddress(entry.address)) ? 'blocked URL (private or loopback address)' : null
+}
 
 export function sleep(ms, signal) {
   return new Promise((resolve, reject) => {

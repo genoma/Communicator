@@ -2,7 +2,7 @@ import MarkdownIt from 'markdown-it'
 import { styleText } from 'node:util'
 import { THIN_SEP } from '../constants.js'
 import { bold, dim, italic } from './style.js'
-import { hyperlink } from './hyperlink.js'
+import { hyperlink, sanitizeAnsi } from './hyperlink.js'
 import stringWidth from 'string-width'
 
 export const md = new MarkdownIt({ html: false, linkify: true, breaks: false })
@@ -35,7 +35,7 @@ md.inline.ruler.after('backticks', 'citation', (state, silent) => {
 })
 
 const INLINE_RULES = {
-  text: (t) => t.content,
+  text: (t) => sanitizeAnsi(t.content),
   code_inline: (t) => styleText('cyan', t.content),
   em_open: () => SGR.italic[0],
   em_close: () => SGR.italic[1],
@@ -46,8 +46,8 @@ const INLINE_RULES = {
   image: (t) => dim(t.content),
   softbreak: () => '\n',
   hardbreak: () => '\n',
-  html_inline: (t) => t.content,
-  entity: (t) => t.content,
+  html_inline: (t) => sanitizeAnsi(t.content),
+  entity: (t) => sanitizeAnsi(t.content),
   citation: (t, env) => {
     const sources = env.sources
     if (!sources || sources.length === 0) return t.markup
@@ -136,19 +136,20 @@ export function tableRegionEnd(ctxs, start, lineCount) {
 
 export function styleLine(raw, ctx, env) {
   if (ctx == null) return raw
+  const safe = sanitizeAnsi(raw)
   switch (ctx.type) {
     case 'fence':
     case 'code':
-      return dim(raw)
+      return dim(safe)
     case 'hr':
       return dim(THIN_SEP)
     case 'heading':
-      return bold(raw)
+      return bold(safe)
     case 'quote':
-      return dim(raw)
+      return dim(safe)
     default: {
-      const m = raw.match(LIST_MARKER)
-      const styled = m ? m[1] + renderInlineText(m[2], env) : renderInlineText(raw, env)
+      const m = safe.match(LIST_MARKER)
+      const styled = m ? m[1] + renderInlineText(m[2], env) : renderInlineText(safe, env)
       return ctx.quote ? dim(styled) : styled
     }
   }

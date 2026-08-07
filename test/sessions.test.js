@@ -150,6 +150,19 @@ test('loadSession rejects null JSON as CliError', async (t) => {
   )
 })
 
+test('loadSession and deleteSession reject traversal session ids', async (t) => {
+  const dir = await tempDir(t)
+  await assert.rejects(loadSession(dir, '../../secret'), (err) => err instanceof CliError && /Invalid session id/.test(err.message))
+  await assert.rejects(deleteSession(dir, '..'), (err) => err instanceof CliError && /Invalid session id/.test(err.message))
+})
+
+test('saveSession writes the session file with private permissions', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  const mode = (await stat(join(dir, '2026-01-01T00-00-00.json'))).mode
+  assert.equal(mode & 0o777, 0o600)
+})
+
 test('loadSession warns and drops attachment parts whose blob files are missing', async (t) => {
   const dir = await tempDir(t)
   const warns = []

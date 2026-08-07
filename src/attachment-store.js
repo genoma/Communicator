@@ -1,12 +1,15 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { extForMime, mimeForExt, partUrl } from './attachments.js'
-import { fetchWithRetry } from './http.js'
-import { ApiError } from './errors.js'
+import { assertSafeUrl, fetchWithTimeout } from './http.js'
 import { SESSIONS_DIR, MAX_IMAGE_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES } from './constants.js'
 
 export const REF_PREFIX = 'ref://attachments/'
+
+// Refs are generated as sha256-hex + a short lowercase alnum extension; any
+// other shape (traversal, arbitrary names) is treated as missing.
+const REF_NAME_RE = /^[a-f0-9]{64}\.[a-z0-9]{1,5}$/
 
 export function attachmentDirFor(sessionsDir, sessionId) {
   return join(sessionsDir, 'attachments', sessionId)
@@ -20,14 +23,19 @@ function dataUrlInfo(value) {
 
 function refName(ref) {
   const name = ref.slice(REF_PREFIX.length)
+  if (!REF_NAME_RE.test(name)) return null
   const dot = name.lastIndexOf('.')
-  return dot === -1 ? { file: name, ext: 'bin' } : { file: name, ext: name.slice(dot + 1) }
+  return { file: name, ext: name.slice(dot + 1) }
 }
 
 export function savedAttachmentPath(ref, sessionId) {
   if (typeof ref !== 'string' || !ref.startsWith(REF_PREFIX)) return null
-  const { file } = refName(ref)
-  return join(attachmentDirFor(SESSIONS_DIR, sessionId), file)
+  const parsed = refName(ref)
+  if (!parsed) return null
+  const base = resolve(attachmentDirFor(SESSIONS_DIR, sessionId))
+  const target = resolve(join(base, parsed.file))
+  if (!target.startsWith(`${base}/`)) return null
+  return target
 }
 
 async function externalizeDataUrl(value, dir) {
@@ -40,9 +48,9 @@ async function externalizeDataUrl(value, dir) {
   const ref = `${REF_PREFIX}${hash}.${ext}`
 
   try {
-    await mkdir(dir, { recursive: true })
+    await mkdir(dir, { recursive: true, mode: 0o700 })
     try {
-      await writeFile(join(dir, `${hash}.${ext}`), bytes, { flag: 'wx' })
+      await writeFile(join(dir, `${hash}.${ext}`), bytes, { flag: 'wx', mode: 0o600 })
     } catch (err) {
       if (err.code !== 'EEXIST') throw err
     }
@@ -70,10 +78,11 @@ export async function externalizeAttachments(messages, dir) {
 }
 
 async function hydrateRef(ref, dir) {
-  const { file, ext } = refName(ref)
+  const parsed = refName(ref)
+  if (!parsed) return null
   try {
-    const bytes = await readFile(join(dir, file))
-    return `data:${mimeForExt(ext)};base64,${bytes.toString('base64')}`
+    const bytes = await readFile(join(dir, parsed.file))
+    return `data:${mimeForExt(parsed.ext)};base64,${bytes.toString('base64')}`
   } catch {
     return null
   }
@@ -121,39 +130,52 @@ export async function downloadRemotePart(part, sessionId) {
   if (!/^https?:\/\//.test(url)) return { part, error: 'unsupported URL' }
 
   const limit = part.type === 'image_url' ? MAX_IMAGE_ATTACHMENT_BYTES : MAX_FILE_ATTACHMENT_BYTES
+  const exceedsMsg = `response exceeds ${Math.round(limit / 1024 / 1024)} MB`
 
-  let res
-  try {
-    res = await fetchWithRetry(url, {}, {
-      timeoutMs: 30_000,
-      attempts: 2,
-      errorResponse: (status) => new ApiError(`HTTP ${status}`, { status, retryable: false }),
-    })
-  } catch (err) {
-    return { part, error: err?.message || 'network error' }
+  // Follow redirects manually so every hop is SSRF-checked; fetch would
+  // otherwise follow them unchecked.
+  let res = null
+  let current = url
+  for (let hop = 0; hop <= 5; hop++) {
+    const unsafe = await assertSafeUrl(current)
+    if (unsafe) return { part, error: unsafe }
+    try {
+      res = await fetchWithTimeout(current, { redirect: 'manual' }, { timeoutMs: 30_000 })
+    } catch (err) {
+      return { part, error: err?.message || 'network error' }
+    }
+    if (res.status < 300 || res.status >= 400) break
+    const location = res.headers.get('location')
+    await res.body?.cancel?.()
+    if (!location) return { part, error: 'redirect without location' }
+    try {
+      current = new URL(location, current).href
+    } catch {
+      return { part, error: 'invalid redirect URL' }
+    }
   }
+  if (res.status >= 400) return { part, error: `HTTP ${res.status}` }
+  if (res.status >= 300) return { part, error: 'too many redirects' }
 
   let bytes
   try {
     const contentLength = Number(res.headers.get('content-length') || 0)
     if (contentLength > limit) {
-      return { part, error: `response exceeds ${Math.round(limit / 1024 / 1024)} MB` }
+      return { part, error: exceedsMsg }
     }
-    bytes = Buffer.from(await res.arrayBuffer())
-  } catch {
-    return { part, error: 'could not read response body' }
+    bytes = await readBodyWithLimit(res, limit)
+  } catch (err) {
+    return { part, error: err?.message || 'could not read response body' }
   }
-  if (bytes.length > limit) {
-    return { part, error: `response exceeds ${Math.round(limit / 1024 / 1024)} MB` }
-  }
+  if (!bytes) return { part, error: exceedsMsg }
 
   const mime = (res.headers.get('content-type') || '').split(';')[0].trim()
   let ext = mime ? extForMime(mime) : ''
   if (!ext || ext === 'bin') {
     try {
-      const last = new URL(url).pathname.split('/').pop() || ''
+      const last = new URL(current).pathname.split('/').pop() || ''
       const dot = last.lastIndexOf('.')
-      if (dot !== -1 && last.slice(dot + 1).length <= 5) ext = last.slice(dot + 1).toLowerCase()
+      if (dot !== -1 && /^[a-z0-9]{1,5}$/.test(last.slice(dot + 1).toLowerCase())) ext = last.slice(dot + 1).toLowerCase()
     } catch { /* invalid URL: keep the mime-derived extension */ }
   }
   if (!ext) ext = 'bin'
@@ -167,9 +189,9 @@ export async function downloadRemotePart(part, sessionId) {
     const dir = attachmentDirFor(SESSIONS_DIR, sessionId)
     const file = `${hash}.${ext}`
     try {
-      await mkdir(dir, { recursive: true })
+      await mkdir(dir, { recursive: true, mode: 0o700 })
       try {
-        await writeFile(join(dir, file), bytes, { flag: 'wx' })
+        await writeFile(join(dir, file), bytes, { flag: 'wx', mode: 0o600 })
       } catch (err) {
         if (err.code !== 'EEXIST') throw err
       }
@@ -180,4 +202,32 @@ export async function downloadRemotePart(part, sessionId) {
   }
 
   return { part, dataUrl, savedTo }
+}
+
+// Reads the response body with a hard byte cap enforced mid-stream (aborts
+// once the cap is crossed instead of buffering the whole body first). Returns
+// null when the cap is exceeded.
+async function readBodyWithLimit(res, limit) {
+  if (res.body && typeof res.body.getReader === 'function') {
+    const reader = res.body.getReader()
+    const chunks = []
+    let total = 0
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        total += value.byteLength
+        if (total > limit) {
+          await reader.cancel()
+          return null
+        }
+        chunks.push(Buffer.from(value))
+      }
+    } catch {
+      throw new Error('could not read response body')
+    }
+    return Buffer.concat(chunks)
+  }
+  const bytes = Buffer.from(await res.arrayBuffer())
+  return bytes.length > limit ? null : bytes
 }

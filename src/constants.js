@@ -15,6 +15,8 @@ export const MAX_TEMPERATURE = 2
 
 export const DEFAULT_WEB_SEARCH_RESULTS = 10
 
+export const MAX_WEB_SEARCH_RESULTS = 100
+
 export const MAX_IMAGE_ATTACHMENT_BYTES = 20 * 1024 * 1024
 
 export const MAX_FILE_ATTACHMENT_BYTES = 25 * 1024 * 1024

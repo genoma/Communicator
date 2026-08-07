@@ -11,6 +11,7 @@ import { loadAttachments, buildContent, contentText } from '../attachments.js'
 import { resolveArtifacts, printArtifacts } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
 import { runImageGeneration, finalizeImageSession } from './image-gen.js'
+import { sanitizeAnsi } from '../ui/hyperlink.js'
 
 export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt }) {
   const provider = getProvider(providerType)
@@ -184,7 +185,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     }
   } else {
     const content = Array.isArray(result.content) ? contentText(result.content) : (result.content || '')
-    process.stdout.write(content)
+    process.stdout.write(sanitizeAnsi(content))
     if (!content.endsWith('\n')) process.stdout.write('\n')
   }
 

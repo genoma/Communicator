@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { attachmentDirFor, externalizeAttachments, hydrateAttachments, REF_PREFIX } from '../src/attachment-store.js'
+import { attachmentDirFor, externalizeAttachments, hydrateAttachments, savedAttachmentPath, REF_PREFIX } from '../src/attachment-store.js'
 
 async function tempDir(t) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-attachments-test-'))
@@ -159,4 +159,34 @@ test('blob on disk contains the raw decoded bytes', async (t) => {
   const files = await readdir(attachmentDirFor(dir, 'sess'))
   assert.equal(files.length, 1)
   assert.deepEqual(await readFile(join(attachmentDirFor(dir, 'sess'), files[0])), Buffer.from('png-bytes'))
+})
+
+test('traversal refs are treated as missing and never read', async (t) => {
+  const dir = await tempDir(t)
+  const secret = join(dir, 'secret.txt')
+  await writeFile(secret, 'top secret')
+  const traversal = `${REF_PREFIX}../../secret.txt`
+
+  const messages = messagesWith([
+    { type: 'image_url', image_url: { url: traversal } },
+    { type: 'file', file: { filename: 'doc.pdf', file_data: `${REF_PREFIX}../../../../etc/passwd` } },
+  ])
+  const hydrated = await hydrateAttachments(messages, attachmentDirFor(dir, 'sess'))
+  assert.deepEqual(hydrated.missing, [traversal, `${REF_PREFIX}../../../../etc/passwd`])
+  assert.deepEqual(hydrated.messages[1].content, [])
+  assert.equal(savedAttachmentPath(traversal, 'sess'), null)
+})
+
+test('refs not matching the hash.ext shape are treated as missing', async (t) => {
+  const dir = await tempDir(t)
+  const odd = `${REF_PREFIX}short-name.png`
+  const messages = messagesWith([{ type: 'image_url', image_url: { url: odd } }])
+  const hydrated = await hydrateAttachments(messages, attachmentDirFor(dir, 'sess'))
+  assert.deepEqual(hydrated.missing, [odd])
+  assert.equal(savedAttachmentPath(odd, 'sess'), null)
+  const valid = `${REF_PREFIX}${'a'.repeat(64)}.png`
+  const path = savedAttachmentPath(valid, 'sess')
+  assert.ok(path)
+  assert.ok(path.endsWith(`${'a'.repeat(64)}.png`))
+  assert.ok(!path.includes('..'))
 })

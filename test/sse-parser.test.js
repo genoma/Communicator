@@ -415,3 +415,19 @@ test('dedupes repeated parts between delta and final message', async () => {
   )
   assert.equal(fullParts.length, 1)
 })
+
+test('only collects http(s) source urls', async () => {
+  let sources = null
+  await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { annotations: [
+        { type: 'url_citation', url_citation: { url: 'https://example.com/a', title: 'A' } },
+        { type: 'url_citation', url_citation: { url: 'javascript:alert(1)', title: 'Bad' } },
+        { type: 'url_citation', url_citation: { url: 'file:///etc/passwd', title: 'Local' } },
+      ] } }] }),
+    ]),
+    () => {},
+    (s) => { sources = s }
+  )
+  assert.deepEqual(sources, [{ title: 'A', url: 'https://example.com/a' }])
+})

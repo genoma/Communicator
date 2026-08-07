@@ -34,7 +34,7 @@ test('produceParts downloads remote parts and replaces the URL', async (t) => {
     status: 200,
     headers: { 'Content-Type': 'image/png' },
   }))
-  const part = { type: 'image_url', image_url: { url: 'https://img.example/a.png' } }
+  const part = { type: 'image_url', image_url: { url: 'https://example.com/a.png' } }
   const { parts, results } = await produceParts([part], { sessionId: null, imageOutputSupported: undefined, fullText: '' })
   assert.equal(fetchMock.mock.callCount(), 1)
   assert.deepEqual(parts, [{ type: 'image_url', image_url: { url: `data:image/png;base64,${Buffer.from('png-bytes').toString('base64')}` } }])
@@ -55,7 +55,7 @@ test('produceParts extracts markdown images only for image-output models', async
     status: 200,
     headers: { 'Content-Type': 'image/png' },
   }))
-  const text = 'here: ![](https://img.example/a.png)'
+  const text = 'here: ![](https://example.com/a.png)'
   const gated = await produceParts([], { sessionId: null, imageOutputSupported: true, fullText: text })
   assert.equal(fetchMock.mock.callCount(), 1)
   assert.equal(gated.parts.length, 1)
@@ -68,7 +68,7 @@ test('produceParts extracts markdown images only for image-output models', async
 
 test('produceParts keeps failed downloads inline with the error', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => new Response('nope', { status: 500 }))
-  const part = { type: 'file', file: { filename: 'doc.pdf', file_data: 'https://files.example/doc.pdf' } }
+  const part = { type: 'file', file: { filename: 'doc.pdf', file_data: 'https://example.com/doc.pdf' } }
   const { parts, results } = await produceParts([part], { sessionId: null, imageOutputSupported: undefined, fullText: '' })
   assert.deepEqual(parts, [part])
   assert.match(results[0].error, /HTTP 500/)
@@ -77,8 +77,8 @@ test('produceParts keeps failed downloads inline with the error', async (t) => {
 test('printArtifacts renders saved, failed and inline lines', () => {
   const { stdout, text } = capture()
   printArtifacts([
-    { part: { type: 'image_url', image_url: { url: 'https://img.example/a.png' } }, savedTo: '/tmp/x/a.png' },
-    { part: { type: 'file', file: { filename: 'doc.pdf', file_data: 'https://files.example/doc.pdf' } }, error: 'HTTP 404' },
+    { part: { type: 'image_url', image_url: { url: 'https://example.com/a.png' } }, savedTo: '/tmp/x/a.png' },
+    { part: { type: 'file', file: { filename: 'doc.pdf', file_data: 'https://example.com/doc.pdf' } }, error: 'HTTP 404' },
     { part: { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } } },
   ], stdout)
   assert.match(text(), /image: a\.png/)
@@ -114,13 +114,13 @@ test('resolveArtifacts runs the markdown-image heuristic only for image-output m
     status: 200,
     headers: { 'Content-Type': 'image/png' },
   }))
-  const gated = { content: 'here: ![](https://img.example/a.png)' }
+  const gated = { content: 'here: ![](https://example.com/a.png)' }
   const gatedResults = await resolveArtifacts(gated, { sessionId: null, imageOutputSupported: true })
   assert.equal(gatedResults.length, 1)
   assert.equal(Array.isArray(gated.content), true)
 
-  const plain = { content: 'here: ![](https://img.example/a.png)' }
+  const plain = { content: 'here: ![](https://example.com/a.png)' }
   const plainResults = await resolveArtifacts(plain, { sessionId: null, imageOutputSupported: undefined })
   assert.deepEqual(plainResults, [])
-  assert.equal(plain.content, 'here: ![](https://img.example/a.png)')
+  assert.equal(plain.content, 'here: ![](https://example.com/a.png)')
 })

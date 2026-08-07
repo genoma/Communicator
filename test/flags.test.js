@@ -57,6 +57,8 @@ test('resolveWebResultsFlag rejects non-positive and non-integer values', () => 
   assert.throws(() => resolveWebResultsFlag({ webResults: 'abc' }), /positive integer/)
   assert.throws(() => resolveWebResultsFlag({ webResults: NaN }), /positive integer/)
   assert.throws(() => resolveWebResultsFlag({ webResults: Infinity }), /positive integer/)
+  assert.throws(() => resolveWebResultsFlag({ webResults: '101' }), /at most 100/)
+  assert.equal(resolveWebResultsFlag({ webResults: '100' }), 100)
 })
 
 test('normalizeWebSearchMode maps legacy on/true to auto', () => {

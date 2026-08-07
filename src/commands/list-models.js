@@ -1,4 +1,5 @@
 import { formatModelPrice, formatImagePrice } from '../ui/format.js'
+import { sanitizeAnsi } from '../ui/hyperlink.js'
 
 export async function listModelsCmd(provider, apiKey) {
   const models = await provider.fetchModels(apiKey)
@@ -10,7 +11,7 @@ export async function listModelsCmd(provider, apiKey) {
     const privacyTag = m.capabilities?.privacy ? `  [${m.capabilities.privacy}]` : ''
     const zdrTag = m.zdr ? '  [zdr]' : ''
     console.log(
-      `${m.name.padEnd(40)} ${m.id.padEnd(50)} ${m.contextLength?.toLocaleString() || '?'} ctx${pricingCol}${visionTag}${privacyTag}${zdrTag}`
+      `${sanitizeAnsi(m.name).padEnd(40)} ${sanitizeAnsi(m.id).padEnd(50)} ${m.contextLength?.toLocaleString() || '?'} ctx${pricingCol}${visionTag}${privacyTag}${zdrTag}`
     )
   }
 }
@@ -24,6 +25,6 @@ export async function listImageModelsCmd(provider, apiKey) {
     const qualityTag = m.constraints?.qualities?.length ? `  [quality: ${m.constraints.qualities.join(', ')}]` : ''
     const privacyTag = m.privacy ? `  [${m.privacy}]` : ''
     const offlineTag = m.offline ? '  [offline]' : ''
-    console.log(`${m.name.padEnd(40)} ${m.id.padEnd(50)}${priceCol}${aspectTag}${resTag}${qualityTag}${privacyTag}${offlineTag}`)
+    console.log(`${sanitizeAnsi(m.name).padEnd(40)} ${sanitizeAnsi(m.id).padEnd(50)}${priceCol}${aspectTag}${resTag}${qualityTag}${privacyTag}${offlineTag}`)
   }
 }

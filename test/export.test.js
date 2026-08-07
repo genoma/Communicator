@@ -205,3 +205,30 @@ test('exportSession rejects when the target path is not writable', async (t) => 
     { code: 'ENOENT' }
   )
 })
+
+test('escapes raw HTML in user and assistant content', () => {
+  const md = formatMarkdown(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: '<img src=x onerror=alert(1)>' },
+      { role: 'assistant', content: '<script>alert(2)</script> done' },
+    ],
+  }))
+  assert.match(md, /&lt;img src=x onerror=alert\(1\)&gt;/)
+  assert.match(md, /&lt;script&gt;alert\(2\)&lt;\/script&gt; done/)
+  assert.doesNotMatch(md, /<script>alert/)
+})
+
+test('does not linkify non-http(s) source urls', () => {
+  const md = formatMarkdown(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'q' },
+      { role: 'assistant', content: 'see ^1^', sources: [{ title: 'evil', url: 'javascript:alert(1)' }] },
+    ],
+  }))
+  assert.doesNotMatch(md, /\(javascript:/)
+  assert.match(md, /see \^1\^/)
+  assert.match(md, /- evil/)
+  assert.doesNotMatch(md, /\[evil\]/)
+})

@@ -29,6 +29,16 @@ export function extractPartialToken(buffer) {
   return null
 }
 
+function safeSourceUrl(url) {
+  if (typeof url !== 'string') return null
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? url : null
+  } catch {
+    return null
+  }
+}
+
 function collectSources(parsed, fullSources, seenUrls, onSources) {
   const choices = parsed.choices?.[0]
   const citations = parsed.venice_parameters?.web_search_citations
@@ -37,18 +47,20 @@ function collectSources(parsed, fullSources, seenUrls, onSources) {
   let found = false
 
   for (const citation of citations || []) {
-    if (citation?.url && !seenUrls.has(citation.url)) {
-      seenUrls.add(citation.url)
-      fullSources.push({ title: citation.title || null, url: citation.url })
+    const url = safeSourceUrl(citation?.url)
+    if (url && !seenUrls.has(url)) {
+      seenUrls.add(url)
+      fullSources.push({ title: citation.title || null, url })
       found = true
     }
   }
 
   for (const annotation of annotations || []) {
     const urlCitation = annotation?.url_citation
-    if (annotation?.type === 'url_citation' && urlCitation?.url && !seenUrls.has(urlCitation.url)) {
-      seenUrls.add(urlCitation.url)
-      fullSources.push({ title: urlCitation.title || null, url: urlCitation.url })
+    const url = safeSourceUrl(urlCitation?.url)
+    if (annotation?.type === 'url_citation' && url && !seenUrls.has(url)) {
+      seenUrls.add(url)
+      fullSources.push({ title: urlCitation.title || null, url })
       found = true
     }
   }

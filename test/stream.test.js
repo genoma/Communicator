@@ -325,3 +325,33 @@ test('mutating render.smoothCharsPerTick mid-stream changes the pacing of the ne
   assert.equal(render.smoothCharsPerTick, 2)
   assert.equal(render.smoothTickMs, 20)
 })
+
+test('strips ANSI escape sequences from model content and reasoning', (t) => {
+  enableAnsi(t)
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, markdown: false })
+  render('\x1b]52;c;c2VjcmV0\x1b\\hello', 'content')
+  render('\x1b[31mred\x1b[0m', 'reasoning')
+  render('\n', 'start_reasoning')
+  render('\x1b[1mthought\x1b[0m', 'reasoning')
+  render(null, 'end_reasoning')
+  render(' done', 'content')
+  assert.match(plain(), /^hellored/)
+  assert.match(plain(), /thought/)
+  assert.match(plain(), / done$/)
+  assert.doesNotMatch(plain(), /\x1b]52/)
+  assert.doesNotMatch(plain(), /c2VjcmV0/)
+})
+
+test('renderHistory strips ANSI escape sequences from replayed text', (t) => {
+  enableAnsi(t)
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: '\x1b]52;c;base64\x1b\\ask' },
+    { role: 'assistant', content: '\x1b[1manswer\x1b[0m', reasoning: '\x1b[31mwhy\x1b[0m' },
+  ], { stdout })
+  assert.match(plain(), /ask/)
+  assert.match(plain(), /answer/)
+  assert.doesNotMatch(plain(), /\x1b/) 
+})

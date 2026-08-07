@@ -1,6 +1,6 @@
 import { dim, italic, you, thinking, answer } from './style.js'
 import { createMarkdownRenderer, renderText } from './markdown.js'
-import { hyperlink } from './hyperlink.js'
+import { hyperlink, sanitizeAnsi } from './hyperlink.js'
 import { SMOOTH_CHARS_PER_TICK, SMOOTH_TICK_MS } from '../constants.js'
 import { contentText, contentAttachments } from '../attachments.js'
 
@@ -67,11 +67,15 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
     // turn-runner/one-shot); skip them here so the smooth queue never sees
     // object tokens.
     if (type === 'image' || type === 'file') return
+    // The parser delivers complete strings, so sanitizing here (once, before
+    // the smooth pump can slice them) also covers sequences split across
+    // pump chunks.
+    const text = type === 'content' || type === 'reasoning' ? sanitizeAnsi(token) : token
     if (!render.smooth) {
-      writeSegment(type, token)
+      writeSegment(type, text)
       return
     }
-    queue.push({ type, text: token, marker: type === 'start_reasoning' || type === 'end_reasoning' })
+    queue.push({ type, text, marker: type === 'start_reasoning' || type === 'end_reasoning' })
     schedulePump()
   }
   render.markdown = markdown
@@ -127,8 +131,10 @@ export function printSources(sources, stdout = process.stdout) {
         label = null
       }
     }
-    const link = label ? hyperlink(source.url, label) : null
-    stdout.write(`${dim(`[${i + 1}]`)} ${italic(link || label || dim(source.url))}\n`)
+    label = sanitizeAnsi(label)
+    const cleanUrl = sanitizeAnsi(source.url)
+    const link = label && cleanUrl ? hyperlink(cleanUrl, label) : null
+    stdout.write(`${dim(`[${i + 1}]`)} ${italic(link || label || dim(cleanUrl))}\n`)
   })
 }
 
@@ -141,19 +147,19 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
   stdout.write('\n')
   for (const msg of messages) {
     if (msg.role === 'user') {
-      stdout.write(`${you()}\n${markdown ? renderText(contentText(msg.content)) : contentText(msg.content)}\n\n`)
+      stdout.write(`${you()}\n${markdown ? renderText(sanitizeAnsi(contentText(msg.content))) : sanitizeAnsi(contentText(msg.content))}\n\n`)
       for (const att of contentAttachments(msg.content)) {
-        stdout.write(`${dim(`${italic('attached')}: ${att.filename}`)}\n`)
+        stdout.write(`${dim(`${italic('attached')}: ${sanitizeAnsi(att.filename)}`)}\n`)
       }
     } else if (msg.role === 'assistant') {
       if (msg.reasoning) {
         stdout.write(`${thinking()}\n\n`)
-        stdout.write(`${dim(msg.reasoning)}\n`)
+        stdout.write(`${dim(sanitizeAnsi(msg.reasoning))}\n`)
         stdout.write(`\n${answer()}\n\n`)
       }
-      stdout.write(`${markdown ? renderText(contentText(msg.content), msg.sources || []) : contentText(msg.content)}\n\n`)
+      stdout.write(`${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), msg.sources || []) : sanitizeAnsi(contentText(msg.content))}\n\n`)
       for (const att of contentAttachments(msg.content)) {
-        stdout.write(`${dim(`${italic('output')}: ${att.filename}`)}\n`)
+        stdout.write(`${dim(`${italic('output')}: ${sanitizeAnsi(att.filename)}`)}\n`)
       }
       if (msg.sources?.length) {
         printSources(msg.sources, stdout)

@@ -8,8 +8,14 @@ import { CliError } from './errors.js'
 
 const SIDECAR_FILE = '.index.json'
 
+// Session ids are app-generated timestamps; anything else (path separators,
+// dots, other characters) is rejected so ids can never escape the sessions dir.
+function validSessionId(id) {
+  return typeof id === 'string' && id.length > 0 && /^[\w:+-]+$/.test(id) && !id.includes('..')
+}
+
 export async function ensureSessionsDir() {
-  await mkdir(SESSIONS_DIR, { recursive: true })
+  await mkdir(SESSIONS_DIR, { recursive: true, mode: 0o700 })
   return SESSIONS_DIR
 }
 
@@ -90,7 +96,7 @@ async function readSidecar(dir) {
 
 async function writeSidecar(dir, index) {
   try {
-    await writeFile(join(dir, SIDECAR_FILE), JSON.stringify(index, null, 2) + '\n')
+    await writeFile(join(dir, SIDECAR_FILE), JSON.stringify(index, null, 2) + '\n', { mode: 0o600 })
   } catch {
     // sidecar failures are non-fatal
   }
@@ -194,7 +200,7 @@ export async function saveSession(dir, id, data) {
   const filePath = join(dir, `${id}.json`)
   try {
     const payload = { ...data, messages: await externalizeAttachments(data.messages, attachmentDirFor(dir, id)) }
-    await writeFile(filePath, JSON.stringify(payload, null, 2) + '\n')
+    await writeFile(filePath, JSON.stringify(payload, null, 2) + '\n', { mode: 0o600 })
     await updateSidecar(dir, id, payload)
   } catch (err) {
     if (err.code === 'ENOSPC') {
@@ -257,6 +263,9 @@ export async function generateSessionId(dir) {
 }
 
 export async function loadSession(dir, id) {
+  if (!validSessionId(id)) {
+    throw new CliError(`Error: Invalid session id "${id}".`)
+  }
   const filePath = join(dir, `${id}.json`)
   let data
   try {
@@ -297,6 +306,9 @@ export function formatSessionItem(s) {
 }
 
 export async function deleteSession(dir, id) {
+  if (!validSessionId(id)) {
+    throw new CliError(`Error: Invalid session id "${id}".`)
+  }
   await rm(join(dir, `${id}.json`), { force: true })
   await rm(attachmentDirFor(dir, id), { recursive: true, force: true })
   const index = await readSidecar(dir)

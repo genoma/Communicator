@@ -1,4 +1,4 @@
-import { MAX_TEMPERATURE, SMOOTH_DEFAULT_SPEED, SMOOTH_SPEED_PRESETS, EFFORT_LABELS } from './constants.js'
+import { MAX_TEMPERATURE, MAX_WEB_SEARCH_RESULTS, SMOOTH_DEFAULT_SPEED, SMOOTH_SPEED_PRESETS, EFFORT_LABELS } from './constants.js'
 
 export const WEB_SEARCH_MODES = new Set(['auto', 'always', 'on', 'off'])
 
@@ -35,6 +35,9 @@ export function resolveWebResultsFlag({ webResults } = {}) {
   const num = Number(webResults)
   if (!Number.isInteger(num) || num <= 0) {
     throw new Error('--web-results must be a positive integer.')
+  }
+  if (num > MAX_WEB_SEARCH_RESULTS) {
+    throw new Error(`--web-results must be at most ${MAX_WEB_SEARCH_RESULTS}.`)
   }
   return num
 }

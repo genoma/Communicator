@@ -130,7 +130,7 @@ test('a remote image part is downloaded and replaced by a data URL', async (t) =
     status: 200,
     headers: { 'Content-Type': 'image/png' },
   }))
-  const part = { type: 'image_url', image_url: { url: 'https://img.example/photo.png' } }
+  const part = { type: 'image_url', image_url: { url: 'https://example.com/photo.png' } }
   const provider = {
     async chatCompletion() {
       return { content: 'Here', parts: [part] }
@@ -153,7 +153,7 @@ test('a failed download keeps the remote URL and prints the failure', async (t) 
   t.mock.method(console, 'log', () => {})
   t.mock.method(console, 'error', () => {})
   t.mock.method(globalThis, 'fetch', async () => { throw new ApiError('network down', { retryable: false }) })
-  const part = { type: 'image_url', image_url: { url: 'https://img.example/photo.png' } }
+  const part = { type: 'image_url', image_url: { url: 'https://example.com/photo.png' } }
   const provider = {
     async chatCompletion() {
       return { content: 'Here', parts: [part] }
@@ -166,7 +166,7 @@ test('a failed download keeps the remote URL and prints the failure', async (t) 
 
   assert.deepEqual(state.messages[2].content, [
     { type: 'text', text: 'Here' },
-    { type: 'image_url', image_url: { url: 'https://img.example/photo.png' } },
+    { type: 'image_url', image_url: { url: 'https://example.com/photo.png' } },
   ])
   assert.match(text(), /download failed: network down/)
 })
@@ -180,7 +180,7 @@ test('markdown images become parts for image-output models and are downloaded', 
   }))
   const provider = {
     async chatCompletion() {
-      return { content: 'Here: ![](https://img.example/a.png)' }
+      return { content: 'Here: ![](https://example.com/a.png)' }
     },
   }
   const { deps, text } = makeDeps({ provider })
@@ -189,7 +189,7 @@ test('markdown images become parts for image-output models and are downloaded', 
   await runTurn(deps, state)
 
   assert.deepEqual(state.messages[2].content, [
-    { type: 'text', text: 'Here: ![](https://img.example/a.png)' },
+    { type: 'text', text: 'Here: ![](https://example.com/a.png)' },
     { type: 'image_url', image_url: { url: `data:image/png;base64,${Buffer.from('png-bytes').toString('base64')}` } },
   ])
   assert.match(text(), /image: a\.png/)
@@ -201,7 +201,7 @@ test('markdown images stay plain text when image output is not advertised', asyn
   const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('should not fetch') })
   const provider = {
     async chatCompletion() {
-      return { content: 'Here: ![](https://img.example/a.png)' }
+      return { content: 'Here: ![](https://example.com/a.png)' }
     },
   }
   const { deps } = makeDeps({ provider })
@@ -210,7 +210,7 @@ test('markdown images stay plain text when image output is not advertised', asyn
   await runTurn(deps, state)
 
   assert.equal(fetchMock.mock.callCount(), 0)
-  assert.equal(state.messages[2].content, 'Here: ![](https://img.example/a.png)')
+  assert.equal(state.messages[2].content, 'Here: ![](https://example.com/a.png)')
 })
 
 test('produced parts survive an export-style round trip in the saved message', async (t) => {
