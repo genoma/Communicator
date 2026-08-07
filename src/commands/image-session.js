@@ -12,6 +12,16 @@ function unsupportedListError(kind, value, model, list) {
   return `Error: ${kind} ${value} is not supported by ${model.id}. Supported: ${list.join(', ')}.`
 }
 
+// Marks the current value in brackets inside the model's supported list,
+// e.g. `1:1 [16:9] 3:2`; a stored value outside the list is reported so the
+// user knows it will be dropped instead of sent.
+function supportedListLine(kind, values, current, model) {
+  const marked = values.map((v) => (v === current ? `[${v}]` : v)).join(' ')
+  if (current && values.includes(current)) return `${kind}s: ${marked}.`
+  if (current) return `${kind}s: ${marked} (${current} not supported by ${model.id}).`
+  return `${kind}s: ${marked} (none set).`
+}
+
 export async function startImageSession({ provider, apiKey, prefs, imageModelId, sessionId, createdAt, initialMessages = [], configPath, stdout = process.stdout, readInput: read = readInputFromInput }) {
   const model = await findImageModel(provider, apiKey, imageModelId)
   if (!model) {
@@ -45,9 +55,9 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       console.log('/help            show this help')
       console.log('/exit, /quit     leave the session')
       console.log('/watermark       hide the Venice watermark on generated images (on|off)')
-      console.log('/aspect          show the session aspect ratio')
+      console.log('/aspect          show the supported aspect ratios and the session one')
       console.log('/aspect <x:y>    set the aspect ratio for this session (clear to unset)')
-      console.log('/format          show the session output format')
+      console.log('/format          show the supported output formats and the session one')
       console.log('/format <fmt>    set the output format for this session (clear to unset)')
       continue
     }
@@ -77,7 +87,14 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       const value = input.slice('/aspect'.length).trim()
       if (!value) {
         const current = getImageDefaults(prefs, provider.meta.name).aspectRatio
-        console.log(current ? `Aspect ratio: ${current}.\n` : 'Aspect ratio: not set.\n')
+        const ratios = model.constraints?.aspectRatios
+        if (Array.isArray(ratios)) {
+          console.log(`${supportedListLine('Aspect ratio', ratios, current, model)}\n`)
+        } else if (provider.meta.name === 'openrouter') {
+          console.log(`Aspect ratio is not supported by ${model.id}.\n`)
+        } else {
+          console.log(current ? `Aspect ratio: ${current}.\n` : 'Aspect ratio: not set.\n')
+        }
         continue
       }
       if (value === 'clear') {
@@ -99,7 +116,10 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       }
       const constraints = model.constraints
       const ratios = constraints?.aspectRatios
-      if (constraints && !Array.isArray(ratios)) {
+      // Venice models without an advertised list still accept the parameter
+      // (the runner passes the value through); OpenRouter models with no
+      // list would silently ignore it and still bill, so they stay strict.
+      if (constraints && !Array.isArray(ratios) && provider.meta.name === 'openrouter') {
         console.error(`Error: aspect ratio is not supported by ${model.id}.\n`)
         continue
       }
@@ -119,7 +139,14 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       const value = input.slice('/format'.length).trim()
       if (!value) {
         const current = getImageDefaults(prefs, provider.meta.name).format
-        console.log(current ? `Format: ${current}.\n` : 'Format: not set.\n')
+        const formats = model.constraints?.formats
+        if (Array.isArray(formats)) {
+          console.log(`${supportedListLine('Format', formats, current, model)}\n`)
+        } else if (provider.meta.name === 'openrouter') {
+          console.log(`Format is not supported by ${model.id}.\n`)
+        } else {
+          console.log(current ? `Format: ${current}.\n` : 'Format: not set.\n')
+        }
         continue
       }
       if (value === 'clear') {
@@ -141,7 +168,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       }
       const constraints = model.constraints
       const formats = constraints?.formats
-      if (constraints && !Array.isArray(formats)) {
+      if (constraints && !Array.isArray(formats) && provider.meta.name === 'openrouter') {
         console.error(`Error: format is not supported by ${model.id}.\n`)
         continue
       }

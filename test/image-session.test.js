@@ -43,6 +43,20 @@ const fakeProvider = {
   },
 }
 
+const veniceNoRatioProvider = {
+  meta: { name: 'venice' },
+  async fetchImageModels() {
+    return [{ id: 'venice-sd35', name: 'SD 3.5', pricing: { perImage: 0.02 }, constraints: { aspectRatios: null, formats: ['png', 'jpeg', 'webp'] } }]
+  },
+}
+
+const openRouterNoListsProvider = {
+  meta: { name: 'openrouter' },
+  async fetchImageModels() {
+    return [{ id: 'openai/gpt-5-image', name: 'GPT-5 Image', pricing: { perImage: 0.1 }, constraints: { aspectRatios: null, formats: null } }]
+  },
+}
+
 function scriptedInput(values) {
   const queue = [...values]
   return async () => {
@@ -313,7 +327,7 @@ test('/aspect sets the session ratio, persists the provider default and passes i
   assert.deepEqual(prefs.imageDefaults, { venice: { aspectRatio: '16:9' } })
 })
 
-test('/aspect bare shows the current session ratio', async (t) => {
+test('/aspect bare shows the supported ratios with the current one marked', async (t) => {
   const logs = []
   t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
   t.mock.method(console, 'error', () => {})
@@ -323,17 +337,30 @@ test('/aspect bare shows the current session ratio', async (t) => {
     readInput: scriptedInput(['/aspect', '/quit']),
   }))
 
-  assert.ok(logs.some((l) => l.includes('Aspect ratio: 16:9.')))
+  assert.ok(logs.some((l) => l.includes('Aspect ratios: 1:1 [16:9] 3:2.')))
 })
 
-test('/aspect bare reports when no ratio is set', async (t) => {
+test('/aspect bare reports the supported ratios when none is set', async (t) => {
   const logs = []
   t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
   t.mock.method(console, 'error', () => {})
 
   await startImageSession(baseOpts({ readInput: scriptedInput(['/aspect', '/quit']) }))
 
-  assert.ok(logs.some((l) => l.includes('Aspect ratio: not set.')))
+  assert.ok(logs.some((l) => l.includes('Aspect ratios: 1:1 16:9 3:2 (none set).')))
+})
+
+test('/aspect bare notes a stored value outside the supported list', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    prefs: { imageDefaults: { venice: { aspectRatio: '21:9' } } },
+    readInput: scriptedInput(['/aspect', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Aspect ratios: 1:1 16:9 3:2 (21:9 not supported by venice-sd35).')))
 })
 
 test('/aspect clear unsets the ratio and removes the persisted key', async (t) => {
@@ -378,6 +405,82 @@ test('/aspect with an invalid shape errors', async (t) => {
   assert.ok(errors.some((e) => e.includes('--aspect-ratio must be in the form W:H')))
 })
 
+test('/aspect sets on a Venice model without an advertised ratio list (pass-through)', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    provider: veniceNoRatioProvider,
+    configPath: file,
+    readInput: scriptedInput(['/aspect 16:9', 'a cat', '/quit']),
+  }))
+
+  assert.deepEqual(genCalls, ['a cat'])
+  assert.equal(genOpts[0].aspectRatio, '16:9')
+})
+
+test('/aspect bare on a Venice model without a ratio list shows the current value', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    provider: veniceNoRatioProvider,
+    prefs: { imageDefaults: { venice: { aspectRatio: '2:3' } } },
+    readInput: scriptedInput(['/aspect', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Aspect ratio: 2:3.')))
+})
+
+test('/aspect with a ratio on an OpenRouter model without a list still errors', async (t) => {
+  genCalls.length = 0
+  printed.length = 0
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({
+    provider: openRouterNoListsProvider,
+    imageModelId: 'openai/gpt-5-image',
+    readInput: scriptedInput(['/aspect 16:9', '/quit']),
+  }))
+
+  assert.ok(errors.some((e) => e.includes('Error: aspect ratio is not supported by openai/gpt-5-image.')))
+  assert.deepEqual(genCalls, [])
+})
+
+test('/aspect bare on an OpenRouter model without a list reports it is unsupported', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    provider: openRouterNoListsProvider,
+    imageModelId: 'openai/gpt-5-image',
+    readInput: scriptedInput(['/aspect', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Aspect ratio is not supported by openai/gpt-5-image.')))
+})
+
+test('/format bare on an OpenRouter model without formats reports it is unsupported', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    provider: openRouterNoListsProvider,
+    imageModelId: 'openai/gpt-5-image',
+    readInput: scriptedInput(['/format', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Format is not supported by openai/gpt-5-image.')))
+})
+
 test('/format sets the session format, persists the provider default and passes it as opts', async (t) => {
   genCalls.length = 0
   genOpts.length = 0
@@ -397,7 +500,7 @@ test('/format sets the session format, persists the provider default and passes 
   assert.deepEqual(prefs.imageDefaults, { venice: { format: 'png' } })
 })
 
-test('/format bare shows the current session format', async (t) => {
+test('/format bare shows the supported formats with the current one marked', async (t) => {
   const logs = []
   t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
   t.mock.method(console, 'error', () => {})
@@ -407,7 +510,7 @@ test('/format bare shows the current session format', async (t) => {
     readInput: scriptedInput(['/format', '/quit']),
   }))
 
-  assert.ok(logs.some((l) => l.includes('Format: png.')))
+  assert.ok(logs.some((l) => l.includes('Formats: [png] jpeg webp.')))
 })
 
 test('/format clear unsets the format and removes the persisted key', async (t) => {
