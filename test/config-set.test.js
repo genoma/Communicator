@@ -55,6 +55,7 @@ test('resolveConfigValues leaves unset values undefined', () => {
     reasoningEffort: undefined,
     webSearch: undefined,
     smoothStreaming: undefined,
+    hideWatermark: undefined,
     outputDir: undefined,
     needsModel: false,
   })

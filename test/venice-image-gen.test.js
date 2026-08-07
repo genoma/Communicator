@@ -115,6 +115,22 @@ test('generateImage never sends width or height with aspect_ratio', async (t) =>
   assert.equal(calls[0].body.height, undefined)
 })
 
+test('generateImage sends hide_watermark when hideWatermark is true and omits it otherwise', async (t) => {
+  const calls = []
+  mockGenerate(t, calls)
+
+  await venice.generateImage({ apiKey: 'key', model: 'm', prompt: 'x', hideWatermark: true })
+
+  assert.equal(calls[0].body.hide_watermark, true)
+  assert.deepEqual(Object.keys(calls[0].body).sort(), [
+    'format', 'hide_watermark', 'model', 'prompt', 'safe_mode', 'variants',
+  ])
+
+  calls.length = 0
+  await venice.generateImage({ apiKey: 'key', model: 'm', prompt: 'x' })
+  assert.equal(calls[0].body.hide_watermark, undefined)
+})
+
 test('generateImage decodes base64 images with the requested format mime and ext', async (t) => {
   const calls = []
   mockGenerate(t, calls, { response: { id: 'gen-1', images: [PNG, PNG2], timing: {} } })

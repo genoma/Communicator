@@ -5,7 +5,7 @@ import { findImageModel } from '../model-selection.js'
 import { CliError, formatError } from '../errors.js'
 import { runImageGeneration, printImageOutcome, buildImageSessionPayload } from './image-gen.js'
 
-const IMAGE_SESSION_COMMANDS = ['/help', '/exit', '/quit']
+const IMAGE_SESSION_COMMANDS = ['/help', '/exit', '/quit', '/watermark']
 
 export async function startImageSession({ provider, apiKey, prefs, imageModelId, sessionId, createdAt, initialMessages = [], configPath, stdout = process.stdout, readInput: read = readInputFromInput }) {
   const model = await findImageModel(provider, apiKey, imageModelId)
@@ -34,8 +34,26 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     }
 
     if (input === '/help') {
-      console.log('/help          show this help')
-      console.log('/exit, /quit   leave the session')
+      console.log('/help            show this help')
+      console.log('/exit, /quit     leave the session')
+      console.log('/watermark       hide the Venice watermark on generated images (on|off)')
+      continue
+    }
+
+    if (input === '/watermark' || input.startsWith('/watermark ')) {
+      const value = input.slice('/watermark'.length).trim()
+      if (!value) {
+        console.log(`Venice watermark is ${prefs.hideWatermark === true ? 'off' : 'on'}.\n`)
+        continue
+      }
+      if (value === 'on' || value === 'off') {
+        const next = value === 'on'
+        prefs.hideWatermark = !next
+        await savePreferences(applyPreferenceUpdates(prefs, { hideWatermark: !next }), configPath)
+        console.log(`Venice watermark ${next ? 'enabled' : 'disabled'}.\n`)
+        continue
+      }
+      console.error('Error: /watermark expects "on" or "off".\n')
       continue
     }
 

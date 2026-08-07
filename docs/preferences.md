@@ -19,8 +19,9 @@ Persisted settings in `~/.communicator.json` (customizable with `--config`). See
   "smoothSpeed": "normal",
   "budget": 2,
   "webResults": 10,
-  "outputDir": "/home/user/Documents/CommunicatorExports"
+  "outputDir": "/home/user/Documents/CommunicatorExports",
+  "hideWatermark": true
 }
 ```
 
-The last model and provider become defaults in the interactive pickers. Reasoning effort, temperature, and web search mode are saved per model ID and restored automatically. `smoothStreaming` and `smoothSpeed` are global defaults, and `budget`/`webResults` are the session defaults applied when no flag is given. Legacy `webSearch: true` values are read as `auto`. Preferences are currently scoped across both API backends — your last OpenRouter model will show as the favorite even when using Venice (this will be improved in a future release).
+The last model and provider become defaults in the interactive pickers. Reasoning effort, temperature, and web search mode are saved per model ID and restored automatically. `smoothStreaming` and `smoothSpeed` are global defaults, and `budget`/`webResults` are the session defaults applied when no flag is given. `hideWatermark` is a global Venice image setting: when `true`, generated images are requested without the Venice watermark (Venice may ignore it for some content/models). Legacy `webSearch: true` values are read as `auto`. Preferences are currently scoped across both API backends — your last OpenRouter model will show as the favorite even when using Venice (this will be improved in a future release).

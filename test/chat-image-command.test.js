@@ -15,6 +15,7 @@ mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 function fakeVeniceProvider(overrides = {}) {
   return {
     meta: { name: 'venice' },
+    generateCalls: [],
     async fetchImageModels() {
       return [
         {
@@ -26,7 +27,8 @@ function fakeVeniceProvider(overrides = {}) {
         },
       ]
     },
-    async generateImage() {
+    async generateImage(generateArgs) {
+      this.generateCalls.push(generateArgs)
       return {
         id: 'gen-1',
         images: [
@@ -178,4 +180,81 @@ test('/image is a registered, args-accepting command visible regardless of visio
   assert.equal(commandAcceptsArgs('/image'), true)
   assert.ok(visibleChatCommands({ visionSupported: false }).includes('/image'))
   assert.ok(visibleChatCommands({ visionSupported: true }).includes('/image'))
+})
+
+test('/image passes hideWatermark through from prefs to generateImage', async (t) => {
+  mockConsole(t)
+  const { ctx } = makeCtx({
+    prefs: { hideWatermark: true },
+    selectImageModel: async (models) => ({ id: models[0].id, name: models[0].name }),
+  })
+
+  await chatCommands['/image']({ ...ctx, input: '/image a red cat', args: 'a red cat' })
+
+  assert.equal(ctx.provider.generateCalls.length, 1)
+  assert.equal(ctx.provider.generateCalls[0].hideWatermark, true)
+})
+
+test('/watermark shows the current status with no argument', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+
+  await chatCommands['/watermark'](ctx)
+
+  assert.equal(consoleSpy.log(0), 'Venice watermark is on.\n')
+})
+
+test('/watermark status shows off when the watermark is hidden', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({ prefs: { hideWatermark: true } })
+
+  await chatCommands['/watermark'](ctx)
+
+  assert.equal(consoleSpy.log(0), 'Venice watermark is off.\n')
+})
+
+test('/watermark on shows the watermark and off hides it, persisting and mutating the shared prefs object', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx({ prefs: { hideWatermark: true } })
+
+  await chatCommands['/watermark']({ ...ctx, args: 'on' })
+
+  assert.deepEqual(prefsUpdates, [{ hideWatermark: false }])
+  assert.equal(ctx.prefs.hideWatermark, false)
+  assert.equal(consoleSpy.log(0), 'Venice watermark enabled.\n')
+
+  await chatCommands['/watermark']({ ...ctx, args: 'off' })
+
+  assert.deepEqual(prefsUpdates, [{ hideWatermark: false }, { hideWatermark: true }])
+  assert.equal(ctx.prefs.hideWatermark, true)
+  assert.equal(consoleSpy.log(1), 'Venice watermark disabled.\n')
+})
+
+test('/watermark with an invalid argument errors', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx()
+
+  await chatCommands['/watermark']({ ...ctx, args: 'sometimes' })
+
+  assert.equal(consoleSpy.error(0), 'Error: /watermark expects "on" or "off".\n')
+  assert.deepEqual(prefsUpdates, [])
+})
+
+test('/watermark on an openrouter session errors', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx({
+    provider: fakeVeniceProvider({ meta: { name: 'openrouter' } }),
+  })
+
+  await chatCommands['/watermark']({ ...ctx, args: 'on' })
+
+  assert.equal(consoleSpy.error(0), 'Error: /watermark is only supported on Venice sessions.\n')
+  assert.deepEqual(prefsUpdates, [])
+})
+
+test('/watermark is a registered, args-accepting command visible regardless of vision support', () => {
+  assert.ok(CHAT_COMMANDS.includes('/watermark'))
+  assert.equal(commandAcceptsArgs('/watermark'), true)
+  assert.ok(visibleChatCommands({ visionSupported: false }).includes('/watermark'))
+  assert.ok(visibleChatCommands({ visionSupported: true }).includes('/watermark'))
 })

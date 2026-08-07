@@ -38,7 +38,8 @@ export function isConfigSetter(opts) {
     opts.webSearch !== undefined ||
     opts.webResults !== undefined ||
     opts.smoothSpeed !== undefined ||
-    opts.smoothStreaming === false
+    opts.smoothStreaming === false ||
+    opts.watermark === false
   )
 }
 
@@ -65,6 +66,7 @@ function hasBareConfigOtherFlags(opts, promptArg) {
     opts.webResults !== undefined ||
     opts.smoothStreaming === false ||
     opts.smoothSpeed !== undefined ||
+    opts.watermark === false ||
     opts.delete !== undefined ||
     opts.image === true ||
     hasAttachments(opts)

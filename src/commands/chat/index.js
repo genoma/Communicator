@@ -10,7 +10,7 @@ import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArg
 import { attachGateOptions } from '../../session-setup.js'
 import { runImageGeneration, printImageOutcome } from '../image-gen.js'
 
-const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments', '/image'])
+const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments', '/image', '/watermark'])
 
 export function budgetGuard(ctx) {
   const { state, tracker } = ctx
@@ -304,6 +304,26 @@ const handlers = {
     await ctx.saveSession()
     await ctx.savePrefs({ lastImageModel: outcome.modelId })
     printImageOutcome(outcome, ctx.stdout)
+  },
+
+  '/watermark': async (ctx) => {
+    if (ctx.provider.meta.name !== 'venice') {
+      console.error('Error: /watermark is only supported on Venice sessions.\n')
+      return
+    }
+    const value = ctx.args
+    if (!value) {
+      console.log(`Venice watermark is ${ctx.prefs.hideWatermark === true ? 'off' : 'on'}.\n`)
+      return
+    }
+    if (value === 'on' || value === 'off') {
+      const next = value === 'on'
+      ctx.prefs.hideWatermark = !next
+      await ctx.savePrefs({ hideWatermark: !next })
+      console.log(`Venice watermark ${next ? 'enabled' : 'disabled'}.\n`)
+      return
+    }
+    console.error('Error: /watermark expects "on" or "off".\n')
   },
 }
 

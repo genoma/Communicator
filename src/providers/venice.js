@@ -155,7 +155,7 @@ export async function fetchImageModels(apiKey) {
   })
 }
 
-export async function generateImage({ apiKey, model, prompt, format = 'webp', variants = 1, safeMode = true, aspectRatio, resolution, quality, seed, width, height, pricing, signal, timeoutMs = IMAGE_GEN_TIMEOUT_MS }) {
+export async function generateImage({ apiKey, model, prompt, format = 'webp', variants = 1, safeMode = true, hideWatermark = false, aspectRatio, resolution, quality, seed, width, height, pricing, signal, timeoutMs = IMAGE_GEN_TIMEOUT_MS }) {
   const body = {
     model,
     prompt,
@@ -163,6 +163,7 @@ export async function generateImage({ apiKey, model, prompt, format = 'webp', va
     variants,
     safe_mode: safeMode,
   }
+  if (hideWatermark) body.hide_watermark = true
   if (aspectRatio) body.aspect_ratio = aspectRatio
   if (resolution) body.resolution = resolution
   if (quality) body.quality = quality

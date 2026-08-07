@@ -14,9 +14,10 @@ export function resolveConfigValues(opts) {
   const { temperature, budget, webResults, smoothSpeed, reasoningEffort } = resolveFlagValues(opts)
   const webSearch = opts.webSearch !== undefined ? normalizeWebSearchMode(opts.webSearch) : undefined
   const smoothStreaming = opts.smoothStreaming === false ? false : undefined
+  const hideWatermark = opts.watermark === false ? true : undefined
   const outputDir = opts.outputDir
   const needsModel = temperature !== undefined || reasoningEffort !== undefined || webSearch !== undefined
-  return { temperature, budget, webResults, smoothSpeed, reasoningEffort, webSearch, smoothStreaming, outputDir, needsModel }
+  return { temperature, budget, webResults, smoothSpeed, reasoningEffort, webSearch, smoothStreaming, hideWatermark, outputDir, needsModel }
 }
 
 export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
@@ -60,6 +61,7 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
     budget: values.budget,
     webResults: values.webResults,
     outputDir: values.outputDir,
+    hideWatermark: values.hideWatermark,
   })
 
   await savePreferences(updated, opts.config)
@@ -84,5 +86,6 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
   if (values.webResults !== undefined) console.log(`Web search results set to ${values.webResults} (OpenRouter only)`)
   if (values.smoothSpeed !== undefined) console.log(`Smooth speed set to ${formatSmoothSpeed(values.smoothSpeed)}`)
   if (values.smoothStreaming === false) console.log('Smooth streaming disabled')
+  if (values.hideWatermark === true) console.log('Venice watermark disabled')
   console.log(`Saved to ${opts.config || DEFAULT_CONFIG_FILE}`)
 }

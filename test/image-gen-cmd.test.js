@@ -104,6 +104,7 @@ const BASE_OPTS = {
   width: undefined,
   height: undefined,
   safeMode: true,
+  watermark: true,
   outputDir: undefined,
   config: undefined,
 }
@@ -409,6 +410,49 @@ test('--image picker ordering uses lastImageModel on a second run', async (t) =>
   assert.equal(searchCalls.length, 1)
   const choices = await searchCalls[0].source('')
   assert.equal(choices[0].value.id, 'flux-1-1')
+})
+
+test('--image --no-watermark sends hide_watermark and persists the pref', async (t) => {
+  const { bodies } = mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  const { exited } = await runImageGen(t, { overrides: { config: file, watermark: false } })
+
+  assert.equal(exited, false)
+  assert.equal(bodies[0].hide_watermark, true)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.hideWatermark, true)
+})
+
+test('--image without the flag honors a persisted hideWatermark pref without rewriting it', async (t) => {
+  const { bodies } = mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  const { exited } = await runImageGen(t, { overrides: { config: file }, prefs: { hideWatermark: true } })
+
+  assert.equal(exited, false)
+  assert.equal(bodies[0].hide_watermark, true)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.hideWatermark, true)
+  assert.equal(Object.keys(prefs).includes('hideWatermark'), true)
+})
+
+test('--image without the flag and no pref sends no hide_watermark and adds no pref key', async (t) => {
+  const { bodies } = mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  const { exited } = await runImageGen(t, { overrides: { config: file } })
+
+  assert.equal(exited, false)
+  assert.equal(bodies[0].hide_watermark, undefined)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.hideWatermark, undefined)
 })
 
 test('--image rejects an invalid flag value with a CliError', async (t) => {

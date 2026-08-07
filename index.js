@@ -27,6 +27,7 @@ program
   .option('--width <px>', 'image width in pixels (1-1280)')
   .option('--height <px>', 'image height in pixels (1-1280)')
   .option('--no-safe-mode', 'disable safe mode for image generation (adult content will not be blurred)')
+  .option('--no-watermark', 'hide the Venice watermark on generated images (persisted as a global Venice setting)')
   .option('--list-endpoints [model]', 'list providers/endpoints for a model (interactive picker when omitted)')
   .option('-r, --resume [session-id]', 'resume a saved session (optional session ID)')
   .option('-x, --export [session-id]', 'export a saved session as markdown')

@@ -32,6 +32,7 @@ function opts(overrides = {}) {
     webResults: undefined,
     smoothSpeed: undefined,
     smoothStreaming: true,
+    watermark: true,
     outputDir: undefined,
     config: undefined,
     ...overrides,
@@ -68,4 +69,25 @@ test('configSetCmd reports effort control for models that support it', async (t)
   await configSetCmd({ opts: opts({ model: 'org/m' }), prefs: {}, providerType: 'openrouter', apiKey: 'k' })
 
   assert.ok(logs.some((l) => l.includes('Reasoning: effort control supported')))
+})
+
+test('configSetCmd with --no-watermark persists hideWatermark and prints the confirmation', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  saveCalls.length = 0
+
+  await configSetCmd({ opts: opts({ watermark: false }), prefs: {}, providerType: 'openrouter', apiKey: 'k' })
+
+  assert.equal(saveCalls.length, 1)
+  assert.equal(saveCalls[0].prefs.hideWatermark, true)
+  assert.ok(logs.some((l) => l.includes('Venice watermark disabled')))
+})
+
+test('configSetCmd without --no-watermark does not add the hideWatermark key', async () => {
+  saveCalls.length = 0
+
+  await configSetCmd({ opts: opts(), prefs: {}, providerType: 'openrouter', apiKey: 'k' })
+
+  assert.equal(saveCalls.length, 1)
+  assert.equal(saveCalls[0].prefs.hideWatermark, undefined)
 })

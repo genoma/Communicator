@@ -86,6 +86,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
       format,
       variants,
       safeMode: opts.safeMode !== false,
+      hideWatermark: opts.watermark === false || prefs.hideWatermark === true,
       aspectRatio,
       resolution,
       quality,
@@ -163,6 +164,7 @@ export async function finalizeImageSession({ prefs, opts = {}, config, sessionId
   await savePreferences(applyPreferenceUpdates(prefs, {
     lastImageModel: outcome.modelId,
     outputDir: opts.outputDir,
+    hideWatermark: opts.watermark === false ? true : undefined,
   }), config)
   printImageOutcome(outcome, stdout)
 }

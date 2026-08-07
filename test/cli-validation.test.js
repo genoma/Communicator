@@ -20,6 +20,7 @@ const BASE_OPTS = {
   webResults: undefined,
   smoothStreaming: true,
   smoothSpeed: undefined,
+  watermark: true,
   delete: undefined,
   attach: [],
 }
@@ -167,6 +168,14 @@ test('rejects bare --config combined with other flags', () => {
   assert.deepEqual(validateCliFlags(opts({ config: true }), TTY), [])
 })
 
+test('bare --config rejects --no-watermark but --image accepts it', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ config: true, watermark: false }), TTY),
+    ['Error: bare --config (config view) cannot be combined with other flags.']
+  )
+  assert.deepEqual(validateCliFlags(opts({ image: true, watermark: false, provider: 'venice' }), TTY), [])
+})
+
 test('rejects --attach without a prompt in a TTY', () => {
   assert.deepEqual(
     validateCliFlags(opts({ attach: ['a.txt'] }), TTY),
@@ -208,6 +217,7 @@ test('predicates classify flags', () => {
   assert.equal(isConfigSetter(opts({ model: 'm' })), true)
   assert.equal(isConfigSetter(opts({ outputDir: '/x' })), true)
   assert.equal(isConfigSetter(opts({ webResults: 5 })), true)
+  assert.equal(isConfigSetter(opts({ watermark: false })), true)
 
   assert.equal(hasAttachments(opts()), false)
   assert.equal(hasAttachments(opts({ attach: [] })), false)

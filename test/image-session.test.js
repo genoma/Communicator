@@ -11,11 +11,13 @@ after(() => rm(tempHome, { recursive: true, force: true }))
 mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 
 const genCalls = []
+const genPrefs = []
 const printed = []
 mock.module(new URL('../src/commands/image-gen.js', import.meta.url).href, {
   namedExports: {
-    runImageGeneration: async ({ prompt, model }) => {
+    runImageGeneration: async ({ prompt, model, prefs }) => {
       genCalls.push(prompt)
+      genPrefs.push(prefs?.hideWatermark)
       if (prompt === 'boom') throw new CliError('Error: venice exploded.')
       return {
         message: { role: 'assistant', content: [{ type: 'image_url', image_url: { url: `ref://attachments/${genCalls.length}.webp` } }] },
@@ -206,4 +208,64 @@ test('a missing image model throws a CliError before reading input', async (t) =
     (err) => err instanceof CliError && err.message.includes('gone')
   )
   assert.deepEqual(genCalls, [])
+})
+
+test('/watermark off hides the watermark for subsequent generations and persists', async (t) => {
+  genCalls.length = 0
+  genPrefs.length = 0
+  printed.length = 0
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    readInput: scriptedInput(['/watermark off', 'a cat', '/watermark', '/quit']),
+  }))
+
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.hideWatermark, true)
+  assert.deepEqual(genPrefs, [true])
+  assert.ok(logs.some((l) => l.includes('watermark disabled')))
+  assert.ok(logs.some((l) => l.includes('watermark is off')))
+})
+
+test('/watermark on re-enables the watermark and persists', async (t) => {
+  genCalls.length = 0
+  genPrefs.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    prefs: { hideWatermark: true },
+    readInput: scriptedInput(['/watermark on', '/watermark', '/quit']),
+  }))
+
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.hideWatermark, false)
+  assert.deepEqual(genPrefs, [])
+})
+
+test('/watermark with an invalid argument errors and continues', async (t) => {
+  genCalls.length = 0
+  genPrefs.length = 0
+  printed.length = 0
+  const logs = []
+  const errors = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    readInput: scriptedInput(['/watermark sometimes', 'a cat', '/quit']),
+  }))
+
+  assert.ok(errors.some((e) => e.includes('/watermark expects "on" or "off"')))
+  assert.deepEqual(genCalls, ['a cat'])
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.hideWatermark, undefined)
 })

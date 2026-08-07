@@ -38,6 +38,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--width`             | `<px>`   | Image width in pixels, 1–1280 (pixel-based models) |
 |       | `--height`            | `<px>`   | Image height in pixels, 1–1280 (pixel-based models) |
 |       | `--no-safe-mode`      | —        | Disable safe mode for image generation (adult content returned unblurred) |
+|       | `--no-watermark`      | —        | Hide the Venice watermark on generated images. Bare use saves the default (global setting) |
 |       | `--list-image-models` | —        | List Venice image models (name, id, per-image price, sizing options) and exit |
 
 Pass `--reasoning-effort none` to disable reasoning entirely.
@@ -111,6 +112,7 @@ communicator --budget 2                                                # set the
 communicator --web-results 5                                           # set the default result count (OpenRouter only)
 communicator --smooth-speed fast                                       # set the default smooth streaming speed
 communicator --no-smooth-streaming                                     # disable smooth streaming by default
+communicator --no-watermark                                            # hide the Venice watermark on generated images by default
 ```
 
 ## Slash commands
@@ -133,6 +135,7 @@ communicator --no-smooth-streaming                                     # disable
 | `/smooth`      | Show smooth streaming state and speed, or set them with `/smooth on|off|<level>|<cps>` (a speed value implies on) |
 | `/cost`        | Print the running session cost/token totals and current reasoning effort            |
 | `/image`       | Generate an image with a Venice image model (`/image <description>`; Venice sessions only) |
+| `/watermark`   | Show whether the Venice watermark is on/off, or set it with `/watermark on|off` (`off` hides it; persisted as a global setting) |
 | `Cmd+C` / `Ctrl+C` | During streaming: abort, save the partial response, and exit. At the prompt: cancel and exit |
 
 Unknown slash commands (anything starting with `/`) print a hint listing the available commands instead of being sent to the model.
