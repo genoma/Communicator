@@ -43,7 +43,14 @@ function extractCodeFlags(source) {
     flags.set(long, { short, long, args, description: m[2] })
   }
   flags.set('--version', { short: '-V', long: '--version', args: null, description: 'Print the version and exit' })
+  flags.set('--help', { short: '-h', long: '--help', args: null, description: 'Display help for command' })
   return flags
+}
+
+function extractProviderTypes(source) {
+  const match = source.match(/const registry = \{ ([^}]+) \}/)
+  if (!match) return []
+  return match[1].split(',').map((s) => s.trim()).filter(Boolean)
 }
 
 function extractDocsFlags(commandsDoc) {
@@ -150,9 +157,12 @@ test('env vars, data paths, and node version are documented', async () => {
     readFile(join(ROOT, 'package.json'), 'utf8').then(JSON.parse),
   ])
   const { getProvider } = await import('../src/providers/index.js')
+  const providerSource = await readText('src/providers/index.js')
+  const providerTypes = extractProviderTypes(providerSource)
+  assert.ok(providerTypes.length > 0, 'providers/index.js must declare a registry object')
   const { DEFAULT_CONFIG_FILE, DEFAULT_SYSTEM_PROMPT_FILE, SESSIONS_DIR } = await import('../src/constants.js')
 
-  for (const type of ['openrouter', 'venice']) {
+  for (const type of providerTypes) {
     const envVar = getProvider(type).meta.apiKeyEnv
     for (const [name, text] of [['README.md', readme], ['docs/platforms.md', platformsDoc]]) {
       assert.ok(text.includes(envVar), `${envVar} must be mentioned in ${name}`)

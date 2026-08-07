@@ -18,6 +18,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--no-smooth-streaming` | —      | Disable smooth streaming (default: on in interactive sessions). Bare use saves the default |
 |       | `--smooth-speed`      | `<level\|cps>` | Smooth streaming speed: `slow`, `normal`, `fast`, or chars per second (default: `normal` ≈ 2000). Bare use saves the default |
 | `-V`  | `--version`           | —        | Print the version and exit                                                           |
+| `-h`  | `--help`              | —        | Show the help menu and exit                                                          |
 |       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
 |       | `--list-endpoints`    | `[model]`| List providers for a model (pricing, uptime, ZDR support, privacy policy link). No arg = picker, partial ID = fuzzy match |
 |       | `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, title) and exit                |
