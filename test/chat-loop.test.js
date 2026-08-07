@@ -347,7 +347,7 @@ test('unknown command is rejected with the exact message and the provider is not
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /new, /model, /attach, /attachments, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost, /image, /watermark\n'
+    'Unknown command "/nope". Available: /quit, /new, /model, /attach, /attachments, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost, /image\n'
   )
 })
 
@@ -362,7 +362,22 @@ test('unknown command list omits /attach and /attachments when the model lacks v
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /new, /model, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost, /image, /watermark\n'
+    'Unknown command "/nope". Available: /quit, /new, /model, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost, /image\n'
+  )
+})
+
+test('unknown command list keeps /watermark on a venice session', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { provider, calls } = fakeProvider({ meta: { name: 'venice' } })
+  const harness = makeDeps({ readInput: scriptedInput(['/nope', '/quit']) })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  assert.equal(calls.length, 0)
+  const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
+  assert.equal(
+    unknownLine,
+    'Unknown command "/nope". Available: /quit, /new, /model, /attach, /attachments, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost, /image, /watermark\n'
   )
 })
 
@@ -383,6 +398,26 @@ test('autocomplete commands omit /attach and /attachments when the model lacks v
   for (const commands of commandsSeen) {
     assert.ok(!commands.includes('/attach'))
     assert.ok(!commands.includes('/attachments'))
+    assert.ok(!commands.includes('/watermark'))
+  }
+})
+
+test('autocomplete commands keep /watermark on a venice session', async (t) => {
+  mockConsole(t)
+  const commandsSeen = []
+  const inner = scriptedInput(['/quit'])
+  const capturing = async (opts) => {
+    commandsSeen.push(opts?.commands)
+    return inner()
+  }
+  const { provider } = fakeProvider({ meta: { name: 'venice' } })
+  const harness = makeDeps({ readInput: capturing })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  assert.ok(commandsSeen.length > 0)
+  for (const commands of commandsSeen) {
+    assert.ok(commands.includes('/watermark'))
   }
 })
 

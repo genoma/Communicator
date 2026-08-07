@@ -260,11 +260,13 @@ test('/watermark on an openrouter session errors', async (t) => {
   assert.deepEqual(prefsUpdates, [])
 })
 
-test('/watermark is a registered, args-accepting command visible regardless of vision support', () => {
+test('/watermark is registered and args-accepting, visible only on venice sessions', () => {
   assert.ok(CHAT_COMMANDS.includes('/watermark'))
   assert.equal(commandAcceptsArgs('/watermark'), true)
-  assert.ok(visibleChatCommands({ visionSupported: false }).includes('/watermark'))
-  assert.ok(visibleChatCommands({ visionSupported: true }).includes('/watermark'))
+  assert.ok(visibleChatCommands({ visionSupported: false, providerName: 'venice' }).includes('/watermark'))
+  assert.ok(visibleChatCommands({ visionSupported: true, providerName: 'venice' }).includes('/watermark'))
+  assert.ok(!visibleChatCommands({ visionSupported: false, providerName: 'openrouter' }).includes('/watermark'))
+  assert.ok(!visibleChatCommands({ visionSupported: true, providerName: 'openrouter' }).includes('/watermark'))
 })
 
 test('/image --ratio and --format are parsed, validated and stripped from the appended message', async (t) => {

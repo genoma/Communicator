@@ -8,7 +8,11 @@ import { resolveAspectRatio, resolveImageFormat } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
 import { runImageGeneration, printImageOutcome, buildImageSessionPayload, handleWatermarkCommand } from './image-gen.js'
 
-const IMAGE_SESSION_COMMANDS = ['/help', '/model', '/exit', '/quit', '/watermark', '/aspect', '/format']
+// /watermark is Venice-only: OpenRouter image models have no watermark
+// parameter, so the command is only offered on Venice sessions.
+function imageSessionCommands(providerName) {
+  return ['/help', '/model', '/exit', '/quit', ...(providerName === 'venice' ? ['/watermark'] : []), '/aspect', '/format']
+}
 
 // Replaces image_url parts with a text placeholder when the history is
 // handed to a text model that cannot take image input; text and other parts
@@ -108,7 +112,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
   console.log(`Image session with ${imageModelId}. Describe an image to generate it; /help lists the available commands.\n`)
 
   while (true) {
-    const result = await read({ commands: IMAGE_SESSION_COMMANDS })
+    const result = await read({ commands: imageSessionCommands(provider.meta.name) })
     if (result.cancelled) {
       await persist()
       return
@@ -126,7 +130,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       console.log('/help            show this help')
       console.log('/model           switch image model, or pick a text model to continue in chat')
       console.log('/exit, /quit     leave the session')
-      console.log('/watermark       hide the Venice watermark on generated images (on|off)')
+      if (provider.meta.name === 'venice') console.log('/watermark       hide the Venice watermark on generated images (on|off)')
       console.log('/aspect          show the supported aspect ratios and the session one')
       console.log('/aspect <x:y>    set the aspect ratio for this session (clear to unset)')
       console.log('/format          show the supported output formats and the session one')
@@ -168,7 +172,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       return { switchToChat: { selection: sel, messages: transitionMessages, sessionId, createdAt } }
     }
 
-    if (input === '/watermark' || input.startsWith('/watermark ')) {
+    if (provider.meta.name === 'venice' && (input === '/watermark' || input.startsWith('/watermark '))) {
       await handleWatermarkCommand({
         providerName: provider.meta.name,
         args: input.slice('/watermark'.length).trim(),
@@ -285,7 +289,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     }
 
     if (input.startsWith('/')) {
-      console.log(`Unknown command "${input}". Available: ${IMAGE_SESSION_COMMANDS.join(', ')}`)
+      console.log(`Unknown command "${input}". Available: ${imageSessionCommands(provider.meta.name).join(', ')}`)
       continue
     }
 

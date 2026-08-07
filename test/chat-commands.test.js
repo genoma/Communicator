@@ -892,12 +892,19 @@ test('CHAT_COMMANDS keeps the 17-command order', () => {
 })
 
 test('visibleChatCommands hides /attach and /attachments only when vision is known unsupported', () => {
-  const hidden = visibleChatCommands({ visionSupported: false })
+  const hidden = visibleChatCommands({ visionSupported: false, providerName: 'venice' })
   assert.ok(!hidden.includes('/attach'))
   assert.ok(!hidden.includes('/attachments'))
   assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => c !== '/attach' && c !== '/attachments'))
 
-  assert.deepEqual(visibleChatCommands({ visionSupported: true }), CHAT_COMMANDS)
-  assert.deepEqual(visibleChatCommands({ visionSupported: undefined }), CHAT_COMMANDS)
-  assert.deepEqual(visibleChatCommands({}), CHAT_COMMANDS)
+  assert.deepEqual(visibleChatCommands({ visionSupported: true, providerName: 'venice' }), CHAT_COMMANDS)
+  assert.deepEqual(visibleChatCommands({ visionSupported: undefined, providerName: 'venice' }), CHAT_COMMANDS)
+})
+
+test('visibleChatCommands hides /watermark on non-venice sessions', () => {
+  const without = visibleChatCommands({ visionSupported: true, providerName: 'openrouter' })
+  assert.ok(!without.includes('/watermark'))
+  assert.deepEqual(without, CHAT_COMMANDS.filter((c) => c !== '/watermark'))
+  assert.deepEqual(visibleChatCommands({ visionSupported: true }), CHAT_COMMANDS.filter((c) => c !== '/watermark'))
+  assert.deepEqual(visibleChatCommands({}), CHAT_COMMANDS.filter((c) => c !== '/watermark'))
 })

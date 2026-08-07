@@ -380,10 +380,11 @@ export const chatCommands = handlers
 
 export const CHAT_COMMANDS = Object.keys(handlers)
 
-export function visibleChatCommands({ visionSupported }) {
-  return visionSupported === false
-    ? CHAT_COMMANDS.filter((c) => c !== '/attach' && c !== '/attachments')
-    : CHAT_COMMANDS
+export function visibleChatCommands({ visionSupported, providerName }) {
+  const hidden = []
+  if (visionSupported === false) hidden.push('/attach', '/attachments')
+  if (providerName !== 'venice') hidden.push('/watermark')
+  return CHAT_COMMANDS.filter((c) => !hidden.includes(c))
 }
 
 export function commandAcceptsArgs(command) {

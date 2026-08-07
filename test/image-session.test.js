@@ -1,6 +1,6 @@
 import { test, mock, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, readFile } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CliError } from '../src/errors.js'
@@ -177,6 +177,7 @@ function sessionFile(sessionId) {
 async function tempConfig(t) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-image-session-config-'))
   const file = join(dir, 'config.json')
+  await writeFile(file, '{}')
   t.after(() => rm(dir, { recursive: true, force: true }))
   return file
 }
@@ -313,6 +314,7 @@ test('/help lists the commands and does not generate', async (t) => {
   assert.deepEqual(genCalls, [])
   assert.ok(logs.some((l) => l.includes('/help')))
   assert.ok(logs.some((l) => l.includes('/quit')))
+  assert.ok(logs.some((l) => l.includes('/watermark')))
 })
 
 test('unknown slash commands are reported without generating', async (t) => {
@@ -412,13 +414,13 @@ test('/watermark with an invalid argument errors and continues', async (t) => {
   assert.equal(prefs.hideWatermark, undefined)
 })
 
-test('/watermark on an openrouter session errors and continues', async (t) => {
+test('/watermark on an openrouter session is an unknown command and continues', async (t) => {
   genCalls.length = 0
   genOpts.length = 0
   printed.length = 0
-  const errors = []
-  t.mock.method(console, 'log', () => {})
-  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
   const file = await tempConfig(t)
 
   await startImageSession(baseOpts({
@@ -427,8 +429,40 @@ test('/watermark on an openrouter session errors and continues', async (t) => {
     readInput: scriptedInput(['/watermark off', 'a cat', '/quit']),
   }))
 
-  assert.ok(errors.some((e) => e.includes('/watermark is only supported on Venice sessions.')))
+  assert.ok(logs.some((l) => l.startsWith('Unknown command "/watermark off"')))
+  assert.ok(!logs.some((l) => l.includes('/watermark is only supported on Venice sessions.')))
   assert.deepEqual(genCalls, ['a cat'])
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.hideWatermark, undefined)
+})
+
+test('/watermark is not offered or listed on an openrouter image session', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  const logs = []
+  const commandsSeen = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+  const inner = scriptedInput(['/help', '/watermark', '/quit'])
+  const capturing = async (opts) => {
+    commandsSeen.push(opts?.commands)
+    return inner()
+  }
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    provider: { meta: { name: 'openrouter' }, fetchImageModels: fakeProvider.fetchImageModels },
+    configPath: file,
+    readInput: capturing,
+  }))
+
+  assert.deepEqual(genCalls, [])
+  for (const commands of commandsSeen) {
+    assert.ok(!commands.includes('/watermark'))
+  }
+  assert.ok(!logs.some((l) => l.includes('Venice watermark')))
+  assert.ok(logs.some((l) => l.startsWith('Unknown command "/watermark"')))
   const prefs = JSON.parse(await readFile(file, 'utf-8'))
   assert.equal(prefs.hideWatermark, undefined)
 })
