@@ -18,8 +18,14 @@ function validateSizingConstraints(model, { aspectRatio, format, resolution, qua
   if (aspectRatio && Array.isArray(constraints.aspectRatios) && !constraints.aspectRatios.includes(aspectRatio)) {
     throw new CliError(`Error: --aspect-ratio ${aspectRatio} is not supported by ${model.id}. Supported: ${constraints.aspectRatios.join(', ')}.`)
   }
+  if (aspectRatio && constraints.aspectRatios === null) {
+    throw new CliError(`Error: --aspect-ratio ${aspectRatio} is not supported by ${model.id}.${pixelSizingHint(model)}`)
+  }
   if (format && Array.isArray(constraints.formats) && !constraints.formats.includes(format)) {
     throw new CliError(`Error: --image-format ${format} is not supported by ${model.id}. Supported: ${constraints.formats.join(', ')}.`)
+  }
+  if (format && constraints.formats === null) {
+    throw new CliError(`Error: --image-format ${format} is not supported by ${model.id}.`)
   }
   if (resolution && Array.isArray(constraints.resolutions) && !constraints.resolutions.includes(resolution)) {
     throw new CliError(`Error: --resolution ${resolution} is not supported by ${model.id}. Supported: ${constraints.resolutions.join(', ')}.`)
@@ -41,19 +47,20 @@ export function sizingDropNote(kind, value, modelId) {
 }
 
 // Applies a saved default only when the model supports it. A null list
-// means the model cannot take the parameter at all (OpenRouter models that
-// lack the param entirely); Venice models without an advertised list pass
-// the value through as before.
-function applySizingDefault(list, value, providerName, kind, modelId) {
+// means the model cannot take the parameter at all (pixel-based Venice
+// models like z-image-turbo, OpenRouter models without the param); the
+// default is dropped with a visible note instead of being sent blindly.
+function applySizingDefault(list, value, kind, modelId) {
   if (value === undefined) return { value: undefined, note: null }
-  if (Array.isArray(list)) {
-    if (list.includes(value)) return { value, note: null }
-    return { value: undefined, note: sizingDropNote(kind, value, modelId) }
-  }
-  if (providerName === 'openrouter') {
-    return { value: undefined, note: sizingDropNote(kind, value, modelId) }
-  }
-  return { value, note: null }
+  if (Array.isArray(list) && list.includes(value)) return { value, note: null }
+  return { value: undefined, note: sizingDropNote(kind, value, modelId) }
+}
+
+// Pixel-based models (width/height, no aspect-ratio list) get a hint so the
+// user knows how to size them instead of hitting a bare rejection.
+export function pixelSizingHint(model) {
+  const divisor = model?.constraints?.widthHeightDivisor
+  return divisor != null ? ` This pixel-based model takes --width/--height (multiples of ${divisor}) instead.` : ''
 }
 
 function ratioPreselect(list, savedDefault, modelDefault) {
@@ -135,14 +142,14 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
   }
 
   if (!pickedRatio && opts.aspectRatio === undefined) {
-    const applied = applySizingDefault(resolved?.constraints?.aspectRatios, savedDefaults.aspectRatio, providerName, 'aspect ratio', resolved?.id)
+    const applied = applySizingDefault(resolved?.constraints?.aspectRatios, savedDefaults.aspectRatio, 'aspect ratio', resolved?.id)
     aspectRatio = applied.value
     if (applied.note) notes.push(applied.note)
   }
   if (!pickedFormat && opts.imageFormat === undefined) {
     const formats = resolved?.constraints?.formats
     if (savedDefaults.format) {
-      const applied = applySizingDefault(formats, savedDefaults.format, providerName, 'format', resolved?.id)
+      const applied = applySizingDefault(formats, savedDefaults.format, 'format', resolved?.id)
       format = applied.value
       if (applied.note) notes.push(applied.note)
     } else if (Array.isArray(formats)) {

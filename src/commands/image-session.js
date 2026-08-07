@@ -4,7 +4,7 @@ import { getImageDefaults, mergeImageDefaults, savePreferences, applyPreferenceU
 import { findImageModel } from '../model-selection.js'
 import { CliError, formatError } from '../errors.js'
 import { resolveAspectRatio, resolveImageFormat } from '../flags.js'
-import { runImageGeneration, printImageOutcome, buildImageSessionPayload } from './image-gen.js'
+import { runImageGeneration, printImageOutcome, buildImageSessionPayload, pixelSizingHint } from './image-gen.js'
 
 const IMAGE_SESSION_COMMANDS = ['/help', '/exit', '/quit', '/watermark', '/aspect', '/format']
 
@@ -90,8 +90,8 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         const ratios = model.constraints?.aspectRatios
         if (Array.isArray(ratios)) {
           console.log(`${supportedListLine('Aspect ratio', ratios, current, model)}\n`)
-        } else if (provider.meta.name === 'openrouter') {
-          console.log(`Aspect ratio is not supported by ${model.id}.\n`)
+        } else if (model.constraints) {
+          console.log(`Aspect ratio is not supported by ${model.id}.${pixelSizingHint(model)}\n`)
         } else {
           console.log(current ? `Aspect ratio: ${current}.\n` : 'Aspect ratio: not set.\n')
         }
@@ -116,11 +116,12 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       }
       const constraints = model.constraints
       const ratios = constraints?.aspectRatios
-      // Venice models without an advertised list still accept the parameter
-      // (the runner passes the value through); OpenRouter models with no
-      // list would silently ignore it and still bill, so they stay strict.
-      if (constraints && !Array.isArray(ratios) && provider.meta.name === 'openrouter') {
-        console.error(`Error: aspect ratio is not supported by ${model.id}.\n`)
+      // A model without an advertised list cannot take the parameter: pixel-
+      // based Venice models (z-image-turbo, venice-sd35) ignore aspect_ratio
+      // and return a square default, and OpenRouter models would silently
+      // ignore it and still bill — so the value is always rejected here.
+      if (constraints && !Array.isArray(ratios)) {
+        console.error(`Error: aspect ratio is not supported by ${model.id}.${pixelSizingHint(model)}\n`)
         continue
       }
       if (Array.isArray(ratios) && !ratios.includes(parsed)) {
@@ -142,7 +143,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         const formats = model.constraints?.formats
         if (Array.isArray(formats)) {
           console.log(`${supportedListLine('Format', formats, current, model)}\n`)
-        } else if (provider.meta.name === 'openrouter') {
+        } else if (model.constraints) {
           console.log(`Format is not supported by ${model.id}.\n`)
         } else {
           console.log(current ? `Format: ${current}.\n` : 'Format: not set.\n')
@@ -168,7 +169,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       }
       const constraints = model.constraints
       const formats = constraints?.formats
-      if (constraints && !Array.isArray(formats) && provider.meta.name === 'openrouter') {
+      if (constraints && !Array.isArray(formats)) {
         console.error(`Error: format is not supported by ${model.id}.\n`)
         continue
       }

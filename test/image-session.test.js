@@ -30,6 +30,10 @@ mock.module(new URL('../src/commands/image-gen.js', import.meta.url).href, {
       }
     },
     printImageOutcome: async (outcome) => { printed.push(outcome) },
+    pixelSizingHint: (model) => {
+      const divisor = model?.constraints?.widthHeightDivisor
+      return divisor != null ? ` This pixel-based model takes --width/--height (multiples of ${divisor}) instead.` : ''
+    },
     buildImageSessionPayload: ({ messages, modelId, createdAt }) => ({ model: modelId, providerType: 'venice', createdAt, messages }),
   },
 })
@@ -46,7 +50,7 @@ const fakeProvider = {
 const veniceNoRatioProvider = {
   meta: { name: 'venice' },
   async fetchImageModels() {
-    return [{ id: 'venice-sd35', name: 'SD 3.5', pricing: { perImage: 0.02 }, constraints: { aspectRatios: null, formats: ['png', 'jpeg', 'webp'] } }]
+    return [{ id: 'z-image-turbo', name: 'Z-Image Turbo', pricing: { perImage: 0.01 }, constraints: { aspectRatios: null, formats: ['png', 'jpeg', 'webp'], widthHeightDivisor: 8 } }]
   },
 }
 
@@ -405,35 +409,37 @@ test('/aspect with an invalid shape errors', async (t) => {
   assert.ok(errors.some((e) => e.includes('--aspect-ratio must be in the form W:H')))
 })
 
-test('/aspect sets on a Venice model without an advertised ratio list (pass-through)', async (t) => {
+test('/aspect with a ratio on a pixel-based Venice model errors with a width/height hint', async (t) => {
   genCalls.length = 0
-  genOpts.length = 0
   printed.length = 0
-  mockConsole(t)
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
   const file = await tempConfig(t)
 
   await startImageSession(baseOpts({
     provider: veniceNoRatioProvider,
+    imageModelId: 'z-image-turbo',
     configPath: file,
-    readInput: scriptedInput(['/aspect 16:9', 'a cat', '/quit']),
+    readInput: scriptedInput(['/aspect 16:9', '/quit']),
   }))
 
-  assert.deepEqual(genCalls, ['a cat'])
-  assert.equal(genOpts[0].aspectRatio, '16:9')
+  assert.ok(errors.some((e) => e.includes('Error: aspect ratio is not supported by z-image-turbo. This pixel-based model takes --width/--height (multiples of 8) instead.')), errors.join('\n'))
+  assert.deepEqual(genCalls, [])
 })
 
-test('/aspect bare on a Venice model without a ratio list shows the current value', async (t) => {
+test('/aspect bare on a pixel-based Venice model reports it is unsupported', async (t) => {
   const logs = []
   t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
   t.mock.method(console, 'error', () => {})
 
   await startImageSession(baseOpts({
     provider: veniceNoRatioProvider,
-    prefs: { imageDefaults: { venice: { aspectRatio: '2:3' } } },
+    imageModelId: 'z-image-turbo',
     readInput: scriptedInput(['/aspect', '/quit']),
   }))
 
-  assert.ok(logs.some((l) => l.includes('Aspect ratio: 2:3.')))
+  assert.ok(logs.some((l) => l.includes('Aspect ratio is not supported by z-image-turbo. This pixel-based model takes --width/--height (multiples of 8) instead.')))
 })
 
 test('/aspect with a ratio on an OpenRouter model without a list still errors', async (t) => {

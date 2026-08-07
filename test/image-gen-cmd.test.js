@@ -581,6 +581,37 @@ test('runImageGeneration drops unsupported saved defaults with a note on OpenRou
   assert.ok(warns.some((w) => w.includes('saved format png is not supported by openai/gpt-image-1-mini; it was not sent.')), warns.join('\n'))
 })
 
+test('runImageGeneration drops an unsupported saved ratio with a note on a pixel-based Venice model', async (t) => {
+  const warns = []
+  t.mock.method(console, 'warn', (m) => { warns.push(String(m)) })
+  const provider = fakeSizingProvider({
+    async fetchImageModels() {
+      return [{ id: 'z-image-turbo', name: 'Z-Image Turbo', pricing: null, constraints: { aspectRatios: null, formats: ['png', 'jpeg', 'webp'], resolutions: null, qualities: null, widthHeightDivisor: 8 } }]
+    },
+  })
+  const prefs = { imageDefaults: { venice: { aspectRatio: '2:3', format: 'webp' } } }
+
+  await runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'z-image-turbo' }, prefs, sessionId: '2026-01-01T00-00-00', stdout: plainStdout })
+
+  assert.equal(provider.genArgs.aspectRatio, undefined)
+  assert.equal(provider.genArgs.format, 'webp')
+  assert.ok(warns.some((w) => w.includes('saved aspect ratio 2:3 is not supported by z-image-turbo; it was not sent.')), warns.join('\n'))
+})
+
+test('runImageGeneration rejects an explicit aspect ratio on a pixel-based model', async (t) => {
+  mockConsole(t)
+  const provider = fakeSizingProvider({
+    async fetchImageModels() {
+      return [{ id: 'z-image-turbo', name: 'Z-Image Turbo', pricing: null, constraints: { aspectRatios: null, formats: ['png', 'jpeg', 'webp'], resolutions: null, qualities: null, widthHeightDivisor: 8 } }]
+    },
+  })
+
+  await assert.rejects(
+    runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'z-image-turbo', aspectRatio: '16:9' }, prefs: {}, sessionId: '2026-01-01T00-00-00', stdout: plainStdout }),
+    (err) => err instanceof CliError && err.message === 'Error: --aspect-ratio 16:9 is not supported by z-image-turbo. This pixel-based model takes --width/--height (multiples of 8) instead.'
+  )
+})
+
 test('runImageGeneration applies a supported saved default without pickers when piped', async (t) => {
   mockConsole(t)
   const provider = fakeSizingProvider()
