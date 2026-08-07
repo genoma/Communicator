@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { extForMime, mimeForExt, partUrl } from './attachments.js'
 import { assertSafeUrl, fetchWithTimeout } from './http.js'
 import { SESSIONS_DIR, MAX_IMAGE_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES } from './constants.js'
@@ -34,7 +34,7 @@ export function savedAttachmentPath(ref, sessionId) {
   if (!parsed) return null
   const base = resolve(attachmentDirFor(SESSIONS_DIR, sessionId))
   const target = resolve(join(base, parsed.file))
-  if (!target.startsWith(`${base}/`)) return null
+  if (target !== base && !target.startsWith(base + sep)) return null
   return target
 }
 

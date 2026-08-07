@@ -88,7 +88,7 @@ function headingAnchor(heading) {
 
 function extractHeadings(text) {
   const anchors = new Set()
-  for (const line of text.split('\n')) {
+  for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^#{1,6}\s+(.*)$/)
     if (m) anchors.add(headingAnchor(m[1]))
   }

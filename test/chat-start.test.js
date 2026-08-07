@@ -395,7 +395,7 @@ test('chatStart routes a picked image model into the image session', async (t) =
 })
 
 test('chatStart hands an image session /model text pick into startChat with the same session', async (t) => {
-  resumeResult = resumeSession({ isImageModel: true })
+  resumeResult = resumeSession({ isImageModel: true, providerType: 'venice' })
   imageSessionCalls.length = 0
   startChatCalls.length = 0
   imageSessionResult = {

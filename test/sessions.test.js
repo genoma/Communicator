@@ -156,7 +156,7 @@ test('loadSession and deleteSession reject traversal session ids', async (t) => 
   await assert.rejects(deleteSession(dir, '..'), (err) => err instanceof CliError && /Invalid session id/.test(err.message))
 })
 
-test('saveSession writes the session file with private permissions', async (t) => {
+test('saveSession writes the session file with private permissions', { skip: process.platform === 'win32' }, async (t) => {
   const dir = await tempDir(t)
   await saveSession(dir, '2026-01-01T00-00-00', sessionData())
   const mode = (await stat(join(dir, '2026-01-01T00-00-00.json'))).mode
