@@ -205,16 +205,23 @@ export async function downloadRemotePart(part, sessionId) {
 }
 
 // Reads the response body with a hard byte cap enforced mid-stream (aborts
-// once the cap is crossed instead of buffering the whole body first). Returns
-// null when the cap is exceeded.
-async function readBodyWithLimit(res, limit) {
-  if (res.body && typeof res.body.getReader === 'function') {
-    const reader = res.body.getReader()
+// once the cap is crossed instead of buffering the whole body first) and a
+// deadline covering a slow-drip body. Returns null when the cap is exceeded.
+async function readBodyWithLimit(res, limit, timeoutMs = 30_000) {
+  const body = res.body
+  if (body && typeof body.getReader === 'function') {
+    const reader = body.getReader()
     const chunks = []
     let total = 0
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      reader.cancel().catch(() => {})
+    }, timeoutMs)
     try {
       while (true) {
         const { done, value } = await reader.read()
+        if (timedOut) throw new Error('could not read response body')
         if (done) break
         total += value.byteLength
         if (total > limit) {
@@ -223,8 +230,8 @@ async function readBodyWithLimit(res, limit) {
         }
         chunks.push(Buffer.from(value))
       }
-    } catch {
-      throw new Error('could not read response body')
+    } finally {
+      clearTimeout(timer)
     }
     return Buffer.concat(chunks)
   }

@@ -43,6 +43,8 @@ export class ChatState {
       webResults: this.webResults,
       pricing: this.pricing,
       contextLength: this.contextLength,
+      supportsReasoning: this.supportsReasoning,
+      webSearchSupported: this.webSearchSupported,
       providerType,
     }
   }

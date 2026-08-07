@@ -137,11 +137,8 @@ async function main(opts, promptArg) {
   const prefs = await loadPreferences(opts.config)
   const systemPrompt = await loadSystemPrompt(opts.systemPrompt)
 
-  if (promptArg || !process.stdin.isTTY) {
-    await oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt: promptArg })
-    process.exit(0)
-  }
-
+  // --no-safe-mode persists as a global Venice setting in every launch path
+  // (interactive chat, one-shot, piped stdin), per its documented behavior.
   if (opts.safeMode === false) {
     prefs.safeMode = false
     try {
@@ -150,6 +147,11 @@ async function main(opts, promptArg) {
       fail(`Error: could not save the safe mode preference: ${err.message}`)
     }
     console.log('Venice safe mode disabled')
+  }
+
+  if (promptArg || !process.stdin.isTTY) {
+    await oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt: promptArg })
+    process.exit(0)
   }
 
   await chatStart({ apiKey, opts, prefs, systemPrompt, providerType })

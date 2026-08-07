@@ -231,6 +231,7 @@ const handlers = {
       return
     }
     ctx.state.setWebResults(parsed)
+    await ctx.savePrefs({ webResults: parsed })
     console.log(`Web search results set to ${parsed}.\n`)
   },
 

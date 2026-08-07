@@ -1,6 +1,6 @@
 import { getProvider } from '../providers/index.js'
 import { cpsToCharsPerTick } from '../constants.js'
-import { ensureSessionsDir, generateSessionId } from '../sessions.js'
+import { ensureSessionsDir, generateSessionId, removeEmptySessionClaim } from '../sessions.js'
 import { createStreamRenderer, printSources } from '../ui/stream.js'
 import { sessionLabel } from '../ui/format.js'
 import { UsageTracker, budgetLine } from '../tracker.js'
@@ -60,6 +60,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     try {
       outcome = await runImageGeneration({ provider, apiKey, prompt: text, opts, prefs, sessionId, model: selection, stdout: process.stdout })
     } catch (err) {
+      await removeEmptySessionClaim(dir, sessionId)
       if (err instanceof CliError) throw err
       throw new CliError(`Error: ${formatError(err)}`)
     }
@@ -100,6 +101,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   const controller = new AbortController()
   const onSigint = () => controller.abort()
   process.on('SIGINT', onSigint)
+  process.on('SIGTERM', onSigint)
 
   let result
   try {
@@ -134,6 +136,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
       result = await provider.chatCompletion({ ...completionOpts, onToken: () => {} })
     }
   } catch (err) {
+    await removeEmptySessionClaim(dir, sessionId)
     if (controller.signal.aborted) {
       console.error('\nInterrupted.')
       process.exit(130)
@@ -142,6 +145,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     throw new CliError(`Error: ${formatError(err)}`)
   } finally {
     process.off('SIGINT', onSigint)
+    process.off('SIGTERM', onSigint)
   }
 
   if (ttyOut) {

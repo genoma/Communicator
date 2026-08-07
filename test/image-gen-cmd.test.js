@@ -233,6 +233,7 @@ test('--image without --image-model uses the picker on a TTY', async (t) => {
   mockVeniceFetch(t)
   withApiKey(t)
   setStdoutTTY(t, true)
+  setStdinTTY(t, true)
   mockConsole(t)
   searchCalls = []
 
@@ -416,6 +417,7 @@ test('--image picker ordering uses lastImageModel on a second run', async (t) =>
   mockVeniceFetch(t)
   withApiKey(t)
   setStdoutTTY(t, true)
+  setStdinTTY(t, true)
   mockConsole(t)
   searchCalls = []
 

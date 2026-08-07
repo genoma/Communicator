@@ -51,12 +51,13 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
       smoothSpeed,
       pricing: result.pricing,
       contextLength: result.contextLength,
+      supportsReasoning: result.supportsReasoning,
+      webSearchSupported: result.webSearchSupported,
       initialMessages: result.initialMessages,
       sessionId: result.sessionId,
       sessionCreatedAt: result.sessionCreatedAt,
       provider,
       apiKey,
-      supportsReasoning: true,
       modelReasoning: null,
     }
   }

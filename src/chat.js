@@ -179,6 +179,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
         reasoningEffort: finalState.reasoningEffort,
         temperature: finalState.temperature,
         webSearch: finalState.webSearch,
+        webResults: finalState.webResults,
       }),
     ])
   }

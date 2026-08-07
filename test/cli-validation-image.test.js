@@ -120,14 +120,26 @@ test('--image rejects --resume, --export, --delete and --list-* flags', () => {
 test('--width and --height conflict with --aspect-ratio and --resolution', () => {
   assert.deepEqual(
     validateCliFlags(opts({ image: true, width: 1024, aspectRatio: '16:9' }), { ...TTY, ...PROMPT() }),
-    ['Error: --width and --height cannot be combined with --aspect-ratio.']
+    ['Error: --width and --height must be used together.']
   )
   assert.deepEqual(
     validateCliFlags(opts({ image: true, height: 1024, resolution: '2K' }), { ...TTY, ...PROMPT() }),
+    ['Error: --width and --height must be used together.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ image: true, width: 1024, height: 1024, aspectRatio: '16:9' }), { ...TTY, ...PROMPT() }),
+    ['Error: --width and --height cannot be combined with --aspect-ratio.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ image: true, width: 1024, height: 1024, resolution: '2K' }), { ...TTY, ...PROMPT() }),
     ['Error: --width and --height cannot be combined with --resolution.']
   )
   assert.deepEqual(
     validateCliFlags(opts({ image: true, width: 1024 }), { ...TTY, ...PROMPT() }),
+    ['Error: --width and --height must be used together.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ image: true, width: 1024, height: 1024 }), { ...TTY, ...PROMPT() }),
     []
   )
 })

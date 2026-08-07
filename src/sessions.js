@@ -67,7 +67,7 @@ export function formatSessionTime(value, { utc = false } = {}) {
   return time
 }
 
-export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, budget, webSearch, webResults, pricing, contextLength, createdAt }) {
+export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, budget, webSearch, webResults, pricing, contextLength, supportsReasoning, webSearchSupported, createdAt }) {
   return {
     model: modelId,
     providerName: endpointProviderName,
@@ -79,6 +79,8 @@ export function buildSessionPayload({ messages, modelId, endpointProviderName, p
     webResults: webResults ?? null,
     pricing: pricing ?? null,
     contextLength: contextLength ?? null,
+    supportsReasoning: supportsReasoning ?? null,
+    webSearchSupported: webSearchSupported ?? null,
     createdAt: createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     title: generateTitle(messages),
@@ -175,9 +177,15 @@ export async function listSessions(dir) {
   const index = await readSidecar(dir)
 
   if (index && Object.keys(index).length > 0 && !(await sidecarStale(dir, sidecarPath))) {
-    return Object.entries(index)
-      .map(([id, meta]) => toSessionItem(id, meta))
-      .sort(byIdDesc)
+    // A session file deleted outside the app (or a stale sidecar key) leaves
+    // a ghost entry: drop entries whose files no longer exist so the picker
+    // never offers a resume that fails.
+    const valid = []
+    for (const [id, meta] of Object.entries(index)) {
+      if (await sessionFileExists(dir, id)) valid.push(toSessionItem(id, meta))
+      else await dropSidecarEntry(dir, id)
+    }
+    return valid.sort(byIdDesc)
   }
 
   const sessions = await parseSessionFiles(dir, jsonFiles)
@@ -194,10 +202,28 @@ export async function persistSessionFile(id, payload) {
   }
 }
 
-export async function saveSession(dir, id, data) {
-  if (!data.messages || data.messages.length <= 1) return
+// Removes the 0-byte placeholder left by generateSessionId when the flow
+// that claimed the id fails before saving; content-bearing files are never
+// touched.
+export async function removeEmptySessionClaim(dir, id) {
+  try {
+    const file = join(dir, `${id}.json`)
+    const info = await stat(file)
+    if (info.size === 0) await rm(file, { force: true })
+  } catch {
+    // file missing or unreadable: nothing to clean
+  }
+}
 
+export async function saveSession(dir, id, data) {
   const filePath = join(dir, `${id}.json`)
+  if (!data.messages || data.messages.length <= 1) {
+    // The id may have been claimed by generateSessionId (empty wx file) but
+    // never filled in; drop the placeholder so it does not linger.
+    await removeEmptySessionClaim(dir, id)
+    return
+  }
+
   try {
     const payload = { ...data, messages: await externalizeAttachments(data.messages, attachmentDirFor(dir, id)) }
     await writeFile(filePath, JSON.stringify(payload, null, 2) + '\n', { mode: 0o600 })
@@ -255,11 +281,18 @@ export async function generateSessionId(dir) {
   const baseId = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '')
   let sessionId = baseId
   let suffix = 1
-  while (await sessionFileExists(dir, sessionId)) {
-    suffix++
-    sessionId = `${baseId}-${suffix}`
+  // Claim the id by creating the file exclusively: check-then-create would
+  // race between two processes starting in the same second.
+  while (true) {
+    try {
+      await writeFile(join(dir, `${sessionId}.json`), '', { flag: 'wx', mode: 0o600 })
+      return sessionId
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err
+      suffix++
+      sessionId = `${baseId}-${suffix}`
+    }
   }
-  return sessionId
 }
 
 export async function loadSession(dir, id) {

@@ -148,11 +148,15 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
   }
 
   if (opts.image && (opts.width !== undefined || opts.height !== undefined)) {
-    if (opts.aspectRatio !== undefined) {
-      errors.push('Error: --width and --height cannot be combined with --aspect-ratio.')
-    }
-    if (opts.resolution !== undefined) {
-      errors.push('Error: --width and --height cannot be combined with --resolution.')
+    if ((opts.width !== undefined) !== (opts.height !== undefined)) {
+      errors.push('Error: --width and --height must be used together.')
+    } else {
+      if (opts.aspectRatio !== undefined) {
+        errors.push('Error: --width and --height cannot be combined with --aspect-ratio.')
+      }
+      if (opts.resolution !== undefined) {
+        errors.push('Error: --width and --height cannot be combined with --resolution.')
+      }
     }
   }
 

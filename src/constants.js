@@ -60,7 +60,7 @@ export const EFFORT_LABELS = {
 export const SSE_DONE = '[DONE]'
 
 export function formatCost(cost) {
-  if (cost === null || cost === undefined) return 'N/A'
+  if (cost === null || cost === undefined || !Number.isFinite(cost)) return 'N/A'
   if (cost < 0.000001) return '$0.000000'
   return `$${cost.toFixed(6)}`
 }

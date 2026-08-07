@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readdir, readFile, stat, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { deleteSession, formatSessionItem, generateTitle, listSessions, saveSession, loadSession, generateSessionId, buildSessionPayload } from '../src/sessions.js'
+import { deleteSession, formatSessionItem, generateTitle, listSessions, saveSession, loadSession, generateSessionId, removeEmptySessionClaim, buildSessionPayload } from '../src/sessions.js'
 import { CliError } from '../src/errors.js'
 
 async function tempDir(t) {
@@ -204,6 +204,33 @@ test('missing dir yields empty listing', async (t) => {
   assert.deepEqual(sessions, [])
 })
 
+test('listing drops sidecar entries whose files were deleted externally', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  await saveSession(dir, '2026-01-02T00-00-00', sessionData({ model: 'other' }))
+  await rm(join(dir, '2026-01-01T00-00-00.json'))
+
+  const sessions = await listSessions(dir)
+  assert.deepEqual(sessions.map((s) => s.id), ['2026-01-02T00-00-00'])
+  const index = JSON.parse(await readFile(join(dir, '.index.json'), 'utf-8'))
+  assert.deepEqual(Object.keys(index), ['2026-01-02T00-00-00'])
+})
+
+test('generateSessionId claims the id and saveSession removes empty claims', async (t) => {
+  const dir = await tempDir(t)
+  const id = await generateSessionId(dir)
+  assert.equal((await stat(join(dir, `${id}.json`))).size, 0)
+  await saveSession(dir, id, { messages: [{ role: 'system', content: 'only system' }] })
+  await assert.rejects(stat(join(dir, `${id}.json`)), { code: 'ENOENT' })
+})
+
+test('removeEmptySessionClaim keeps content-bearing files', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  await removeEmptySessionClaim(dir, '2026-01-01T00-00-00')
+  assert.ok((await stat(join(dir, '2026-01-01T00-00-00.json'))).size > 0)
+})
+
 test('generateTitle collapses whitespace and truncates to 50 chars', () => {
   assert.equal(generateTitle([{ role: 'system' }, { role: 'user', content: '  Hello\n   world  ' }]), 'Hello world')
   const long = 'a'.repeat(80)
@@ -354,11 +381,13 @@ test('buildSessionPayload returns the full save object shape', () => {
     'providerName',
     'providerType',
     'reasoningEffort',
+    'supportsReasoning',
     'temperature',
     'title',
     'updatedAt',
     'webResults',
     'webSearch',
+    'webSearchSupported',
   ])
   assert.equal(payload.model, 'org/model')
   assert.equal(payload.providerName, 'Provider')
@@ -370,6 +399,8 @@ test('buildSessionPayload returns the full save object shape', () => {
   assert.equal(payload.webResults, 3)
   assert.deepEqual(payload.pricing, { prompt: 0.000001, completion: 0.000002 })
   assert.equal(payload.contextLength, 128000)
+  assert.equal(payload.supportsReasoning, null)
+  assert.equal(payload.webSearchSupported, null)
   assert.equal(payload.createdAt, '2026-01-01T00:00:00.000Z')
   assert.equal(payload.title, 'Hi')
   assert.deepEqual(payload.messages, messages)

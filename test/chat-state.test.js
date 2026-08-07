@@ -81,9 +81,11 @@ test('toFinalState returns exactly the old finalState field list', () => {
     'providerType',
     'reasoningEffort',
     'sessionId',
+    'supportsReasoning',
     'temperature',
     'webResults',
     'webSearch',
+    'webSearchSupported',
   ])
   assert.equal(state.messages, s.messages)
   assert.equal(state.sessionId, '2026-01-01T00-00-00')

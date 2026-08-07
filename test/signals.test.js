@@ -9,14 +9,26 @@ function fakeProcess(t) {
   return handlers
 }
 
-test('registers SIGINT, beforeExit and uncaughtException handlers', (t) => {
+test('registers SIGINT, SIGTERM, beforeExit and uncaughtException handlers', (t) => {
   const handlers = fakeProcess(t)
   const cleanup = registerSignalHandlers({ sigint: () => {}, beforeExit: () => {}, uncaughtException: () => {} })
   t.after(cleanup)
 
   assert.equal(typeof handlers.SIGINT, 'function')
+  assert.equal(typeof handlers.SIGTERM, 'function')
   assert.equal(typeof handlers.beforeExit, 'function')
   assert.equal(typeof handlers.uncaughtException, 'function')
+})
+
+test('SIGTERM dispatches to the sigint handler', (t) => {
+  const handlers = fakeProcess(t)
+  const calls = []
+  const cleanup = registerSignalHandlers({ sigint: () => calls.push('sigint'), beforeExit: () => {}, uncaughtException: () => {} })
+  t.after(cleanup)
+
+  handlers.SIGTERM()
+
+  assert.deepEqual(calls, ['sigint'])
 })
 
 test('dispatches each signal to the matching handler', (t) => {
@@ -43,6 +55,7 @@ test('cleanup removes every registered listener', (t) => {
   cleanup()
 
   assert.equal(handlers.SIGINT, undefined)
+  assert.equal(handlers.SIGTERM, undefined)
   assert.equal(handlers.beforeExit, undefined)
   assert.equal(handlers.uncaughtException, undefined)
 })

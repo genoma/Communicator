@@ -20,6 +20,8 @@ export async function resumeCmd(partialId) {
     webResults: sessionData.webResults ?? null,
     pricing: sessionData.pricing || null,
     contextLength: sessionData.contextLength || null,
+    supportsReasoning: sessionData.supportsReasoning ?? true,
+    webSearchSupported: sessionData.webSearchSupported ?? undefined,
     initialMessages: sessionData.messages,
     sessionId: matchedId,
     sessionCreatedAt: sessionData.createdAt,

@@ -1,7 +1,7 @@
 import { basename, join } from 'node:path'
 import { copyFile, mkdir } from 'node:fs/promises'
 import { getProvider } from '../providers/index.js'
-import { ensureSessionsDir, generateSessionId, persistSessionFile, buildSessionPayload } from '../sessions.js'
+import { ensureSessionsDir, generateSessionId, removeEmptySessionClaim, persistSessionFile, buildSessionPayload } from '../sessions.js'
 import { attachmentDirFor, externalizeAttachments, savedAttachmentPath } from '../attachment-store.js'
 import { selectImageModelNonInteractive, selectImageEndpoint } from '../model-selection.js'
 import { selectImageModel, selectSizingOption } from '../prompts.js'
@@ -97,7 +97,9 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
   let modelId = (resolved?.modelId ?? resolved?.id) || opts.imageModel || null
   if (!resolved && opts.imageModel) {
     resolved = await selectImageModelNonInteractive({ provider, apiKey, imageModelId: opts.imageModel })
-  } else if (!resolved && (selectImage || stdout.isTTY === true)) {
+  } else if (!resolved && (selectImage || (stdout.isTTY === true && process.stdin.isTTY === true))) {
+    // The picker needs a TTY on both streams: with piped stdin the prompt
+    // would run against EOF and fail/hang instead of falling through.
     const models = await provider.fetchImageModels(apiKey, { withPricing: true })
     const chosen = await picker(models, prefs.lastImageModel)
     resolved = models.find((m) => m.id === chosen?.id) || null
@@ -117,7 +119,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
       provider,
       apiKey,
       model: resolved,
-      interactive: selectImage != null || stdout.isTTY === true,
+      interactive: selectImage != null || (stdout.isTTY === true && process.stdin.isTTY === true),
     })
     if (endpoint) {
       resolved.imageProvider = endpoint.slug || endpoint.providerName
@@ -150,7 +152,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
   validateSizingConstraints(resolved, { aspectRatio, format, resolution, quality, width, height })
 
   const savedDefaults = getImageDefaults(prefs, providerName)
-  const interactive = sizingInteractive === true || (sizingInteractive !== false && (selectImage != null || stdout.isTTY === true))
+  const interactive = sizingInteractive === true || (sizingInteractive !== false && (selectImage != null || (stdout.isTTY === true && process.stdin.isTTY === true)))
   const notes = []
   const prefsUpdates = {}
   let pickedRatio = false
@@ -340,6 +342,7 @@ export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, s
   try {
     outcome = await runImageGeneration({ provider, apiKey, prompt: text, opts, prefs, sessionId, stdout })
   } catch (err) {
+    await removeEmptySessionClaim(dir, sessionId)
     if (err instanceof CliError) throw err
     throw new CliError(`Error: ${formatError(err)}`)
   }
