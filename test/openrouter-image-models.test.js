@@ -179,7 +179,7 @@ test('generateImage routes through the chosen provider when one is given', async
 
 test('generateImage downloads URL-only image responses', async (t) => {
   let fetchCount = 0
-  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+  t.mock.method(globalThis, 'fetch', async (url) => {
     fetchCount++
     if (fetchCount === 1) {
       return jsonResponse({ data: [{ url: 'https://example.com/img.png', media_type: 'image/png' }], usage: { cost: 0.01 } })
