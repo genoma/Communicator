@@ -4,9 +4,9 @@ The interactive chat experience: the selection flow, one-shot mode, terminal ren
 
 ## Interactive flow
 
-1. **Model selection** — searchable picker with fuzzy filtering by name or ID. Your last-used model appears first. Venice models show names as listed on the Venice dashboard (e.g., `Qwen 3.7 Max`); OpenRouter models include the org prefix (e.g., `Google: Gemini 3.6 Flash`).
-2. **Provider selection** (OpenRouter only) — displays pricing, 30-minute uptime %, and routing tags. Navigate ← back to the model picker to change your selection. Models with a single provider skip this step entirely. Venice models go straight to chat.
-3. **Reasoning effort** — shown only when the selected model supports reasoning effort control. A `Disabled` ("none") option is offered whenever the model allows turning reasoning off; models that reason automatically (no effort control) skip this step entirely. The chosen level is saved per model and restored as default next time. ← Back to model selection returns to the model picker. Venice uses the standard OpenAI `reasoning_effort` parameter; OpenRouter uses its native reasoning format.
+1. **Model selection** — searchable picker with fuzzy filtering by name or ID. Your last-used model appears first. Venice.ai models show names as listed on the Venice dashboard (e.g., `Qwen 3.7 Max`); OpenRouter models include the org prefix (e.g., `Google: Gemini 3.6 Flash`).
+2. **Provider selection** (OpenRouter only) — displays pricing, 30-minute uptime %, and routing tags. Navigate back to the model picker to change your selection. Models with a single provider skip this step entirely. Venice models go straight to chat.
+3. **Reasoning effort** — shown only when the selected model supports reasoning effort control. A `Disabled` ("none") option is offered whenever the model allows turning reasoning off; models that reason automatically (no effort control) skip this step entirely. The chosen level is saved per model and restored as default next time. Venice uses the standard OpenAI `reasoning_effort` parameter; OpenRouter uses its native reasoning format.
 
 Passing `-m <id>` skips **all** pickers: the reasoning effort is restored from your saved per-model preference (or the model default), and the OpenRouter endpoint is auto-selected (cheapest provider with pricing, otherwise the first one). Venice always goes straight to chat. `--reasoning-effort` still overrides the effort when given; `--reasoning-effort none` disables reasoning. Models that are disabled by default (`default_enabled: false`) restore as disabled.
 
@@ -48,11 +48,11 @@ The capital of France is Paris.
 ───────────────────────────────────────
 ```
 
-The last footer row holds the **CTX indicator**: the session's peak context usage — the most context a single turn has occupied (`prompt + completion` divided by the endpoint's advertised context length). It never decreases as the conversation grows, even when web search results transiently inflate a turn's prompt. The row appears only when the context window is known and at least 5% occupied (`CTX    ██████░░░░ 60%`; with a 1M-token model like DeepSeek V4 Flash, ordinary chats rarely show it); the bar turns yellow at 80% and red at 95%. When the budget warning fires (see below), the budget bar joins the same row instead of adding a line.
+The last footer row holds the **CTX indicator**: the session's peak context usage — the most context a single turn has occupied (`prompt + completion` divided by the endpoint's advertised context length). It never decreases as the conversation grows, even when web search results transiently inflate a turn's prompt.
 
-The `Cache ⚡` line appears only when OpenRouter serves a cached response; on a cache miss it is omitted entirely.
+The row appears only when the context window is known and at least 5% occupied (`CTX    ██████░░░░ 60%`; with a 1M-token model like DeepSeek V4 Flash, ordinary chats rarely show it). The bar turns yellow at 80% and red at 95%. When the budget warning fires (see below), the budget bar joins the same row instead of adding a line.
 
-Cache hits are detected and shown when OpenRouter serves a cached response. The session cost accumulates across turns within the same chat. Venice pricing is normalized from per-1M-token rates to per-token for consistent cost display.
+The `Cache ⚡` line appears only when OpenRouter serves a cached response — on a cache miss it is omitted entirely. The session cost accumulates across turns within the same chat, and Venice pricing is normalized from per-1M-token rates to per-token for a consistent cost display.
 
 ## Markdown rendering
 

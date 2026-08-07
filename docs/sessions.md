@@ -1,5 +1,7 @@
 # Session Persistence & Resume
 
+Session persistence: listing, resuming, deleting, exporting, and the on-disk session file format. See the [README](../README.md#documentation) for the full docs index.
+
 Every chat session is automatically saved to `~/.communicator/sessions/<timestamp>.json`,
 with a `title` auto-generated from the first user message (whitespace collapsed,
 truncated to 50 chars). Sessions are saved when you quit (`/quit` or `Ctrl+C`),
@@ -7,8 +9,8 @@ when you switch models or start a new session, and on interrupt during streaming
 (including the partial response). A metadata index at
 `~/.communicator/sessions/.index.json` powers `--list-sessions` and the
 resume/export/delete pickers so listing never has to parse full session files.
-If the index is missing or stale (e.g. sessions from an older version), it is
-rebuilt automatically from the session files.
+If the index is missing or stale (e.g. from an older version), it is rebuilt
+automatically from the session files.
 
 ## Listing sessions
 
@@ -89,9 +91,8 @@ communicator --export --output-dir ~/Documents/CommunicatorExports
 
 The exported markdown file is saved as `session-{id}.md` in the current working
 directory by default. Use `--output-dir` to set a custom directory — once set,
-it's saved in your preferences and used for all future exports; exports keep
-going to the saved preference directory until you override it with
-`--output-dir` again.
+it's saved in your preferences and used for all future exports until you
+override it again.
 
 - **Header** — timestamp, title, model, provider, message count, reasoning effort, and accumulated cost
 - **User messages** — blockquoted under a `## You` heading

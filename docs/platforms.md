@@ -73,7 +73,7 @@ setx OPENROUTER_API_KEY "sk-or-v1-your-key-here"
 setx VENICE_API_KEY "vkey-your-key-here"
 ```
 
-The `~/.zshrc` / `~/.bashrc` examples in the Setup section are Unix-specific; on Windows use PowerShell `$PROFILE` instead.
+The `~/.zshrc` / `~/.bashrc` examples in the Quick start section of the README are Unix-specific; on Windows use PowerShell `$PROFILE` instead.
 
 ## Uninstall
 
