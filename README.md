@@ -27,7 +27,7 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Markdown export** — export any saved session as a clean markdown file with `--export`, with separate thinking sections and cost summary
 - **Session persistence** — last model, provider, and per-model reasoning effort and temperature are saved to `~/.communicator.json` and restored on next launch
 - **CLI flags to skip pickers** — `-m` skips *all* pickers (model, reasoning, endpoint) for fully non-interactive use; `--reasoning-effort` (or `--reasoning-effort none`) skips only the reasoning picker
-- **Lightweight** — four runtime dependencies, pure Node.js ESM
+- **Lightweight** — five runtime dependencies, pure Node.js ESM
 
 ## Documentation
 

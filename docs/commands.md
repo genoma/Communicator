@@ -12,7 +12,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--temperature`       | `<0-2>`  | Temperature override for the session (default: per-model preference, then 0.7). With `--model` alone, saves the per-model default |
 |       | `--budget`            | `<usd>`  | Per-session budget cap in USD. Warns at 80% used, refuses turns at 100%. Bare use saves the default |
 |       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `on`, `off` (`on` = `auto`; bare flag = `auto`). Per-model default is persisted in preferences |
-|       | `--web-results`       | `<n>`    | Number of web search results (OpenRouter only, default 10). Implies `auto` mode. Bare use saves the default |
+|       | `--web-results`       | `<n>`    | Number of web search results, 1–100 (OpenRouter only, default 10). Implies `auto` mode. Bare use saves the default |
 |       | `--zdr`               | —        | Force zero-data-retention routing (OpenRouter only). Filters model/provider selection to ZDR-capable endpoints; errors at selection if a model has none |
 |       | `--attach`            | `<path>` | Attach a file to the one-shot message (repeatable: images, pdf, xlsx/docx/pptx, txt, md, code, ...). Requires a prompt argument or piped stdin |
 |       | `--no-smooth-streaming` | —      | Disable smooth streaming (default: on in interactive sessions). Bare use saves the default |
@@ -35,8 +35,8 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--resolution`        | `<tier>` | Image resolution tier, model-dependent: `1K`, `2K`, `4K`. Conflicts with `--width`/`--height` |
 |       | `--quality`           | `<level>`| Image quality tier, model-dependent: `low`, `medium`, `high` |
 |       | `--seed`              | `<int>`  | Random seed for image generation |
-|       | `--width`             | `<px>`   | Image width in pixels, 1–1280, multiples of the model's divisor (pixel-based models) |
-|       | `--height`            | `<px>`   | Image height in pixels, 1–1280, multiples of the model's divisor (pixel-based models) |
+|       | `--width`             | `<px>`   | Image width in pixels, 1–1280, multiples of the model's divisor (pixel-based models). Must be given with `--height` |
+|       | `--height`            | `<px>`   | Image height in pixels, 1–1280, multiples of the model's divisor (pixel-based models). Must be given with `--width` |
 |       | `--no-safe-mode`      | —        | Disable safe mode for image generation (adult content returned unblurred). Bare use saves the default (global setting) and opens a chat session |
 |       | `--no-watermark`      | —        | Hide the Venice watermark on generated images. Bare use saves the default (global setting) |
 |       | `--list-image-models` | —        | List image models (name, id, per-image price, sizing options) and exit |
