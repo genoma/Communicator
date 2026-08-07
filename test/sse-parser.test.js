@@ -360,6 +360,50 @@ test('emits text from a final message.content when the chunk carries no delta', 
   assert.equal(fullParts.length, 1)
 })
 
+test('emits text from a final message.content even when the delta is an empty object', async () => {
+  const { fullText, fullParts } = await parseSSEStream(
+    streamReader([
+      event({
+        choices: [{
+          delta: {},
+          message: {
+            content: [
+              { type: 'text', text: 'Only answer' },
+              { type: 'image_url', image_url: { url: 'https://img.example/y.png' } },
+            ],
+          },
+        }],
+      }),
+    ]),
+    () => {}
+  )
+  assert.equal(fullText, 'Only answer')
+  assert.equal(fullParts.length, 1)
+})
+
+test('emits a string final message.content when nothing was streamed', async () => {
+  const tokens = []
+  const { fullText } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ message: { content: 'Whole answer' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t])
+  )
+  assert.equal(fullText, 'Whole answer')
+  assert.deepEqual(tokens, [['content', 'Whole answer']])
+})
+
+test('does not duplicate a string final message.content after deltas streamed', async () => {
+  const { fullText } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: 'Part' } }] }),
+      event({ choices: [{ message: { content: 'Whole answer' } }] }),
+    ]),
+    () => {}
+  )
+  assert.equal(fullText, 'Part')
+})
+
 test('dedupes repeated parts between delta and final message', async () => {
   const part = { type: 'image_url', image_url: { url: 'https://img.example/c.png' } }
   const { fullParts } = await parseSSEStream(

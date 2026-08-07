@@ -119,7 +119,11 @@ export function cheapestEndpoint(endpoints) {
 
 export async function selectImageModelNonInteractive({ provider, apiKey, imageModelId }) {
   const models = await provider.fetchImageModels(apiKey)
-  return models.find((m) => m.id === imageModelId) || null
+  const model = models.find((m) => m.id === imageModelId) || null
+  if (!model) {
+    throw new CliError(`Error: image model ${imageModelId} not found. Use --list-image-models to see available models.`)
+  }
+  return model
 }
 
 export async function selectModelNonInteractive({ provider, apiKey, prefs, modelId, forcedEffort, zdr = false }) {

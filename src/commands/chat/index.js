@@ -303,7 +303,7 @@ const handlers = {
     ctx.state.appendAssistant(outcome.message)
     await ctx.saveSession()
     await ctx.savePrefs({ lastImageModel: outcome.modelId })
-    printImageOutcome(outcome)
+    printImageOutcome(outcome, ctx.stdout)
   },
 }
 

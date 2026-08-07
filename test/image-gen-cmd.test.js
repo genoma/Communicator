@@ -111,11 +111,13 @@ const BASE_OPTS = {
 const opts = (overrides = {}) => ({ ...BASE_OPTS, ...overrides })
 
 async function runImageGen(t, { overrides = {}, prefs = {}, prompt = 'a red cat' } = {}) {
+  const stdoutChunks = []
+  const stdout = { write: (chunk) => stdoutChunks.push(String(chunk)), isTTY: process.stdout.isTTY === true }
   try {
-    await imageGenCmd({ apiKey: 'test-key', opts: opts(overrides), prefs, providerType: 'venice', prompt })
-    return { exited: false }
+    await imageGenCmd({ apiKey: 'test-key', opts: opts(overrides), prefs, providerType: 'venice', prompt, stdout })
+    return { exited: false, stdoutChunks }
   } catch (e) {
-    if (e instanceof CliError) return { exited: true, message: e.message }
+    if (e instanceof CliError) return { exited: true, message: e.message, stdoutChunks }
     throw e
   }
 }
@@ -125,11 +127,14 @@ async function sessionsDir() {
 }
 
 function mockConsole(t) {
+  const stderrChunks = []
   t.mock.method(console, 'log', () => {})
   t.mock.method(console, 'warn', () => {})
+  t.mock.method(process.stderr, 'write', (chunk) => { stderrChunks.push(String(chunk)) })
   return {
     logs: () => console.log.mock.calls.map((c) => String(c.arguments[0])),
     warns: () => console.warn.mock.calls.map((c) => String(c.arguments[0])),
+    stderrLines: () => stderrChunks.join('').split('\n').filter(Boolean),
   }
 }
 
@@ -155,12 +160,12 @@ test('--image happy path writes a resumable session with refs and prints saved/c
   mockVeniceFetch(t)
   withApiKey(t)
   const file = await tempConfig(t)
-  const consoleSpy = mockConsole(t)
+  mockConsole(t)
 
   const dir = await sessionsDir()
   const before = new Set((await readdir(dir).catch(() => [])).filter((f) => f.endsWith('.json') && !f.startsWith('.')))
 
-  const { exited } = await runImageGen(t, { overrides: { config: file }, prefs: {} })
+  const { exited, stdoutChunks } = await runImageGen(t, { overrides: { config: file }, prefs: {} })
   assert.equal(exited, false)
 
   const created = (await readdir(dir)).filter((f) => f.endsWith('.json') && !f.startsWith('.') && !before.has(f))
@@ -185,7 +190,7 @@ test('--image happy path writes a resumable session with refs and prints saved/c
   assert.deepEqual(await readFile(join(blobDir, `${hash(IMG1)}.webp`)), IMG1)
   assert.deepEqual(await readFile(join(blobDir, `${hash(IMG2)}.webp`)), IMG2)
 
-  const logs = consoleSpy.logs()
+  const logs = stdoutChunks.join('').split('\n').filter(Boolean)
   assert.ok(logs.some((l) => l === `saved to ${join(blobDir, `${hash(IMG1)}.webp`)}`), logs.join('\n'))
   assert.ok(logs.some((l) => l === `saved to ${join(blobDir, `${hash(IMG2)}.webp`)}`))
   assert.ok(logs.some((l) => l === 'Cost: $0.02 per image × 2 = $0.04'), logs.join('\n'))
@@ -331,16 +336,17 @@ test('--image rejects flags that violate the model constraints', async (t) => {
   assert.equal(msg4, 'Error: --width 1023 must be divisible by 8 for flux-1-1.')
 })
 
-test('--image with an unknown --image-model skips constraint validation and sends the id', async (t) => {
-  const { bodies } = mockVeniceFetch(t)
+test('--image with an unknown --image-model errors before any generation call', async (t) => {
+  const { bodies, calls } = mockVeniceFetch(t)
   withApiKey(t)
   mockConsole(t)
 
-  const { exited } = await runImageGen(t, { overrides: { imageModel: 'unknown-model', aspectRatio: '21:9' } })
+  const { exited, message } = await runImageGen(t, { overrides: { imageModel: 'unknown-model', aspectRatio: '21:9' } })
 
-  assert.equal(exited, false)
-  assert.equal(bodies[0].model, 'unknown-model')
-  assert.equal(bodies[0].aspect_ratio, '21:9')
+  assert.equal(exited, true)
+  assert.equal(message, 'Error: image model unknown-model not found. Use --list-image-models to see available models.')
+  assert.equal(calls.length, 1)
+  assert.equal(bodies.length, 0)
 })
 
 test('--image --output-dir copies the generated images there', async (t) => {
@@ -388,7 +394,7 @@ test('--image prints the blur warning when the response is blurred', async (t) =
 
   const { exited } = await runImageGen(t, {})
   assert.equal(exited, false)
-  assert.ok(consoleSpy.warns().some((w) => w.includes('blurred')))
+  assert.ok(consoleSpy.stderrLines().some((w) => w.includes('blurred')))
 })
 
 test('--image picker ordering uses lastImageModel on a second run', async (t) => {
@@ -406,6 +412,7 @@ test('--image picker ordering uses lastImageModel on a second run', async (t) =>
 })
 
 test('--image rejects an invalid flag value with a CliError', async (t) => {
+  mockVeniceFetch(t)
   withApiKey(t)
   mockConsole(t)
 

@@ -58,6 +58,7 @@ function makeCtx(overrides = {}) {
   })
   const savedSessions = []
   const prefsUpdates = []
+  const stdoutChunks = []
 
   const ctx = {
     state,
@@ -73,10 +74,11 @@ function makeCtx(overrides = {}) {
     newSessionId: async () => '2026-01-02T00-00-00',
     copyText: async () => ({ ok: true }),
     selectImageModel: undefined,
+    stdout: { write: (chunk) => stdoutChunks.push(String(chunk)) },
     ...overrides,
   }
 
-  return { ctx, savedSessions, prefsUpdates }
+  return { ctx, savedSessions, prefsUpdates, stdoutChunks }
 }
 
 function mockConsole(t) {
@@ -91,9 +93,9 @@ function mockConsole(t) {
 }
 
 test('/image generates, appends user + assistant messages and saves the session', async (t) => {
-  const consoleSpy = mockConsole(t)
+  mockConsole(t)
   let pickerCalls = 0
-  const { ctx, savedSessions, prefsUpdates } = makeCtx({
+  const { ctx, savedSessions, prefsUpdates, stdoutChunks } = makeCtx({
     selectImageModel: async (models, lastImageModel) => {
       pickerCalls++
       assert.equal(lastImageModel, undefined)
@@ -116,7 +118,7 @@ test('/image generates, appends user + assistant messages and saves the session'
   assert.ok(assistantMsg.content[0].image_url.url.startsWith('ref://attachments/'), assistantMsg.content[0].image_url.url)
   assert.deepEqual(prefsUpdates, [{ lastImageModel: 'flux-1-1' }])
 
-  const logs = consoleSpy.allLogs()
+  const logs = stdoutChunks.join('').split('\n').filter(Boolean)
   assert.ok(logs.some((l) => l.includes('saved to ')), logs.join('\n'))
   assert.ok(logs.some((l) => l.includes('Cost: $0.02 per image')))
 })

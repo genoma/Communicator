@@ -118,10 +118,11 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     imageOutputSupported: selection.imageOutputSupported,
   })
 
+  if (producedResults.length > 0) {
+    printArtifacts(producedResults, ttyOut ? process.stdout : process.stderr)
+  }
+
   if (ttyOut) {
-    if (producedResults.length > 0) {
-      printArtifacts(producedResults, process.stdout)
-    }
     if (result.sources?.length > 0) {
       printSources(result.sources, process.stdout)
     }

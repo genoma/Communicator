@@ -1,4 +1,5 @@
 import { SSE_DONE, STREAM_IDLE_TIMEOUT_MS } from './constants.js'
+import { createHash } from 'node:crypto'
 import { ApiError } from './errors.js'
 
 function unescapeJson(s) {
@@ -73,13 +74,15 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
   // because some providers repeat parts between delta and final message.
   const addPart = (part) => {
     if (!part || typeof part !== 'object') return
-    let key = null
+    let rawKey = null
     if (part.type === 'image_url' && typeof part.image_url?.url === 'string') {
-      key = `image:${part.image_url.url}`
+      rawKey = `image:${part.image_url.url}`
     } else if (part.type === 'file' && typeof part.file?.file_data === 'string') {
-      key = `file:${part.file.file_data}`
+      rawKey = `file:${part.file.file_data}`
     }
-    if (key === null || seenParts.has(key)) return
+    if (rawKey === null) return
+    const key = createHash('sha256').update(rawKey).digest('hex')
+    if (seenParts.has(key)) return
     seenParts.add(key)
     fullParts.push(part)
     onToken(part, part.type === 'image_url' ? 'image' : 'file')
@@ -129,8 +132,10 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
       // Some providers attach the full message only on the final chunk; its
       // text duplicates what deltas already streamed, so non-text parts are
       // always collected but text is only emitted when nothing was streamed.
+      // The delta may be an empty object on the final chunk, so the dedup
+      // gate is based solely on the streamed text, never on the delta shape.
       if (Array.isArray(finalContent)) {
-        const noTextYet = !delta && fullText === ''
+        const noTextYet = fullText === ''
         for (const part of finalContent) {
           if (part?.type === 'text' && typeof part.text === 'string') {
             if (noTextYet) {
@@ -141,6 +146,9 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
             addPart(part)
           }
         }
+      } else if (typeof finalContent === 'string' && fullText === '') {
+        fullText += finalContent
+        onToken(finalContent, 'content')
       }
 
       if (!delta) return

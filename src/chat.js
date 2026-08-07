@@ -1,5 +1,5 @@
 import { UsageTracker, contextSegment } from './tracker.js'
-import { getEffortLabel } from './prompts.js'
+import { getEffortLabel, selectImageModel } from './prompts.js'
 import { DEFAULT_TEMPERATURE, cpsToCharsPerTick } from './constants.js'
 import { sessionLabel } from './ui/format.js'
 import { chatCommands, budgetGuard, commandAcceptsArgs, visibleChatCommands } from './commands/chat/index.js'
@@ -235,6 +235,8 @@ export async function runChatSession(ctx = {}, deps = {}) {
     render,
     newSessionId,
     copyText,
+    selectImageModel,
+    stdout,
     exit: exitCleanly,
   }
   Object.defineProperty(chatCtx, 'tracker', { get: () => sessionState.tracker, enumerable: true })

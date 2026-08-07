@@ -6,7 +6,6 @@ import { attachmentDirFor, externalizeAttachments, savedAttachmentPath } from '.
 import { selectImageModelNonInteractive } from '../model-selection.js'
 import { selectImageModel } from '../prompts.js'
 import { SESSIONS_DIR } from '../constants.js'
-import { formatImagePrice } from '../ui/format.js'
 import { CliError, formatError } from '../errors.js'
 import { readStdin } from '../cli-utils.js'
 import { savePreferences, applyPreferenceUpdates } from '../config.js'
@@ -122,29 +121,27 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
   const unit = result.cost
   let costLine = null
   if (unit != null) {
-    costLine = `Cost: ${formatImagePrice(model?.pricing || null, { resolution, quality })} × ${count} = $${String(Math.round(unit * count * 10000) / 10000)}`
+    costLine = `Cost: $${String(Math.round(unit * 1000) / 1000)} per image × ${count} = $${String(Math.round(unit * count * 10000) / 10000)}`
   }
 
   return {
-    id: result.id,
     message: externalized,
     savedPaths,
     blurred: result.blurred === true,
     costLine,
     modelId,
-    count,
   }
 }
 
-export function printImageOutcome({ savedPaths = [], blurred = false, costLine = null } = {}) {
+export function printImageOutcome({ savedPaths = [], blurred = false, costLine = null } = {}, stdout = process.stdout) {
   for (const path of savedPaths) {
-    console.log(`saved to ${path}`)
+    stdout.write(`saved to ${path}\n`)
   }
-  if (costLine) console.log(costLine)
-  if (blurred) console.warn('Warning: the generated image was returned blurred (safe mode).')
+  if (costLine) stdout.write(`${costLine}\n`)
+  if (blurred) process.stderr.write('Warning: the generated image was returned blurred (safe mode).\n')
 }
 
-export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt }) {
+export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, stdout = process.stdout }) {
   const provider = getProvider(providerType)
   const stdinPiped = !process.stdin.isTTY
 
@@ -161,7 +158,7 @@ export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt })
 
   let outcome
   try {
-    outcome = await runImageGeneration({ provider, apiKey, prompt: text, opts, prefs, sessionId })
+    outcome = await runImageGeneration({ provider, apiKey, prompt: text, opts, prefs, sessionId, stdout })
   } catch (err) {
     if (err instanceof CliError) throw err
     throw new CliError(`Error: ${formatError(err)}`)
@@ -193,5 +190,5 @@ export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt })
     outputDir: opts.outputDir,
   }), opts.config)
 
-  printImageOutcome(outcome)
+  printImageOutcome(outcome, stdout)
 }

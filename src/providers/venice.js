@@ -141,17 +141,10 @@ export async function fetchImageModels(apiKey) {
       pricing: normalizeImagePricing(spec.pricing || null),
       constraints: {
         aspectRatios: constraints.aspectRatios || null,
-        defaultAspectRatio: constraints.defaultAspectRatio || null,
         resolutions: constraints.resolutions || null,
-        defaultResolution: constraints.defaultResolution || null,
         qualities: constraints.qualities || null,
-        defaultQuality: constraints.defaultQuality || null,
-        promptCharacterLimit: constraints.promptCharacterLimit || null,
-        steps: constraints.steps || null,
         widthHeightDivisor: constraints.widthHeightDivisor || null,
-        maxStyleReferences: constraints.maxStyleReferences || null,
       },
-      supportsStyleReferences: spec.supportsStyleReferences === true,
       offline: spec.offline === true,
     }
   })
