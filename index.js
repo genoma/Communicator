@@ -26,7 +26,6 @@ program
   .option('--seed <int>', 'random seed for image generation')
   .option('--width <px>', 'image width in pixels (1-1280)')
   .option('--height <px>', 'image height in pixels (1-1280)')
-  .option('--size <x:y|WxH>', 'image size for pixel-based models: aspect ratio (computed to max 1280) or exact pixels (e.g. 848x1272)')
   .option('--no-safe-mode', 'disable safe mode for image generation (adult content will not be blurred; persisted as a global Venice setting)')
   .option('--no-watermark', 'hide the Venice watermark on generated images (persisted as a global Venice setting)')
   .option('--list-endpoints [model]', 'list providers/endpoints for a model (interactive picker when omitted)')

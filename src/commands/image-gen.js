@@ -4,23 +4,31 @@ import { getProvider } from '../providers/index.js'
 import { ensureSessionsDir, generateSessionId, persistSessionFile, buildSessionPayload } from '../sessions.js'
 import { attachmentDirFor, externalizeAttachments, savedAttachmentPath } from '../attachment-store.js'
 import { selectImageModelNonInteractive } from '../model-selection.js'
-import { selectImageModel, selectSizingOption, selectSizeOption } from '../prompts.js'
+import { selectImageModel, selectSizingOption } from '../prompts.js'
 import { SESSIONS_DIR } from '../constants.js'
 import { CliError, formatError } from '../errors.js'
 import { readStdin } from '../cli-utils.js'
 import { getImageDefaults, mergeImageDefaults, savePreferences, applyPreferenceUpdates } from '../config.js'
 import { createLoader } from '../ui/loader.js'
-import { resolveAspectRatio, resolveHeight, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveSize, resolveVariants, resolveWidth, MAX_IMAGE_DIMENSION } from '../flags.js'
-import { computePixelSize, formatSize, isPixelModel, parseSizeInput, sizePresets } from '../image-sizing.js'
+import { resolveAspectRatio, resolveHeight, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants, resolveWidth } from '../flags.js'
+import { computePixelSize, formatSize, isPixelModel, sizeLabel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
 
-function validateSizingConstraints(model, { aspectRatio, format, resolution, quality, width, height, size }) {
+function validateSizingConstraints(model, { aspectRatio, format, resolution, quality, width, height }) {
   if (!model) return
   const constraints = model.constraints || {}
   if (aspectRatio && Array.isArray(constraints.aspectRatios) && !constraints.aspectRatios.includes(aspectRatio)) {
     throw new CliError(`Error: --aspect-ratio ${aspectRatio} is not supported by ${model.id}. Supported: ${constraints.aspectRatios.join(', ')}.`)
   }
   if (aspectRatio && constraints.aspectRatios === null) {
-    throw new CliError(`Error: --aspect-ratio ${aspectRatio} is not supported by ${model.id}.${pixelSizingHint(model)}`)
+    if (constraints.widthHeightDivisor != null) {
+      // Pixel-based models size through the hardcoded ratio list; the pixels
+      // are derived, never passed to the API.
+      if (!SIZE_PRESET_RATIOS.includes(aspectRatio)) {
+        throw new CliError(`Error: --aspect-ratio ${aspectRatio} is not supported by ${model.id}. Supported: ${SIZE_PRESET_RATIOS.join(', ')}.`)
+      }
+    } else {
+      throw new CliError(`Error: --aspect-ratio ${aspectRatio} is not supported by ${model.id}.`)
+    }
   }
   if (format && Array.isArray(constraints.formats) && !constraints.formats.includes(format)) {
     throw new CliError(`Error: --image-format ${format} is not supported by ${model.id}. Supported: ${constraints.formats.join(', ')}.`)
@@ -34,20 +42,10 @@ function validateSizingConstraints(model, { aspectRatio, format, resolution, qua
   if (quality && Array.isArray(constraints.qualities) && !constraints.qualities.includes(quality)) {
     throw new CliError(`Error: --quality ${quality} is not supported by ${model.id}. Supported: ${constraints.qualities.join(', ')}.`)
   }
-  if (size != null && !isPixelModel(model)) {
-    const hint = Array.isArray(constraints.aspectRatios) ? ' This model takes --aspect-ratio instead.' : ''
-    throw new CliError(`Error: --size ${size} is not supported by ${model.id}.${hint}`)
-  }
   if (constraints.widthHeightDivisor != null) {
-    if (size != null) {
-      if (width % constraints.widthHeightDivisor !== 0 || height % constraints.widthHeightDivisor !== 0) {
-        throw new CliError(`Error: --size ${width}x${height} must be divisible by ${constraints.widthHeightDivisor} for ${model.id}.`)
-      }
-    } else {
-      for (const [flag, value] of [['--width', width], ['--height', height]]) {
-        if (value != null && value % constraints.widthHeightDivisor !== 0) {
-          throw new CliError(`Error: ${flag} ${value} must be divisible by ${constraints.widthHeightDivisor} for ${model.id}.`)
-        }
+    for (const [flag, value] of [['--width', width], ['--height', height]]) {
+      if (value != null && value % constraints.widthHeightDivisor !== 0) {
+        throw new CliError(`Error: ${flag} ${value} must be divisible by ${constraints.widthHeightDivisor} for ${model.id}.`)
       }
     }
   }
@@ -58,43 +56,13 @@ export function sizingDropNote(kind, value, modelId) {
 }
 
 // Applies a saved default only when the model supports it. A null list
-// means the model cannot take the parameter at all (pixel-based Venice
-// models like z-image-turbo, OpenRouter models without the param); the
-// default is dropped with a visible note instead of being sent blindly.
+// means the model cannot take the parameter at all (OpenRouter models
+// without the param); the default is dropped with a visible note instead
+// of being sent blindly.
 function applySizingDefault(list, value, kind, modelId) {
   if (value === undefined) return { value: undefined, note: null }
   if (Array.isArray(list) && list.includes(value)) return { value, note: null }
   return { value: undefined, note: sizingDropNote(kind, value, modelId) }
-}
-
-// Applies a saved size default on a pixel-based model: WxH only, within the
-// 1-1280 cap and a multiple of the model's divisor (stale values from a
-// model with a different divisor are dropped with a note instead of a 400).
-function applyPixelSizeDefault(size, divisor, modelId) {
-  if (size === undefined) return { value: null, note: null }
-  if (divisor == null) return { value: null, note: sizingDropNote('size', size, modelId) }
-  let parsed
-  try {
-    parsed = parseSizeInput(size)
-  } catch {
-    return { value: null, note: sizingDropNote('size', size, modelId) }
-  }
-  if (
-    parsed.width === undefined ||
-    parsed.width < 1 || parsed.width > MAX_IMAGE_DIMENSION ||
-    parsed.height < 1 || parsed.height > MAX_IMAGE_DIMENSION ||
-    parsed.width % divisor !== 0 || parsed.height % divisor !== 0
-  ) {
-    return { value: null, note: sizingDropNote('size', size, modelId) }
-  }
-  return { value: { width: parsed.width, height: parsed.height }, note: null }
-}
-
-// Pixel-based models (width/height, no aspect-ratio list) get a hint so the
-// user knows how to size them instead of hitting a bare rejection.
-export function pixelSizingHint(model) {
-  const divisor = model?.constraints?.widthHeightDivisor
-  return divisor != null ? ` This pixel-based model takes --size <x:y|WxH> or --width/--height (multiples of ${divisor}) instead.` : ''
 }
 
 function ratioPreselect(list, savedDefault, modelDefault) {
@@ -102,6 +70,15 @@ function ratioPreselect(list, savedDefault, modelDefault) {
   if (modelDefault && list.includes(modelDefault)) return modelDefault
   if (list.includes('auto')) return 'auto'
   return undefined
+}
+
+// Pixel-based models get the same picker as aspect models but over the
+// hardcoded preset list; the saved ratio is preselected when it is a preset,
+// else 1:1.
+function pixelRatioPreselect(presets, savedDefault) {
+  if (savedDefault && presets.some((p) => p.ratio === savedDefault)) return savedDefault
+  const oneToOne = presets.find((p) => p.ratio === '1:1')
+  return oneToOne ? oneToOne.ratio : presets[0]?.ratio
 }
 
 function formatPreselect(list, savedDefault, providerName) {
@@ -114,7 +91,6 @@ function formatPreselect(list, savedDefault, providerName) {
 export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, prefs = {}, sessionId, selectImage, selectImageSizing, sizingInteractive, model = null, stdout = process.stdout }) {
   const picker = selectImage ?? selectImageModel
   const sizingPicker = selectImageSizing ?? selectSizingOption
-  const sizePicker = selectImageSizing ?? selectSizeOption
   const providerName = provider.meta.name
 
   let resolved = model
@@ -141,7 +117,6 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
   let seed
   let width
   let height
-  let size
   try {
     format = resolveImageFormat(opts.imageFormat)
     variants = resolveVariants(opts.variants) ?? 1
@@ -151,25 +126,11 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
     seed = resolveSeed(opts.seed)
     width = resolveWidth(opts.width)
     height = resolveHeight(opts.height)
-    size = resolveSize(opts.size)
-    if (size && aspectRatio === undefined) {
-      if (size.ratio !== undefined) {
-        const divisor = resolved?.constraints?.widthHeightDivisor
-        if (divisor != null) {
-          const computed = computePixelSize(size.ratio, divisor)
-          width = computed.width
-          height = computed.height
-        }
-      } else {
-        width = size.width
-        height = size.height
-      }
-    }
   } catch (err) {
     throw new CliError(`Error: ${err.message}`)
   }
 
-  validateSizingConstraints(resolved, { aspectRatio, format, resolution, quality, width, height, size: opts.size })
+  validateSizingConstraints(resolved, { aspectRatio, format, resolution, quality, width, height })
 
   const savedDefaults = getImageDefaults(prefs, providerName)
   const interactive = sizingInteractive === true || (sizingInteractive !== false && (selectImage != null || stdout.isTTY === true))
@@ -177,7 +138,6 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
   const prefsUpdates = {}
   let pickedRatio = false
   let pickedFormat = false
-  let pickedSize = false
 
   if (interactive) {
     const ratios = resolved?.constraints?.aspectRatios
@@ -185,38 +145,26 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
       aspectRatio = await sizingPicker('Select an aspect ratio:', ratios, ratioPreselect(ratios, savedDefaults.aspectRatio, resolved?.constraints?.defaultAspectRatio))
       pickedRatio = true
     }
+    if (aspectRatio === undefined && isPixelModel(resolved)) {
+      const presets = sizePresets(resolved)
+      const labels = new Map(presets.map((p) => [p.ratio, sizeLabel(p)]))
+      aspectRatio = await sizingPicker('Select an aspect ratio:', presets.map((p) => p.ratio), pixelRatioPreselect(presets, savedDefaults.aspectRatio), (ratio) => labels.get(ratio))
+      pickedRatio = true
+    }
     const formats = resolved?.constraints?.formats
     if (format === undefined && Array.isArray(formats)) {
       format = await sizingPicker('Select an image format:', formats, formatPreselect(formats, savedDefaults.format, providerName))
       pickedFormat = true
     }
-    if (aspectRatio === undefined && size === undefined && isPixelModel(resolved)) {
-      const presets = sizePresets(resolved)
-      const current = savedDefaults.size
-      const hasCurrent = current !== undefined && presets.some((p) => formatSize(p.width, p.height) === current)
-      const oneToOne = presets.find((p) => p.ratio === '1:1')
-      const preselect = hasCurrent ? current : formatSize(oneToOne.width, oneToOne.height)
-      const picked = await sizePicker('Select a size:', presets, preselect)
-      pickedSize = true
-      const [pw, ph] = String(picked).split('x').map(Number)
-      width = pw
-      height = ph
-    }
   }
 
   if (!pickedRatio && opts.aspectRatio === undefined) {
-    const applied = applySizingDefault(resolved?.constraints?.aspectRatios, savedDefaults.aspectRatio, 'aspect ratio', resolved?.id)
+    // Pixel-based models restrict the saved ratio to the hardcoded presets,
+    // exactly like an aspect model restricts it to its advertised list.
+    const ratios = isPixelModel(resolved) ? SIZE_PRESET_RATIOS : resolved?.constraints?.aspectRatios
+    const applied = applySizingDefault(ratios, savedDefaults.aspectRatio, 'aspect ratio', resolved?.id)
     aspectRatio = applied.value
     if (applied.note) notes.push(applied.note)
-  }
-  if (!pickedSize && opts.size === undefined && aspectRatio === undefined && savedDefaults.size !== undefined) {
-    const divisor = resolved?.constraints?.widthHeightDivisor
-    const applied = applyPixelSizeDefault(savedDefaults.size, divisor, resolved?.id)
-    if (applied.note) notes.push(applied.note)
-    if (applied.value) {
-      width = applied.value.width
-      height = applied.value.height
-    }
   }
   if (!pickedFormat && opts.imageFormat === undefined) {
     const formats = resolved?.constraints?.formats
@@ -234,9 +182,20 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
   else if (pickedRatio && aspectRatio !== savedDefaults.aspectRatio) prefsUpdates.aspectRatio = aspectRatio
   if (opts.imageFormat !== undefined) prefsUpdates.format = format
   else if (pickedFormat && format !== savedDefaults.format) prefsUpdates.format = format
-  if (opts.size !== undefined && aspectRatio === undefined) prefsUpdates.size = formatSize(width, height)
-  else if (pickedSize && aspectRatio === undefined && formatSize(width, height) !== savedDefaults.size) prefsUpdates.size = formatSize(width, height)
   for (const note of notes) console.warn(note)
+
+  // Pixel-based models take width/height in multiples of their divisor, never
+  // aspect_ratio (they ignore it and return a square default): derive the
+  // pixels from the ratio and drop the parameter. Explicit --width/--height
+  // win over a saved ratio.
+  if (aspectRatio !== undefined && isPixelModel(resolved)) {
+    if (width === undefined && height === undefined) {
+      const computed = computePixelSize(aspectRatio, resolved.constraints.widthHeightDivisor)
+      width = computed.width
+      height = computed.height
+    }
+    aspectRatio = undefined
+  }
 
   const loader = createLoader({ stdout })
   loader.start(variants > 1 ? `Generating image (${variants} variants)` : 'Generating image')

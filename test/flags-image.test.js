@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolveImageFormat, resolveVariants, resolveAspectRatio, resolveResolution, resolveQuality, resolveSeed, resolveWidth, resolveHeight, resolveSize, MAX_IMAGE_DIMENSION } from '../src/flags.js'
+import { resolveImageFormat, resolveVariants, resolveAspectRatio, resolveResolution, resolveQuality, resolveSeed, resolveWidth, resolveHeight, MAX_IMAGE_DIMENSION } from '../src/flags.js'
 
 const throws = (fn, message) => assert.throws(fn, (err) => err.message === message)
 
@@ -103,23 +103,6 @@ test('resolveWidth and resolveHeight reject out-of-range and non-integer values'
   assert.equal(resolveHeight(undefined), undefined)
 })
 
-test('resolveSize accepts WxH and W:H shapes', () => {
-  assert.deepEqual(resolveSize('848x1272'), { width: 848, height: 1272 })
-  assert.deepEqual(resolveSize('16:9'), { ratio: '16:9' })
+test('MAX_IMAGE_DIMENSION anchors pixel sizing at 1280 per side', () => {
   assert.equal(MAX_IMAGE_DIMENSION, 1280)
-})
-
-test('resolveSize rejects auto, decimals and malformed shapes', () => {
-  for (const bad of ['auto', '16.5:9', 'wide', '16x', 'x16']) {
-    throws(() => resolveSize(bad), '--size must be in the form WxH (e.g. 848x1272) or W:H (e.g. 16:9).')
-  }
-  assert.equal(resolveSize(''), undefined)
-})
-
-test('resolveSize rejects out-of-range dimensions', () => {
-  throws(() => resolveSize('0x1280'), '--size dimensions must be integers between 1 and 1280.')
-  throws(() => resolveSize('1281x1280'), '--size dimensions must be integers between 1 and 1280.')
-  throws(() => resolveSize('848x0'), '--size dimensions must be integers between 1 and 1280.')
-  assert.equal(resolveSize(undefined), undefined)
-  assert.equal(resolveSize(null), undefined)
 })

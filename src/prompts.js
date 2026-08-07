@@ -4,7 +4,6 @@ import { EFFORT_LABELS } from './constants.js'
 import { formatModelPrice } from './ui/format.js'
 import { hyperlink } from './ui/hyperlink.js'
 import { bold, dim } from './ui/style.js'
-import { formatSize, sizeLabel } from './image-sizing.js'
 
 export const BACK_SENTINEL = Symbol('back')
 
@@ -231,22 +230,12 @@ export function ratioLabel(value) {
   return RATIO_LABELS[value] || value
 }
 
-export async function selectSizingOption(message, values, defaultValue) {
-  const choices = values.map((v) => ({ name: ratioLabel(v), value: v }))
+export async function selectSizingOption(message, values, defaultValue, labelFn = ratioLabel) {
+  const choices = values.map((v) => ({ name: labelFn(v), value: v }))
   return select({
     message,
     theme: pickerTheme,
     choices,
     ...(defaultValue !== undefined && values.includes(defaultValue) ? { default: defaultValue } : {}),
-  })
-}
-
-export async function selectSizeOption(message, presets, defaultValue) {
-  const choices = presets.map((p) => ({ name: sizeLabel(p), value: formatSize(p.width, p.height) }))
-  return select({
-    message,
-    theme: pickerTheme,
-    choices,
-    ...(defaultValue !== undefined && choices.some((c) => c.value === defaultValue) ? { default: defaultValue } : {}),
   })
 }

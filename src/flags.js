@@ -1,5 +1,4 @@
 import { MAX_TEMPERATURE, SMOOTH_DEFAULT_SPEED, SMOOTH_SPEED_PRESETS, EFFORT_LABELS } from './constants.js'
-import { parseSizeInput } from './image-sizing.js'
 
 export const WEB_SEARCH_MODES = new Set(['auto', 'always', 'on', 'off'])
 
@@ -166,15 +165,4 @@ export function resolveWidth(value) {
 
 export function resolveHeight(value) {
   return resolveImageDimension('height', value)
-}
-
-export function resolveSize(value) {
-  if (value === undefined || value === null || value === '') return undefined
-  const parsed = parseSizeInput(value)
-  if (parsed.width !== undefined) {
-    if (parsed.width < 1 || parsed.width > MAX_IMAGE_DIMENSION || parsed.height < 1 || parsed.height > MAX_IMAGE_DIMENSION) {
-      throw new Error(`--size dimensions must be integers between 1 and ${MAX_IMAGE_DIMENSION}.`)
-    }
-  }
-  return parsed
 }

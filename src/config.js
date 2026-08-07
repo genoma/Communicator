@@ -50,13 +50,12 @@ export function getImageDefaults(prefs, providerName) {
   return prefs?.imageDefaults?.[providerName] || {}
 }
 
-export function mergeImageDefaults(prefs, providerName, { aspectRatio, format, size } = {}) {
-  if (aspectRatio === undefined && format === undefined && size === undefined) return prefs
+export function mergeImageDefaults(prefs, providerName, { aspectRatio, format } = {}) {
+  if (aspectRatio === undefined && format === undefined) return prefs
   const current = getImageDefaults(prefs, providerName)
   const merged = { ...current }
   if (aspectRatio !== undefined) merged.aspectRatio = aspectRatio
   if (format !== undefined) merged.format = format
-  if (size !== undefined) merged.size = size
   return { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [providerName]: merged } }
 }
 

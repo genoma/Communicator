@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { computePixelSize, isPixelModel, sizePresets, formatSize, sizeLabel, parseSizeInput, SIZE_PRESET_RATIOS } from '../src/image-sizing.js'
+import { computePixelSize, isPixelModel, sizePresets, formatSize, sizeLabel, SIZE_PRESET_RATIOS } from '../src/image-sizing.js'
 
 const pixelModel = (divisor) => ({
   id: 'z-image-turbo',
@@ -40,7 +40,7 @@ test('computePixelSize handles divisor 1 (bria-bg-remover) without flooring erro
 test('computePixelSize throws when the small side floors to zero', () => {
   assert.throws(
     () => computePixelSize('200:1', 16),
-    (err) => err.message === '--size ratio 200:1 is too extreme for this model (divisor 16).'
+    (err) => err.message === 'aspect ratio 200:1 is too extreme for this model (divisor 16).'
   )
 })
 
@@ -76,19 +76,4 @@ test('sizePresets returns an empty list for models without a divisor', () => {
 test('formatSize and sizeLabel shape the display strings', () => {
   assert.equal(formatSize(848, 1272), '848x1272')
   assert.equal(sizeLabel({ ratio: '2:3', width: 848, height: 1272 }), '2:3 · 848x1272')
-})
-
-test('parseSizeInput accepts WxH and W:H shapes', () => {
-  assert.deepEqual(parseSizeInput('848x1272'), { width: 848, height: 1272 })
-  assert.deepEqual(parseSizeInput('16:9'), { ratio: '16:9' })
-})
-
-test('parseSizeInput rejects auto, decimals, and garbage', () => {
-  for (const bad of ['auto', '16.5:9', '9:19.5', 'wide', '16x', 'x16', '848x', '1,024x768', '']) {
-    assert.throws(
-      () => parseSizeInput(bad),
-      (err) => err.message === '--size must be in the form WxH (e.g. 848x1272) or W:H (e.g. 16:9).',
-      `expected ${JSON.stringify(bad)} to be rejected`
-    )
-  }
 })

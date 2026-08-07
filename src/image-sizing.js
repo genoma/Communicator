@@ -5,6 +5,8 @@ import { MAX_IMAGE_DIMENSION } from './flags.js'
 // facts: the cap is 1280 per side (the web UI's 1344x576 preset exceeds it
 // and is not replicable), and the API divisor wins over the web UI's
 // rounding (2:3 → 848x1272 on d8, 848x1264 on d16 — the web shows 1264).
+// These models behave like aspect models with a hardcoded ratio list: the
+// ratio is the knob, the pixel size is always derived from it.
 
 export const SIZE_PRESET_RATIOS = ['1:1', '3:2', '16:9', '21:9', '9:16', '2:3', '3:4', '4:5']
 
@@ -17,7 +19,7 @@ export function computePixelSize(ratio, divisor) {
   const scale = MAX_IMAGE_DIMENSION / Math.max(w, h)
   const small = Math.floor((Math.min(w, h) * scale) / divisor) * divisor
   if (small === 0) {
-    throw new Error(`--size ratio ${ratio} is too extreme for this model (divisor ${divisor}).`)
+    throw new Error(`aspect ratio ${ratio} is too extreme for this model (divisor ${divisor}).`)
   }
   const large = Math.floor(((small * Math.max(w, h)) / Math.min(w, h)) / divisor) * divisor
   return w >= h ? { width: large, height: small } : { width: small, height: large }
@@ -38,11 +40,4 @@ export function formatSize(width, height) {
 
 export function sizeLabel(preset) {
   return `${preset.ratio} · ${formatSize(preset.width, preset.height)}`
-}
-
-export function parseSizeInput(value) {
-  const wh = /^(\d+)x(\d+)$/.exec(value)
-  if (wh) return { width: Number(wh[1]), height: Number(wh[2]) }
-  if (/^\d+:\d+$/.test(value)) return { ratio: value }
-  throw new Error('--size must be in the form WxH (e.g. 848x1272) or W:H (e.g. 16:9).')
 }

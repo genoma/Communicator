@@ -35,9 +35,8 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--resolution`        | `<tier>` | Image resolution tier, model-dependent: `1K`, `2K`, `4K`. Conflicts with `--width`/`--height` |
 |       | `--quality`           | `<level>`| Image quality tier, model-dependent: `low`, `medium`, `high` |
 |       | `--seed`              | `<int>`  | Random seed for image generation |
-|       | `--width`             | `<px>`   | Image width in pixels, 1–1280 (pixel-based models) |
-|       | `--height`            | `<px>`   | Image height in pixels, 1–1280 (pixel-based models) |
-|       | `--size`              | `<x:y\|WxH>` | Image size for pixel-based models: aspect ratio (computed to max 1280, e.g. `2:3` → `848x1272`) or exact pixels (e.g. `848x1272`). Conflicts with `--aspect-ratio`, `--resolution` and `--width`/`--height` |
+|       | `--width`             | `<px>`   | Image width in pixels, 1–1280, multiples of the model's divisor (pixel-based models) |
+|       | `--height`            | `<px>`   | Image height in pixels, 1–1280, multiples of the model's divisor (pixel-based models) |
 |       | `--no-safe-mode`      | —        | Disable safe mode for image generation (adult content returned unblurred). Bare use saves the default (global setting) and opens a chat session |
 |       | `--no-watermark`      | —        | Hide the Venice watermark on generated images. Bare use saves the default (global setting) |
 |       | `--list-image-models` | —        | List image models (name, id, per-image price, sizing options) and exit |
@@ -68,7 +67,7 @@ communicator -p venice --image --image-model flux-1-1 "a red cat" # fixed image 
 communicator -p openrouter --image --image-model "openai/gpt-image-1-mini" --aspect-ratio 16:9 "a red cat"
 communicator -p venice --image --variants 2 --image-format png --seed 42 "cyberpunk city"
 communicator -p venice --image --image-model gpt-image-2 --resolution 2K --quality high "wide shot"
-communicator -p venice --image --image-model z-image-turbo --size 2:3 "portrait"        # pixel-based model size
+communicator -p venice --image --image-model z-image-turbo --aspect-ratio 2:3 "portrait"   # pixel-based model: ratio is computed to pixels
 communicator -p venice --image --output-dir ~/Pictures "a red cat"   # also copy the images there
 communicator -p venice --list-image-models                           # list image models (no API key needed)
 communicator -p openrouter --list-image-models                       # includes per-model pricing
@@ -140,12 +139,12 @@ communicator --no-watermark                                            # hide th
 | `/markdown`    | Toggle terminal markdown rendering (default on)                                     |
 | `/smooth`      | Show smooth streaming state and speed, or set them with `/smooth on|off|<level>|<cps>` (a speed value implies on) |
 | `/cost`        | Print the running session cost/token totals and current reasoning effort            |
-| `/image`       | Generate an image (`/image [--ratio <x:y>] [--format <png|jpeg|webp>] [--size <x:y|WxH>] <description>`; leading flags are stripped from the appended message; without them compact pickers appear with the saved default preselected) |
+| `/image`       | Generate an image (`/image [--ratio <x:y>] [--format <png|jpeg|webp>] <description>`; leading flags are stripped from the appended message; without them compact pickers appear with the saved default preselected) |
 | `/watermark`   | Show whether the Venice watermark is on/off, or set it with `/watermark on|off` (`off` hides it; persisted as a global setting; Venice sessions only) |
 | `Cmd+C` / `Ctrl+C` | During streaming: abort, save the partial response, and exit. At the prompt: cancel and exit |
 
 Unknown slash commands (anything starting with `/`) print a hint listing the available commands instead of being sent to the model.
 
-Image sessions additionally accept `/aspect <x:y>`, `/format <fmt>` and `/size <x:y|WxH>` (bare shows the model's supported values with the current one marked, e.g. `Aspect ratios: 1:1 [16:9] 3:2.`; `clear` unsets it) to set the aspect ratio, output format and size for the rest of the session — see [docs/images.md](images.md).
+Image sessions additionally accept `/aspect <x:y>` and `/format <fmt>` (bare shows the model's supported values with the current one marked, e.g. `Aspect ratios: 1:1 [16:9] 3:2.`; `clear` unsets it) to set the aspect ratio and output format for the rest of the session — see [docs/images.md](images.md).
 
 While typing at the prompt, a live list of matching commands appears below the input as soon as the line starts with `/` (single line, cursor at line end, not yet an exact match). **Tab** fills the first match, **Shift+Tab** fills the last one, and **Enter always submits**. The list hides once the line is an exact match — keep typing to refine, or backspace the `/` to dismiss it. Parameterized commands like `/temp 0.7` are typed manually after completion.

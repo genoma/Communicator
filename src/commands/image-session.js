@@ -3,11 +3,11 @@ import { persistSessionFile } from '../sessions.js'
 import { getImageDefaults, mergeImageDefaults, savePreferences, applyPreferenceUpdates } from '../config.js'
 import { findImageModel } from '../model-selection.js'
 import { CliError, formatError } from '../errors.js'
-import { resolveAspectRatio, resolveImageFormat, resolveSize } from '../flags.js'
-import { computePixelSize, formatSize, sizePresets } from '../image-sizing.js'
-import { runImageGeneration, printImageOutcome, buildImageSessionPayload, pixelSizingHint } from './image-gen.js'
+import { resolveAspectRatio, resolveImageFormat } from '../flags.js'
+import { computePixelSize, formatSize, isPixelModel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
+import { runImageGeneration, printImageOutcome, buildImageSessionPayload } from './image-gen.js'
 
-const IMAGE_SESSION_COMMANDS = ['/help', '/exit', '/quit', '/watermark', '/aspect', '/format', '/size']
+const IMAGE_SESSION_COMMANDS = ['/help', '/exit', '/quit', '/watermark', '/aspect', '/format']
 
 function unsupportedListError(kind, value, model, list) {
   return `Error: ${kind} ${value} is not supported by ${model.id}. Supported: ${list.join(', ')}.`
@@ -23,19 +23,20 @@ function supportedListLine(kind, values, current, model) {
   return `${kind}s: ${marked} (none set).`
 }
 
-// Marks the current size in brackets inside the preset list, e.g.
-// `Sizes: 1:1 1280x1280 · 2:3 [848x1272] · ...`; a stored value outside the
-// presets is reported so the user knows it differs from them.
-function sizeListLine(presets, current) {
+// Pixel-based models behave like aspect models with a hardcoded ratio list:
+// every ratio shows its derived pixel size, and the current ratio is marked
+// in brackets, e.g. `Aspect ratios: 1:1 1280x1280 · 3:2 1272x848 · [2:3]
+// 848x1272 · ...`; a stored ratio outside the presets is reported as such.
+function aspectPresetLine(presets, current) {
   const marked = presets
     .map((p) => {
-      const size = formatSize(p.width, p.height)
-      return `${p.ratio} ${size === current ? `[${size}]` : size}`
+      const label = `${p.ratio} ${formatSize(p.width, p.height)}`
+      return p.ratio === current ? `[${label}]` : label
     })
     .join(' · ')
-  if (current && presets.some((p) => formatSize(p.width, p.height) === current)) return `Sizes: ${marked}.`
-  if (current) return `Sizes: ${marked} (current: ${current}).`
-  return `Sizes: ${marked} (none set).`
+  if (current && presets.some((p) => p.ratio === current)) return `Aspect ratios: ${marked}.`
+  if (current) return `Aspect ratios: ${marked} (current: ${current}).`
+  return `Aspect ratios: ${marked} (none set).`
 }
 
 export async function startImageSession({ provider, apiKey, prefs, imageModelId, sessionId, createdAt, initialMessages = [], configPath, stdout = process.stdout, readInput: read = readInputFromInput }) {
@@ -49,7 +50,6 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
 
   let sessionAspectRatio
   let sessionFormat
-  let sessionSize
 
   console.log(`Image session with ${imageModelId}. Describe an image to generate it; /help lists the available commands.\n`)
 
@@ -76,8 +76,6 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       console.log('/aspect <x:y>    set the aspect ratio for this session (clear to unset)')
       console.log('/format          show the supported output formats and the session one')
       console.log('/format <fmt>    set the output format for this session (clear to unset)')
-      console.log('/size            show the supported sizes and the session one')
-      console.log('/size <x:y|WxH>  set the size for this session (clear to unset)')
       continue
     }
 
@@ -105,12 +103,16 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     if (input === '/aspect' || input.startsWith('/aspect ')) {
       const value = input.slice('/aspect'.length).trim()
       if (!value) {
-        const current = getImageDefaults(prefs, provider.meta.name).aspectRatio
+        // The session value wins when set ("currently used"), else the
+        // saved provider default.
+        const current = sessionAspectRatio ?? getImageDefaults(prefs, provider.meta.name).aspectRatio
         const ratios = model.constraints?.aspectRatios
         if (Array.isArray(ratios)) {
           console.log(`${supportedListLine('Aspect ratio', ratios, current, model)}\n`)
+        } else if (isPixelModel(model)) {
+          console.log(`${aspectPresetLine(sizePresets(model), current)}\n`)
         } else if (model.constraints) {
-          console.log(`Aspect ratio is not supported by ${model.id}.${pixelSizingHint(model)}\n`)
+          console.log(`Aspect ratio is not supported by ${model.id}.\n`)
         } else {
           console.log(current ? `Aspect ratio: ${current}.\n` : 'Aspect ratio: not set.\n')
         }
@@ -135,16 +137,26 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       }
       const constraints = model.constraints
       const ratios = constraints?.aspectRatios
-      // A model without an advertised list cannot take the parameter: pixel-
-      // based Venice models (z-image-turbo, venice-sd35) ignore aspect_ratio
-      // and return a square default, and OpenRouter models would silently
-      // ignore it and still bill — so the value is always rejected here.
-      if (constraints && !Array.isArray(ratios)) {
-        console.error(`Error: aspect ratio is not supported by ${model.id}.${pixelSizingHint(model)}\n`)
+      // Pixel-based Venice models have no advertised list; they behave like
+      // aspect models over the hardcoded preset ratios (the pixels are
+      // derived from the ratio). Other models without a list cannot take the
+      // parameter at all.
+      if (constraints && !Array.isArray(ratios) && !isPixelModel(model)) {
+        console.error(`Error: aspect ratio is not supported by ${model.id}.\n`)
         continue
       }
-      if (Array.isArray(ratios) && !ratios.includes(parsed)) {
-        console.error(`${unsupportedListError('aspect ratio', parsed, model, ratios)}\n`)
+      const supported = isPixelModel(model) ? SIZE_PRESET_RATIOS : ratios
+      if (Array.isArray(supported) && !supported.includes(parsed)) {
+        console.error(`${unsupportedListError('aspect ratio', parsed, model, supported)}\n`)
+        continue
+      }
+      if (isPixelModel(model)) {
+        const computed = computePixelSize(parsed, model.constraints.widthHeightDivisor)
+        sessionAspectRatio = parsed
+        const updated = mergeImageDefaults(prefs, provider.meta.name, { aspectRatio: parsed })
+        Object.assign(prefs, updated)
+        await savePreferences(updated, configPath)
+        console.log(`Aspect ratio set to ${parsed} (${formatSize(computed.width, computed.height)}).\n`)
         continue
       }
       sessionAspectRatio = parsed
@@ -204,65 +216,6 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       continue
     }
 
-    if (input === '/size' || input.startsWith('/size ')) {
-      const value = input.slice('/size'.length).trim()
-      const divisor = model.constraints?.widthHeightDivisor
-      if (!value) {
-        if (divisor == null) {
-          const ratios = model.constraints?.aspectRatios
-          console.log(`Size is not supported by ${model.id}.${Array.isArray(ratios) ? ' Use /aspect instead.' : ''}\n`)
-          continue
-        }
-        const current = getImageDefaults(prefs, provider.meta.name).size
-        console.log(`${sizeListLine(sizePresets(model), current)}\n`)
-        continue
-      }
-      if (value === 'clear') {
-        sessionSize = undefined
-        const defaults = { ...getImageDefaults(prefs, provider.meta.name) }
-        delete defaults.size
-        const updated = { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [provider.meta.name]: defaults } }
-        Object.assign(prefs, updated)
-        await savePreferences(updated, configPath)
-        console.log('Size cleared.\n')
-        continue
-      }
-      if (divisor == null) {
-        const ratios = model.constraints?.aspectRatios
-        console.error(`Error: size is not supported by ${model.id}.${Array.isArray(ratios) ? ' Use /aspect instead.' : ''}\n`)
-        continue
-      }
-      let parsed
-      try {
-        parsed = resolveSize(value)
-      } catch (err) {
-        console.error(`Error: ${err.message}\n`)
-        continue
-      }
-      let size
-      if (parsed.ratio !== undefined) {
-        try {
-          const computed = computePixelSize(parsed.ratio, divisor)
-          size = formatSize(computed.width, computed.height)
-        } catch (err) {
-          console.error(`Error: ${err.message}\n`)
-          continue
-        }
-      } else {
-        if (parsed.width % divisor !== 0 || parsed.height % divisor !== 0) {
-          console.error(`Error: size ${value} must be divisible by ${divisor} for ${model.id}.\n`)
-          continue
-        }
-        size = formatSize(parsed.width, parsed.height)
-      }
-      sessionSize = size
-      const updated = mergeImageDefaults(prefs, provider.meta.name, { size })
-      Object.assign(prefs, updated)
-      await savePreferences(updated, configPath)
-      console.log(`Size set to ${size}.\n`)
-      continue
-    }
-
     if (input.startsWith('/')) {
       console.log(`Unknown command "${input}". Available: ${IMAGE_SESSION_COMMANDS.join(', ')}`)
       continue
@@ -277,7 +230,6 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         opts: {
           ...(sessionAspectRatio !== undefined && { aspectRatio: sessionAspectRatio }),
           ...(sessionFormat !== undefined && { imageFormat: sessionFormat }),
-          ...(sessionSize !== undefined && { size: sessionSize }),
         },
         prefs,
         sessionId,
