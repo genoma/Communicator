@@ -98,7 +98,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
   if (!resolved && opts.imageModel) {
     resolved = await selectImageModelNonInteractive({ provider, apiKey, imageModelId: opts.imageModel })
   } else if (!resolved && (selectImage || stdout.isTTY === true)) {
-    const models = await provider.fetchImageModels(apiKey)
+    const models = await provider.fetchImageModels(apiKey, { withPricing: true })
     const chosen = await picker(models, prefs.lastImageModel)
     resolved = models.find((m) => m.id === chosen?.id) || null
     modelId = chosen?.id || null

@@ -95,6 +95,7 @@ test('fetchImageModels with pricing fetches endpoints and takes the minimum', as
   assert.equal(calls.length, 2)
   assert.ok(calls[1].endsWith('/images/models/openai/gpt-image-1-mini/endpoints'), calls[1])
   assert.deepEqual(models[0].pricing, { perImage: 0.015, perToken: null, byResolution: null, byQuality: null })
+  assert.equal(models[0].description, '$0.015 per image  |  aspect: 1:1, 3:2, 2:3, auto  |  res: 1024x1024, 2048x2048  |  quality: low, high\nSmall fast image model')
 })
 
 test('fetchImageModels pricing falls back to the variant-tier minimum when no flat entry exists', async (t) => {
@@ -127,6 +128,7 @@ test('fetchImageModels pricing captures token-billed output_image entries', asyn
   const models = await fetchImageModels('key', { withPricing: true })
 
   assert.deepEqual(models[0].pricing, { perImage: null, perToken: 0.000108, byResolution: null, byQuality: null })
+  assert.ok(models[0].description.startsWith('$108.00 per 1M tokens'))
 })
 
 test('fetchImageModels pricing falls back to nulls when no output_image entries exist', async (t) => {

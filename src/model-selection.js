@@ -69,7 +69,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
   let imageModels = null
   if (!zdrActive && typeof provider.fetchImageModels === 'function') {
     try {
-      imageModels = await provider.fetchImageModels(apiKey)
+      imageModels = await provider.fetchImageModels(apiKey, { withPricing: true })
     } catch (err) {
       console.error(`Warning: could not load image models; showing text models only. (${formatError(err)})`)
     }
