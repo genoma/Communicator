@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ApiError } from '../src/errors.js'
+import { ApiError, TimeoutError } from '../src/errors.js'
 import * as venice from '../src/providers/venice.js'
 
 function jsonResponse(body, status = 200, headers = {}) {
@@ -17,6 +17,14 @@ function mockGenerate(t, bodyCapture, { response = { id: 'gen-1', images: [PNG],
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
     bodyCapture.push({ url: String(url), body: JSON.parse(opts.body), headers: opts.headers, signal: opts.signal })
     return jsonResponse(response, 200, headers)
+  })
+}
+
+// Mirrors real fetch: a request aborted by the timeout controller rejects
+// with an AbortError. A promise that never settles would hang the request.
+function hangingFetch() {
+  return (url, opts) => new Promise((resolve, reject) => {
+    opts.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
   })
 }
 
@@ -156,6 +164,44 @@ test('generateImage throws ApiError on an empty images array', async (t) => {
   await assert.rejects(
     venice.generateImage({ apiKey: 'key', model: 'm', prompt: 'x' }),
     (err) => err instanceof ApiError && err.message.includes('returned no images')
+  )
+})
+
+test('generateImage throws ApiError when the images key is missing entirely', async (t) => {
+  const calls = []
+  mockGenerate(t, calls, { response: { id: 'gen-1' } })
+
+  await assert.rejects(
+    venice.generateImage({ apiKey: 'key', model: 'm', prompt: 'x' }),
+    (err) => err instanceof ApiError && err.message.includes('returned no images')
+  )
+})
+
+test('generateImage rejects with TimeoutError when the request exceeds timeoutMs', async (t) => {
+  t.mock.method(globalThis, 'fetch', hangingFetch())
+
+  await assert.rejects(
+    venice.generateImage({ apiKey: 'key', model: 'm', prompt: 'x', timeoutMs: 10 }),
+    (err) => err instanceof TimeoutError && err.message.includes('timed out')
+  )
+})
+
+test('generateImage defaults to IMAGE_GEN_TIMEOUT_MS without timeoutMs', async (t) => {
+  const calls = []
+  mockGenerate(t, calls)
+
+  const result = await venice.generateImage({ apiKey: 'key', model: 'm', prompt: 'x' })
+
+  assert.equal(venice.IMAGE_GEN_TIMEOUT_MS, 600_000)
+  assert.equal(result.images.length, 1)
+})
+
+test('generateImage passes an explicit timeoutMs through to the request', async (t) => {
+  t.mock.method(globalThis, 'fetch', hangingFetch())
+
+  await assert.rejects(
+    venice.generateImage({ apiKey: 'key', model: 'm', prompt: 'x', timeoutMs: 500 }),
+    (err) => err instanceof TimeoutError && err.message.includes('after 1s')
   )
 })
 

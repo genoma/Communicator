@@ -7,6 +7,11 @@ import { mimeForExt, extForMime } from '../attachments.js'
 
 const VENICE_BASE = 'https://api.venice.ai/api/v1'
 
+// Generations are synchronous and queue on the server: live runs took 3 s
+// (venice-sd35) to 3–7 min (qwen-image-3, gpt-image-2), far beyond the
+// 30 s default timeout in http.js.
+export const IMAGE_GEN_TIMEOUT_MS = 600_000
+
 export const meta = {
   name: 'venice',
   baseURL: VENICE_BASE,
@@ -150,7 +155,7 @@ export async function fetchImageModels(apiKey) {
   })
 }
 
-export async function generateImage({ apiKey, model, prompt, format = 'webp', variants = 1, safeMode = true, aspectRatio, resolution, quality, seed, width, height, pricing, signal }) {
+export async function generateImage({ apiKey, model, prompt, format = 'webp', variants = 1, safeMode = true, aspectRatio, resolution, quality, seed, width, height, pricing, signal, timeoutMs = IMAGE_GEN_TIMEOUT_MS }) {
   const body = {
     model,
     prompt,
@@ -172,8 +177,7 @@ export async function generateImage({ apiKey, model, prompt, format = 'webp', va
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
-  }, { errorResponse: handleHttpError, signal })
-
+  }, { errorResponse: handleHttpError, signal, timeoutMs })
   const parsed = await res.json()
   const rawImages = Array.isArray(parsed.images) ? parsed.images : []
   if (rawImages.length === 0) {

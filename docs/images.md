@@ -47,5 +47,6 @@ Inside a Venice session, `/image a red cat` runs the generation with the same fl
 - The session is a normal session: it appears in `--list-sessions`, resumes, and exports.
 - Image generation has no tokens, so no usage/cost is recorded in the tracker — instead a cost line prints the per-image price times the number of images returned (`Cost: $0.18 per image × 2 = $0.36`), derived from the model's pricing (resolution/quality matrix when applicable).
 - With safe mode on (default), adult-content results are returned blurred and a warning line prints. The last used image model (`lastImageModel`) is remembered and shown first in the picker.
+- Generations are synchronous and can take minutes on high-end models (`gpt-image-2`, `nano-banana-2`, ...); the client waits up to 10 minutes per request.
 
 Out of scope for now: `style_references`, `negative_prompt`, `enhance_prompt`, `steps`, `cfg_scale`, image edit/upscale, and interactive sizing pickers.
