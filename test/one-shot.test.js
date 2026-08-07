@@ -332,8 +332,9 @@ test('one-shot SIGINT during the request aborts and exits 130', async (t) => {
 
   const { oneShotCmd } = await import('../src/commands/one-shot.js')
   const run = oneShotCmd({ apiKey: 'test-key', opts: opts(), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: 'Hello' })
-  for (let i = 0; i < 100 && sigintHandler === null; i++) {
-    await new Promise((r) => setImmediate(r))
+  const deadline = Date.now() + 5000
+  while (sigintHandler === null && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 5))
   }
   assert.ok(sigintHandler !== null)
   sigintHandler()
