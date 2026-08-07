@@ -1,7 +1,7 @@
 import { formatError, CliError } from '../../errors.js'
 import { selectModelAndEndpoint } from '../../model-selection.js'
 import { getEffortLabel, selectReasoningEffort } from '../../prompts.js'
-import { resolveTemperatureFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, webSearchGate, resolveAspectRatio, resolveImageFormat } from '../../flags.js'
+import { resolveTemperatureFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, webSearchGate, resolveAspectRatio, resolveImageFormat, resolveSize } from '../../flags.js'
 import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed } from '../../constants.js'
 import { budgetStatusLine, budgetExhaustedMessage } from '../../tracker.js'
 import { sessionLabel } from '../../ui/format.js'
@@ -13,15 +13,17 @@ import { runImageGeneration, printImageOutcome } from '../image-gen.js'
 
 const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments', '/image', '/watermark'])
 
-export const IMAGE_USAGE = 'Usage: /image [--ratio <x:y>] [--format <png|jpeg|webp>] <description>'
+export const IMAGE_USAGE = 'Usage: /image [--ratio <x:y>] [--format <png|jpeg|webp>] [--size <x:y|WxH>] <description>'
 
 const RATIO_FLAGS = new Set(['--ratio', '--aspect-ratio'])
 const FORMAT_FLAGS = new Set(['--format'])
+const SIZE_FLAGS = new Set(['--size'])
 
 export function parseImageArgs(args) {
   const tokens = args.trim().split(/\s+/)
   let ratio
   let format
+  let size
   let i = 0
   while (i < tokens.length && tokens[i].startsWith('--')) {
     const token = tokens[i]
@@ -34,11 +36,15 @@ export function parseImageArgs(args) {
       if (!value || value.startsWith('--')) throw new CliError(`Error: ${token} expects a value like png.`)
       format = value
       i += 2
+    } else if (SIZE_FLAGS.has(token)) {
+      if (!value || value.startsWith('--')) throw new CliError(`Error: ${token} expects a value like 848x1272.`)
+      size = value
+      i += 2
     } else {
       throw new CliError(`Error: unknown /image option ${token}. ${IMAGE_USAGE}`)
     }
   }
-  return { ratio, format, description: tokens.slice(i).join(' ') }
+  return { ratio, format, size, description: tokens.slice(i).join(' ') }
 }
 
 export function budgetGuard(ctx) {
@@ -319,7 +325,7 @@ const handlers = {
       console.error(err instanceof CliError ? `${err.message}\n` : `\nError: ${formatError(err)}\n`)
       return
     }
-    const { ratio, format, description } = parsed
+    const { ratio, format, size, description } = parsed
     if (!description) {
       console.log(`${IMAGE_USAGE}\n`)
       return
@@ -329,6 +335,7 @@ const handlers = {
     try {
       resolvedRatio = resolveAspectRatio(ratio)
       resolvedFormat = resolveImageFormat(format)
+      resolveSize(size)
     } catch (err) {
       console.error(`\nError: ${err.message}\n`)
       return
@@ -340,7 +347,7 @@ const handlers = {
         provider: ctx.provider,
         apiKey: ctx.apiKey,
         prompt: description,
-        opts: { aspectRatio: resolvedRatio, imageFormat: resolvedFormat },
+        opts: { aspectRatio: resolvedRatio, imageFormat: resolvedFormat, ...(size !== undefined && { size }) },
         prefs: ctx.prefs,
         sessionId: ctx.state.sessionId,
         selectImage: ctx.selectImageModel,

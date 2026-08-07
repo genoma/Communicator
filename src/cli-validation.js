@@ -156,6 +156,18 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     }
   }
 
+  if (opts.image && opts.size !== undefined) {
+    if (opts.width !== undefined || opts.height !== undefined) {
+      errors.push('Error: --size cannot be combined with --width or --height.')
+    }
+    if (opts.aspectRatio !== undefined) {
+      errors.push('Error: --size cannot be combined with --aspect-ratio.')
+    }
+    if (opts.resolution !== undefined) {
+      errors.push('Error: --size cannot be combined with --resolution.')
+    }
+  }
+
   if (opts.config === true && hasBareConfigOtherFlags(opts, promptArg)) {
     errors.push('Error: bare --config (config view) cannot be combined with other flags.')
   }

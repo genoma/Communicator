@@ -19,7 +19,7 @@ mock.module(new URL('../src/commands/image-gen.js', import.meta.url).href, {
     runImageGeneration: async ({ prompt, model, prefs, opts, sizingInteractive }) => {
       genCalls.push(prompt)
       genPrefs.push(prefs?.hideWatermark)
-      genOpts.push({ aspectRatio: opts?.aspectRatio, imageFormat: opts?.imageFormat, sizingInteractive })
+      genOpts.push({ aspectRatio: opts?.aspectRatio, imageFormat: opts?.imageFormat, size: opts?.size, sizingInteractive })
       if (prompt === 'boom') throw new CliError('Error: venice exploded.')
       return {
         message: { role: 'assistant', content: [{ type: 'image_url', image_url: { url: `ref://attachments/${genCalls.length}.webp` } }] },
@@ -32,7 +32,7 @@ mock.module(new URL('../src/commands/image-gen.js', import.meta.url).href, {
     printImageOutcome: async (outcome) => { printed.push(outcome) },
     pixelSizingHint: (model) => {
       const divisor = model?.constraints?.widthHeightDivisor
-      return divisor != null ? ` This pixel-based model takes --width/--height (multiples of ${divisor}) instead.` : ''
+      return divisor != null ? ` This pixel-based model takes --size <x:y|WxH> or --width/--height (multiples of ${divisor}) instead.` : ''
     },
     buildImageSessionPayload: ({ messages, modelId, createdAt }) => ({ model: modelId, providerType: 'venice', createdAt, messages }),
   },
@@ -424,7 +424,7 @@ test('/aspect with a ratio on a pixel-based Venice model errors with a width/hei
     readInput: scriptedInput(['/aspect 16:9', '/quit']),
   }))
 
-  assert.ok(errors.some((e) => e.includes('Error: aspect ratio is not supported by z-image-turbo. This pixel-based model takes --width/--height (multiples of 8) instead.')), errors.join('\n'))
+  assert.ok(errors.some((e) => e.includes('Error: aspect ratio is not supported by z-image-turbo. This pixel-based model takes --size <x:y|WxH> or --width/--height (multiples of 8) instead.')), errors.join('\n'))
   assert.deepEqual(genCalls, [])
 })
 
@@ -439,7 +439,7 @@ test('/aspect bare on a pixel-based Venice model reports it is unsupported', asy
     readInput: scriptedInput(['/aspect', '/quit']),
   }))
 
-  assert.ok(logs.some((l) => l.includes('Aspect ratio is not supported by z-image-turbo. This pixel-based model takes --width/--height (multiples of 8) instead.')))
+  assert.ok(logs.some((l) => l.includes('Aspect ratio is not supported by z-image-turbo. This pixel-based model takes --size <x:y|WxH> or --width/--height (multiples of 8) instead.')))
 })
 
 test('/aspect with a ratio on an OpenRouter model without a list still errors', async (t) => {
@@ -556,4 +556,189 @@ test('/aspect and /format are listed in /help', async (t) => {
 
   assert.ok(logs.some((l) => l.includes('/aspect')))
   assert.ok(logs.some((l) => l.includes('/format')))
+})
+
+test('/size with a ratio sets the session size, persists the provider default and passes it as opts', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    provider: veniceNoRatioProvider,
+    imageModelId: 'z-image-turbo',
+    configPath: file,
+    readInput: scriptedInput(['/size 2:3', 'a cat', '/quit']),
+  }))
+
+  assert.deepEqual(genCalls, ['a cat'])
+  assert.equal(genOpts[0].size, '848x1272')
+  assert.equal(genOpts[0].aspectRatio, undefined)
+  assert.ok(logs.some((l) => l.includes('Size set to 848x1272.')))
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { size: '848x1272' } })
+})
+
+test('/size with exact pixels sets the session size and persists it', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    provider: veniceNoRatioProvider,
+    imageModelId: 'z-image-turbo',
+    configPath: file,
+    readInput: scriptedInput(['/size 1024x1024', 'a cat', '/quit']),
+  }))
+
+  assert.equal(genOpts[0].size, '1024x1024')
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { size: '1024x1024' } })
+})
+
+test('/size bare shows the presets with the current one marked', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    provider: veniceNoRatioProvider,
+    imageModelId: 'z-image-turbo',
+    prefs: { imageDefaults: { venice: { size: '848x1272' } } },
+    readInput: scriptedInput(['/size', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Sizes: 1:1 1280x1280 · 3:2 1272x848 · 16:9 1280x720 · 21:9 1264x544 · 9:16 720x1280 · 2:3 [848x1272] · 3:4 960x1280 · 4:5 1024x1280.')))
+})
+
+test('/size bare reports the presets when none is set', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    provider: veniceNoRatioProvider,
+    imageModelId: 'z-image-turbo',
+    readInput: scriptedInput(['/size', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Sizes: 1:1 1280x1280 · 3:2 1272x848 · 16:9 1280x720 · 21:9 1264x544 · 9:16 720x1280 · 2:3 848x1272 · 3:4 960x1280 · 4:5 1024x1280 (none set).')))
+})
+
+test('/size bare notes a stored value outside the presets', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    provider: veniceNoRatioProvider,
+    imageModelId: 'z-image-turbo',
+    prefs: { imageDefaults: { venice: { size: '1024x768' } } },
+    readInput: scriptedInput(['/size', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Sizes: 1:1 1280x1280 · 3:2 1272x848 · 16:9 1280x720 · 21:9 1264x544 · 9:16 720x1280 · 2:3 848x1272 · 3:4 960x1280 · 4:5 1024x1280 (current: 1024x768).')))
+})
+
+test('/size clear unsets the size and removes the persisted key', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    provider: veniceNoRatioProvider,
+    imageModelId: 'z-image-turbo',
+    configPath: file,
+    prefs: { imageDefaults: { venice: { size: '848x1272', format: 'webp' } } },
+    readInput: scriptedInput(['/size clear', 'a cat', '/quit']),
+  }))
+
+  assert.equal(genOpts[0].size, undefined)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { format: 'webp' } })
+})
+
+test('/size with a non-divisor WxH errors', async (t) => {
+  genCalls.length = 0
+  printed.length = 0
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({
+    provider: veniceNoRatioProvider,
+    imageModelId: 'z-image-turbo',
+    readInput: scriptedInput(['/size 1023x1024', '/quit']),
+  }))
+
+  assert.ok(errors.some((e) => e.includes('Error: size 1023x1024 must be divisible by 8 for z-image-turbo.')))
+  assert.deepEqual(genCalls, [])
+})
+
+test('/size with an invalid shape errors', async (t) => {
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({
+    provider: veniceNoRatioProvider,
+    imageModelId: 'z-image-turbo',
+    readInput: scriptedInput(['/size wide', '/quit']),
+  }))
+
+  assert.ok(errors.some((e) => e.includes('--size must be in the form WxH (e.g. 848x1272) or W:H (e.g. 16:9).')))
+})
+
+test('/size on an aspect model errors with an /aspect hint', async (t) => {
+  genCalls.length = 0
+  printed.length = 0
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/size 2:3', '/quit']) }))
+
+  assert.ok(errors.some((e) => e.includes('Error: size is not supported by venice-sd35. Use /aspect instead.')))
+  assert.deepEqual(genCalls, [])
+})
+
+test('/size bare on an aspect model reports it is unsupported', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/size', '/quit']) }))
+
+  assert.ok(logs.some((l) => l.includes('Size is not supported by venice-sd35. Use /aspect instead.')))
+})
+
+test('/size on an OpenRouter model without lists errors', async (t) => {
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({
+    provider: openRouterNoListsProvider,
+    imageModelId: 'openai/gpt-5-image',
+    readInput: scriptedInput(['/size 2:3', '/quit']),
+  }))
+
+  assert.ok(errors.some((e) => e.includes('Error: size is not supported by openai/gpt-5-image.')))
+})
+
+test('/size is listed in /help', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/help', '/quit']) }))
+
+  assert.ok(logs.some((l) => l.includes('/size')))
 })

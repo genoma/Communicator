@@ -33,6 +33,7 @@ const BASE_OPTS = {
   seed: undefined,
   width: undefined,
   height: undefined,
+  size: undefined,
   safeMode: true,
   zdr: undefined,
 }
@@ -128,6 +129,29 @@ test('--width and --height conflict with --aspect-ratio and --resolution', () =>
   )
   assert.deepEqual(
     validateCliFlags(opts({ image: true, width: 1024 }), { ...TTY, ...PROMPT() }),
+    []
+  )
+})
+
+test('--size conflicts with --aspect-ratio, --resolution and --width/--height', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ image: true, size: '2:3', aspectRatio: '16:9' }), { ...TTY, ...PROMPT() }),
+    ['Error: --size cannot be combined with --aspect-ratio.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ image: true, size: '848x1272', resolution: '2K' }), { ...TTY, ...PROMPT() }),
+    ['Error: --size cannot be combined with --resolution.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ image: true, size: '2:3', width: 1024 }), { ...TTY, ...PROMPT() }),
+    ['Error: --size cannot be combined with --width or --height.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ image: true, size: '2:3', height: 1024 }), { ...TTY, ...PROMPT() }),
+    ['Error: --size cannot be combined with --width or --height.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ image: true, size: '2:3' }), { ...TTY, ...PROMPT() }),
     []
   )
 })

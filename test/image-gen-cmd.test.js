@@ -47,6 +47,20 @@ const IMAGE_MODELS = [
       pricing: { generation: { usd: 0.02, diem: 0.02 } },
     },
   },
+  {
+    id: 'z-image-turbo',
+    model_spec: {
+      name: 'Z-Image Turbo',
+      description: 'Fast pixel model',
+      privacy: 'anonymized',
+      constraints: {
+        aspectRatios: null,
+        promptCharacterLimit: 2048,
+        widthHeightDivisor: 8,
+      },
+      pricing: { generation: { usd: 0.01, diem: 0.01 } },
+    },
+  },
 ]
 
 const IMG1 = Buffer.from('hello image')
@@ -103,6 +117,7 @@ const BASE_OPTS = {
   seed: undefined,
   width: undefined,
   height: undefined,
+  size: undefined,
   safeMode: true,
   watermark: true,
   outputDir: undefined,
@@ -608,7 +623,7 @@ test('runImageGeneration rejects an explicit aspect ratio on a pixel-based model
 
   await assert.rejects(
     runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'z-image-turbo', aspectRatio: '16:9' }, prefs: {}, sessionId: '2026-01-01T00-00-00', stdout: plainStdout }),
-    (err) => err instanceof CliError && err.message === 'Error: --aspect-ratio 16:9 is not supported by z-image-turbo. This pixel-based model takes --width/--height (multiples of 8) instead.'
+    (err) => err instanceof CliError && err.message === 'Error: --aspect-ratio 16:9 is not supported by z-image-turbo. This pixel-based model takes --size <x:y|WxH> or --width/--height (multiples of 8) instead.'
   )
 })
 
@@ -719,4 +734,208 @@ test('--image prints the sizing line', async (t) => {
   assert.equal(exited, false)
   const logs = stdoutChunks.join('').split('\n').filter(Boolean)
   assert.ok(logs.includes('16:9 · png'), logs.join('\n'))
+})
+
+test('--image --size with a ratio computes the pixels from the model divisor', async (t) => {
+  const { bodies } = mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  const { exited } = await runImageGen(t, { overrides: { config: file, imageModel: 'z-image-turbo', size: '2:3' } })
+
+  assert.equal(exited, false)
+  assert.equal(bodies[0].width, 848)
+  assert.equal(bodies[0].height, 1272)
+  assert.equal(bodies[0].aspect_ratio, undefined)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { size: '848x1272' } })
+})
+
+test('--image --size with exact pixels is passed through and persisted', async (t) => {
+  const { bodies } = mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  const { exited, stdoutChunks } = await runImageGen(t, { overrides: { config: file, imageModel: 'z-image-turbo', size: '1024x1024' } })
+
+  assert.equal(exited, false)
+  assert.equal(bodies[0].width, 1024)
+  assert.equal(bodies[0].height, 1024)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { size: '1024x1024' } })
+  const logs = stdoutChunks.join('').split('\n').filter(Boolean)
+  assert.ok(logs.includes('1024x1024 · webp'), logs.join('\n'))
+})
+
+test('--image --size on an aspect model errors with an /aspect hint', async (t) => {
+  mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+
+  const { exited, message } = await runImageGen(t, { overrides: { size: '2:3' } })
+
+  assert.equal(exited, true)
+  assert.equal(message, 'Error: --size 2:3 is not supported by flux-1-1. This model takes --aspect-ratio instead.')
+})
+
+test('--image --size rejecting a non-divisor WxH on a pixel model', async (t) => {
+  mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+
+  const { exited, message } = await runImageGen(t, { overrides: { imageModel: 'z-image-turbo', size: '1023x1024' } })
+
+  assert.equal(exited, true)
+  assert.equal(message, 'Error: --size 1023x1024 must be divisible by 8 for z-image-turbo.')
+})
+
+test('--image --size with an invalid value errors client-side', async (t) => {
+  mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+
+  const { exited, message } = await runImageGen(t, { overrides: { imageModel: 'z-image-turbo', size: 'wide' } })
+
+  assert.equal(exited, true)
+  assert.equal(message, 'Error: --size must be in the form WxH (e.g. 848x1272) or W:H (e.g. 16:9).')
+})
+
+test('runImageGeneration drops a saved size default on an aspect model with a note', async (t) => {
+  const warns = []
+  t.mock.method(console, 'warn', (m) => { warns.push(String(m)) })
+  const provider = fakeSizingProvider()
+  const prefs = { imageDefaults: { venice: { size: '848x1272', format: 'webp' } } }
+
+  const outcome = await runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'flux-1-1' }, prefs, sessionId: '2026-01-01T00-00-00', stdout: plainStdout })
+
+  assert.equal(provider.genArgs.width, undefined)
+  assert.equal(provider.genArgs.height, undefined)
+  assert.ok(warns.some((w) => w.includes('saved size 848x1272 is not supported by flux-1-1; it was not sent.')), warns.join('\n'))
+  assert.equal(outcome.sizing, 'webp')
+})
+
+test('runImageGeneration drops a saved size that violates the pixel divisor with a note', async (t) => {
+  const warns = []
+  t.mock.method(console, 'warn', (m) => { warns.push(String(m)) })
+  const provider = fakeSizingProvider({
+    async fetchImageModels() {
+      return [{ id: 'z-image-turbo', name: 'Z-Image Turbo', pricing: null, constraints: { aspectRatios: null, formats: ['png', 'jpeg', 'webp'], resolutions: null, qualities: null, widthHeightDivisor: 16 } }]
+    },
+  })
+  const prefs = { imageDefaults: { venice: { size: '848x1272' } } }
+
+  await runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'z-image-turbo' }, prefs, sessionId: '2026-01-01T00-00-00', stdout: plainStdout })
+
+  assert.equal(provider.genArgs.width, undefined)
+  assert.equal(provider.genArgs.height, undefined)
+  assert.ok(warns.some((w) => w.includes('saved size 848x1272 is not supported by z-image-turbo; it was not sent.')), warns.join('\n'))
+})
+
+test('runImageGeneration applies a saved size default on a pixel model without pickers when piped', async (t) => {
+  mockConsole(t)
+  const provider = fakeSizingProvider({
+    async fetchImageModels() {
+      return [{ id: 'z-image-turbo', name: 'Z-Image Turbo', pricing: null, constraints: { aspectRatios: null, formats: ['png', 'jpeg', 'webp'], resolutions: null, qualities: null, widthHeightDivisor: 8 } }]
+    },
+  })
+  const prefs = { imageDefaults: { venice: { size: '848x1272' } } }
+
+  const outcome = await runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'z-image-turbo' }, prefs, sessionId: '2026-01-01T00-00-00', stdout: plainStdout })
+
+  assert.equal(provider.genArgs.width, 848)
+  assert.equal(provider.genArgs.height, 1272)
+  assert.equal(provider.genArgs.aspectRatio, undefined)
+  assert.equal(outcome.prefsUpdates, undefined)
+  assert.equal(outcome.sizing, '848x1272 · webp')
+})
+
+test('runImageGeneration size picker on a pixel model preselects the saved size and persists non-default choices', async (t) => {
+  mockConsole(t)
+  const pickerCalls = []
+  const answers = ['webp', '848x1272']
+  const provider = fakeSizingProvider({
+    async fetchImageModels() {
+      return [{ id: 'z-image-turbo', name: 'Z-Image Turbo', pricing: null, constraints: { aspectRatios: null, formats: ['png', 'jpeg', 'webp'], resolutions: null, qualities: null, widthHeightDivisor: 8 } }]
+    },
+  })
+  const prefs = { imageDefaults: { venice: { size: '1024x1280', format: 'webp' } } }
+
+  const outcome = await runImageGeneration({
+    provider,
+    apiKey: 'k',
+    prompt: 'x',
+    opts: { imageModel: 'z-image-turbo' },
+    prefs,
+    sessionId: '2026-01-01T00-00-00',
+    selectImage: async (models) => models[0],
+    selectImageSizing: async (message, values, defaultValue) => {
+      pickerCalls.push({ message, values, defaultValue })
+      return answers.shift()
+    },
+    stdout: plainStdout,
+  })
+
+  assert.equal(pickerCalls.length, 2)
+  assert.equal(pickerCalls[0].message, 'Select an image format:')
+  assert.equal(pickerCalls[1].message, 'Select a size:')
+  assert.equal(pickerCalls[1].defaultValue, '1024x1280')
+  assert.deepEqual(pickerCalls[1].values.map((p) => `${p.ratio} ${p.width}x${p.height}`), [
+    '1:1 1280x1280',
+    '3:2 1272x848',
+    '16:9 1280x720',
+    '21:9 1264x544',
+    '9:16 720x1280',
+    '2:3 848x1272',
+    '3:4 960x1280',
+    '4:5 1024x1280',
+  ])
+  assert.equal(provider.genArgs.width, 848)
+  assert.equal(provider.genArgs.height, 1272)
+  assert.equal(provider.genArgs.format, 'webp')
+  assert.deepEqual(outcome.prefsUpdates, { size: '848x1272' })
+  assert.equal(outcome.sizing, '848x1272 · webp')
+})
+
+test('runImageGeneration size picker falls back to 1:1 when the saved size is not a preset', async (t) => {
+  mockConsole(t)
+  const pickerCalls = []
+  const provider = fakeSizingProvider({
+    async fetchImageModels() {
+      return [{ id: 'z-image-turbo', name: 'Z-Image Turbo', pricing: null, constraints: { aspectRatios: null, formats: ['png', 'jpeg', 'webp'], resolutions: null, qualities: null, widthHeightDivisor: 8 } }]
+    },
+  })
+  const prefs = { imageDefaults: { venice: { size: '1111x1111' } } }
+
+  await runImageGeneration({
+    provider,
+    apiKey: 'k',
+    prompt: 'x',
+    opts: { imageModel: 'z-image-turbo' },
+    prefs,
+    sessionId: '2026-01-01T00-00-00',
+    selectImage: async (models) => models[0],
+    selectImageSizing: async (message, values, defaultValue) => {
+      pickerCalls.push({ message, values, defaultValue })
+      return '1280x1280'
+    },
+    stdout: plainStdout,
+  })
+
+  const sizeCall = pickerCalls.find((c) => c.message === 'Select a size:')
+  assert.equal(sizeCall.defaultValue, '1280x1280')
+})
+
+test('--image --size persists the computed default via the config file', async (t) => {
+  mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  const { exited } = await runImageGen(t, { overrides: { config: file, imageModel: 'z-image-turbo', size: '16:9' } })
+
+  assert.equal(exited, false)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { size: '1280x720' } })
 })

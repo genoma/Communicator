@@ -24,7 +24,7 @@ Image models
 - `/help` lists the commands; `/exit` and `/quit` (or Ctrl+C / EOF) leave the session.
 - Each turn is persisted to the session (system + prompt + image messages), so the session shows up in `--list-sessions`, is exportable, and `--resume <id>` re-enters the image session to keep generating. Your last-used image model is remembered (`lastImageModel`).
 - `-m <image-model> "prompt"` runs the same generation as a one-shot (persisted + printed, `--attach` rejected), and `--image`/`/image` keep working as before for one-off generations inside text sessions.
-- Inside an image session, `/aspect <x:y>` and `/format <fmt>` set the sizing for the rest of the session (see [Sizing defaults](#sizing-defaults)); `/watermark` is Venice-only.
+- Inside an image session, `/aspect <x:y>`, `/format <fmt>` and `/size <x:y|WxH>` set the sizing for the rest of the session (see [Sizing defaults](#sizing-defaults)); `/watermark` is Venice-only.
 
 ## One-shot: `--image`
 
@@ -44,6 +44,7 @@ The description is the positional prompt; piped stdin works too (`echo "a red ca
 | `--resolution <tier>` | Resolution tier (model-dependent): `1K`, `2K`, `4K` on Venice; OpenRouter tiers like `1024x1024` |
 | `--quality <level>`  | Quality tier (model-dependent): `low`, `medium`, `high`                    |
 | `--width <px>` / `--height <px>` | Pixel dimensions, 1–1280 (pixel-based models; cannot be combined with `--aspect-ratio` or `--resolution`) |
+| `--size <x:y\|WxH>` | Size for pixel-based models: an aspect ratio (`2:3`, computed to the model's divisor up to 1280 per side) or exact pixels (`848x1272`). Cannot be combined with `--aspect-ratio`, `--resolution` or `--width`/`--height` |
 | `--seed <int>`       | Random seed for reproducible generations                                   |
 | `--no-safe-mode`     | Disable safe mode (Venice; adult content is returned unblurred)            |
 | `--no-watermark`     | Hide the Venice watermark on the generated images (persisted as the global `hideWatermark` pref) |
@@ -51,7 +52,7 @@ The description is the positional prompt; piped stdin works too (`echo "a red ca
 
 Explicit flags are validated against the chosen model's supported options (aspect ratios, formats, resolution tiers, quality levels, width/height divisor) when the model is known; an unsupported value errors with the supported list. An unknown `--image-model` id passes the flags through and the API surfaces any error.
 
-On a TTY, `--image` (and `-m <image-model>`) without the sizing flags asks for the aspect ratio and output format with compact pickers — the saved default is preselected, so pressing Enter accepts it. Flags skip the pickers. Piped input uses the saved defaults directly.
+On a TTY, `--image` (and `-m <image-model>`) without the sizing flags asks for the aspect ratio and output format with compact pickers — the saved default is preselected, so pressing Enter accepts it. Pixel-based models get a "Select a size:" picker instead of the ratio picker, with the saved size preselected (falling back to 1:1). Flags skip the pickers. Piped input uses the saved defaults directly.
 
 ## Listing models
 
@@ -71,6 +72,7 @@ Inside any session, `/image a red cat` runs the generation and appends the resul
 ```text
 /image --ratio 16:9 --format png a red cat      # explicit sizing
 /image --aspect-ratio 3:2 a red cat             # --aspect-ratio is an alias of --ratio
+/image --size 2:3 a red cat                     # pixel-based models: ratio (computed) or exact pixels (e.g. 848x1272)
 /image a red cat                                # pickers ask for ratio/format (saved default preselected)
 ```
 
@@ -83,21 +85,21 @@ Choices are remembered as **global per-provider defaults** (`venice` and `openro
 ```json
 {
   "imageDefaults": {
-    "venice": { "aspectRatio": "16:9", "format": "webp" },
+    "venice": { "aspectRatio": "16:9", "format": "webp", "size": "848x1272" },
     "openrouter": { "aspectRatio": "1:1", "format": "png" }
   }
 }
 ```
 
-- A non-default picker choice or any explicit flag (CLI or `/image --ratio/--format`) becomes the provider default for future generations.
+- A non-default picker choice or any explicit flag (CLI or `/image --ratio/--format/--size`) becomes the provider default for future generations. Sizes are stored as computed pixel strings (`"size": "848x1272"`), never as ratios.
 - Save them directly with the config-setter (no `--image` needed):
   ```bash
   communicator -p venice --aspect-ratio 16:9 --image-format png
   communicator -p openrouter --aspect-ratio 1:1
   ```
-- Image sessions apply the saved defaults automatically on start; `/aspect <x:y>` and `/format <fmt>` override them for the rest of the session. Bare `/aspect`/`/format` show the model's full supported list with the current value marked in brackets (`Aspect ratios: 1:1 [16:9] 3:2.`, `Formats: [png] jpeg webp.`); a stored value outside the supported list is reported as such, and a model that cannot take the parameter at all says so. `clear` unsets the value so the parameter is no longer sent — use it to override a saved default for one session. Only advertised values are accepted; pixel-based models without an aspect-ratio list (e.g. `z-image-turbo`, `venice-sd35`) reject `aspect_ratio` with a hint to use `--width`/`--height` instead.
+- Image sessions apply the saved defaults automatically on start; `/aspect <x:y>`, `/format <fmt>` and `/size <x:y|WxH>` override them for the rest of the session. Bare `/aspect`/`/format`/`/size` show the model's full supported list with the current value marked in brackets (`Aspect ratios: 1:1 [16:9] 3:2.`, `Formats: [png] jpeg webp.`, `Sizes: 1:1 1280x1280 · 2:3 [848x1272] · …`); a stored value outside the supported list is reported as such, and a model that cannot take the parameter at all says so. `clear` unsets the value so the parameter is no longer sent — use it to override a saved default for one session. Only advertised values are accepted; pixel-based models without an aspect-ratio list (e.g. `z-image-turbo`, `venice-sd35`) reject `aspect_ratio` with a hint to use `--size` or `--width`/`--height` instead, and aspect models reject `--size` with a hint to use `--aspect-ratio`.
 - **Unsupported defaults are never sent silently**: if a saved default is not supported by the chosen model (or the model cannot take the parameter at all, e.g. GPT-Image models without `output_format`, or pixel-based Venice models like `z-image-turbo`), the CLI drops it and prints a one-line note (`note: saved aspect ratio 21:9 is not supported by <model>; it was not sent.`). Explicit flags always error client-side with the supported list instead. This mirrors the providers' API behavior — a value the model does not support is silently ignored and still billed (Venice pixel-based models ignore `aspect_ratio` and return a square default), so the CLI makes the drop visible rather than relying on the API.
-- A model (either provider) whose listing has no `aspect_ratio`/`output_format` support never receives those parameters; on Venice, pixel-based models (`z-image-turbo`, `venice-sd35`, …) take `--width`/`--height` (multiples of their pixel divisor, up to 1280) instead.
+- A model (either provider) whose listing has no `aspect_ratio`/`output_format` support never receives those parameters; on Venice, pixel-based models (`z-image-turbo`, `venice-sd35`, …) take `--size <x:y|WxH>` or `--width`/`--height` (multiples of their pixel divisor, up to 1280) instead. `--size` ratios are computed to the model's divisor anchored at 1280 per side: on `z-image-turbo` (divisor 8) `2:3` → `848x1272`, `16:9` → `1280x720`, `21:9` → `1264x544`. The web UI shows the divisor-16 rounding (`2:3` → `848x1264`); the CLI follows the API divisor, so `848x1272` is correct even if the web shows 1264.
 
 ## Watermark hiding (Venice)
 

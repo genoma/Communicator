@@ -25,6 +25,13 @@ function fakeVeniceProvider(overrides = {}) {
           constraints: { aspectRatios: ['1:1', '16:9', '3:2'], formats: ['png', 'jpeg', 'webp'], resolutions: null, qualities: null, widthHeightDivisor: 8 },
           offline: false,
         },
+        {
+          id: 'z-image-turbo',
+          name: 'Z-Image Turbo',
+          pricing: { perImage: 0.01, byResolution: null, byQuality: null },
+          constraints: { aspectRatios: null, formats: ['png', 'jpeg', 'webp'], resolutions: null, qualities: null, widthHeightDivisor: 8 },
+          offline: false,
+        },
       ]
     },
     async generateImage(generateArgs) {
@@ -136,7 +143,7 @@ test('/image with no args prints a usage hint and does nothing else', async (t) 
 
   await chatCommands['/image'](ctx)
 
-  assert.equal(consoleSpy.log(0), 'Usage: /image [--ratio <x:y>] [--format <png|jpeg|webp>] <description>\n')
+  assert.equal(consoleSpy.log(0), 'Usage: /image [--ratio <x:y>] [--format <png|jpeg|webp>] [--size <x:y|WxH>] <description>\n')
   assert.equal(ctx.state.messages.length, before)
   assert.deepEqual(savedSessions, [])
   assert.equal(pickerCalls, 0)
@@ -297,7 +304,7 @@ test('/image flags without a description print the usage hint', async (t) => {
 
   await chatCommands['/image']({ ...ctx, input: '/image --ratio 16:9', args: '--ratio 16:9' })
 
-  assert.equal(consoleSpy.log(0), 'Usage: /image [--ratio <x:y>] [--format <png|jpeg|webp>] <description>\n')
+  assert.equal(consoleSpy.log(0), 'Usage: /image [--ratio <x:y>] [--format <png|jpeg|webp>] [--size <x:y|WxH>] <description>\n')
   assert.equal(ctx.provider.generateCalls.length, 0)
 })
 
@@ -307,7 +314,7 @@ test('/image with an unknown leading option errors with the usage hint', async (
 
   await chatCommands['/image']({ ...ctx, input: '/image --red a cat', args: '--red a cat' })
 
-  assert.equal(consoleSpy.error(0), 'Error: unknown /image option --red. Usage: /image [--ratio <x:y>] [--format <png|jpeg|webp>] <description>\n')
+  assert.equal(consoleSpy.error(0), 'Error: unknown /image option --red. Usage: /image [--ratio <x:y>] [--format <png|jpeg|webp>] [--size <x:y|WxH>] <description>\n')
   assert.equal(ctx.provider.generateCalls.length, 0)
   assert.deepEqual(savedSessions, [])
 })
@@ -351,4 +358,67 @@ test('/image sizing pickers preselect the saved provider default', async (t) => 
   assert.equal(pickerCalls[0].defaultValue, '1:1')
   assert.equal(pickerCalls[1].message, 'Select an image format:')
   assert.equal(pickerCalls[1].defaultValue, 'webp')
+})
+
+test('/image --size with a ratio computes pixels for a pixel-based model', async (t) => {
+  mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx({
+    selectImageModel: async (models) => ({ id: models[1].id, name: models[1].name }),
+  })
+
+  await chatCommands['/image']({ ...ctx, input: '/image --size 2:3 a cat', args: '--size 2:3 a cat' })
+
+  assert.equal(ctx.provider.generateCalls.length, 1)
+  assert.equal(ctx.provider.generateCalls[0].width, 848)
+  assert.equal(ctx.provider.generateCalls[0].height, 1272)
+  assert.equal(ctx.provider.generateCalls[0].aspectRatio, undefined)
+  assert.equal(ctx.state.messages[1].content, 'a cat')
+  assert.deepEqual(prefsUpdates, [
+    { lastImageModel: 'z-image-turbo', imageDefaults: { venice: { format: 'png', size: '848x1272' } } },
+  ])
+})
+
+test('/image --size with exact pixels is passed through and stripped from the message', async (t) => {
+  mockConsole(t)
+  const { ctx } = makeCtx({
+    selectImageModel: async (models) => ({ id: models[1].id, name: models[1].name }),
+  })
+
+  await chatCommands['/image']({ ...ctx, input: '/image --size 1024x1024 a cat', args: '--size 1024x1024 a cat' })
+
+  assert.equal(ctx.provider.generateCalls[0].width, 1024)
+  assert.equal(ctx.provider.generateCalls[0].height, 1024)
+  assert.equal(ctx.state.messages[1].content, 'a cat')
+})
+
+test('/image --size on an aspect model errors before any generation', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({
+    selectImageModel: async (models) => ({ id: models[0].id, name: models[0].name }),
+  })
+
+  await chatCommands['/image']({ ...ctx, input: '/image --size 2:3 a cat', args: '--size 2:3 a cat' })
+
+  assert.equal(consoleSpy.error(0), '\nError: --size 2:3 is not supported by flux-1-1. This model takes --aspect-ratio instead.\n')
+  assert.equal(ctx.provider.generateCalls.length, 0)
+})
+
+test('/image rejects an invalid --size value before any generation', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+
+  await chatCommands['/image']({ ...ctx, input: '/image --size wide a cat', args: '--size wide a cat' })
+
+  assert.equal(consoleSpy.error(0), '\nError: --size must be in the form WxH (e.g. 848x1272) or W:H (e.g. 16:9).\n')
+  assert.equal(ctx.provider.generateCalls.length, 0)
+})
+
+test('/image --size without a value errors', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+
+  await chatCommands['/image']({ ...ctx, input: '/image --size --format png a cat', args: '--size --format png a cat' })
+
+  assert.equal(consoleSpy.error(0), 'Error: --size expects a value like 848x1272.\n')
+  assert.equal(ctx.provider.generateCalls.length, 0)
 })
