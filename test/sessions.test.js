@@ -375,6 +375,7 @@ test('buildSessionPayload returns the full save object shape', () => {
     'budget',
     'contextLength',
     'createdAt',
+    'isImageModel',
     'messages',
     'model',
     'pricing',
@@ -401,6 +402,7 @@ test('buildSessionPayload returns the full save object shape', () => {
   assert.equal(payload.contextLength, 128000)
   assert.equal(payload.supportsReasoning, null)
   assert.equal(payload.webSearchSupported, null)
+  assert.equal(payload.isImageModel, false)
   assert.equal(payload.createdAt, '2026-01-01T00:00:00.000Z')
   assert.equal(payload.title, 'Hi')
   assert.deepEqual(payload.messages, messages)

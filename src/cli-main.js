@@ -10,7 +10,6 @@ import { exportCmd } from './commands/export-cmd.js'
 import { oneShotCmd } from './commands/one-shot.js'
 import { imageGenCmd } from './commands/image-gen.js'
 import { deleteCmd } from './commands/delete-cmd.js'
-import { chatStart } from './commands/chat-start.js'
 import { configViewCmd } from './commands/config-view.js'
 import { configSetCmd } from './commands/config-set.js'
 import { resolveSmoothSpeed, resolveTemperatureFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag } from './flags.js'
@@ -161,5 +160,9 @@ async function main(opts, promptArg) {
     process.exit(0)
   }
 
+  // chat-start pulls in the streaming renderer, markdown-it and the
+  // inquirer pickers; keep them out of the exit-mode and one-shot paths by
+  // loading it only for interactive chat.
+  const { chatStart } = await import('./commands/chat-start.js')
   await chatStart({ apiKey, opts, prefs, systemPrompt, providerType })
 }

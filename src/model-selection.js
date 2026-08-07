@@ -79,16 +79,23 @@ export async function selectImageEndpoint({ provider, apiKey, model, interactive
 }
 
 export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort, zdr = false }) {
-  const models = await provider.fetchModels(apiKey)
   const zdrActive = await zdrGate(provider, zdr)
-  let imageModels = null
-  if (!zdrActive && typeof provider.fetchImageModels === 'function') {
-    try {
-      imageModels = await provider.fetchImageModels(apiKey, { withPricing: true })
-    } catch (err) {
-      console.error(`Warning: could not load image models; showing text models only. (${formatError(err)})`)
-    }
-  }
+  // Model and image-model listings are independent: fetch them concurrently
+  // to cut startup latency. Image pricing is intentionally not requested
+  // here — the picker does not display it and the selected model's endpoint
+  // fetch already carries the price.
+  const [models, imageModels] = await Promise.all([
+    provider.fetchModels(apiKey),
+    (async () => {
+      if (zdrActive || typeof provider.fetchImageModels !== 'function') return null
+      try {
+        return await provider.fetchImageModels(apiKey)
+      } catch (err) {
+        console.error(`Warning: could not load image models; showing text models only. (${formatError(err)})`)
+        return null
+      }
+    })(),
+  ])
   const withImages = imageModels !== null
   const pickable = zdrActive ? models.filter((m) => m.zdr === true) : models
   if (zdrActive && pickable.length === 0) {

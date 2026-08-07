@@ -128,7 +128,7 @@ test('happy path runs a turn and saves the final session once', async (t) => {
   assert.equal(id, '2026-01-01T00-00-00')
   assert.deepEqual(
     Object.keys(payload).sort(),
-    ['budget', 'contextLength', 'createdAt', 'messages', 'model', 'pricing', 'providerName', 'providerType', 'reasoningEffort', 'supportsReasoning', 'temperature', 'title', 'updatedAt', 'webResults', 'webSearch', 'webSearchSupported']
+    ['budget', 'contextLength', 'createdAt', 'isImageModel', 'messages', 'model', 'pricing', 'providerName', 'providerType', 'reasoningEffort', 'supportsReasoning', 'temperature', 'title', 'updatedAt', 'webResults', 'webSearch', 'webSearchSupported']
   )
   assert.equal(payload.model, 'org/model')
   assert.equal(payload.providerName, 'Provider')

@@ -45,6 +45,7 @@ mock.module(new URL('../src/chat.js', import.meta.url).href, {
 
 let nonInteractiveSelection = null
 let findImageModelResult = null
+let findImageModelCalls = 0
 mock.module(new URL('../src/model-selection.js', import.meta.url).href, {
   namedExports: {
     selectModelAndEndpoint: async () => { throw new Error('unexpected picker') },
@@ -52,7 +53,10 @@ mock.module(new URL('../src/model-selection.js', import.meta.url).href, {
       if (nonInteractiveSelection === null) throw new Error('no selection mocked')
       return nonInteractiveSelection
     },
-    findImageModel: async () => findImageModelResult,
+    findImageModel: async () => {
+      findImageModelCalls++
+      return findImageModelResult
+    },
   },
 })
 
@@ -209,6 +213,47 @@ test('chatStart resume branch applies --temperature, --budget and --web-search o
   assert.equal(call.temperature, 0.5)
   assert.equal(call.opts.budget, 2)
   assert.equal(call.opts.webSearch, 'always')
+})
+
+test('chatStart resume skips the image catalog when the session marker says text', async (t) => {
+  resumeResult = resumeSession({ isImageModel: false })
+  findImageModelCalls = 0
+  findImageModelResult = null
+  withApiKey(t)
+  t.mock.method(console, 'log', () => {})
+
+  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x' }), prefs: {}, systemPrompt: null, providerType: 'openrouter' })
+
+  assert.equal(findImageModelCalls, 0)
+})
+
+test('chatStart resume routes marked image sessions without the catalog fetch', async (t) => {
+  resumeResult = resumeSession({ isImageModel: true })
+  findImageModelCalls = 0
+  findImageModelResult = null
+  imageSessionCalls.length = 0
+  withApiKey(t)
+  t.mock.method(console, 'log', () => {})
+
+  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x' }), prefs: {}, systemPrompt: null, providerType: 'venice' })
+
+  assert.equal(findImageModelCalls, 0)
+  assert.equal(imageSessionCalls.length, 1)
+  assert.equal(imageSessionCalls[0].imageModelId, 'test/model')
+})
+
+test('chatStart resume falls back to the catalog for legacy sessions without the marker', async (t) => {
+  resumeResult = resumeSession()
+  findImageModelCalls = 0
+  findImageModelResult = true
+  imageSessionCalls.length = 0
+  withApiKey(t)
+  t.mock.method(console, 'log', () => {})
+
+  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x' }), prefs: {}, systemPrompt: null, providerType: 'venice' })
+
+  assert.equal(findImageModelCalls, 1)
+  assert.equal(imageSessionCalls.length, 1)
 })
 
 test('chatStart exits 0 when the resumed session does not resolve', async (t) => {

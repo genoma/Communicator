@@ -7,6 +7,13 @@ import { mimeForExt, extForMime } from '../attachments.js'
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 const CACHE_HEADER = 'x-openrouter-cache-status'
+const CACHE_TTL_MS = 5 * 60 * 1000
+
+// Model/endpoint listings are stable within a process: cache them (same
+// pattern as openrouter-meta) so repeated selection, resume and listing
+// flows do not re-hit the API for the same data.
+const imageModelsCache = { fetchedAt: 0, models: null }
+const imageEndpointsCache = new Map()
 
 export const meta = {
   name: 'openrouter',
@@ -38,12 +45,16 @@ export function normalizePricing(raw) {
 }
 
 export async function fetchModels(apiKey) {
-  const res = await fetchWithRetry(`${OPENROUTER_BASE}/models`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  }, { errorResponse: handleHttpError })
+  // The ZDR index is independent of the models response; fetching them
+  // concurrently saves one round trip of startup latency.
+  const [res, zdr] = await Promise.all([
+    fetchWithRetry(`${OPENROUTER_BASE}/models`, {
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+    }, { errorResponse: handleHttpError }),
+    getZdrIndex(),
+  ])
 
   const { data } = await res.json()
-  const zdr = await getZdrIndex()
   return data.map((m) => {
     const r = m.reasoning
     const aliasTarget = m.alias_target?.slug || null
@@ -116,17 +127,21 @@ function imagePricingFromEntries(entries) {
 }
 
 export async function fetchImageModelEndpoints(apiKey, modelId) {
+  const cached = imageEndpointsCache.get(modelId)
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.endpoints
   const res = await fetchWithRetry(`${OPENROUTER_BASE}/images/models/${modelId}/endpoints`, {
     headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
   }, { errorResponse: handleHttpError })
   const parsed = await res.json()
   const endpoints = Array.isArray(parsed.data) ? parsed.data : parsed.endpoints || parsed.data?.endpoints || []
-  return endpoints.map((ep) => ({
+  const mapped = endpoints.map((ep) => ({
     providerName: ep.provider_name,
     slug: ep.provider_slug || null,
     tag: ep.provider_tag || null,
     pricing: imagePricingFromEntries(ep.pricing || []),
   }))
+  imageEndpointsCache.set(modelId, { fetchedAt: Date.now(), endpoints: mapped })
+  return mapped
 }
 
 async function fetchImageModelPricing(apiKey, modelId) {
@@ -142,22 +157,48 @@ async function fetchImageModelPricing(apiKey, modelId) {
 }
 
 export async function fetchImageModels(apiKey, { withPricing = false } = {}) {
-  const res = await fetchWithRetry(`${OPENROUTER_BASE}/images/models`, {
-    headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-  }, { errorResponse: handleHttpError })
-  const { data } = await res.json()
-  const models = (data || []).map((m) => ({
-    id: m.id,
-    name: m.name,
-    provider: m.id.split('/')[0],
-    description: m.description || null,
-    privacy: null,
-    pricing: null,
-    constraints: imageModelConstraints(m),
-    offline: false,
-  }))
+  let models = imageModelsCache.models
+  if (!models || Date.now() - imageModelsCache.fetchedAt >= CACHE_TTL_MS) {
+    const res = await fetchWithRetry(`${OPENROUTER_BASE}/images/models`, {
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+    }, { errorResponse: handleHttpError })
+    const { data } = await res.json()
+    models = (data || []).map((m) => ({
+      id: m.id,
+      name: m.name,
+      provider: m.id.split('/')[0],
+      description: m.description || null,
+      privacy: null,
+      pricing: null,
+      constraints: imageModelConstraints(m),
+      offline: false,
+    }))
+    imageModelsCache.fetchedAt = Date.now()
+    imageModelsCache.models = models
+  }
   if (!withPricing) return models
-  return Promise.all(models.map(async (m) => ({ ...m, pricing: await fetchImageModelPricing(apiKey, m.id) })))
+  // The pricing fan-out (one endpoints request per model) is capped so a
+  // large catalog cannot burst the API; only --list-image-models uses it.
+  return mapWithConcurrency(models, 8, async (m) => ({ ...m, pricing: await fetchImageModelPricing(apiKey, m.id) }))
+}
+
+export function resetImageModelCaches() {
+  imageModelsCache.fetchedAt = 0
+  imageModelsCache.models = null
+  imageEndpointsCache.clear()
+}
+
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length)
+  let next = 0
+  async function worker() {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await fn(items[i], i)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
+  return results
 }
 
 export async function generateImage({ apiKey, model, prompt, format, variants = 1, aspectRatio, resolution, quality, seed, width, height, provider, signal, timeoutMs = IMAGE_GEN_TIMEOUT_MS }) {
@@ -231,7 +272,9 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   let res = await request()
   let { data } = await res.json()
 
-  if (!data?.endpoints?.length && modelId.startsWith('~') && queryId === modelId) {
+  if (!data?.endpoints?.length && modelId.startsWith('~') && queryId === modelId && !allModels?.length) {
+    // The alias target was not resolvable from the supplied model list (the
+    // caller did not pass one); only then is a fresh listing worth fetching.
     const models = await fetchModels(apiKey)
     const aliasTarget = models.find((m) => m.id === modelId)?.aliasTarget
     if (aliasTarget && aliasTarget !== queryId) {

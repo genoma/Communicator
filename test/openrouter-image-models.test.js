@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { ApiError } from '../src/errors.js'
-import { fetchImageModels, generateImage } from '../src/providers/openrouter.js'
+import { fetchImageModels, resetImageModelCaches, generateImage } from '../src/providers/openrouter.js'
 
 function jsonResponse(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
@@ -32,6 +32,7 @@ const NO_PARAM_MODEL = {
 }
 
 test('fetchImageModels normalizes typed descriptors into constraints', async (t) => {
+  resetImageModelCaches()
   t.mock.method(globalThis, 'fetch', async (url) => {
     assert.ok(String(url).endsWith('/images/models'), String(url))
     return jsonResponse({ data: [IMAGE_MODEL, NO_PARAM_MODEL] })
@@ -61,6 +62,7 @@ test('fetchImageModels normalizes typed descriptors into constraints', async (t)
 })
 
 test('fetchImageModels does not fetch per-model pricing by default', async (t) => {
+  resetImageModelCaches()
   const calls = []
   t.mock.method(globalThis, 'fetch', async (url) => {
     calls.push(String(url))
@@ -74,6 +76,7 @@ test('fetchImageModels does not fetch per-model pricing by default', async (t) =
 })
 
 test('fetchImageModels with pricing fetches endpoints and takes the minimum', async (t) => {
+  resetImageModelCaches()
   const calls = []
   t.mock.method(globalThis, 'fetch', async (url) => {
     calls.push(String(url))
@@ -98,6 +101,7 @@ test('fetchImageModels with pricing fetches endpoints and takes the minimum', as
 })
 
 test('fetchImageModels pricing falls back to the variant-tier minimum when no flat entry exists', async (t) => {
+  resetImageModelCaches()
   t.mock.method(globalThis, 'fetch', async (url) => {
     if (String(url).includes('/endpoints')) {
       return jsonResponse({
@@ -114,6 +118,7 @@ test('fetchImageModels pricing falls back to the variant-tier minimum when no fl
 })
 
 test('fetchImageModels pricing captures token-billed output_image entries', async (t) => {
+  resetImageModelCaches()
   t.mock.method(globalThis, 'fetch', async (url) => {
     if (String(url).includes('/endpoints')) {
       return jsonResponse({
@@ -130,6 +135,7 @@ test('fetchImageModels pricing captures token-billed output_image entries', asyn
 })
 
 test('fetchImageModels pricing falls back to nulls when no output_image entries exist', async (t) => {
+  resetImageModelCaches()
   t.mock.method(globalThis, 'fetch', async (url) => {
     if (String(url).includes('/endpoints')) {
       return jsonResponse({ endpoints: [{ name: 'A', pricing: [{ billable: 'input_tokens', unit: 'token', cost_usd: 0.0001 }] }] })
@@ -143,6 +149,7 @@ test('fetchImageModels pricing falls back to nulls when no output_image entries 
 })
 
 test('fetchImageModelEndpoints maps provider names, tags and per-endpoint pricing', async (t) => {
+  resetImageModelCaches()
   t.mock.method(globalThis, 'fetch', async (url) => {
     assert.ok(String(url).endsWith('/images/models/qwen/qwen-image-3/endpoints'), String(url))
     return jsonResponse({
@@ -161,6 +168,28 @@ test('fetchImageModelEndpoints maps provider names, tags and per-endpoint pricin
     { providerName: 'Alibaba Cloud Int.', slug: 'alibaba', tag: 'alibaba', pricing: { perImage: 0.03, perToken: null, byResolution: null, byQuality: null } },
     { providerName: 'Another Host', slug: 'another', tag: 'another', pricing: { perImage: null, perToken: 0.00004, byResolution: null, byQuality: null } },
   ])
+})
+
+test('fetchImageModels and fetchImageModelEndpoints dedupe within the cache TTL', async (t) => {
+  resetImageModelCaches()
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    calls++
+    if (String(url).includes('/endpoints')) {
+      return jsonResponse({ endpoints: [{ name: 'A', pricing: [{ billable: 'output_image', unit: 'image', cost_usd: 0.02 }] }] })
+    }
+    return jsonResponse({ data: [IMAGE_MODEL] })
+  })
+
+  const { fetchImageModelEndpoints } = await import('../src/providers/openrouter.js')
+  await fetchImageModels('key')
+  await fetchImageModels('key')
+  const first = await fetchImageModelEndpoints('key', IMAGE_MODEL.id)
+  const second = await fetchImageModelEndpoints('key', IMAGE_MODEL.id)
+
+  assert.equal(calls, 2)
+  assert.deepEqual(first, second)
+  assert.equal(first[0].pricing.perImage, 0.02)
 })
 
 test('generateImage routes through the chosen provider when one is given', async (t) => {
@@ -203,6 +232,7 @@ test('generateImage throws when an image has neither base64 data nor a usable UR
 })
 
 test('fetchImageModels maps 400 bodies through handleHttpError with the message', async (t) => {
+  resetImageModelCaches()
   t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ error: { message: 'Invalid model' } }), { status: 400 }))
 
   await assert.rejects(

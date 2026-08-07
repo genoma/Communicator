@@ -100,7 +100,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
   } else if (!resolved && (selectImage || (stdout.isTTY === true && process.stdin.isTTY === true))) {
     // The picker needs a TTY on both streams: with piped stdin the prompt
     // would run against EOF and fail/hang instead of falling through.
-    const models = await provider.fetchImageModels(apiKey, { withPricing: true })
+    const models = await provider.fetchImageModels(apiKey)
     const chosen = await picker(models, prefs.lastImageModel)
     resolved = models.find((m) => m.id === chosen?.id) || null
     modelId = chosen?.id || null
@@ -307,6 +307,7 @@ export function buildImageSessionPayload({ messages, modelId, createdAt, provide
     webResults: null,
     pricing,
     contextLength: null,
+    isImageModel: true,
     createdAt,
   })
 }

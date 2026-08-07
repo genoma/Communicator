@@ -67,7 +67,7 @@ export function formatSessionTime(value, { utc = false } = {}) {
   return time
 }
 
-export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, budget, webSearch, webResults, pricing, contextLength, supportsReasoning, webSearchSupported, createdAt }) {
+export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, budget, webSearch, webResults, pricing, contextLength, supportsReasoning, webSearchSupported, isImageModel = false, createdAt }) {
   return {
     model: modelId,
     providerName: endpointProviderName,
@@ -81,6 +81,7 @@ export function buildSessionPayload({ messages, modelId, endpointProviderName, p
     contextLength: contextLength ?? null,
     supportsReasoning: supportsReasoning ?? null,
     webSearchSupported: webSearchSupported ?? null,
+    isImageModel,
     createdAt: createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     title: generateTitle(messages),

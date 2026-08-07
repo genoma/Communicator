@@ -22,7 +22,14 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
 
     const provider = getProvider(result.providerType || providerType)
     const apiKey = getApiKey(result.providerType || providerType)
-    if (await findImageModel(provider, apiKey, result.modelId)) {
+    // New sessions carry an isImageModel marker, so the resume path only
+    // consults the image-model catalog for legacy sessions written before
+    // the marker existed.
+    let isImageSession = result.isImageModel === true
+    if (result.isImageModel === undefined) {
+      isImageSession = !!(await findImageModel(provider, apiKey, result.modelId))
+    }
+    if (isImageSession) {
       return imageSessionContext({
         provider,
         apiKey,
