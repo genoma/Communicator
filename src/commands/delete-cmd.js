@@ -1,5 +1,5 @@
 import { confirm } from '@inquirer/prompts'
-import { ensureSessionsDir, resolveSessionsInteractive, deleteSession } from '../sessions.js'
+import { ensureSessionsDir, resolveSessionsInteractive, deleteSession, listSessions, formatSessionItem } from '../sessions.js'
 
 export async function deleteCmd(partialId) {
   const dir = await ensureSessionsDir()
@@ -9,7 +9,15 @@ export async function deleteCmd(partialId) {
     return
   }
 
-  const message = matchedIds.length === 1 ? `Delete session ${matchedIds[0]}?` : `Delete ${matchedIds.length} sessions?`
+  const allSessions = await listSessions(dir)
+  const matched = matchedIds.map((id) => allSessions.find((s) => s.id === id)).filter(Boolean)
+  for (const s of matched) {
+    const { time, model, preview } = formatSessionItem(s)
+    const previewText = preview ? `  •  "${preview}"` : ''
+    console.log(`  ${time}  ${model}${previewText}`)
+  }
+
+  const message = matchedIds.length === 1 ? 'Delete this session?' : `Delete these ${matchedIds.length} sessions?`
   const confirmed = await confirm({ message, default: false })
   if (!confirmed) {
     console.log('Deletion cancelled.')

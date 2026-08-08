@@ -46,7 +46,7 @@ test('selectSession returns all choices without an input filter', async () => {
     assert.equal(all.length, 2)
     assert.match(all[0].name, /2026-07-30 19:15:22/)
     assert.equal(all[0].value, '2026-07-30T19-15-22')
-    assert.match(all[0].description, /"Write a Python script" {2}• {2}OpenAI/)
+    assert.match(all[0].description, /12 messages {2}• {2}OpenAI/)
     return all[0].value
   }
 
@@ -82,7 +82,7 @@ test('selectSessions builds checkbox choices matching selectSession and returns 
     assert.equal(opts.choices.length, 2)
     assert.match(opts.choices[0].name, /2026-07-30 19:15:22/)
     assert.equal(opts.choices[0].value, '2026-07-30T19-15-22')
-    assert.match(opts.choices[0].description, /"Write a Python script" {2}• {2}OpenAI/)
+    assert.match(opts.choices[0].description, /12 messages {2}• {2}OpenAI/)
     return [opts.choices[0].value, opts.choices[1].value]
   }
 

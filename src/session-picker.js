@@ -5,12 +5,14 @@ import { sanitizeAnsi } from './ui/hyperlink.js'
 
 export async function selectSession(sessions, { message = 'Select a session to resume' } = {}) {
   const choices = sessions.map((s) => {
-    const { line } = formatSessionItem(s)
+    const { time, model, preview } = formatSessionItem(s)
+    const previewText = preview ? `  "${preview.slice(0, 60)}${preview.length > 60 ? '...' : ''}"` : ''
+    const desc = sanitizeAnsi(`${s.messageCount} messages  •  ${s.providerName}${s.providerType && s.providerType !== 'openrouter' ? ` (${s.providerType})` : ''}`)
 
     return {
-      name: sanitizeAnsi(line),
+      name: sanitizeAnsi(`${time}  ${model}${previewText}`),
       value: s.id,
-      description: sanitizeAnsi(`${s.title ? `"${s.title}"  •  ` : ''}${s.providerName}${s.providerType && s.providerType !== 'openrouter' ? ` (${s.providerType})` : ''}  •  ${s.messageCount} messages`),
+      description: desc,
     }
   })
 
@@ -27,12 +29,14 @@ export async function selectSession(sessions, { message = 'Select a session to r
 
 export async function selectSessions(sessions, { message = 'Select sessions' } = {}) {
   const choices = sessions.map((s) => {
-    const { line } = formatSessionItem(s)
+    const { time, model, preview } = formatSessionItem(s)
+    const previewText = preview ? `  "${preview.slice(0, 60)}${preview.length > 60 ? '...' : ''}"` : ''
+    const desc = sanitizeAnsi(`${s.messageCount} messages  •  ${s.providerName}${s.providerType && s.providerType !== 'openrouter' ? ` (${s.providerType})` : ''}`)
 
     return {
-      name: sanitizeAnsi(line),
+      name: sanitizeAnsi(`${time}  ${model}${previewText}`),
       value: s.id,
-      description: sanitizeAnsi(`${s.title ? `"${s.title}"  •  ` : ''}${s.providerName}${s.providerType && s.providerType !== 'openrouter' ? ` (${s.providerType})` : ''}  •  ${s.messageCount} messages`),
+      description: desc,
     }
   })
 
