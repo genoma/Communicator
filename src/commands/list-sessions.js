@@ -9,6 +9,7 @@ export async function listSessionsCmd() {
   }
   console.log(`${sessions.length} saved session(s):\n`)
   for (const s of sessions) {
-    console.log(formatSessionItem(s).line)
+    console.log(`  ID: ${s.id}`)
+    console.log(`     ${formatSessionItem(s).line}`)
   }
 }

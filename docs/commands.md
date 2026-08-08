@@ -22,9 +22,9 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
 |       | `--list-endpoints`    | `[model]`| List providers for a model (pricing, uptime, ZDR support, privacy policy link). No arg = picker, partial ID = fuzzy match |
 |       | `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, title) and exit                |
-| `-r`  | `--resume`            | `[id]`   | Resume a saved session. No arg = picker, partial ID = prefix match                   |
-| `-x`  | `--export`            | `[id]`   | Export saved session(s) to markdown. No arg = multi-select checkbox; partial ID = prefix match, unique prefix exports directly |
-|       | `--delete`            | `[id]`   | Delete saved session(s) (asks for confirmation). No arg = multi-select checkbox; partial ID = prefix match, unique prefix deletes directly |
+| `-r`  | `--resume`            | `[partial-id]` | Resume a saved session. No arg = picker, partial ID = prefix match                   |
+| `-x`  | `--export`            | `[partial-id]` | Export saved session(s) to markdown. No arg = multi-select checkbox; partial ID = prefix match, unique prefix exports directly |
+|       | `--delete`            | `[partial-id]` | Delete saved session(s) (asks for confirmation). No arg = multi-select checkbox; partial ID = prefix match, unique prefix deletes directly |
 |       | `--delete-all-sessions` | `[y/N]` | Delete ALL saved sessions. Pass `y` (or `yes`) to confirm; bare flag or anything else does nothing. Asks "Are you sure?" again on a terminal |
 |       | `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences). Bare use saves it as the default (requires a TTY and no prompt). With `--image`, generated images are also copied there |
 |       | `--config`            | `[path]` | Custom path for the preferences JSON file (default: `~/.communicator.json`). Bare flag prints the current config |

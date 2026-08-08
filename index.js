@@ -44,7 +44,7 @@ program
   .option('--attach <path>', 'attach a file (repeatable; images/pdf/xlsx/txt/...)', collectFlag, [])
   .option('--no-smooth-streaming', 'disable smooth streaming (default: on in interactive sessions)')
   .option('--smooth-speed <level|cps>', 'smooth streaming speed: slow, normal, fast, or chars per second')
-  .option('--delete [session-id]', 'delete saved sessions (with confirmation, select one or more)')
+  .option('--delete [partial-id]', 'delete saved sessions (with confirmation, select one or more)')
   .option('--delete-all-sessions [y/N]', 'delete ALL saved sessions (pass y to confirm; default: no)')
 
 program.parse()
