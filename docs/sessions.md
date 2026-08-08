@@ -101,14 +101,15 @@ communicator --export 2026-07-30T19-11-45
 communicator --export --output-dir ~/Documents/CommunicatorExports
 ```
 
-The exported markdown file is saved as `session-{id}.md` in the current working
-directory by default. Use `--output-dir` to set a custom directory — once set,
-it's saved in your preferences and used for all future exports until you
-override it again.
+Each session is exported into its own folder: `session-{id}/` in the current
+working directory by default, containing the conversation as `session-{id}.md`.
+Use `--output-dir` to set a custom base directory — once set, it's saved in
+your preferences and used for all future exports until you override it again.
 
 - **Header** — timestamp, title, model, provider, message count, reasoning effort, and accumulated cost
 - **User messages** — blockquoted under a `## You` heading
 - **Assistant responses** — reasoning shown under `### thinking`, final answer under `### Answer`
+- **Attachments** — user-attached images/pdf/office files and assistant-produced artifacts are materialized as real files in `session-{id}/attachments/` and referenced from the markdown by portable relative links (`> **Attachment:**` lines whose `attachments/image.png`-style target resolves to the written file). Filenames are sanitized and deduplicated within the session. Remote artifact URLs (a generation-time download failure) and text-file attachments stay as they are — clickable links / inline text
 - **Sources** — when web search was used, a `**Sources:**` markdown list follows each answer, with inline `^n^` citations converted to `[n](url)` links
 - **Cost** — calculated from token usage and provider pricing (shows "N/A" if pricing is unavailable)
 

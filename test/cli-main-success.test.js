@@ -187,7 +187,7 @@ test('--export with a unique partial id writes the markdown file and exits 0', a
   const { out } = await runAndExit(t, { export: '2026-01-02', outputDir: outDir }, undefined, 0)
   assert.match(out.join('\n'), /Exported to/)
 
-  const md = await readFile(join(outDir, 'session-2026-01-02T00-00-00.md'), 'utf-8')
+  const md = await readFile(join(outDir, 'session-2026-01-02T00-00-00', 'session-2026-01-02T00-00-00.md'), 'utf-8')
   assert.match(md, /# Chat Session — 2026-01-01 00:00:00 UTC/)
   assert.match(md, /First question/)
 })

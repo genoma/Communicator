@@ -15,7 +15,7 @@ export function attachmentDirFor(sessionsDir, sessionId) {
   return join(sessionsDir, 'attachments', sessionId)
 }
 
-function dataUrlInfo(value) {
+export function dataUrlInfo(value) {
   const match = /^data:([^;,]+);base64,(.*)$/s.exec(value)
   if (!match) return null
   return { mime: match[1], base64: match[2] }

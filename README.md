@@ -11,7 +11,7 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Temperature control** — `--temperature <0-2>` flag, `/temp` command, per-model default persisted in preferences
 - **Web search** — three modes per model (`off`, `auto` = model decides, `always` = force a search) via `--web-search`/`/web-search`, with a result-count knob on OpenRouter. See [docs/web-search.md](docs/web-search.md)
 - **File & image attachments** — attach images, PDFs, office files, and text/code files with `/attach <path>...` (interactive) or `--attach <path>` (one-shot). See [docs/attachments.md](docs/attachments.md)
-- **Model-produced images & files** — artifacts from image-output models are downloaded into the session, saved with the conversation, replayed on `--resume`, and listed in `--export`
+- **Model-produced images & files** — artifacts from image-output models are downloaded into the session, saved with the conversation, replayed on `--resume`, and exported as files under the session's `attachments/` folder with `--export`
 - **Image generation** — generate images on **both providers** with `--image`, `/image`, or by picking an image model in the unified picker; per-provider sizing defaults, Venice watermark and safe mode controls included. See [docs/images.md](docs/images.md)
 - **One-shot mode** — pass a prompt argument or pipe stdin for a single non-interactive answer. TTY-aware output: styled with a usage footer on a terminal, plain answer text only when piped
 - **Per-session budget caps** — `--budget <usd>` or `/budget <usd>` limits accumulated session cost; warns at 80% used and refuses turns at 100%
@@ -24,7 +24,7 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/` with an auto-generated title, on quit, model switch, new session, or `Ctrl+C` — the last exchange is never lost
 - **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, reasoning effort, temperature, and budget
 - **Session deletion** — remove saved sessions with `--delete` (with confirmation), or wipe everything with `--delete-all-sessions y` (default no)
-- **Markdown export** — export any saved session as a clean markdown file with `--export`, with separate thinking sections and cost summary
+- **Markdown export** — export any saved session with `--export` into a per-session folder (`session-{id}/`), with separate thinking sections, cost summary, and attachments materialized as linked files
 - **Session persistence** — last model, provider, and per-model reasoning effort and temperature are saved to `~/.communicator.json` and restored on next launch
 - **CLI flags to skip pickers** — `-m` skips *all* pickers for fully non-interactive use; `--reasoning-effort` skips only the reasoning picker
 - **Lightweight** — five runtime dependencies, pure Node.js ESM

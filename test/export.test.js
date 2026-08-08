@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { formatMarkdown, exportSession } from '../src/export.js'
@@ -183,27 +183,211 @@ test('emits no Sources block and keeps citations literal without sources', () =>
   assert.match(md, /Plain \^1\^/)
 })
 
-test('exportSession writes the markdown file and overwrites it', async (t) => {
+test('exportSession writes the markdown file into a session folder and overwrites it', async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
-  const file = join(dir, 'session.md')
+  const id = '2026-07-30T19-11-45'
+  const file = join(dir, `session-${id}`, `session-${id}.md`)
 
-  await exportSession(session(), file)
+  const folder = await exportSession(session(), dir, id)
+  assert.equal(folder, join(dir, `session-${id}`))
+
   const first = await readFile(file, 'utf-8')
   assert.match(first, /^# Chat Session/)
 
-  await exportSession(session({ model: 'other/model' }), file)
+  await exportSession(session({ model: 'other/model' }), dir, id)
   const second = await readFile(file, 'utf-8')
   assert.match(second, /\*\*Model:\*\* `other\/model`/)
 })
 
-test('exportSession rejects when the target path is not writable', async (t) => {
+test('exportSession rejects when the target directory is not writable', async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
+  const blocker = join(dir, 'blocker')
+  await writeFile(blocker, 'not a directory')
   await assert.rejects(
-    exportSession(session(), join(dir, 'missing', 'out.md')),
-    { code: 'ENOENT' }
+    exportSession(session(), blocker, '2026-07-30T19-11-45'),
+    { code: 'ENOTDIR' }
   )
+})
+
+test('materializes user attachment parts as files with relative links', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const png = Buffer.from('png-bytes')
+  const pdf = Buffer.from('pdf-bytes')
+  const data = session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Look at this' },
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${png.toString('base64')}` } },
+          { type: 'file', file: { filename: 'report.pdf', file_data: `data:application/pdf;base64,${pdf.toString('base64')}` } },
+        ],
+      },
+      { role: 'assistant', content: 'I see it.' },
+    ],
+  })
+  const folder = await exportSession(data, dir, '2026-07-30T19-11-45')
+
+  assert.deepEqual(await readFile(join(folder, 'attachments', 'image.png')), png)
+  assert.deepEqual(await readFile(join(folder, 'attachments', 'report.pdf')), pdf)
+
+  const md = await readFile(join(folder, 'session-2026-07-30T19-11-45.md'), 'utf-8')
+  assert.match(md, /> \*\*Attachment:\*\* \[image\.png\]\(attachments\/image\.png\)/)
+  assert.match(md, /> \*\*Attachment:\*\* \[report\.pdf\]\(attachments\/report\.pdf\)/)
+})
+
+test('materializes assistant-produced image and file parts', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const png = Buffer.from('gen-image-bytes')
+  const pdf = Buffer.from('gen-pdf-bytes')
+  const data = session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'Make an image and a pdf' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Done.' },
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${png.toString('base64')}` } },
+          { type: 'file', file: { filename: 'out.pdf', file_data: `data:application/pdf;base64,${pdf.toString('base64')}` } },
+        ],
+      },
+    ],
+  })
+  const folder = await exportSession(data, dir, '2026-07-30T19-11-45')
+
+  assert.deepEqual(await readFile(join(folder, 'attachments', 'image.png')), png)
+  assert.deepEqual(await readFile(join(folder, 'attachments', 'out.pdf')), pdf)
+
+  const md = await readFile(join(folder, 'session-2026-07-30T19-11-45.md'), 'utf-8')
+  assert.match(md, /> \*\*Image:\*\* \[image\.png\]\(attachments\/image\.png\)/)
+  assert.match(md, /> \*\*File:\*\* \[out\.pdf\]\(attachments\/out\.pdf\)/)
+})
+
+test('dedupes attachment filenames within a session with distinct files', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const first = Buffer.from('first-png')
+  const second = Buffer.from('second-png')
+  const data = session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'two images' },
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${first.toString('base64')}` } },
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${second.toString('base64')}` } },
+        ],
+      },
+      { role: 'assistant', content: 'ok' },
+    ],
+  })
+  const folder = await exportSession(data, dir, '2026-07-30T19-11-45')
+
+  assert.deepEqual(await readFile(join(folder, 'attachments', 'image.png')), first)
+  assert.deepEqual(await readFile(join(folder, 'attachments', 'image-2.png')), second)
+
+  const md = await readFile(join(folder, 'session-2026-07-30T19-11-45.md'), 'utf-8')
+  assert.match(md, /\[image\.png\]\(attachments\/image\.png\)/)
+  assert.match(md, /\[image\.png\]\(attachments\/image-2\.png\)/)
+})
+
+test('leaves remote http(s) parts as absolute links and writes no file', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const data = session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'Make an image' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Done.' },
+          { type: 'image_url', image_url: { url: 'https://img.example/photo.png' } },
+        ],
+      },
+    ],
+  })
+  const folder = await exportSession(data, dir, '2026-07-30T19-11-45')
+
+  const md = await readFile(join(folder, 'session-2026-07-30T19-11-45.md'), 'utf-8')
+  assert.match(md, /> \*\*Image:\*\* \[photo\.png\]\(https:\/\/img\.example\/photo\.png\)/)
+  assert.deepEqual(await readdir(folder), ['session-2026-07-30T19-11-45.md'])
+})
+
+test('keeps text-file attachments inline and writes no file', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const data = session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Read this file' },
+          { type: 'text', text: 'some inline file contents' },
+        ],
+      },
+      { role: 'assistant', content: 'ok' },
+    ],
+  })
+  const folder = await exportSession(data, dir, '2026-07-30T19-11-45')
+
+  const md = await readFile(join(folder, 'session-2026-07-30T19-11-45.md'), 'utf-8')
+  assert.ok(md.includes('Read this file'))
+  assert.ok(md.includes('some inline file contents'))
+  assert.deepEqual(await readdir(folder), ['session-2026-07-30T19-11-45.md'])
+})
+
+test('warns and renders the backtick fallback for corrupt data URLs', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const warnings = []
+  t.mock.method(console, 'warn', (msg) => warnings.push(String(msg)))
+  const data = session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'hi' },
+          { type: 'image_url', image_url: { url: 'data:image/png,not-base64-payload' } },
+        ],
+      },
+      { role: 'assistant', content: 'ok' },
+    ],
+  })
+  const folder = await exportSession(data, dir, '2026-07-30T19-11-45')
+
+  assert.equal(warnings.length, 1)
+  const md = await readFile(join(folder, 'session-2026-07-30T19-11-45.md'), 'utf-8')
+  assert.match(md, /> \*\*Attachment:\*\* `image\.png`/)
+  assert.deepEqual(await readdir(folder), ['session-2026-07-30T19-11-45.md'])
+})
+
+test('formatMarkdown renders materialized attachment links via the callback', () => {
+  const md = formatMarkdown(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'hi' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
+          { type: 'file', file: { filename: 'doc.pdf', file_data: 'data:application/pdf;base64,BBBB' } },
+        ],
+      },
+      { role: 'assistant', content: 'ok' },
+    ],
+  }), () => 'attachments/x.png')
+  assert.match(md, /> \*\*Attachment:\*\* \[image\.png\]\(attachments\/x\.png\)/)
+  assert.match(md, /> \*\*Attachment:\*\* \[doc\.pdf\]\(attachments\/x\.png\)/)
 })
 
 test('escapes raw HTML in user and assistant content', () => {

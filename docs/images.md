@@ -64,7 +64,7 @@ Prints each image model's name, id, per-image price, and its sizing options (`[a
 
 ## In chat: `/image <description>`
 
-Inside any session, `/image a red cat` runs the generation and appends the result to the current session as an assistant message — visible on `--resume` and included in `--export`. Bare `/image` prints a usage hint. Image parts are re-sent to the chat model on later turns of the same session, like any other produced artifact.
+Inside any session, `/image a red cat` runs the generation and appends the result to the current session as an assistant message — visible on `--resume` and exported as a file under the session's `attachments/` folder with `--export`. Bare `/image` prints a usage hint. Image parts are re-sent to the chat model on later turns of the same session, like any other produced artifact.
 
 `/image` accepts leading options that are stripped from the appended description:
 

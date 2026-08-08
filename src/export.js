@@ -1,7 +1,9 @@
-import { writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { formatCost } from './constants.js'
 import { computeTurnCost } from './tracker.js'
-import { contentText, contentAttachments } from './attachments.js'
+import { contentText, partLabel, partUrl } from './attachments.js'
+import { dataUrlInfo } from './attachment-store.js'
 import { formatSessionTime } from './sessions.js'
 
 function calculateCost(pricing, messages) {
@@ -35,6 +37,45 @@ function safeLink(url) {
   return typeof url === 'string' && SAFE_LINK_RE.test(url) ? url : null
 }
 
+function attachmentParts(content) {
+  if (!Array.isArray(content)) return []
+  return content.filter((p) => p.type === 'image_url' || p.type === 'file')
+}
+
+// Attachment names become file paths, so separators and control chars are
+// stripped and degenerate names fall back to a fixed label.
+function sanitizeFilename(name) {
+  const cleaned = String(name ?? '')
+    .replace(/[\\/]/g, '')
+    .split('')
+    .filter((ch) => {
+      const code = ch.charCodeAt(0)
+      return code >= 32 && code !== 127
+    })
+    .join('')
+    .trim()
+  if (!cleaned || cleaned === '.' || cleaned === '..') return 'attachment'
+  return cleaned
+}
+
+function uniqueName(name, used) {
+  if (!used.has(name)) {
+    used.add(name)
+    return name
+  }
+  const dot = name.lastIndexOf('.')
+  const ext = dot === -1 ? '' : name.slice(dot + 1)
+  const stem = dot === -1 ? name : name.slice(0, dot)
+  let n = 2
+  let candidate = dot === -1 ? `${stem}-2` : `${stem}-2.${ext}`
+  while (used.has(candidate)) {
+    n++
+    candidate = dot === -1 ? `${stem}-${n}` : `${stem}-${n}.${ext}`
+  }
+  used.add(candidate)
+  return candidate
+}
+
 function citationLinks(text, sources) {
   const raw = String(text ?? '')
   if (!sources || sources.length === 0) return raw
@@ -66,7 +107,7 @@ function sourcesList(sources) {
   return lines.join('\n')
 }
 
-export function formatMarkdown(sessionData) {
+export function formatMarkdown(sessionData, attachmentLink = null) {
   const { model, providerName, reasoningEffort, pricing, createdAt, messages, title } = sessionData
   const visibleMessages = (messages || []).filter((m) => m.role !== 'system')
   const cost = calculateCost(pricing, messages)
@@ -87,8 +128,11 @@ export function formatMarkdown(sessionData) {
     if (msg.role === 'user') {
       md += '## You\n\n'
       md += `> ${escapeHtml(contentText(msg.content))}\n\n`
-      for (const att of contentAttachments(msg.content)) {
-        md += `> **Attachment:** \`${escapeHtml(att.filename)}\`\n\n`
+      for (const part of attachmentParts(msg.content)) {
+        const link = attachmentLink?.(part)
+        md += link
+          ? `> **Attachment:** [${escapeHtml(partLabel(part))}](${link})\n\n`
+          : `> **Attachment:** \`${escapeHtml(partLabel(part))}\`\n\n`
       }
     } else if (msg.role === 'assistant') {
       md += '## Assistant\n\n'
@@ -98,11 +142,14 @@ export function formatMarkdown(sessionData) {
       }
       md += '### Answer\n\n'
       md += `${citationLinks(escapeHtml(contentText(msg.content)), msg.sources)}\n\n`
-      for (const att of contentAttachments(msg.content)) {
-        const kind = att.kind === 'image' ? 'Image' : 'File'
-        md += att.url
-          ? `> **${kind}:** [${escapeHtml(att.filename)}](${att.url})\n\n`
-          : `> **${kind}:** \`${escapeHtml(att.filename)}\`\n\n`
+      for (const part of attachmentParts(msg.content)) {
+        const kind = part.type === 'image_url' ? 'Image' : 'File'
+        const label = escapeHtml(partLabel(part))
+        const link = attachmentLink?.(part)
+        const url = safeLink(partUrl(part))
+        if (link) md += `> **${kind}:** [${label}](${link})\n\n`
+        else if (url) md += `> **${kind}:** [${label}](${url})\n\n`
+        else md += `> **${kind}:** \`${label}\`\n\n`
       }
       const list = sourcesList(msg.sources)
       if (list) md += `${list}\n\n`
@@ -113,8 +160,46 @@ export function formatMarkdown(sessionData) {
   return md.trimEnd() + '\n'
 }
 
-export async function exportSession(sessionData, outputPath) {
-  const markdown = formatMarkdown(sessionData)
-  await writeFile(outputPath, markdown)
-  return outputPath
+// Writes the session markdown plus every materializable attachment into
+// <outDir>/session-<id>/, returns the created folder path. Remote http(s)
+// parts stay clickable links; a decode/write failure warns and skips the part.
+export async function exportSession(sessionData, outDir, sessionId) {
+  const folder = join(outDir, `session-${sessionId}`)
+  const attachmentsDir = join(folder, 'attachments')
+  await mkdir(folder, { recursive: true })
+
+  const links = new Map()
+  const used = new Set()
+  let attachmentsReady = false
+
+  for (const msg of sessionData.messages || []) {
+    const content = msg?.content
+    if (!Array.isArray(content)) continue
+    for (const part of content) {
+      if (part?.type !== 'image_url' && part?.type !== 'file') continue
+      const url = partUrl(part)
+      if (typeof url !== 'string' || !url.startsWith('data:')) continue
+      const info = dataUrlInfo(url)
+      if (!info) {
+        console.warn(`Warning: could not decode attachment ${partLabel(part)}; skipped in export`)
+        continue
+      }
+      if (!attachmentsReady) {
+        await mkdir(attachmentsDir, { recursive: true })
+        attachmentsReady = true
+      }
+      const name = uniqueName(sanitizeFilename(partLabel(part)), used)
+      try {
+        await writeFile(join(attachmentsDir, name), Buffer.from(info.base64, 'base64'))
+      } catch (err) {
+        console.warn(`Warning: could not write attachment ${name}: ${err.message}`)
+        continue
+      }
+      links.set(part, `attachments/${name}`)
+    }
+  }
+
+  const markdown = formatMarkdown(sessionData, (part) => links.get(part) || null)
+  await writeFile(join(folder, `session-${sessionId}.md`), markdown)
+  return folder
 }
