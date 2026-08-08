@@ -34,6 +34,7 @@ const BASE_OPTS = {
   smoothStreaming: true,
   smoothSpeed: undefined,
   delete: undefined,
+  deleteAllSessions: undefined,
   attach: [],
 }
 
@@ -152,6 +153,41 @@ test('--delete conflicts with --resume', async (t) => {
 test('--delete conflicts with --export', async (t) => {
   const { err } = await runAndExit(t, { delete: true, export: true }, undefined, 1)
   assert.match(err[0], /Cannot use --delete with --resume or --export/)
+})
+
+test('--delete-all-sessions conflicts with --resume', async (t) => {
+  const { err } = await runAndExit(t, { deleteAllSessions: 'y', resume: true }, undefined, 1)
+  assert.match(err[0], /Cannot use --delete-all-sessions with --resume, --export or --delete/)
+})
+
+test('--delete-all-sessions conflicts with --export', async (t) => {
+  const { err } = await runAndExit(t, { deleteAllSessions: 'y', export: true }, undefined, 1)
+  assert.match(err[0], /Cannot use --delete-all-sessions with --resume, --export or --delete/)
+})
+
+test('--delete-all-sessions conflicts with --delete', async (t) => {
+  const { err } = await runAndExit(t, { deleteAllSessions: 'y', delete: true }, undefined, 1)
+  assert.match(err[0], /Cannot use --delete-all-sessions with --resume, --export or --delete/)
+})
+
+test('a prompt argument cannot be combined with --delete-all-sessions', async (t) => {
+  const { err } = await runAndExit(t, { deleteAllSessions: 'y' }, 'hello', 1)
+  assert.match(err[0], /Cannot combine a prompt argument with --delete-all-sessions/)
+})
+
+test('session flags cannot be combined with --delete-all-sessions', async (t) => {
+  const { err } = await runAndExit(t, { deleteAllSessions: 'y', webSearch: 'auto' }, undefined, 1)
+  assert.match(err[0], /cannot be combined with --delete-all-sessions/)
+})
+
+test('--output-dir cannot be combined with --delete-all-sessions', async (t) => {
+  const { err } = await runAndExit(t, { deleteAllSessions: 'y', outputDir: '/tmp' }, undefined, 1)
+  assert.match(err[0], /cannot be combined with --delete-all-sessions/)
+})
+
+test('--delete-all-sessions cannot be combined with --list-* flags', async (t) => {
+  const { err } = await runAndExit(t, { deleteAllSessions: 'y', listSessions: true }, undefined, 1)
+  assert.match(err[0], /cannot be combined with --list-\* flags/)
 })
 
 test('a prompt argument cannot be combined with --resume', async (t) => {

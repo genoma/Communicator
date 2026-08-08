@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readdir, readFile, stat, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { deleteSession, formatSessionItem, generateTitle, listSessions, saveSession, loadSession, generateSessionId, removeEmptySessionClaim, buildSessionPayload } from '../src/sessions.js'
+import { deleteSession, deleteAllSessions, formatSessionItem, generateTitle, listSessions, saveSession, loadSession, generateSessionId, removeEmptySessionClaim, buildSessionPayload } from '../src/sessions.js'
 import { CliError } from '../src/errors.js'
 
 async function tempDir(t) {
@@ -599,4 +599,55 @@ test('deleteSession removes the attachment blob directory alongside the JSON fil
 
   await assert.rejects(readFile(join(dir, '2026-01-01T00-00-00.json')))
   await assert.rejects(stat(join(dir, 'attachments', '2026-01-01T00-00-00')), { code: 'ENOENT' })
+})
+
+test('deleteAllSessions wipes every session file, sidecar, claims and stray json', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  await saveSession(dir, '2026-01-02T00-00-00', sessionData())
+  await saveSession(dir, '2026-01-03T00-00-00', sessionData())
+  await writeFile(join(dir, 'corrupt.json'), '{ not json')
+  await writeFile(join(dir, 'claim.json'), '')
+  await writeFile(join(dir, 'notes.txt'), 'not a session')
+
+  const count = await deleteAllSessions(dir)
+
+  assert.equal(count, 5)
+  await assert.rejects(readFile(join(dir, '.index.json')))
+  await assert.rejects(stat(join(dir, 'attachments')), { code: 'ENOENT' })
+  assert.deepEqual(await readdir(dir), ['notes.txt'])
+})
+
+test('deleteAllSessions removes the attachments dir with stored blobs', async (t) => {
+  const dir = await tempDir(t)
+  const imageUrl = `data:image/png;base64,${Buffer.from('fake-png-content').toString('base64')}`
+  const data = sessionData({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: [
+        { type: 'text', text: 'what is this?' },
+        { type: 'image_url', image_url: { url: imageUrl } },
+      ] },
+      { role: 'assistant', content: 'an image' },
+    ],
+  })
+  await saveSession(dir, '2026-01-01T00-00-00', data)
+  await assert.doesNotReject(stat(join(dir, 'attachments', '2026-01-01T00-00-00')))
+
+  await deleteAllSessions(dir)
+
+  await assert.rejects(readFile(join(dir, '2026-01-01T00-00-00.json')))
+  await assert.rejects(stat(join(dir, 'attachments')), { code: 'ENOENT' })
+  assert.deepEqual(await readdir(dir), [])
+})
+
+test('deleteAllSessions returns 0 for a missing dir', async () => {
+  const dir = join(tmpdir(), `communicator-missing-${Date.now()}`)
+  assert.equal(await deleteAllSessions(dir), 0)
+})
+
+test('deleteAllSessions tolerates an empty dir', async (t) => {
+  const dir = await tempDir(t)
+  assert.equal(await deleteAllSessions(dir), 0)
+  assert.deepEqual(await readdir(dir), [])
 })

@@ -10,6 +10,7 @@ import { exportCmd } from './commands/export-cmd.js'
 import { oneShotCmd } from './commands/one-shot.js'
 import { imageGenCmd } from './commands/image-gen.js'
 import { deleteCmd } from './commands/delete-cmd.js'
+import { deleteAllSessionsCmd } from './commands/delete-all-cmd.js'
 import { configViewCmd } from './commands/config-view.js'
 import { configSetCmd } from './commands/config-set.js'
 import { resolveSmoothSpeed, resolveTemperatureFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag } from './flags.js'
@@ -106,6 +107,11 @@ async function main(opts, promptArg) {
   if (opts.delete !== undefined) {
     const partialId = typeof opts.delete === 'string' ? opts.delete : null
     await deleteCmd(partialId)
+    process.exit(0)
+  }
+
+  if (opts.deleteAllSessions !== undefined) {
+    await deleteAllSessionsCmd(opts.deleteAllSessions)
     process.exit(0)
   }
 

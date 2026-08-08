@@ -22,6 +22,7 @@ const BASE_OPTS = {
   smoothStreaming: true,
   smoothSpeed: undefined,
   delete: undefined,
+  deleteAllSessions: undefined,
   attach: [],
   image: undefined,
   imageModel: undefined,
@@ -114,6 +115,13 @@ test('--image rejects --resume, --export, --delete and --list-* flags', () => {
   assert.deepEqual(
     validateCliFlags(opts({ image: true, listModels: true }), TTY),
     [INTERACTIVE_ERROR]
+  )
+})
+
+test('--image rejects --delete-all-sessions', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ image: true, deleteAllSessions: 'y' }), TTY),
+    ['Error: --image cannot be combined with --delete-all-sessions.']
   )
 })
 

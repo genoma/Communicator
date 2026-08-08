@@ -45,6 +45,7 @@ program
   .option('--no-smooth-streaming', 'disable smooth streaming (default: on in interactive sessions)')
   .option('--smooth-speed <level|cps>', 'smooth streaming speed: slow, normal, fast, or chars per second')
   .option('--delete [session-id]', 'delete a saved session (with confirmation)')
+  .option('--delete-all-sessions [y/N]', 'delete ALL saved sessions (pass y to confirm; default: no)')
 
 program.parse()
 const opts = program.opts()

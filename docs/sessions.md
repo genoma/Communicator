@@ -71,6 +71,18 @@ its sidecar entry, plus any attachment blobs under
 with `--resume`, `--export`, or a prompt argument, and needs a TTY for the
 confirmation prompt.
 
+To wipe **all** saved sessions at once:
+
+```bash
+communicator --delete-all-sessions y    # delete every session (default: no)
+```
+
+`--delete-all-sessions` is one-shot: only `y` or `yes` (case-insensitive)
+confirms, and anything else — including the bare flag — deletes nothing. On a
+terminal it asks "Are you sure?" a second time before wiping; with piped stdin
+the explicit `y` is sufficient. It removes every session file (even corrupt
+ones), the `.index.json` sidecar, and the whole `attachments/` directory.
+
 ## Exporting sessions
 
 Export any saved session as a clean, readable markdown file:

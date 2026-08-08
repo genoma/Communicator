@@ -91,6 +91,7 @@ const BASE_OPTS = {
   smoothStreaming: true,
   smoothSpeed: undefined,
   delete: undefined,
+  deleteAllSessions: undefined,
   attach: [],
 }
 
@@ -206,6 +207,34 @@ test('--delete with a unique partial id removes the session and exits 0', async 
   const { listSessions } = await import('../src/sessions.js')
   const sessions = await listSessions(dir)
   assert.ok(!sessions.some((s) => s.id === '2026-01-03T00-00-00'))
+})
+
+test('--delete-all-sessions y removes every session and exits 0', async (t) => {
+  const dir = await seedSession('2026-01-10T00-00-00')
+  await seedSession('2026-01-11T00-00-00')
+  const { out } = await runAndExit(t, { deleteAllSessions: 'y' }, undefined, 0)
+  assert.match(out.join('\n'), /Deleted \d+ saved session\(s\)\./)
+
+  const { listSessions } = await import('../src/sessions.js')
+  assert.deepEqual(await listSessions(dir), [])
+})
+
+test('--delete-all-sessions bare leaves sessions intact and exits 0', async (t) => {
+  const dir = await seedSession('2026-01-12T00-00-00')
+  const { out } = await runAndExit(t, { deleteAllSessions: true }, undefined, 0)
+  assert.match(out.join('\n'), /Deletion cancelled\./)
+
+  const { listSessions } = await import('../src/sessions.js')
+  assert.ok((await listSessions(dir)).some((s) => s.id === '2026-01-12T00-00-00'))
+})
+
+test('--delete-all-sessions n leaves sessions intact and exits 0', async (t) => {
+  const dir = await seedSession('2026-01-13T00-00-00')
+  const { out } = await runAndExit(t, { deleteAllSessions: 'n' }, undefined, 0)
+  assert.match(out.join('\n'), /Deletion cancelled\./)
+
+  const { listSessions } = await import('../src/sessions.js')
+  assert.ok((await listSessions(dir)).some((s) => s.id === '2026-01-13T00-00-00'))
 })
 
 test('--resume with a unique partial id rebuilds the context from the session', async (t) => {

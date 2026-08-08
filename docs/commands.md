@@ -25,6 +25,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 | `-r`  | `--resume`            | `[id]`   | Resume a saved session. No arg = picker, partial ID = prefix match                   |
 | `-x`  | `--export`            | `[id]`   | Export a session to markdown. Same ID matching as `--resume`                         |
 |       | `--delete`            | `[id]`   | Delete a saved session (asks for confirmation). Same ID matching as `--resume`       |
+|       | `--delete-all-sessions` | `[y/N]` | Delete ALL saved sessions. Pass `y` (or `yes`) to confirm; bare flag or anything else does nothing. Asks "Are you sure?" again on a terminal |
 |       | `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences). Bare use saves it as the default (requires a TTY and no prompt). With `--image`, generated images are also copied there |
 |       | `--config`            | `[path]` | Custom path for the preferences JSON file (default: `~/.communicator.json`). Bare flag prints the current config |
 |       | `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
@@ -92,6 +93,7 @@ communicator --export                                   # export a session to cw
 communicator --export --output-dir ~/Documents          # export to custom directory
 communicator --delete                                   # delete a session (with confirmation)
 communicator --delete 2026-07-30T19-11-45               # delete a specific session
+communicator --delete-all-sessions y                    # delete ALL saved sessions (asks "Are you sure?" on a terminal)
 
 # Reasoning (one-shot session, or use -m alone to save the default)
 communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort high "Solve this"   # force high reasoning effort

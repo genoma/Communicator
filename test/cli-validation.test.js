@@ -22,6 +22,7 @@ const BASE_OPTS = {
   smoothSpeed: undefined,
   watermark: true,
   delete: undefined,
+  deleteAllSessions: undefined,
   attach: [],
 }
 
@@ -60,6 +61,48 @@ test('rejects --delete combined with --resume or --export', () => {
   assert.deepEqual(
     validateCliFlags(opts({ delete: 'x', export: 'y' }), TTY),
     ['Error: Cannot use --delete with --resume or --export. Use one at a time.']
+  )
+})
+
+test('rejects --delete-all-sessions combined with --delete, --resume or --export', () => {
+  for (const other of [{ delete: 'x' }, { resume: 'y' }, { export: 'y' }]) {
+    assert.deepEqual(
+      validateCliFlags(opts({ deleteAllSessions: 'y', ...other }), TTY),
+      ['Error: Cannot use --delete-all-sessions with --resume, --export or --delete. Use one at a time.']
+    )
+  }
+})
+
+test('rejects --delete-all-sessions combined with a prompt argument', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ deleteAllSessions: 'y' }), { ...TTY, ...PROMPT() }),
+    ['Cannot combine a prompt argument with --delete-all-sessions.']
+  )
+})
+
+test('rejects --delete-all-sessions combined with --list-* flags', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ deleteAllSessions: 'y', listSessions: true }), TTY),
+    ['Error: --delete-all-sessions cannot be combined with --list-* flags.']
+  )
+})
+
+test('rejects --delete-all-sessions combined with session flags', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ deleteAllSessions: 'y', webSearch: 'auto' }), TTY),
+    ['Error: --model, --output-dir and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach) cannot be combined with --delete-all-sessions.']
+  )
+})
+
+test('--delete-all-sessions works with piped stdin (not an interactive flag)', () => {
+  assert.deepEqual(validateCliFlags(opts({ deleteAllSessions: 'y' }), NO_TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ deleteAllSessions: 'y' }), TTY), [])
+})
+
+test('rejects --delete-all-sessions combined with bare --config', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ deleteAllSessions: 'y', config: true }), TTY),
+    ['Error: bare --config (config view) cannot be combined with other flags.']
   )
 })
 
@@ -209,6 +252,7 @@ test('predicates classify flags', () => {
   assert.equal(isInteractiveFlag(opts({ resume: 'x' })), true)
   assert.equal(isInteractiveFlag(opts({ export: 'x' })), true)
   assert.equal(isInteractiveFlag(opts({ delete: 'x' })), true)
+  assert.equal(isInteractiveFlag(opts({ deleteAllSessions: 'y' })), false)
 
   assert.equal(isExitMode(opts()), false)
   assert.equal(isExitMode(opts({ listModels: true })), true)

@@ -351,3 +351,28 @@ export async function deleteSession(dir, id) {
     await writeSidecar(dir, index)
   }
 }
+
+// Wipes the whole sessions dir: every session JSON file (including corrupt
+// files and empty claims — the sweep does not rely on listSessions parsing),
+// the .index.json sidecar and the attachments dir. Returns the count of
+// non-hidden .json files removed; a missing dir yields 0.
+export async function deleteAllSessions(dir) {
+  let entries
+  try {
+    entries = await readdir(dir)
+  } catch {
+    return 0
+  }
+
+  let removed = 0
+  for (const file of entries) {
+    if (file.startsWith('.') || extname(file) !== '.json') continue
+    const id = basename(file, '.json')
+    if (!validSessionId(id)) continue
+    await rm(join(dir, file), { force: true })
+    removed++
+  }
+  await rm(join(dir, SIDECAR_FILE), { force: true })
+  await rm(join(dir, 'attachments'), { recursive: true, force: true })
+  return removed
+}

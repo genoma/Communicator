@@ -77,6 +77,7 @@ function hasBareConfigOtherFlags(opts, promptArg) {
     opts.aspectRatio !== undefined ||
     opts.imageFormat !== undefined ||
     opts.delete !== undefined ||
+    opts.deleteAllSessions !== undefined ||
     opts.image === true ||
     hasAttachments(opts)
   )
@@ -101,6 +102,26 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
 
   if (opts.delete !== undefined && (opts.resume !== undefined || opts.export !== undefined)) {
     errors.push('Error: Cannot use --delete with --resume or --export. Use one at a time.')
+  }
+
+  if (opts.deleteAllSessions !== undefined && (opts.resume !== undefined || opts.export !== undefined || opts.delete !== undefined)) {
+    errors.push('Error: Cannot use --delete-all-sessions with --resume, --export or --delete. Use one at a time.')
+  }
+
+  if (promptArg && opts.deleteAllSessions !== undefined) {
+    errors.push('Cannot combine a prompt argument with --delete-all-sessions.')
+  }
+
+  if (opts.deleteAllSessions !== undefined && exitModeFlags) {
+    errors.push('Error: --delete-all-sessions cannot be combined with --list-* flags.')
+  }
+
+  if (opts.deleteAllSessions !== undefined && (sessionOnlyFlags || opts.model !== undefined || opts.outputDir !== undefined)) {
+    errors.push(exclusionError('--model, --output-dir', '--delete-all-sessions'))
+  }
+
+  if (opts.image && opts.deleteAllSessions !== undefined) {
+    errors.push('Error: --image cannot be combined with --delete-all-sessions.')
   }
 
   if (promptArg && (interactiveFlags || exitModeFlags)) {
