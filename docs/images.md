@@ -1,8 +1,8 @@
 # Image Generation
 
-Image generation on Venice and OpenRouter: unified model picker, image sessions, `--image` flags, `/image`, `/aspect`/`/format`, `-m` parity, model listing, sizing defaults, storage. See the [README](../README.md#documentation) for the full docs index.
+Image generation on Venice and OpenRouter: unified model picker, image sessions, `--image` flags, `/aspect`/`/format`, `-m` parity, model listing, sizing defaults, storage. See the [README](../README.md#documentation) for the full docs index.
 
-Generate images directly from the terminal with **Venice.ai** (Flux, Nano Banana, GPT Image, ...) and **OpenRouter** (GPT Image, Flux, ...) image models. Both expose image generation on a **separate non-streaming endpoint** with per-image pricing — a standalone flow that does not go through a chat completion. Everything below (`--image`, `--list-image-models`, `/image`, image sessions, `-m <image-model>`) works on both providers.
+Generate images directly from the terminal with **Venice.ai** (Flux, Nano Banana, GPT Image, ...) and **OpenRouter** (GPT Image, Flux, ...) image models. Both expose image generation on a **separate non-streaming endpoint** with per-image pricing — a standalone flow that does not go through a chat completion. Everything below (`--image`, `--list-image-models`, image sessions, `-m <image-model>`) works on both providers.
 
 ## Unified model picker & image sessions
 
@@ -23,7 +23,7 @@ Image models
 - Every prompt you type generates an image (`saved to …` lines after each turn).
 - `/help` lists the commands; `/exit` and `/quit` (or Ctrl+C / EOF) leave the session.
 - Each turn is persisted to the session (system + prompt + image messages), so the session shows up in `--list-sessions`, is exportable, and `--resume <id>` re-enters the image session to keep generating. Your last-used image model is remembered (`lastImageModel`).
-- `-m <image-model> "prompt"` runs the same generation as a one-shot (persisted + printed, `--attach` rejected), and `--image`/`/image` keep working as before for one-off generations inside text sessions.
+- `-m <image-model> "prompt"` runs the same generation as a one-shot (persisted + printed, `--attach` rejected), and `--image` keeps working as before for one-off generations.
 - Inside an image session, `/model` opens the same unified picker: picking another image model switches the session to it, while picking a text model continues the session as a normal chat with the same session id and history (image parts are replaced by a `[generated image]` placeholder for non-vision models). `/aspect <x:y>` and `/format <fmt>` set the sizing for the rest of the session (see [Sizing defaults](#sizing-defaults)); `/watermark` is Venice-only.
 
 ## One-shot: `--image`
@@ -62,21 +62,6 @@ communicator -p openrouter --list-image-models
 
 Prints each image model's name, id, per-image price, and its sizing options (`[aspect: …]`, `[resolution: …]`, `[quality: …]`, `[privacy]`, `[offline]`). No API key is needed to list models; on OpenRouter the price column fetches per-model endpoint pricing (`from $X per image` across billable output-image entries).
 
-## In chat: `/image <description>`
-
-Inside any session, `/image a red cat` runs the generation and appends the result to the current session as an assistant message — visible on `--resume` and exported as a file under the session's `attachments/` folder with `--export`. Bare `/image` prints a usage hint. Image parts are re-sent to the chat model on later turns of the same session, like any other produced artifact.
-
-`/image` accepts leading options that are stripped from the appended description:
-
-```text
-/image --ratio 16:9 --format png a red cat      # explicit sizing
-/image --aspect-ratio 3:2 a red cat             # --aspect-ratio is an alias of --ratio
-/image --ratio 2:3 a red cat                    # pixel-based models: ratio is computed to pixels (e.g. 848x1272)
-/image a red cat                                # pickers ask for ratio/format (saved default preselected)
-```
-
-Any other leading `--option` is a usage error. Without the flags, compact pickers appear after model selection with the saved default preselected (Enter accepts).
-
 ## Sizing defaults
 
 Choices are remembered as **global per-provider defaults** (`venice` and `openrouter` are separate) in the preferences file:
@@ -90,7 +75,7 @@ Choices are remembered as **global per-provider defaults** (`venice` and `openro
 }
 ```
 
-- A non-default picker choice or any explicit flag (CLI or `/image --ratio/--format`) becomes the provider default for future generations. Only ratios are stored — pixel sizes are always derived from the ratio and the model's divisor, never persisted.
+- A non-default picker choice or any explicit flag (CLI) becomes the provider default for future generations. Only ratios are stored — pixel sizes are always derived from the ratio and the model's divisor, never persisted.
 - Save them directly with the config-setter (no `--image` needed):
   ```bash
   communicator -p venice --aspect-ratio 16:9 --image-format png
@@ -106,7 +91,7 @@ Choices are remembered as **global per-provider defaults** (`venice` and `openro
 Venice stamps generated images with a watermark unless `hide_watermark: true` is sent. This CLI exposes it as a **global setting** (not per model):
 
 - `--no-watermark` disables it for the current `--image`/`-m <image-model>` one-shot and persists `hideWatermark: true` in the preferences file.
-- `/watermark off` disables the watermark for this and future generations; `/watermark on` re-enables it. Works inside a Venice chat session or an image session (bare `/watermark` shows the current state). The setting takes effect immediately, including for `/image` calls in the same session. OpenRouter sessions do not offer `/watermark`.
+- `/watermark off` disables the watermark for this and future generations; `/watermark on` re-enables it. Works inside a Venice image session (bare `/watermark` shows the current state). OpenRouter sessions do not offer `/watermark`.
 - The persisted `hideWatermark` pref applies to all Venice image generation; `/watermark on` (or removing the pref) re-enables the watermark.
 - Venice may ignore the request for some content or models.
 

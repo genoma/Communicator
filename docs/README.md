@@ -9,7 +9,7 @@ User-facing documentation for the `communicator` CLI, split into guides, referen
 | [chat.md](chat.md) | The interactive flow, one-shot mode, chat session output (CTX indicator), markdown rendering, smooth streaming, budget caps, and the system prompt |
 | [web-search.md](web-search.md) | Web search modes, OpenRouter vs Venice behavior, result counts, and clickable sources |
 | [attachments.md](attachments.md) | File & image attachments: supported formats, interactive and one-shot usage, gating, limits |
-| [images.md](images.md) | Image generation on Venice and OpenRouter: unified model picker, image sessions, `--image` flags, `/image`, `/aspect`/`/format`, `-m` parity, model listing, sizing defaults, storage |
+| [images.md](images.md) | Image generation on Venice and OpenRouter: unified model picker, image sessions, `--image` flags, `/aspect`/`/format`, `-m` parity, model listing, sizing defaults, storage |
 
 ## Reference
 

@@ -140,7 +140,6 @@ communicator --no-watermark                                            # hide th
 | `/markdown`    | Toggle terminal markdown rendering (default on)                                     |
 | `/smooth`      | Show smooth streaming state and speed, or set them with `/smooth on|off|<level>|<cps>` (a speed value implies on) |
 | `/cost`        | Print the running session cost/token totals and current reasoning effort            |
-| `/image`       | Generate an image (`/image [--ratio <x:y>] [--format <png|jpeg|webp>] <description>`; leading flags are stripped from the message; without them compact pickers appear with the saved default preselected) |
 | `/watermark`   | Show whether the Venice watermark is on/off, or set it with `/watermark on|off` (`off` hides it; persisted as a global setting; Venice sessions only) |
 | `Cmd+C` / `Ctrl+C` | During streaming: abort, save the partial response, and exit. At the prompt: cancel and exit |
 
