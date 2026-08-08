@@ -11,7 +11,7 @@ import { runImageGeneration, printImageOutcome, buildImageSessionPayload, handle
 // /watermark is Venice-only: OpenRouter image models have no watermark
 // parameter, so the command is only offered on Venice sessions.
 function imageSessionCommands(providerName) {
-  return ['/help', '/model', '/exit', '/quit', ...(providerName === 'venice' ? ['/watermark'] : []), '/aspect', '/format', '/resolution', '/quality', '/variants', '/seed']
+  return ['/help', '/model', '/quit', ...(providerName === 'venice' ? ['/watermark'] : []), '/aspect', '/format', '/resolution', '/quality', '/variants', '/seed']
 }
 
 // Shared handler table for the sizing commands: `/format` and the new
@@ -136,7 +136,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     const input = result.value.trim()
     if (!input) continue
 
-    if (input === '/exit' || input === '/quit') {
+    if (input === '/quit') {
       await persist()
       return
     }
@@ -144,7 +144,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     if (input === '/help') {
       console.log('/help            show this help')
       console.log('/model           switch image model, or pick a text model to continue in chat')
-      console.log('/exit, /quit     leave the session')
+      console.log('/quit            leave the session')
       if (provider.meta.name === 'venice') console.log('/watermark       hide the Venice watermark on generated images (on|off)')
       console.log('/aspect          show the supported aspect ratios and the session one')
       console.log('/aspect <x:y>    set the aspect ratio for this session (clear to unset)')
