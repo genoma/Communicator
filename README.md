@@ -23,8 +23,8 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Slash commands** — `/new`, `/model`, `/reasoning`, `/temp`, `/budget`, `/web-search`, `/attach`, `/retry`, `/copy`, `/markdown`, `/smooth`, `/cost`, `/watermark`, `/quit`, and more. See [docs/commands.md#slash-commands](docs/commands.md#slash-commands)
 - **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/` with an auto-generated title, on quit, model switch, new session, or `Ctrl+C` — the last exchange is never lost
 - **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, reasoning effort, temperature, and budget
-- **Session deletion** — remove saved sessions with `--delete` (with confirmation), or wipe everything with `--delete-all-sessions y` (default no)
-- **Markdown export** — export any saved session with `--export` into a per-session folder (`session-{id}/`), with separate thinking sections, cost summary, and attachments materialized as linked files
+- **Session deletion** — remove one or more saved sessions with `--delete` (multi-select checkbox with confirmation), or wipe everything with `--delete-all-sessions y` (default no)
+- **Markdown export** — export one or more saved sessions with `--export` (multi-select checkbox) into per-session folders (`session-{id}/`), with separate thinking sections, cost summary, and attachments materialized as linked files
 - **Session persistence** — last model, provider, and per-model reasoning effort and temperature are saved to `~/.communicator.json` and restored on next launch
 - **CLI flags to skip pickers** — `-m` skips *all* pickers for fully non-interactive use; `--reasoning-effort` skips only the reasoning picker
 - **Lightweight** — five runtime dependencies, pure Node.js ESM

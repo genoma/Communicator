@@ -21,6 +21,7 @@ mock.module('@inquirer/prompts', {
       selectChoices.push(opts?.choices)
       return selectQueue.length ? selectQueue.shift() : 'medium'
     },
+    checkbox: async () => { throw new Error('unexpected checkbox') },
   },
 })
 

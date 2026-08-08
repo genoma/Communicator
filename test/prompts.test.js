@@ -15,6 +15,7 @@ mock.module('@inquirer/prompts', {
       selectDefaults.push(opts?.default)
       return opts?.default
     },
+    checkbox: async () => { throw new Error('unexpected checkbox') },
   },
 })
 

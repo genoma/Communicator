@@ -14,6 +14,7 @@ mock.module('@inquirer/prompts', {
     search: async () => { throw new ExitPromptError() },
     select: async () => { throw new ExitPromptError() },
     confirm: async () => false,
+    checkbox: async () => { throw new ExitPromptError() },
   },
 })
 

@@ -2,14 +2,16 @@ import { test, mock } from 'node:test'
 import assert from 'node:assert/strict'
 
 let searchImpl = null
+let checkboxImpl = null
 mock.module('@inquirer/prompts', {
   namedExports: {
     search: async (opts) => searchImpl(opts),
     select: async () => { throw new Error('unexpected select') },
+    checkbox: async (opts) => checkboxImpl(opts),
   },
 })
 
-const { selectSession } = await import('../src/session-picker.js')
+const { selectSession, selectSessions } = await import('../src/session-picker.js')
 
 function sessionItem(overrides = {}) {
   return {
@@ -68,4 +70,31 @@ test('selectSession filters by id, line, and description case-insensitively', as
   assert.deepEqual(seen[1].map((c) => c.value), ['2026-07-30T19-15-22'])
   assert.deepEqual(seen[2].map((c) => c.value), ['2026-07-29T10-00-00'])
   assert.deepEqual(seen[3], [])
+})
+
+test('selectSessions builds checkbox choices matching selectSession and returns the chosen ids', async () => {
+  const sessions = [sessionItem(), sessionItem({ id: '2026-07-29T10-00-00', title: 'Other' })]
+  checkboxImpl = async (opts) => {
+    assert.equal(opts.message, 'Select sessions')
+    assert.ok(opts.theme)
+    assert.equal(opts.pageSize, 10)
+    assert.deepEqual(opts.shortcuts, { all: 'a', invert: 'i' })
+    assert.equal(opts.choices.length, 2)
+    assert.match(opts.choices[0].name, /2026-07-30 19:15:22/)
+    assert.equal(opts.choices[0].value, '2026-07-30T19-15-22')
+    assert.match(opts.choices[0].description, /"Write a Python script" {2}• {2}OpenAI/)
+    return [opts.choices[0].value, opts.choices[1].value]
+  }
+
+  assert.deepEqual(await selectSessions(sessions), ['2026-07-30T19-15-22', '2026-07-29T10-00-00'])
+})
+
+test('selectSessions passes an empty selection through', async () => {
+  const sessions = [sessionItem()]
+  checkboxImpl = async (opts) => {
+    assert.equal(opts.choices.length, 1)
+    return []
+  }
+
+  assert.deepEqual(await selectSessions(sessions), [])
 })

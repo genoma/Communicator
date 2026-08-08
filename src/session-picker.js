@@ -1,5 +1,6 @@
+import { checkbox } from '@inquirer/prompts'
 import { formatSessionItem } from './sessions.js'
-import { searchPrompt } from './prompts.js'
+import { searchPrompt, pickerTheme } from './prompts.js'
 import { sanitizeAnsi } from './ui/hyperlink.js'
 
 export async function selectSession(sessions, { message = 'Select a session to resume' } = {}) {
@@ -22,4 +23,18 @@ export async function selectSession(sessions, { message = 'Select a session to r
         (c.description && c.description.toLowerCase().includes(q))
     )
   })
+}
+
+export async function selectSessions(sessions, { message = 'Select sessions' } = {}) {
+  const choices = sessions.map((s) => {
+    const { line } = formatSessionItem(s)
+
+    return {
+      name: sanitizeAnsi(line),
+      value: s.id,
+      description: sanitizeAnsi(`${s.title ? `"${s.title}"  •  ` : ''}${s.providerName}${s.providerType && s.providerType !== 'openrouter' ? ` (${s.providerType})` : ''}  •  ${s.messageCount} messages`),
+    }
+  })
+
+  return checkbox({ message, theme: pickerTheme, pageSize: 10, shortcuts: { all: 'a', invert: 'i' }, choices })
 }

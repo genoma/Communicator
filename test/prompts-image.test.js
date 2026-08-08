@@ -10,6 +10,7 @@ mock.module('@inquirer/prompts', {
       return { id: 'flux-1-1', name: 'Flux 1.1' }
     },
     select: async () => undefined,
+    checkbox: async () => { throw new Error('unexpected checkbox') },
   },
 })
 

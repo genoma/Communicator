@@ -23,8 +23,8 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--list-endpoints`    | `[model]`| List providers for a model (pricing, uptime, ZDR support, privacy policy link). No arg = picker, partial ID = fuzzy match |
 |       | `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, title) and exit                |
 | `-r`  | `--resume`            | `[id]`   | Resume a saved session. No arg = picker, partial ID = prefix match                   |
-| `-x`  | `--export`            | `[id]`   | Export a session to markdown. Same ID matching as `--resume`                         |
-|       | `--delete`            | `[id]`   | Delete a saved session (asks for confirmation). Same ID matching as `--resume`       |
+| `-x`  | `--export`            | `[id]`   | Export saved session(s) to markdown. No arg = multi-select checkbox; partial ID = prefix match, unique prefix exports directly |
+|       | `--delete`            | `[id]`   | Delete saved session(s) (asks for confirmation). No arg = multi-select checkbox; partial ID = prefix match, unique prefix deletes directly |
 |       | `--delete-all-sessions` | `[y/N]` | Delete ALL saved sessions. Pass `y` (or `yes`) to confirm; bare flag or anything else does nothing. Asks "Are you sure?" again on a terminal |
 |       | `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences). Bare use saves it as the default (requires a TTY and no prompt). With `--image`, generated images are also copied there |
 |       | `--config`            | `[path]` | Custom path for the preferences JSON file (default: `~/.communicator.json`). Bare flag prints the current config |
@@ -89,9 +89,9 @@ communicator -p venice -m "qwen-3-7-max" --attach data.xlsx "Summarize this" # V
 # Session management
 communicator --list-sessions                                   # list saved sessions
 communicator --resume                                   # resume a saved session
-communicator --export                                   # export a session to cwd
+communicator --export                                   # pick one or more sessions to export to cwd (multi-select)
 communicator --export --output-dir ~/Documents          # export to custom directory
-communicator --delete                                   # delete a session (with confirmation)
+communicator --delete                                   # pick one or more sessions to delete (with confirmation)
 communicator --delete 2026-07-30T19-11-45               # delete a specific session
 communicator --delete-all-sessions y                    # delete ALL saved sessions (asks "Are you sure?" on a terminal)
 

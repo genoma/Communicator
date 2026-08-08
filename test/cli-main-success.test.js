@@ -8,12 +8,15 @@ import { ExitPromptError } from '@inquirer/core'
 const tempHome = await mkdtemp(join(tmpdir(), 'communicator-home-'))
 after(() => rm(tempHome, { recursive: true, force: true }))
 
+let searchImpl = async () => { throw new ExitPromptError() }
+let checkboxImpl = null
 mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 mock.module('@inquirer/prompts', {
   namedExports: {
-    search: async () => { throw new ExitPromptError() },
+    search: async (opts) => searchImpl(opts),
     select: async () => { throw new ExitPromptError() },
     confirm: async () => true,
+    checkbox: async (opts) => checkboxImpl(opts),
   },
 })
 
@@ -235,6 +238,84 @@ test('--delete-all-sessions n leaves sessions intact and exits 0', async (t) => 
 
   const { listSessions } = await import('../src/sessions.js')
   assert.ok((await listSessions(dir)).some((s) => s.id === '2026-01-13T00-00-00'))
+})
+
+test('--export bare with checkbox selection exports all chosen sessions and exits 0', async (t) => {
+  withTTY(t, true)
+  await seedSession('2026-02-01T00-00-00')
+  await seedSession('2026-02-02T00-00-00')
+  const outDir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(outDir, { recursive: true, force: true }))
+  checkboxImpl = async () => ['2026-02-01T00-00-00', '2026-02-02T00-00-00']
+
+  const { out } = await runAndExit(t, { export: true, outputDir: outDir }, undefined, 0)
+  const output = out.join('\n')
+  assert.match(output, /Exported to .*session-2026-02-01T00-00-00/)
+  assert.match(output, /Exported to .*session-2026-02-02T00-00-00/)
+
+  const md1 = await readFile(join(outDir, 'session-2026-02-01T00-00-00', 'session-2026-02-01T00-00-00.md'), 'utf-8')
+  assert.match(md1, /First question/)
+  const md2 = await readFile(join(outDir, 'session-2026-02-02T00-00-00', 'session-2026-02-02T00-00-00.md'), 'utf-8')
+  assert.match(md2, /First question/)
+})
+
+test('--export with an ambiguous prefix still uses the single-select search picker', async (t) => {
+  withTTY(t, true)
+  await seedSession('2026-03-01T00-00-00')
+  await seedSession('2026-03-02T00-00-00')
+  const outDir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(outDir, { recursive: true, force: true }))
+  searchImpl = async (opts) => {
+    assert.equal(opts.message, 'Select a session to export')
+    const all = await opts.source('')
+    assert.equal(all.length, 2)
+    return '2026-03-02T00-00-00'
+  }
+  t.after(() => {
+    searchImpl = async () => { throw new ExitPromptError() }
+  })
+
+  const { out } = await runAndExit(t, { export: '2026-03', outputDir: outDir }, undefined, 0)
+  assert.match(out.join('\n'), /Exported to .*session-2026-03-02T00-00-00/)
+})
+
+test('--export bare with an empty checkbox selection cancels and exits 0', async (t) => {
+  withTTY(t, true)
+  const dir = await seedSession('2026-02-05T00-00-00')
+  checkboxImpl = async () => []
+
+  const { out } = await runAndExit(t, { export: true }, undefined, 0)
+  assert.match(out.join('\n'), /Export cancelled\./)
+
+  const { listSessions } = await import('../src/sessions.js')
+  assert.ok((await listSessions(dir)).some((s) => s.id === '2026-02-05T00-00-00'))
+})
+
+test('--delete bare with checkbox selection deletes all chosen sessions and exits 0', async (t) => {
+  withTTY(t, true)
+  const dir = await seedSession('2026-02-03T00-00-00')
+  await seedSession('2026-02-04T00-00-00')
+  checkboxImpl = async () => ['2026-02-03T00-00-00', '2026-02-04T00-00-00']
+
+  const { out } = await runAndExit(t, { delete: true }, undefined, 0)
+  assert.match(out.join('\n'), /Deleted 2 sessions/)
+
+  const { listSessions } = await import('../src/sessions.js')
+  const remaining = await listSessions(dir)
+  assert.ok(!remaining.some((s) => s.id === '2026-02-03T00-00-00'))
+  assert.ok(!remaining.some((s) => s.id === '2026-02-04T00-00-00'))
+})
+
+test('--delete bare with an empty checkbox selection cancels and exits 0', async (t) => {
+  withTTY(t, true)
+  const dir = await seedSession('2026-02-06T00-00-00')
+  checkboxImpl = async () => []
+
+  const { out } = await runAndExit(t, { delete: true }, undefined, 0)
+  assert.match(out.join('\n'), /Deletion cancelled\./)
+
+  const { listSessions } = await import('../src/sessions.js')
+  assert.ok((await listSessions(dir)).some((s) => s.id === '2026-02-06T00-00-00'))
 })
 
 test('--resume with a unique partial id rebuilds the context from the session', async (t) => {

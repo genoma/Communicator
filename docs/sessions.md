@@ -55,7 +55,7 @@ backward compatibility.
 ## Deleting sessions
 
 ```bash
-# Interactive picker — browse and select from all saved sessions
+# Multi-select checkbox — pick one or more sessions to delete
 communicator --delete
 
 # Prefix match — deletes if exactly one session starts with "2026-07-30"
@@ -67,9 +67,11 @@ communicator --delete 2026-07-30T19-11-45
 
 `--delete` always asks for confirmation before removing the session file (and
 its sidecar entry, plus any attachment blobs under
-`~/.communicator/sessions/attachments/<sessionId>/`). It cannot be combined
-with `--resume`, `--export`, or a prompt argument, and needs a TTY for the
-confirmation prompt.
+`~/.communicator/sessions/attachments/<sessionId>/`). Selecting multiple
+sessions shows a single `Delete N sessions?` confirmation and removes them all;
+selecting none prints `Deletion cancelled.` and exits without changes. It
+cannot be combined with `--resume`, `--export`, or a prompt argument, and needs
+a TTY for the confirmation prompt.
 
 To wipe **all** saved sessions at once:
 
@@ -88,7 +90,7 @@ ones), the `.index.json` sidecar, and the whole `attachments/` directory.
 Export any saved session as a clean, readable markdown file:
 
 ```bash
-# Interactive picker — browse and select from all saved sessions
+# Multi-select checkbox — pick one or more sessions to export
 communicator --export
 
 # Prefix match — exports if exactly one session starts with "2026-07-30"
@@ -100,6 +102,10 @@ communicator --export 2026-07-30T19-11-45
 # Export to a custom directory (persisted in preferences)
 communicator --export --output-dir ~/Documents/CommunicatorExports
 ```
+
+Selecting multiple sessions exports each one into its own folder, printing one
+`Exported to ...` line per session; selecting none prints `Export cancelled.`
+and exits without changes.
 
 Each session is exported into its own folder: `session-{id}/` in the current
 working directory by default, containing the conversation as `session-{id}.md`.

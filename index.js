@@ -30,7 +30,7 @@ program
   .option('--no-watermark', 'hide the Venice watermark on generated images (persisted as a global Venice setting)')
   .option('--list-endpoints [model]', 'list providers/endpoints for a model (interactive picker when omitted)')
   .option('-r, --resume [session-id]', 'resume a saved session (optional session ID)')
-  .option('-x, --export [session-id]', 'export a saved session as markdown')
+  .option('-x, --export [session-id]', 'export saved sessions as markdown (select one or more)')
   .option('--output-dir <path>', 'custom directory for exported markdown files (bare use saves it as the default)')
   .option('--list-sessions', 'list saved sessions and exit')
   .option('--config [path]', 'path to preferences config file (bare flag prints the current config)')
@@ -44,7 +44,7 @@ program
   .option('--attach <path>', 'attach a file (repeatable; images/pdf/xlsx/txt/...)', collectFlag, [])
   .option('--no-smooth-streaming', 'disable smooth streaming (default: on in interactive sessions)')
   .option('--smooth-speed <level|cps>', 'smooth streaming speed: slow, normal, fast, or chars per second')
-  .option('--delete [session-id]', 'delete a saved session (with confirmation)')
+  .option('--delete [session-id]', 'delete saved sessions (with confirmation, select one or more)')
   .option('--delete-all-sessions [y/N]', 'delete ALL saved sessions (pass y to confirm; default: no)')
 
 program.parse()

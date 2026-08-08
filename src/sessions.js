@@ -1,7 +1,7 @@
 import { access, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join, basename, extname } from 'node:path'
 import { SESSIONS_DIR } from './constants.js'
-import { selectSession } from './session-picker.js'
+import { selectSession, selectSessions } from './session-picker.js'
 import { messageText } from './attachments.js'
 import { attachmentDirFor, externalizeAttachments, hydrateAttachments } from './attachment-store.js'
 import { CliError } from './errors.js'
@@ -42,6 +42,26 @@ export async function resolveSessionInteractive(dir, partialId, opts = {}) {
     throw new CliError('Error: No saved sessions found.')
   }
   return selectSession(sessions, { message })
+}
+
+export async function resolveSessionsInteractive(dir, partialId, opts = {}) {
+  const { message } = opts
+  if (partialId && typeof partialId === 'string') {
+    const matches = await resolveSession(dir, partialId)
+    if (matches.length === 0) {
+      throw new CliError(`Error: No session found matching "${partialId}"`)
+    }
+    if (matches.length === 1) {
+      return [matches[0].id]
+    }
+    return [await selectSession(matches, { message })]
+  }
+
+  const sessions = await listSessions(dir)
+  if (!sessions.length) {
+    throw new CliError('Error: No saved sessions found.')
+  }
+  return selectSessions(sessions, { message })
 }
 
 function firstUserText(messages) {
