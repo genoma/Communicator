@@ -62,16 +62,18 @@ test('filterModelChoices matches image models by name and id', () => {
   assert.deepEqual(filterModelChoices(ordered, 'zzz'), [])
 })
 
-test('orderModelWithImages merges text choices, a separator and tagged image choices', () => {
+test('orderModelWithImages puts the last image model at the top when set', () => {
   const merged = orderModelWithImages(TEXT_MODELS, MODELS, 'venice/deepseek', 'flux-1-1')
-  assert.equal(merged.length, 6)
-  assert.deepEqual(merged[0].value.id, 'venice/deepseek')
-  assert.deepEqual(merged[1].value.id, 'venice/llama')
-  assert.ok(merged[2] instanceof Separator, 'third entry is the image separator')
-  assert.equal(merged[2].separator, 'Image models')
-  assert.equal(merged[3].value.id, 'flux-1-1')
-  assert.equal(merged[3].name, 'Flux 1.1  (flux-1-1)  [image]')
-  assert.equal(merged[5].value.id, 'gamma')
+  assert.equal(merged.length, 7)
+  assert.deepEqual(merged[0].value.id, 'flux-1-1')
+  assert.ok(merged[1] instanceof Separator, 'second entry is the image separator')
+  assert.equal(merged[1].separator, 'Image models')
+  assert.equal(merged[2].value.id, 'last-image-model')
+  assert.equal(merged[3].value.id, 'gamma')
+  assert.ok(merged[4] instanceof Separator, 'fifth entry is the text separator')
+  assert.equal(merged[4].separator, 'Text models')
+  assert.deepEqual(merged[5].value.id, 'venice/deepseek')
+  assert.deepEqual(merged[6].value.id, 'venice/llama')
 })
 
 test('filterModelChoices skips separator entries', () => {
@@ -90,7 +92,7 @@ test('selectModelWithImages runs a single merged search prompt', async () => {
   assert.equal(searchCalls.length, 1)
   assert.equal(searchCalls[0].message, 'Select a model')
   const choices = await searchCalls[0].source('')
-  assert.equal(choices[2].separator, 'Image models')
+  assert.equal(choices[1].separator, 'Image models')
 })
 
 test('selectImageModel runs a search prompt for image models', async () => {

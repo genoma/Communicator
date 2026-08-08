@@ -81,10 +81,26 @@ export async function selectImageModel(models, lastImageModel) {
 }
 
 export function orderModelWithImages(textModels, imageModels, lastModel, lastImageModel) {
+  const textChoices = orderModelChoices(textModels, lastModel)
+  const imageChoices = orderImageModelChoices(imageModels, lastImageModel)
+
+  if (lastImageModel) {
+    const lastImg = imageChoices.find((c) => c.value.id === lastImageModel)
+    if (lastImg) {
+      return [
+        lastImg,
+        new Separator('Image models'),
+        ...imageChoices.filter((c) => c.value.id !== lastImageModel),
+        new Separator('Text models'),
+        ...textChoices,
+      ]
+    }
+  }
+
   return [
-    ...orderModelChoices(textModels, lastModel),
+    ...textChoices,
     new Separator('Image models'),
-    ...orderImageModelChoices(imageModels, lastImageModel),
+    ...imageChoices,
   ]
 }
 
