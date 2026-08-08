@@ -197,6 +197,20 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
     }
   }
 
+  if (opts.resolution === undefined) {
+    const applied = applySizingDefault(resolved?.constraints?.resolutions, savedDefaults.resolution, 'resolution', resolved?.id)
+    resolution = applied.value
+    if (applied.note) notes.push(applied.note)
+  }
+  if (opts.quality === undefined) {
+    const applied = applySizingDefault(resolved?.constraints?.qualities, savedDefaults.quality, 'quality', resolved?.id)
+    quality = applied.value
+    if (applied.note) notes.push(applied.note)
+  }
+  if (opts.variants === undefined && savedDefaults.variants != null) {
+    variants = savedDefaults.variants
+  }
+
   if (opts.aspectRatio !== undefined) prefsUpdates.aspectRatio = aspectRatio
   else if (pickedRatio && aspectRatio !== savedDefaults.aspectRatio) prefsUpdates.aspectRatio = aspectRatio
   if (opts.imageFormat !== undefined) prefsUpdates.format = format
