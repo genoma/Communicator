@@ -126,6 +126,7 @@ communicator --no-watermark                                            # hide th
 | Input          | Action                                                                              |
 |----------------|-------------------------------------------------------------------------------------|
 | `/quit`        | Save the session and exit the chat                                                  |
+| `/exit`        | Same as `/quit`                                                                     |
 | `/new`         | Save the current session and start a fresh one (same model and reasoning effort)    |
 | `/model`       | Save, then switch models mid-chat — re-picks reasoning effort and endpoint          |
 | `/reasoning`   | Re-run the reasoning effort picker for the current model                            |

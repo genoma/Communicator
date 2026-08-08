@@ -39,6 +39,7 @@ export function makeHandleHttpError({ providerName, providerId = providerName, a
     if (status === 404 && notFoundMessage) {
       throw new ApiError(notFoundMessage, { status, provider: providerId, retryable: false })
     }
-    throw new ApiError(`${providerName} request failed (${status}): ${body}`, { status, provider: providerId, retryable: status >= 500 })
+    const trunc = typeof body === 'string' && body.length > 200 ? `${body.slice(0, 200)}...` : body
+    throw new ApiError(`${providerName} request failed (${status}): ${trunc}`, { status, provider: providerId, retryable: status >= 500 })
   }
 }

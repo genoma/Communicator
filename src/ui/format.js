@@ -1,3 +1,5 @@
+import { sanitizeAnsi } from './hyperlink.js'
+
 function priceParts(prompt, completion) {
   const inPrice = prompt != null ? `$${(prompt * 1_000_000).toFixed(2)}` : '?'
   const outPrice = completion != null ? `$${(completion * 1_000_000).toFixed(2)}` : '?'
@@ -54,5 +56,6 @@ export function formatImagePrice(pricing, opts = {}) {
 }
 
 export function sessionLabel(endpointProviderName, modelId) {
-  return endpointProviderName ? `${endpointProviderName} / ${modelId}` : modelId
+  const name = endpointProviderName ? `${endpointProviderName} / ${modelId}` : modelId
+  return sanitizeAnsi(name)
 }

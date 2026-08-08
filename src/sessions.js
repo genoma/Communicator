@@ -19,6 +19,12 @@ export async function ensureSessionsDir() {
   return SESSIONS_DIR
 }
 
+export async function createNewSession(dir = null) {
+  const d = dir || await ensureSessionsDir()
+  const sessionId = await generateSessionId(d)
+  return { dir: d, sessionId, createdAt: new Date().toISOString() }
+}
+
 async function resolveSession(dir, partialId) {
   const sessions = await listSessions(dir)
   return sessions.filter((s) => s.id.startsWith(partialId))
@@ -218,8 +224,8 @@ export async function persistSessionFile(id, payload) {
   try {
     const dir = await ensureSessionsDir()
     await saveSession(dir, id, payload)
-  } catch (err) {
-    console.error(`Warning: could not save session: ${err.message}`)
+  } catch {
+    // saveSession already logs its own warnings
   }
 }
 

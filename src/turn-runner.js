@@ -1,10 +1,8 @@
 import { UsageTracker, budgetLine } from './tracker.js'
 import { formatError, ApiError } from './errors.js'
 import { extractPartialToken } from './sse-parser.js'
-import { printSources } from './ui/stream.js'
-import { dim } from './ui/style.js'
 import { debug } from './ui/io.js'
-import { resolveArtifacts, printArtifacts } from './artifacts.js'
+import { printPostStreamMetrics } from './artifacts.js'
 
 // Shared per-session mutable state: the runner and the signal handlers in
 // chat.js both touch these fields, and /new replaces the tracker.
@@ -64,19 +62,11 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       await render.flush()
       stdout.write('\n\n')
 
-      const results = await resolveArtifacts(apiResult, {
+      await printPostStreamMetrics(apiResult, {
         sessionId: state.sessionId,
         imageOutputSupported: state.imageOutputSupported,
+        stdout,
       })
-      if (results.length > 0) printArtifacts(results, stdout)
-
-      if (apiResult.sources?.length > 0) {
-        printSources(apiResult.sources, stdout)
-      }
-
-      if (apiResult.skippedChunks > 0) {
-        console.log(`${dim(`${apiResult.skippedChunks} malformed stream chunk${apiResult.skippedChunks > 1 ? 's' : ''} skipped`)}\n`)
-      }
 
       if (apiResult.usage) {
         sessionState.tracker.record(apiResult.usage, state.pricing)

@@ -11,7 +11,7 @@ import { runImageGeneration, printImageOutcome, buildImageSessionPayload, handle
 // /watermark is Venice-only: OpenRouter image models have no watermark
 // parameter, so the command is only offered on Venice sessions.
 function imageSessionCommands(providerName) {
-  return ['/help', '/model', '/quit', ...(providerName === 'venice' ? ['/watermark'] : []), '/aspect', '/format', '/resolution', '/quality', '/variants', '/seed']
+  return ['/help', '/model', '/quit', '/exit', ...(providerName === 'venice' ? ['/watermark'] : []), '/aspect', '/format', '/resolution', '/quality', '/variants', '/seed']
 }
 
 // Shared handler table for the sizing commands: `/format` and the new
@@ -136,7 +136,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     const input = result.value.trim()
     if (!input) continue
 
-    if (input === '/quit') {
+    if (input === '/quit' || input === '/exit') {
       await persist()
       return
     }
@@ -319,14 +319,14 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         sessionValues.aspectRatio = parsed
         const updated = mergeImageDefaults(prefs, provider.meta.name, { aspectRatio: parsed })
         Object.assign(prefs, updated)
-        await savePrefs(updated, configPath)
+        await savePrefs(updated)
         console.log(`Aspect ratio set to ${parsed} (${formatSize(computed.width, computed.height)}).\n`)
         continue
       }
       sessionValues.aspectRatio = parsed
       const updated = mergeImageDefaults(prefs, provider.meta.name, { aspectRatio: parsed })
       Object.assign(prefs, updated)
-      await savePrefs(updated, configPath)
+      await savePrefs(updated)
       console.log(`Aspect ratio set to ${parsed}.\n`)
       continue
     }

@@ -70,10 +70,11 @@ test('nextMatchIndex returns -1 for an empty match list', () => {
   assert.equal(nextMatchIndex('/mo', [], 1), -1)
 })
 
-test('CHAT_COMMANDS has 16 commands', () => {
-  assert.equal(CHAT_COMMANDS.length, 16)
+test('CHAT_COMMANDS has 17 commands', () => {
+  assert.equal(CHAT_COMMANDS.length, 17)
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
+    '/exit',
     '/new',
     '/model',
     '/attach',

@@ -168,7 +168,7 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
         timer = setTimeout(() => {
           timer = null
           redrawPartial()
-        }, partialFlushMs)
+        }, partialFlushMs).unref()
       }
     },
     flush() {

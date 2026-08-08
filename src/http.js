@@ -54,17 +54,18 @@ export async function assertSafeUrl(url) {
   return addresses.some((entry) => isPrivateAddress(entry.address)) ? 'blocked URL (private or loopback address)' : null
 }
 
-// Fetches a URL with the SSRF guard and a hard byte cap. Follows redirects
-// manually so every hop is re-validated. Returns null on any unsafe/invalid/
-// oversized outcome and throws only on unexpected body-read errors.
-export async function fetchSafeBytes(url, { maxBytes, timeoutMs = 30_000 } = {}) {
-  let res = null
+// Fetches a URL through SSRF-validated manual redirects (max 5 hops). Each
+// hop is re-validated via `assertSafeUrl` before the fetch. The `fetchFn`
+// must accept a URL string and return a Response or throw.
+// Returns the final Response on success, or null when a hop fails.
+export async function fetchWithRedirects(url, fetchFn, { maxHops = 5 } = {}) {
   let current = url
-  for (let hop = 0; hop <= 5; hop++) {
+  let res = null
+  for (let hop = 0; hop <= maxHops; hop++) {
     const unsafe = await assertSafeUrl(current)
     if (unsafe) return null
     try {
-      res = await fetchWithTimeout(current, { redirect: 'manual' }, { timeoutMs })
+      res = await fetchFn(current)
     } catch {
       return null
     }
@@ -78,6 +79,17 @@ export async function fetchSafeBytes(url, { maxBytes, timeoutMs = 30_000 } = {})
       return null
     }
   }
+  return res
+}
+
+// Fetches a URL with the SSRF guard and a hard byte cap. Follows redirects
+// manually so every hop is re-validated. Returns null on any unsafe/invalid/
+// oversized outcome and throws only on unexpected body-read errors.
+export async function fetchSafeBytes(url, { maxBytes, timeoutMs = 30_000 } = {}) {
+  const res = await fetchWithRedirects(url, (current) =>
+    fetchWithTimeout(current, { redirect: 'manual' }, { timeoutMs })
+  )
+  if (!res) return null
   if (res.status >= 400) return null
   const contentLength = Number(res.headers.get('content-length') || 0)
   if (contentLength > maxBytes) return null
@@ -122,6 +134,7 @@ export async function fetchWithTimeout(url, opts = {}, { timeoutMs = DEFAULT_TIM
 }
 
 export async function fetchWithRetry(url, opts = {}, { timeoutMs = DEFAULT_TIMEOUT_MS, attempts = 3, signal, errorResponse, retryDelays = RETRY_DELAYS } = {}) {
+  if (attempts < 1) throw new Error('fetchWithRetry requires attempts >= 1')
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const res = await fetchWithTimeout(url, opts, { timeoutMs, signal })

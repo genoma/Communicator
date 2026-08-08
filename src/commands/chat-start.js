@@ -2,7 +2,7 @@ import { getProvider } from '../providers/index.js'
 import { resolveWebSearchFlag, resolveBudget, resolveWebResultsFlag, resolvePrefOrNull } from '../flags.js'
 import { DEFAULT_TEMPERATURE } from '../constants.js'
 import { startChat } from '../chat.js'
-import { ensureSessionsDir, generateSessionId } from '../sessions.js'
+import { createNewSession } from '../sessions.js'
 import { resumeCmd } from './resume.js'
 import { getApiKey } from '../config.js'
 import { resolveSessionFlags, persistSession, buildSessionContext } from '../session-setup.js'
@@ -82,8 +82,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
     zdr,
   })
 
-  const dir = await ensureSessionsDir()
-  const sessionId = await generateSessionId(dir)
+  const { sessionId, createdAt } = await createNewSession()
 
   if (selection.isImageModel === true) {
     return imageSessionContext({
@@ -92,7 +91,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
       prefs,
       imageModelId: selection.modelId,
       sessionId,
-      createdAt: new Date().toISOString(),
+      createdAt,
       initialMessages: [],
       configPath: opts.config,
       imageProviderName: selection.endpointProviderName,

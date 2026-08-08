@@ -2,6 +2,7 @@ import { partLabel, partUrl } from './attachments.js'
 import { downloadRemotePart } from './attachment-store.js'
 import { dim } from './ui/style.js'
 import { hyperlink } from './ui/hyperlink.js'
+import { printSources } from './ui/stream.js'
 
 // Models that advertise image output often emit the artifact as a markdown
 // image in plain text instead of a structured part. The conversion is gated on
@@ -69,5 +70,18 @@ export function printArtifacts(results, stdout = process.stdout) {
     const link = url && /^https?:/.test(url) ? ` ${hyperlink(url, url) || url}` : ''
     const note = res.savedTo ? `saved to ${res.savedTo}` : res.error ? `download failed: ${res.error}` : ''
     stdout.write(`${dim(`${word}: ${res.label || partLabel(part)}`)}${link}${note ? `  ${dim(note)}` : ''}\n`)
+  }
+}
+
+export async function printPostStreamMetrics(apiResult, { sessionId, imageOutputSupported, stdout = process.stdout }) {
+  const results = await resolveArtifacts(apiResult, { sessionId, imageOutputSupported })
+  if (results.length > 0) printArtifacts(results, stdout)
+
+  if (apiResult.sources?.length > 0) {
+    printSources(apiResult.sources, stdout)
+  }
+
+  if (apiResult.skippedChunks > 0) {
+    stdout.write(`${dim(`${apiResult.skippedChunks} malformed stream chunk${apiResult.skippedChunks > 1 ? 's' : ''} skipped`)}\n`)
   }
 }

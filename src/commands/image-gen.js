@@ -1,7 +1,7 @@
 import { basename, join } from 'node:path'
 import { copyFile, mkdir } from 'node:fs/promises'
 import { getProvider } from '../providers/index.js'
-import { ensureSessionsDir, generateSessionId, removeEmptySessionClaim, persistSessionFile, buildSessionPayload } from '../sessions.js'
+import { createNewSession, removeEmptySessionClaim, persistSessionFile, buildSessionPayload } from '../sessions.js'
 import { attachmentDirFor, externalizeAttachments, savedAttachmentPath } from '../attachment-store.js'
 import { selectImageModelNonInteractive, selectImageEndpoint } from '../model-selection.js'
 import { selectImageModel, selectSizingOption } from '../prompts.js'
@@ -371,8 +371,7 @@ export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, s
     throw new CliError(NO_PROMPT_MESSAGE)
   }
 
-  const dir = await ensureSessionsDir()
-  const sessionId = await generateSessionId(dir)
+  const { dir, sessionId } = await createNewSession()
 
   let outcome
   try {

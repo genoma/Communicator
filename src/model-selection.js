@@ -201,12 +201,18 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
   const models = await provider.fetchModels(apiKey)
   const zdrActive = await zdrGate(provider, zdr)
   const modelData = models.find((m) => m.id === modelId)
-  if (!modelData && !zdrActive) {
-    const imageModel = await findImageModel(provider, apiKey, modelId)
-    if (imageModel) {
-      const endpoint = await selectImageEndpoint({ provider, apiKey, model: imageModel, interactive: false })
-      return imageModelSelection(imageModel, provider, endpoint)
+  if (!modelData) {
+    if (!zdrActive) {
+      const imageModel = await findImageModel(provider, apiKey, modelId)
+      if (imageModel) {
+        const endpoint = await selectImageEndpoint({ provider, apiKey, model: imageModel, interactive: false })
+        return imageModelSelection(imageModel, provider, endpoint)
+      }
+      throw new CliError(`Error: model ${modelId} not found. Use --list-models to see available models.`)
     }
+    // Under zdr the model may only exist as an image model which has no
+    // ZDR endpoints; let the downstream fetchEndpoints/zdr-filter error
+    // surface the correct message.
   }
   const reasoning = modelData?.reasoning || null
 
@@ -227,7 +233,12 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
     endpointProviderName: ep?.providerName || provider.meta.name,
     pricing: ep?.pricing || null,
     contextLength: ep?.contextLength ?? modelData?.contextLength ?? null,
-    supportsReasoning: !!ep?.supportedParameters?.supportsReasoningEffort,
+    supportsReasoning: (() => {
+    const rawParams = ep?.supportedParameters
+    return Array.isArray(rawParams)
+      ? rawParams.includes('reasoning')
+      : !!rawParams?.supportsReasoningEffort
+  })(),
     modelReasoning: reasoning,
     webSearchSupported: isWebSearchSupported(provider.meta, modelData),
     ...capabilityFlags(provider, modelData, ep),

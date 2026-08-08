@@ -1,6 +1,6 @@
 import { getProvider } from '../providers/index.js'
 import { cpsToCharsPerTick } from '../constants.js'
-import { ensureSessionsDir, generateSessionId, removeEmptySessionClaim } from '../sessions.js'
+import { createNewSession, removeEmptySessionClaim } from '../sessions.js'
 import { createStreamRenderer, printSources } from '../ui/stream.js'
 import { sessionLabel } from '../ui/format.js'
 import { UsageTracker, budgetLine } from '../tracker.js'
@@ -52,9 +52,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     if (opts.attach?.length) {
       throw new CliError('Error: --attach is not supported with image models.')
     }
-    const dir = await ensureSessionsDir()
-    const sessionId = await generateSessionId(dir)
-    const createdAt = new Date().toISOString()
+    const { dir, sessionId, createdAt } = await createNewSession()
 
     let outcome
     try {
@@ -89,9 +87,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     attachments.push(...loaded.attachments)
   }
 
-  const dir = await ensureSessionsDir()
-  const sessionId = await generateSessionId(dir)
-  const createdAt = new Date().toISOString()
+  const { dir, sessionId, createdAt } = await createNewSession()
   const messages = [
     { role: 'system', content: systemPrompt || 'You are a helpful assistant.' },
     { role: 'user', content: buildContent(text, attachments) },

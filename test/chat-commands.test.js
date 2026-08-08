@@ -970,9 +970,10 @@ test('/watermark is registered and args-accepting, visible only on venice sessio
   assert.ok(!visibleChatCommands({ visionSupported: true, providerName: 'openrouter' }).includes('/watermark'))
 })
 
-test('CHAT_COMMANDS keeps the 16-command order', () => {
+test('CHAT_COMMANDS keeps the 17-command order', () => {
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
+    '/exit',
     '/new',
     '/model',
     '/attach',

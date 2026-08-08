@@ -32,8 +32,14 @@ export function copyText(text, { platform = process.platform } = {}) {
         if (code === 0) resolve({ ok: true })
         else tryNext(index + 1)
       })
-      child.stdin.write(text)
-      child.stdin.end()
+      try {
+        child.stdin.write(text)
+        child.stdin.end()
+      } catch {
+        if (settled) return
+        settled = true
+        tryNext(index + 1)
+      }
     }
     tryNext(0)
   })

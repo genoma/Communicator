@@ -25,6 +25,8 @@ function attachmentGateOptions(ctx) {
 const handlers = {
   '/quit': async () => ({ exit: true }),
 
+  '/exit': async () => ({ exit: true }),
+
   '/new': async (ctx) => {
     await ctx.saveSession()
     ctx.state.sessionId = await ctx.newSessionId()

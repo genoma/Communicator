@@ -210,6 +210,7 @@ test('an interrupted stream salvages the sources collected so far', async (t) =>
 })
 
 test('prints a warning when the stream carried skipped chunks', async (t) => {
+  const writes = []
   const logs = []
   t.mock.method(console, 'log', (msg) => logs.push(String(msg)))
   t.mock.method(console, 'error', () => {})
@@ -218,11 +219,11 @@ test('prints a warning when the stream carried skipped chunks', async (t) => {
       return { content: 'ok', skippedChunks: 3, usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }
     },
   })
-  const { deps } = makeDeps({ provider })
+  const { deps } = makeDeps({ provider, stdout: { write: (s) => writes.push(String(s)) } })
 
   await runTurn(deps, fakeState())
 
-  assert.ok(logs.some((l) => l.includes('3 malformed stream chunks skipped')))
+  assert.ok(writes.some((l) => l.includes('3 malformed stream chunks skipped')))
 })
 
 test('warns once via the budget line when the cap is 90% crossed', async (t) => {

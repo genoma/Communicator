@@ -322,20 +322,23 @@ test('one-shot SIGINT during the request aborts and exits 130', async (t) => {
   t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
 
   let sigintHandler = null
+  let handlerReady
+  const handlerSet = new Promise((resolve) => { handlerReady = resolve })
   const originalOn = process.on.bind(process)
   const originalOff = process.off.bind(process)
   t.mock.method(process, 'on', (event, fn) => {
-    if (event === 'SIGINT') sigintHandler = fn
+    if (event === 'SIGINT') {
+      sigintHandler = fn
+      handlerReady()
+    }
     return originalOn(event, fn)
   })
   t.mock.method(process, 'off', (event, fn) => originalOff(event, fn))
 
   const { oneShotCmd } = await import('../src/commands/one-shot.js')
   const run = oneShotCmd({ apiKey: 'test-key', opts: opts(), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: 'Hello' })
-  const deadline = Date.now() + 5000
-  while (sigintHandler === null && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 5))
-  }
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('SIGINT handler never registered')), 5000))
+  await Promise.race([handlerSet, timeout])
   assert.ok(sigintHandler !== null)
   sigintHandler()
 
