@@ -243,7 +243,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
 
   while (true) {
     console.log(sep())
-    const result = await readInput({ commands: visibleChatCommands({ visionSupported: state.visionSupported, providerName: provider.meta.name }) })
+    const result = await readInput({ commands: visibleChatCommands({ visionSupported: state.visionSupported }) })
 
     if (result.cancelled) {
       return exitCleanly()
@@ -259,7 +259,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
       const cmd = spaceIdx === -1 ? firstLine : firstLine.slice(0, spaceIdx)
       const handler = chatCommands[cmd]
       if (!handler || (spaceIdx !== -1 && !commandAcceptsArgs(cmd))) {
-        console.log(`Unknown command "${firstLine}". Available: ${visibleChatCommands({ visionSupported: state.visionSupported, providerName: provider.meta.name }).join(', ')}\n`)
+        console.log(`Unknown command "${firstLine}". Available: ${visibleChatCommands({ visionSupported: state.visionSupported }).join(', ')}\n`)
         continue
       }
       const outcome = await handler({ ...chatCtx, input, args: spaceIdx === -1 ? '' : firstLine.slice(spaceIdx + 1).trim() })

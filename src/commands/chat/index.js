@@ -8,9 +8,7 @@ import { sessionLabel } from '../../ui/format.js'
 import { dim } from '../../ui/style.js'
 import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
-import { handleWatermarkCommand } from '../image-gen.js'
-
-const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments', '/watermark'])
+const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments'])
 
 export function budgetGuard(ctx) {
   const { state, tracker } = ctx
@@ -278,25 +276,15 @@ const handlers = {
     console.log(`${dim('Current session:')} ${ctx.tracker.summary()}`)
     console.log(`${dim('Reasoning:')} ${ctx.state.reasoningEffort === undefined ? 'auto' : getEffortLabel(ctx.state.reasoningEffort)}\n`)
   },
-
-  '/watermark': async (ctx) => {
-    await handleWatermarkCommand({
-      providerName: ctx.provider.meta.name,
-      args: ctx.args,
-      prefs: ctx.prefs,
-      savePrefs: ctx.savePrefs,
-    })
-  },
 }
 
 export const chatCommands = handlers
 
 export const CHAT_COMMANDS = Object.keys(handlers)
 
-export function visibleChatCommands({ visionSupported, providerName }) {
+export function visibleChatCommands({ visionSupported }) {
   const hidden = []
   if (visionSupported === false) hidden.push('/attach', '/attachments')
-  if (providerName !== 'venice') hidden.push('/watermark')
   return CHAT_COMMANDS.filter((c) => !hidden.includes(c))
 }
 

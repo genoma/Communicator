@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { chatCommands, budgetGuard, CHAT_COMMANDS, commandAcceptsArgs, visibleChatCommands } from '../src/commands/chat/index.js'
+import { chatCommands, budgetGuard, CHAT_COMMANDS, visibleChatCommands } from '../src/commands/chat/index.js'
 import { ChatState } from '../src/chat-state.js'
 import { UsageTracker } from '../src/tracker.js'
 
@@ -18,43 +18,6 @@ function fakeProvider(overrides = {}) {
     },
     async fetchEndpoints() {
       return []
-    },
-    ...overrides,
-  }
-}
-
-function fakeVeniceProvider(overrides = {}) {
-  return {
-    meta: { name: 'venice' },
-    generateCalls: [],
-    async fetchImageModels() {
-      return [
-        {
-          id: 'flux-1-1',
-          name: 'Flux 1.1',
-          pricing: { perImage: 0.02, byResolution: null, byQuality: null },
-          constraints: { aspectRatios: ['1:1', '16:9', '3:2'], formats: ['png', 'jpeg', 'webp'], resolutions: null, qualities: null, widthHeightDivisor: 8 },
-          offline: false,
-        },
-        {
-          id: 'z-image-turbo',
-          name: 'Z-Image Turbo',
-          pricing: { perImage: 0.01, byResolution: null, byQuality: null },
-          constraints: { aspectRatios: null, formats: ['png', 'jpeg', 'webp'], resolutions: null, qualities: null, widthHeightDivisor: 8 },
-          offline: false,
-        },
-      ]
-    },
-    async generateImage(generateArgs) {
-      this.generateCalls.push(generateArgs)
-      return {
-        id: 'gen-1',
-        images: [
-          { bytes: Buffer.from('chat image'), dataUrl: 'data:image/png;base64,Y2hhdCBpbWFnZQ==', mime: 'image/png', ext: 'png' },
-        ],
-        blurred: false,
-        cost: 0.02,
-      }
     },
     ...overrides,
   }
@@ -906,71 +869,7 @@ test('/model keeps compatible attachments on switch', async (t) => {
   assert.equal(consoleSpy.log(0), '\nSwitched to NewProvider / new/model\n')
 })
 
-test('/watermark shows the current status with no argument', async (t) => {
-  const consoleSpy = mockConsole(t)
-  const { ctx } = makeCtx({ provider: fakeVeniceProvider() })
-
-  await chatCommands['/watermark'](ctx)
-
-  assert.equal(consoleSpy.log(0), 'Venice watermark is on.\n')
-})
-
-test('/watermark status shows off when the watermark is hidden', async (t) => {
-  const consoleSpy = mockConsole(t)
-  const { ctx } = makeCtx({ provider: fakeVeniceProvider(), prefs: { hideWatermark: true } })
-
-  await chatCommands['/watermark'](ctx)
-
-  assert.equal(consoleSpy.log(0), 'Venice watermark is off.\n')
-})
-
-test('/watermark on shows the watermark and off hides it, persisting and mutating the shared prefs object', async (t) => {
-  const consoleSpy = mockConsole(t)
-  const { ctx, prefsUpdates } = makeCtx({ provider: fakeVeniceProvider(), prefs: { hideWatermark: true } })
-
-  await chatCommands['/watermark']({ ...ctx, args: 'on' })
-
-  assert.deepEqual(prefsUpdates, [{ hideWatermark: false }])
-  assert.equal(ctx.prefs.hideWatermark, false)
-  assert.equal(consoleSpy.log(0), 'Venice watermark enabled.\n')
-
-  await chatCommands['/watermark']({ ...ctx, args: 'off' })
-
-  assert.deepEqual(prefsUpdates, [{ hideWatermark: false }, { hideWatermark: true }])
-  assert.equal(ctx.prefs.hideWatermark, true)
-  assert.equal(consoleSpy.log(1), 'Venice watermark disabled.\n')
-})
-
-test('/watermark with an invalid argument errors', async (t) => {
-  const consoleSpy = mockConsole(t)
-  const { ctx, prefsUpdates } = makeCtx({ provider: fakeVeniceProvider() })
-
-  await chatCommands['/watermark']({ ...ctx, args: 'sometimes' })
-
-  assert.equal(consoleSpy.error(0), 'Error: /watermark expects "on" or "off".\n')
-  assert.deepEqual(prefsUpdates, [])
-})
-
-test('/watermark on an openrouter session errors', async (t) => {
-  const consoleSpy = mockConsole(t)
-  const { ctx, prefsUpdates } = makeCtx()
-
-  await chatCommands['/watermark']({ ...ctx, args: 'on' })
-
-  assert.equal(consoleSpy.error(0), 'Error: /watermark is only supported on Venice sessions.\n')
-  assert.deepEqual(prefsUpdates, [])
-})
-
-test('/watermark is registered and args-accepting, visible only on venice sessions', () => {
-  assert.ok(CHAT_COMMANDS.includes('/watermark'))
-  assert.equal(commandAcceptsArgs('/watermark'), true)
-  assert.ok(visibleChatCommands({ visionSupported: false, providerName: 'venice' }).includes('/watermark'))
-  assert.ok(visibleChatCommands({ visionSupported: true, providerName: 'venice' }).includes('/watermark'))
-  assert.ok(!visibleChatCommands({ visionSupported: false, providerName: 'openrouter' }).includes('/watermark'))
-  assert.ok(!visibleChatCommands({ visionSupported: true, providerName: 'openrouter' }).includes('/watermark'))
-})
-
-test('CHAT_COMMANDS keeps the 17-command order', () => {
+test('CHAT_COMMANDS keeps the 16-command order', () => {
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/exit',
@@ -988,24 +887,15 @@ test('CHAT_COMMANDS keeps the 17-command order', () => {
     '/markdown',
     '/smooth',
     '/cost',
-    '/watermark',
   ])
 })
 
 test('visibleChatCommands hides /attach and /attachments only when vision is known unsupported', () => {
-  const hidden = visibleChatCommands({ visionSupported: false, providerName: 'venice' })
+  const hidden = visibleChatCommands({ visionSupported: false })
   assert.ok(!hidden.includes('/attach'))
   assert.ok(!hidden.includes('/attachments'))
   assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => c !== '/attach' && c !== '/attachments'))
 
-  assert.deepEqual(visibleChatCommands({ visionSupported: true, providerName: 'venice' }), CHAT_COMMANDS)
-  assert.deepEqual(visibleChatCommands({ visionSupported: undefined, providerName: 'venice' }), CHAT_COMMANDS)
-})
-
-test('visibleChatCommands hides /watermark on non-venice sessions', () => {
-  const without = visibleChatCommands({ visionSupported: true, providerName: 'openrouter' })
-  assert.ok(!without.includes('/watermark'))
-  assert.deepEqual(without, CHAT_COMMANDS.filter((c) => c !== '/watermark'))
-  assert.deepEqual(visibleChatCommands({ visionSupported: true }), CHAT_COMMANDS.filter((c) => c !== '/watermark'))
-  assert.deepEqual(visibleChatCommands({}), CHAT_COMMANDS.filter((c) => c !== '/watermark'))
+  assert.deepEqual(visibleChatCommands({ visionSupported: true }), CHAT_COMMANDS)
+  assert.deepEqual(visibleChatCommands({ visionSupported: undefined }), CHAT_COMMANDS)
 })
