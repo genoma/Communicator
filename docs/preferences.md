@@ -31,7 +31,7 @@ The preferences file (`~/.communicator.json`, customizable with `--config`), per
 - `budget` / `webResults` — session defaults applied when no flag is given.
 - `hideWatermark` — global Venice image setting: when `true`, generated images are requested without the Venice watermark (Venice may ignore it for some content/models).
 - `safeMode` — global Venice image setting: when `false`, generated images are requested with safe mode disabled (`--no-safe-mode` persists it; removing the key re-enables safe mode).
-- `imageDefaults` — per-provider image sizing defaults (`venice`/`openrouter`, each `{ aspectRatio, format }`), saved by `--aspect-ratio`/`--image-format` alone, by any explicit flag or non-default picker choice, and by `/aspect`/`/format` in image sessions.
+- `imageDefaults` — per-provider image sizing defaults (`venice`/`openrouter`, each `{ aspectRatio, format, resolution, quality, variants }`), saved by `--aspect-ratio`/`--image-format` alone, by any explicit flag or non-default picker choice, and by `/aspect`/`/format`/`/resolution`/`/quality`/`/variants` in image sessions. `/seed` is never persisted.
 - Legacy `webSearch: true` values are read as `auto`.
 
 Preferences are currently scoped across both API backends — your last OpenRouter model shows as the favorite even when using Venice (this will be improved in a future release).

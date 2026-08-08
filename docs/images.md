@@ -24,7 +24,7 @@ Image models
 - `/help` lists the commands; `/exit` and `/quit` (or Ctrl+C / EOF) leave the session.
 - Each turn is persisted to the session (system + prompt + image messages), so the session shows up in `--list-sessions`, is exportable, and `--resume <id>` re-enters the image session to keep generating. Your last-used image model is remembered (`lastImageModel`).
 - `-m <image-model> "prompt"` runs the same generation as a one-shot (persisted + printed, `--attach` rejected), and `--image` keeps working as before for one-off generations.
-- Inside an image session, `/model` opens the same unified picker: picking another image model switches the session to it, while picking a text model continues the session as a normal chat with the same session id and history (image parts are replaced by a `[generated image]` placeholder for non-vision models). `/aspect <x:y>` and `/format <fmt>` set the sizing for the rest of the session (see [Sizing defaults](#sizing-defaults)); `/watermark` is Venice-only.
+- Inside an image session, `/model` opens the same unified picker: picking another image model switches the session to it, while picking a text model continues the session as a normal chat with the same session id and history (image parts are replaced by a `[generated image]` placeholder for non-vision models). `/aspect <x:y>`, `/format <fmt>`, `/resolution <tier>`, `/quality <level>`, `/variants <n>` and `/seed <int>` set the sizing for the rest of the session (see [Sizing defaults](#sizing-defaults)); `/watermark` is Venice-only.
 
 ## One-shot: `--image`
 
@@ -69,19 +69,20 @@ Choices are remembered as **global per-provider defaults** (`venice` and `openro
 ```json
 {
   "imageDefaults": {
-    "venice": { "aspectRatio": "16:9", "format": "webp" },
+    "venice": { "aspectRatio": "16:9", "format": "webp", "resolution": "2K", "quality": "high", "variants": 2 },
     "openrouter": { "aspectRatio": "1:1", "format": "png" }
   }
 }
 ```
 
-- A non-default picker choice or any explicit flag (CLI) becomes the provider default for future generations. Only ratios are stored — pixel sizes are always derived from the ratio and the model's divisor, never persisted.
+- A non-default picker choice or any explicit flag (CLI) becomes the provider default for future generations. Aspect ratios are stored; pixel sizes are always derived from the ratio and the model's divisor, never persisted.
 - Save them directly with the config-setter (no `--image` needed):
   ```bash
   communicator -p venice --aspect-ratio 16:9 --image-format png
   communicator -p openrouter --aspect-ratio 1:1
   ```
-- Image sessions apply the saved defaults automatically on start; `/aspect <x:y>` and `/format <fmt>` override them for the rest of the session. Bare `/aspect`/`/format` show the model's full supported list with the current value marked in brackets (`Aspect ratios: 1:1 [16:9] 3:2.`, `Formats: [png] jpeg webp.`); a stored value outside the supported list is reported as such, and a model that cannot take the parameter at all says so. `clear` unsets the value so the parameter is no longer sent — use it to override a saved default for one session. Only advertised values are accepted.
+- Image sessions apply the saved defaults automatically on start; `/aspect <x:y>`, `/format <fmt>`, `/resolution <tier>`, `/quality <level>` and `/variants <n>` override them for the rest of the session. Bare `/aspect`/`/format`/`/resolution`/`/quality` show the model's full supported list with the current value marked in brackets (`Aspect ratios: 1:1 [16:9] 3:2.`, `Formats: [png] jpeg webp.`, `Resolutions: 1K [2K] 4K.`, `Qualities: low [medium] high.`); bare `/variants` shows the session count (`Variants: 1-4 (current: 2).`) and bare `/seed` the session seed (`Seed: 123.` / `Seed: not set.`). A stored value outside the supported list is reported as such, and a model that cannot take the parameter at all says so. `clear` unsets the value so the parameter is no longer sent — use it to override a saved default for one session. Only advertised values are accepted for list-based options; `/variants` accepts 1–4 and `/seed` any integer between -999999999 and 999999999.
+- `/seed` is **session-only**: it is never persisted, because a stored seed would silently reproduce the same image on every run. `clear` only resets it for the rest of the session.
 - **Pixel-based models behave like aspect models with a hardcoded ratio list** (`1:1, 3:2, 16:9, 21:9, 9:16, 2:3, 3:4, 4:5`): `/aspect <x:y>`, `--aspect-ratio`/`--ratio` and the pickers accept exactly these ratios, and the pixel size is computed from the ratio and the model's `widthHeightDivisor` — `aspect_ratio` itself is never sent (those models ignore it and return a square default). Bare `/aspect` shows each preset with its computed size and the current ratio marked: `Aspect ratios: 1:1 1280x1280 · 3:2 1272x848 · 16:9 1280x720 · 21:9 1264x544 · 9:16 720x1280 · [2:3 848x1272] · 3:4 960x1280 · 4:5 1024x1280.`
 - **Unsupported defaults are never sent silently**: if a saved default is not supported by the chosen model (or the model cannot take the parameter at all, e.g. GPT-Image models without `output_format`), the CLI drops it and prints a one-line note (`note: saved aspect ratio 21:9 is not supported by <model>; it was not sent.`). Explicit flags always error client-side with the supported list instead. The CLI makes the drop visible because the providers' API silently ignores unsupported values and still bills them (Venice pixel-based models ignore `aspect_ratio` and return a square default).
 - A model (either provider) whose listing has no `aspect_ratio`/`output_format` support never receives those parameters. On Venice, pixel-based models (`z-image-turbo`, `venice-sd35`, …) take an aspect ratio from the hardcoded preset list (or `--width`/`--height` in multiples of their pixel divisor, up to 1280) instead. Preset ratios are computed to the model's divisor anchored at 1280 per side: on `z-image-turbo` (divisor 8) `2:3` → `848x1272`, `16:9` → `1280x720`, `21:9` → `1264x544` (the web UI shows divisor-16 rounding, e.g. `2:3` → `848x1264`; the CLI follows the API divisor).
