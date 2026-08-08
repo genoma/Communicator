@@ -22,7 +22,7 @@ mock.module(new URL('../src/commands/image-gen.js', import.meta.url).href, {
       genCalls.push(prompt)
       genPrefs.push(prefs?.hideWatermark)
       genModels.push(model?.id)
-      genOpts.push({ aspectRatio: opts?.aspectRatio, imageFormat: opts?.imageFormat, sizingInteractive })
+      genOpts.push({ aspectRatio: opts?.aspectRatio, imageFormat: opts?.imageFormat, resolution: opts?.resolution, quality: opts?.quality, variants: opts?.variants, seed: opts?.seed, sizingInteractive })
       if (prompt === 'boom') throw new CliError('Error: venice exploded.')
       return {
         message: { role: 'assistant', content: [{ type: 'image_url', image_url: { url: `ref://attachments/${genCalls.length}.webp` } }] },
@@ -96,7 +96,7 @@ const { startImageSession } = await import('../src/commands/image-session.js')
 const fakeProvider = {
   meta: { name: 'venice' },
   async fetchImageModels() {
-    return [{ id: 'venice-sd35', name: 'SD 3.5', pricing: { perImage: 0.02 }, constraints: { aspectRatios: ['1:1', '16:9', '3:2'], formats: ['png', 'jpeg', 'webp'] } }]
+    return [{ id: 'venice-sd35', name: 'SD 3.5', pricing: { perImage: 0.02 }, constraints: { aspectRatios: ['1:1', '16:9', '3:2'], formats: ['png', 'jpeg', 'webp'], resolutions: ['1K', '2K', '4K'], qualities: ['low', 'medium', 'high'] } }]
   },
 }
 
@@ -128,7 +128,7 @@ const twoImageModelsProvider = {
   meta: { name: 'venice' },
   async fetchImageModels() {
     return [
-      { id: 'venice-sd35', name: 'SD 3.5', pricing: { perImage: 0.02 }, constraints: { aspectRatios: ['1:1', '16:9', '3:2'], formats: ['png', 'jpeg', 'webp'] } },
+      { id: 'venice-sd35', name: 'SD 3.5', pricing: { perImage: 0.02 }, constraints: { aspectRatios: ['1:1', '16:9', '3:2'], formats: ['png', 'jpeg', 'webp'], resolutions: ['1K', '2K', '4K'], qualities: ['low', 'medium', 'high'] } },
       { id: 'z-image-turbo', name: 'Z-Image Turbo', pricing: { perImage: 0.01 }, constraints: { aspectRatios: null, formats: ['png', 'jpeg', 'webp'], widthHeightDivisor: 8 } },
     ]
   },
@@ -141,6 +141,15 @@ const openRouterTwoImageModelsProvider = {
       { id: 'openai/gpt-5-image', name: 'GPT-5 Image', pricing: null, constraints: { aspectRatios: null, formats: null } },
       { id: 'openai/gpt-image-1-mini', name: 'GPT Image 1 Mini', pricing: null, constraints: { aspectRatios: null, formats: null } },
     ]
+  },
+}
+
+// A Venice model whose resolution/quality lists do not cover the full
+// resolver range, so a valid global value can still be unsupported.
+const limitedSizingProvider = {
+  meta: { name: 'venice' },
+  async fetchImageModels() {
+    return [{ id: 'venice-sd35', name: 'SD 3.5', pricing: { perImage: 0.02 }, constraints: { aspectRatios: ['1:1', '16:9', '3:2'], formats: ['png', 'jpeg', 'webp'], resolutions: ['1K', '2K'], qualities: ['low', 'medium'] } }]
   },
 }
 
@@ -315,6 +324,10 @@ test('/help lists the commands and does not generate', async (t) => {
   assert.ok(logs.some((l) => l.includes('/help')))
   assert.ok(logs.some((l) => l.includes('/quit')))
   assert.ok(logs.some((l) => l.includes('/watermark')))
+  assert.ok(logs.some((l) => l.includes('/resolution')))
+  assert.ok(logs.some((l) => l.includes('/quality')))
+  assert.ok(logs.some((l) => l.includes('/variants')))
+  assert.ok(logs.some((l) => l.includes('/seed')))
 })
 
 test('unknown slash commands are reported without generating', async (t) => {
@@ -801,6 +814,395 @@ test('/format with an invalid value errors', async (t) => {
   await startImageSession(baseOpts({ readInput: scriptedInput(['/format gif', '/quit']) }))
 
   assert.ok(errors.some((e) => e.includes('--image-format must be one of: png, jpeg, webp.')))
+})
+
+test('/resolution sets the session resolution, persists the provider default and passes it as opts', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    readInput: scriptedInput(['/resolution 2K', 'a cat', '/quit']),
+  }))
+
+  assert.deepEqual(genCalls, ['a cat'])
+  assert.equal(genOpts[0].resolution, '2K')
+  assert.equal(genOpts[0].imageFormat, undefined)
+  assert.equal(genOpts[0].aspectRatio, undefined)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { resolution: '2K' } })
+})
+
+test('/resolution bare shows the supported resolutions with the current one marked', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    prefs: { imageDefaults: { venice: { resolution: '2K' } } },
+    readInput: scriptedInput(['/resolution', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Resolutions: 1K [2K] 4K.')))
+})
+
+test('/resolution bare reports the supported resolutions when none is set', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/resolution', '/quit']) }))
+
+  assert.ok(logs.some((l) => l.includes('Resolutions: 1K 2K 4K (none set).')))
+})
+
+test('/resolution bare marks the session value over the saved default', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    prefs: { imageDefaults: { venice: { resolution: '1K' } } },
+    readInput: scriptedInput(['/resolution 2K', '/resolution', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Resolutions: 1K [2K] 4K.')))
+})
+
+test('/resolution bare notes a stored value outside the supported list', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    prefs: { imageDefaults: { venice: { resolution: '8K' } } },
+    readInput: scriptedInput(['/resolution', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Resolutions: 1K 2K 4K (8K not supported by venice-sd35).')))
+})
+
+test('/resolution with a value outside the model list errors listing the supported values', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({
+    provider: limitedSizingProvider,
+    readInput: scriptedInput(['/resolution 4K', '/quit']),
+  }))
+
+  assert.ok(errors.some((e) => e.includes('Error: resolution 4K is not supported by venice-sd35. Supported: 1K, 2K.')))
+  assert.deepEqual(genCalls, [])
+})
+
+test('/resolution with an invalid value errors', async (t) => {
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/resolution 8K', '/quit']) }))
+
+  assert.ok(errors.some((e) => e.includes('--resolution must be one of: 1K, 2K, 4K.')))
+})
+
+test('/resolution clear unsets the resolution and removes the persisted key', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    prefs: { imageDefaults: { venice: { resolution: '2K', format: 'png' } } },
+    readInput: scriptedInput(['/resolution clear', 'a cat', '/quit']),
+  }))
+
+  assert.equal(genOpts[0].resolution, undefined)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { format: 'png' } })
+})
+
+test('/resolution bare on an OpenRouter model without a list reports it is unsupported', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    provider: openRouterNoListsProvider,
+    imageModelId: 'openai/gpt-5-image',
+    readInput: scriptedInput(['/resolution', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Resolution is not supported by openai/gpt-5-image.')))
+})
+
+test('/resolution with a value on an OpenRouter model without a list errors', async (t) => {
+  genCalls.length = 0
+  printed.length = 0
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({
+    provider: openRouterNoListsProvider,
+    imageModelId: 'openai/gpt-5-image',
+    readInput: scriptedInput(['/resolution 2K', '/quit']),
+  }))
+
+  assert.ok(errors.some((e) => e.includes('Error: resolution is not supported by openai/gpt-5-image.')))
+  assert.deepEqual(genCalls, [])
+})
+
+test('/quality sets the session quality, persists the provider default and passes it as opts', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    readInput: scriptedInput(['/quality high', 'a cat', '/quit']),
+  }))
+
+  assert.deepEqual(genCalls, ['a cat'])
+  assert.equal(genOpts[0].quality, 'high')
+  assert.equal(genOpts[0].imageFormat, undefined)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { quality: 'high' } })
+})
+
+test('/quality bare shows the supported qualities with the current one marked', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    prefs: { imageDefaults: { venice: { quality: 'medium' } } },
+    readInput: scriptedInput(['/quality', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Qualities: low [medium] high.')))
+})
+
+test('/quality with a value outside the model list errors listing the supported values', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({
+    provider: limitedSizingProvider,
+    readInput: scriptedInput(['/quality high', '/quit']),
+  }))
+
+  assert.ok(errors.some((e) => e.includes('Error: quality high is not supported by venice-sd35. Supported: low, medium.')))
+  assert.deepEqual(genCalls, [])
+})
+
+test('/quality with an invalid value errors', async (t) => {
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/quality 8k', '/quit']) }))
+
+  assert.ok(errors.some((e) => e.includes('--quality must be one of: low, medium, high.')))
+})
+
+test('/quality clear unsets the quality and removes the persisted key', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    prefs: { imageDefaults: { venice: { quality: 'high', aspectRatio: '16:9' } } },
+    readInput: scriptedInput(['/quality clear', 'a cat', '/quit']),
+  }))
+
+  assert.equal(genOpts[0].quality, undefined)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { aspectRatio: '16:9' } })
+})
+
+test('/quality with a value on an OpenRouter model without a list errors', async (t) => {
+  genCalls.length = 0
+  printed.length = 0
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({
+    provider: openRouterNoListsProvider,
+    imageModelId: 'openai/gpt-5-image',
+    readInput: scriptedInput(['/quality high', '/quit']),
+  }))
+
+  assert.ok(errors.some((e) => e.includes('Error: quality is not supported by openai/gpt-5-image.')))
+  assert.deepEqual(genCalls, [])
+})
+
+test('/variants sets the session variants, persists the provider default and passes them as opts', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    readInput: scriptedInput(['/variants 2', 'a cat', '/quit']),
+  }))
+
+  assert.deepEqual(genCalls, ['a cat'])
+  assert.equal(genOpts[0].variants, 2)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { variants: 2 } })
+})
+
+test('/variants bare shows the range with the current one marked', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    prefs: { imageDefaults: { venice: { variants: 2 } } },
+    readInput: scriptedInput(['/variants', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Variants: 1-4 (current: 2).')))
+})
+
+test('/variants bare reports the range when none is set', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/variants', '/quit']) }))
+
+  assert.ok(logs.some((l) => l.includes('Variants: 1-4 (none set).')))
+})
+
+test('/variants with a value outside the range errors', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/variants 5', '/quit']) }))
+
+  assert.ok(errors.some((e) => e.includes('Error: --variants must be an integer between 1 and 4.')))
+  assert.deepEqual(genCalls, [])
+})
+
+test('/variants clear unsets the variants and removes the persisted key', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    prefs: { imageDefaults: { venice: { resolution: '2K', variants: 2 } } },
+    readInput: scriptedInput(['/variants clear', 'a cat', '/quit']),
+  }))
+
+  assert.equal(genOpts[0].variants, undefined)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(prefs.imageDefaults, { venice: { resolution: '2K' } })
+})
+
+test('/seed sets the session seed without persisting a default', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    readInput: scriptedInput(['/seed 123', 'a cat', '/quit']),
+  }))
+
+  assert.equal(genOpts[0].seed, 123)
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.imageDefaults, undefined)
+})
+
+test('/seed bare shows the current seed', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/seed 123', '/seed', '/quit']) }))
+
+  assert.ok(logs.some((l) => l.includes('Seed: 123.')))
+})
+
+test('/seed bare reports not set when no seed is active', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/seed', '/quit']) }))
+
+  assert.ok(logs.some((l) => l.includes('Seed: not set.')))
+})
+
+test('/seed clear unsets the session seed', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  mockConsole(t)
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/seed 123', '/seed clear', 'a cat', '/quit']) }))
+
+  assert.equal(genOpts[0].seed, undefined)
+})
+
+test('/seed with a value outside the range errors', async (t) => {
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/seed 1000000000', '/quit']) }))
+
+  assert.ok(errors.some((e) => e.includes('Error: --seed must be an integer between -999999999 and 999999999.')))
+})
+
+test('/model swap keeps the session sizing values even when the new model does not support them', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  genModels.length = 0
+  printed.length = 0
+  mockConsole(t)
+  modelSelectionQueue = [
+    { modelId: 'z-image-turbo', name: 'Z-Image Turbo', isImageModel: true, endpointProviderName: 'venice', imageProvider: null, pricing: { perImage: 0.01 } },
+  ]
+
+  await startImageSession(baseOpts({
+    provider: twoImageModelsProvider,
+    readInput: scriptedInput(['/resolution 2K', '/model', 'a cat', '/quit']),
+  }))
+
+  assert.equal(genOpts[0].resolution, '2K')
+  assert.deepEqual(genModels, ['z-image-turbo'])
 })
 
 test('/aspect and /format are listed in /help and /size is not', async (t) => {

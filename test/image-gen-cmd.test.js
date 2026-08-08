@@ -666,6 +666,90 @@ test('runImageGeneration applies a supported saved default without pickers when 
   assert.equal(outcome.sizing, '1:1 · webp')
 })
 
+test('runImageGeneration applies saved resolution, quality and variants defaults without pickers when piped', async (t) => {
+  mockConsole(t)
+  const provider = fakeSizingProvider({
+    async fetchImageModels() {
+      return [{
+        id: 'flux-1-1',
+        name: 'Flux 1.1',
+        pricing: null,
+        constraints: {
+          aspectRatios: ['1:1', '16:9'],
+          formats: ['png', 'jpeg', 'webp'],
+          resolutions: ['1K', '2K', '4K'],
+          qualities: ['low', 'medium', 'high'],
+          widthHeightDivisor: null,
+        },
+      }]
+    },
+  })
+  const prefs = { imageDefaults: { venice: { resolution: '2K', quality: 'high', variants: 3 } } }
+
+  const outcome = await runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'flux-1-1' }, prefs, sessionId: '2026-01-01T00-00-00', stdout: plainStdout })
+
+  assert.equal(provider.genArgs.resolution, '2K')
+  assert.equal(provider.genArgs.quality, 'high')
+  assert.equal(provider.genArgs.variants, 3)
+  assert.equal(outcome.prefsUpdates, undefined)
+})
+
+test('runImageGeneration drops saved resolution and quality defaults outside the model list with a note', async (t) => {
+  const warns = []
+  t.mock.method(console, 'warn', (m) => { warns.push(String(m)) })
+  const provider = fakeSizingProvider({
+    async fetchImageModels() {
+      return [{
+        id: 'flux-1-1',
+        name: 'Flux 1.1',
+        pricing: null,
+        constraints: {
+          aspectRatios: ['1:1', '16:9'],
+          formats: ['png', 'jpeg', 'webp'],
+          resolutions: ['1K', '2K'],
+          qualities: null,
+          widthHeightDivisor: null,
+        },
+      }]
+    },
+  })
+  const prefs = { imageDefaults: { venice: { resolution: '4K', quality: 'high' } } }
+
+  const outcome = await runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'flux-1-1' }, prefs, sessionId: '2026-01-01T00-00-00', stdout: plainStdout })
+
+  assert.equal(provider.genArgs.resolution, undefined)
+  assert.equal(provider.genArgs.quality, undefined)
+  assert.equal(outcome.prefsUpdates, undefined)
+  assert.ok(warns.some((w) => w.includes('saved resolution 4K is not supported by flux-1-1; it was not sent.')), warns.join('\n'))
+  assert.ok(warns.some((w) => w.includes('saved quality high is not supported by flux-1-1; it was not sent.')), warns.join('\n'))
+})
+
+test('runImageGeneration does not apply a saved resolution default when an explicit flag is set', async (t) => {
+  mockConsole(t)
+  const provider = fakeSizingProvider({
+    async fetchImageModels() {
+      return [{
+        id: 'flux-1-1',
+        name: 'Flux 1.1',
+        pricing: null,
+        constraints: {
+          aspectRatios: ['1:1', '16:9'],
+          formats: ['png', 'jpeg', 'webp'],
+          resolutions: ['1K', '2K'],
+          qualities: ['low', 'high'],
+          widthHeightDivisor: null,
+        },
+      }]
+    },
+  })
+  const prefs = { imageDefaults: { venice: { resolution: '2K' } } }
+
+  const outcome = await runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'flux-1-1', resolution: '1K' }, prefs, sessionId: '2026-01-01T00-00-00', stdout: plainStdout })
+
+  assert.equal(provider.genArgs.resolution, '1K')
+  assert.equal(outcome.prefsUpdates, undefined)
+})
+
 test('runImageGeneration sizing pickers preselect the saved default and persist non-default choices', async (t) => {
   mockConsole(t)
   selectCalls = []

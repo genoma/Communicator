@@ -164,10 +164,21 @@ test('mergeImageDefaults merges per-provider entries and keeps others', () => {
   })
 })
 
+test('mergeImageDefaults merges resolution, quality and variants into the provider map', () => {
+  const prefs = { imageDefaults: { venice: { aspectRatio: '1:1' } } }
+  const updated = mergeImageDefaults(prefs, 'venice', { resolution: '2K' })
+  assert.deepEqual(updated.imageDefaults, { venice: { aspectRatio: '1:1', resolution: '2K' } })
+  const withQuality = mergeImageDefaults(updated, 'venice', { quality: 'high' })
+  assert.deepEqual(withQuality.imageDefaults, { venice: { aspectRatio: '1:1', resolution: '2K', quality: 'high' } })
+  const withVariants = mergeImageDefaults(withQuality, 'venice', { variants: 2 })
+  assert.deepEqual(withVariants.imageDefaults, { venice: { aspectRatio: '1:1', resolution: '2K', quality: 'high', variants: 2 } })
+})
+
 test('mergeImageDefaults leaves prefs untouched when nothing is set', () => {
   const prefs = { lastModel: 'm' }
   assert.equal(mergeImageDefaults(prefs, 'venice', {}), prefs)
   assert.equal(mergeImageDefaults(prefs, 'venice', { aspectRatio: undefined }), prefs)
+  assert.equal(mergeImageDefaults(prefs, 'venice', { resolution: undefined, quality: undefined, variants: undefined }), prefs)
 })
 
 test('mergeImageDefaults does not mutate the input prefs', () => {
