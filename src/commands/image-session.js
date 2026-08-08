@@ -140,6 +140,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
   while (true) {
     const result = await read({ commands: imageSessionCommands(provider.meta.name, model) })
     if (result.cancelled) {
+      await savePrefs(applyPreferenceUpdates(prefs, { lastImageModel: imageModelId }))
       await persist()
       return
     }
@@ -148,6 +149,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     if (!input) continue
 
     if (input === '/quit' || input === '/exit') {
+      await savePrefs(applyPreferenceUpdates(prefs, { lastImageModel: imageModelId }))
       await persist()
       return
     }
@@ -206,7 +208,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         model = next
         imageModelId = next.id
         await persist()
-        await savePrefs({ lastImageModel: next.id })
+        await savePrefs(applyPreferenceUpdates(prefs, { lastImageModel: next.id }))
         console.log(`Switched to ${sessionLabel(sel.endpointProviderName, sel.modelId)} [image]\n`)
         continue
       }
@@ -386,7 +388,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     const updated = applyPreferenceUpdates(prefs, { lastImageModel: outcome.modelId })
     const withImageDefaults = outcome.prefsUpdates ? mergeImageDefaults(updated, provider.meta.name, outcome.prefsUpdates) : updated
     Object.assign(prefs, withImageDefaults)
-    await savePrefs(withImageDefaults, configPath)
+    await savePrefs(withImageDefaults)
     printImageOutcome(outcome, stdout)
   }
 }

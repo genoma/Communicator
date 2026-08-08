@@ -338,8 +338,9 @@ export async function finalizeImageSession({ prefs, opts = {}, config, sessionId
   printImageOutcome(outcome, stdout)
 }
 
-// Shared /watermark handler for the chat registry and the image-session REPL:
-// toggles the global Venice watermark preference with identical wording.
+// /watermark handler for the image-session REPL: toggles the global Venice
+// watermark preference. The caller wraps the provided saver so only the
+// changed key is applied to the full prefs object.
 export async function handleWatermarkCommand({ providerName, args, prefs, savePrefs, out = console.log, errOut = console.error }) {
   if (providerName !== 'venice') {
     errOut('Error: /watermark is only supported on Venice sessions.\n')

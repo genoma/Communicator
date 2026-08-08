@@ -290,6 +290,30 @@ test('/exit leaves the session without generating', async (t) => {
   assert.deepEqual(printed, [])
 })
 
+test('/exit without generating persists the last image model', async (t) => {
+  genCalls.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({ configPath: file, readInput: scriptedInput(['/exit']) }))
+
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.lastImageModel, 'venice-sd35')
+})
+
+test('EOF without generating persists the last image model', async (t) => {
+  genCalls.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({ configPath: file, readInput: scriptedInput([]) }))
+
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.lastImageModel, 'venice-sd35')
+})
+
 test('EOF leaves the session without generating', async (t) => {
   genCalls.length = 0
   printed.length = 0
@@ -1251,6 +1275,31 @@ test('/model with an image-model pick switches the session model and persists it
   assert.equal(saved.model, 'z-image-turbo')
   const prefs = JSON.parse(await readFile(file, 'utf-8'))
   assert.equal(prefs.lastImageModel, 'z-image-turbo')
+})
+
+test('/model with an image-model pick does not clobber existing prefs', async (t) => {
+  genCalls.length = 0
+  genModels.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+  await writeFile(file, JSON.stringify({ lastModel: 'gpt-5', hideWatermark: true, imageDefaults: { venice: { format: 'png' } } }))
+  modelSelectionQueue = [
+    { modelId: 'z-image-turbo', name: 'Z-Image Turbo', isImageModel: true, endpointProviderName: 'venice', imageProvider: null, pricing: { perImage: 0.01 } },
+  ]
+
+  await startImageSession(baseOpts({
+    provider: twoImageModelsProvider,
+    prefs: { lastModel: 'gpt-5', hideWatermark: true, imageDefaults: { venice: { format: 'png' } } },
+    configPath: file,
+    readInput: scriptedInput(['/model', 'a cat', '/quit']),
+  }))
+
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.lastImageModel, 'z-image-turbo')
+  assert.equal(prefs.lastModel, 'gpt-5')
+  assert.equal(prefs.hideWatermark, true)
+  assert.deepEqual(prefs.imageDefaults, { venice: { format: 'png' } })
 })
 
 test('/model with an image-model pick on OpenRouter persists the endpoint provider and pricing', async (t) => {
