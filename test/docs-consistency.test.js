@@ -77,9 +77,11 @@ function extractSlashCommands(commandsDoc) {
 }
 
 function extractImageSessionCommands(source) {
-  const fnMatch = source.match(/function imageSessionCommands[\s\S]*?return \[([\s\S]*?)\]/)
-  if (!fnMatch) return []
-  return [...fnMatch[1].matchAll(/'(\/[a-z][a-z-]*)'/g)].map((m) => m[1])
+  const fnStart = source.indexOf('function imageSessionCommands')
+  if (fnStart === -1) return []
+  const fnEnd = source.indexOf('\n}', fnStart)
+  const fnBody = fnEnd === -1 ? source.slice(fnStart) : source.slice(fnStart, fnEnd)
+  return [...fnBody.matchAll(/'(\/[a-z][a-z-]*)'/g)].map((m) => m[1])
 }
 
 function headingAnchor(heading) {
