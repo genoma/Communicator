@@ -4,14 +4,25 @@ import { getImageDefaults, mergeImageDefaults, savePreferences, applyPreferenceU
 import { findImageModel, selectImageEndpoint, selectModelAndEndpoint } from '../model-selection.js'
 import { sessionLabel } from '../ui/format.js'
 import { CliError, formatError } from '../errors.js'
-import { resolveAspectRatio, resolveImageFormat } from '../flags.js'
+import { resolveAspectRatio, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
 import { runImageGeneration, printImageOutcome, buildImageSessionPayload, handleWatermarkCommand } from './image-gen.js'
 
 // /watermark is Venice-only: OpenRouter image models have no watermark
 // parameter, so the command is only offered on Venice sessions.
 function imageSessionCommands(providerName) {
-  return ['/help', '/model', '/exit', '/quit', ...(providerName === 'venice' ? ['/watermark'] : []), '/aspect', '/format']
+  return ['/help', '/model', '/exit', '/quit', ...(providerName === 'venice' ? ['/watermark'] : []), '/aspect', '/format', '/resolution', '/quality', '/variants', '/seed']
+}
+
+// Shared handler table for the sizing commands: `/format` and the new
+// `/resolution`, `/quality`, `/variants`, `/seed`. The list-based commands
+// are gated against the model's constraint lists; variants and seed are not.
+const SIZING_HANDLERS = {
+  '/resolution': { kind: 'Resolution', errorKind: 'resolution', resolve: resolveResolution, listKey: 'resolutions', defaultKey: 'resolution', flagKey: 'resolution', persisted: true },
+  '/quality': { kind: 'Quality', errorKind: 'quality', resolve: resolveQuality, listKey: 'qualities', defaultKey: 'quality', flagKey: 'quality', persisted: true },
+  '/variants': { kind: 'Variants', errorKind: 'variants', resolve: resolveVariants, listKey: null, defaultKey: 'variants', flagKey: 'variants', persisted: true },
+  '/seed': { kind: 'Seed', errorKind: 'seed', resolve: resolveSeed, listKey: null, defaultKey: null, flagKey: 'seed', persisted: false },
+  '/format': { kind: 'Format', errorKind: 'format', resolve: resolveImageFormat, listKey: 'formats', defaultKey: 'format', flagKey: 'imageFormat', persisted: true },
 }
 
 // Replaces image_url parts with a text placeholder when the history is
@@ -45,11 +56,16 @@ function unsupportedListError(kind, value, model, list) {
 // Marks the current value in brackets inside the model's supported list,
 // e.g. `1:1 [16:9] 3:2`; a stored value outside the list is reported so the
 // user knows it will be dropped instead of sent.
+function pluralKind(kind) {
+  return /[^aeiou]y$/i.test(kind) ? `${kind.slice(0, -1)}ies` : `${kind}s`
+}
+
 function supportedListLine(kind, values, current, model) {
   const marked = values.map((v) => (v === current ? `[${v}]` : v)).join(' ')
-  if (current && values.includes(current)) return `${kind}s: ${marked}.`
-  if (current) return `${kind}s: ${marked} (${current} not supported by ${model.id}).`
-  return `${kind}s: ${marked} (none set).`
+  const label = pluralKind(kind)
+  if (current && values.includes(current)) return `${label}: ${marked}.`
+  if (current) return `${label}: ${marked} (${current} not supported by ${model.id}).`
+  return `${label}: ${marked} (none set).`
 }
 
 // Pixel-based models behave like aspect models with a hardcoded ratio list:
@@ -106,8 +122,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     }
   }
 
-  let sessionAspectRatio
-  let sessionFormat
+  const sessionValues = {}
 
   console.log(`Image session with ${imageModelId}. Describe an image to generate it; /help lists the available commands.\n`)
 
@@ -135,6 +150,14 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       console.log('/aspect <x:y>    set the aspect ratio for this session (clear to unset)')
       console.log('/format          show the supported output formats and the session one')
       console.log('/format <fmt>    set the output format for this session (clear to unset)')
+      console.log('/resolution      show the supported resolutions and the session one')
+      console.log('/resolution <t>  set the resolution tier for this session (clear to unset)')
+      console.log('/quality         show the supported qualities and the session one')
+      console.log('/quality <q>     set the quality tier for this session (clear to unset)')
+      console.log('/variants        show the number of images per generation and the session one')
+      console.log('/variants <n>    set the number of images per generation (clear to unset)')
+      console.log('/seed            show the session seed')
+      console.log('/seed <int>      set the random seed for this session (clear to unset)')
       continue
     }
 
@@ -182,12 +205,76 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       continue
     }
 
+    const sizingCmd = Object.keys(SIZING_HANDLERS).find((c) => input === c || input.startsWith(`${c} `))
+    if (sizingCmd) {
+      const handler = SIZING_HANDLERS[sizingCmd]
+      const providerName = provider.meta.name
+      const value = input.slice(sizingCmd.length).trim()
+      if (!value) {
+        // The session value wins when set, else the saved provider default.
+        const current = sessionValues[handler.flagKey] ?? (handler.persisted ? getImageDefaults(prefs, providerName)[handler.defaultKey] : undefined)
+        if (handler.listKey && model.constraints) {
+          const list = model.constraints[handler.listKey]
+          if (Array.isArray(list)) {
+            console.log(`${supportedListLine(handler.kind, list, current, model)}\n`)
+          } else {
+            console.log(`${handler.kind} is not supported by ${model.id}.\n`)
+          }
+        } else if (!handler.listKey) {
+          if (handler.flagKey === 'variants') {
+            console.log(current === undefined ? 'Variants: 1-4 (none set).\n' : `Variants: 1-4 (current: ${current}).\n`)
+          } else {
+            console.log(current === undefined ? 'Seed: not set.\n' : `Seed: ${current}.\n`)
+          }
+        } else {
+          console.log(current ? `${handler.kind}: ${current}.\n` : `${handler.kind}: not set.\n`)
+        }
+        continue
+      }
+      if (value === 'clear') {
+        sessionValues[handler.flagKey] = undefined
+        if (handler.persisted) {
+          await clearImageDefault(prefs, providerName, handler.defaultKey, savePrefs, `${handler.kind} cleared.\n`)
+        } else {
+          console.log(`${handler.kind} cleared.\n`)
+        }
+        continue
+      }
+      let parsed
+      try {
+        parsed = handler.resolve(value)
+      } catch (err) {
+        console.error(`Error: ${err.message}\n`)
+        continue
+      }
+      if (handler.listKey) {
+        const constraints = model.constraints
+        const list = constraints?.[handler.listKey]
+        if (constraints && !Array.isArray(list)) {
+          console.error(`Error: ${handler.errorKind} is not supported by ${model.id}.\n`)
+          continue
+        }
+        if (Array.isArray(list) && !list.includes(parsed)) {
+          console.error(`${unsupportedListError(handler.errorKind, parsed, model, list)}\n`)
+          continue
+        }
+      }
+      sessionValues[handler.flagKey] = parsed
+      if (handler.persisted) {
+        const updated = mergeImageDefaults(prefs, providerName, { [handler.defaultKey]: parsed })
+        Object.assign(prefs, updated)
+        await savePrefs(updated)
+      }
+      console.log(`${handler.kind} set to ${parsed}.\n`)
+      continue
+    }
+
     if (input === '/aspect' || input.startsWith('/aspect ')) {
       const value = input.slice('/aspect'.length).trim()
       if (!value) {
         // The session value wins when set ("currently used"), else the
         // saved provider default.
-        const current = sessionAspectRatio ?? getImageDefaults(prefs, provider.meta.name).aspectRatio
+        const current = sessionValues.aspectRatio ?? getImageDefaults(prefs, provider.meta.name).aspectRatio
         const ratios = model.constraints?.aspectRatios
         if (Array.isArray(ratios)) {
           console.log(`${supportedListLine('Aspect ratio', ratios, current, model)}\n`)
@@ -201,7 +288,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         continue
       }
       if (value === 'clear') {
-        sessionAspectRatio = undefined
+        sessionValues.aspectRatio = undefined
         await clearImageDefault(prefs, provider.meta.name, 'aspectRatio', savePrefs, 'Aspect ratio cleared.\n')
         continue
       }
@@ -229,62 +316,18 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       }
       if (isPixelModel(model)) {
         const computed = computePixelSize(parsed, model.constraints.widthHeightDivisor)
-        sessionAspectRatio = parsed
+        sessionValues.aspectRatio = parsed
         const updated = mergeImageDefaults(prefs, provider.meta.name, { aspectRatio: parsed })
         Object.assign(prefs, updated)
         await savePrefs(updated, configPath)
         console.log(`Aspect ratio set to ${parsed} (${formatSize(computed.width, computed.height)}).\n`)
         continue
       }
-      sessionAspectRatio = parsed
+      sessionValues.aspectRatio = parsed
       const updated = mergeImageDefaults(prefs, provider.meta.name, { aspectRatio: parsed })
       Object.assign(prefs, updated)
       await savePrefs(updated, configPath)
       console.log(`Aspect ratio set to ${parsed}.\n`)
-      continue
-    }
-
-    if (input === '/format' || input.startsWith('/format ')) {
-      const value = input.slice('/format'.length).trim()
-      if (!value) {
-        const current = getImageDefaults(prefs, provider.meta.name).format
-        const formats = model.constraints?.formats
-        if (Array.isArray(formats)) {
-          console.log(`${supportedListLine('Format', formats, current, model)}\n`)
-        } else if (model.constraints) {
-          console.log(`Format is not supported by ${model.id}.\n`)
-        } else {
-          console.log(current ? `Format: ${current}.\n` : 'Format: not set.\n')
-        }
-        continue
-      }
-      if (value === 'clear') {
-        sessionFormat = undefined
-        await clearImageDefault(prefs, provider.meta.name, 'format', savePrefs, 'Format cleared.\n')
-        continue
-      }
-      let parsed
-      try {
-        parsed = resolveImageFormat(value)
-      } catch (err) {
-        console.error(`Error: ${err.message}\n`)
-        continue
-      }
-      const constraints = model.constraints
-      const formats = constraints?.formats
-      if (constraints && !Array.isArray(formats)) {
-        console.error(`Error: format is not supported by ${model.id}.\n`)
-        continue
-      }
-      if (Array.isArray(formats) && !formats.includes(parsed)) {
-        console.error(`${unsupportedListError('format', parsed, model, formats)}\n`)
-        continue
-      }
-      sessionFormat = parsed
-      const updated = mergeImageDefaults(prefs, provider.meta.name, { format: parsed })
-      Object.assign(prefs, updated)
-      await savePrefs(updated, configPath)
-      console.log(`Format set to ${parsed}.\n`)
       continue
     }
 
@@ -299,10 +342,9 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         provider,
         apiKey,
         prompt: input,
-        opts: {
-          ...(sessionAspectRatio !== undefined && { aspectRatio: sessionAspectRatio }),
-          ...(sessionFormat !== undefined && { imageFormat: sessionFormat }),
-        },
+        opts: Object.fromEntries(
+          Object.entries(sessionValues).filter(([, v]) => v !== undefined)
+        ),
         prefs,
         sessionId,
         model,
