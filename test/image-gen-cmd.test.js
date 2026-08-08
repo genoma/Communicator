@@ -13,13 +13,18 @@ after(() => rm(tempHome, { recursive: true, force: true }))
 mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 
 let searchCalls = []
+let selectCalls = []
+let selectAnswers = []
 mock.module('@inquirer/prompts', {
   namedExports: {
     search: async (opts) => {
       searchCalls.push(opts)
       return { id: 'flux-1-1', name: 'Flux 1.1' }
     },
-    select: async () => undefined,
+    select: async (opts) => {
+      selectCalls.push(opts)
+      return selectAnswers.shift()
+    },
     checkbox: async () => { throw new Error('unexpected checkbox') },
   },
 })
@@ -663,8 +668,8 @@ test('runImageGeneration applies a supported saved default without pickers when 
 
 test('runImageGeneration sizing pickers preselect the saved default and persist non-default choices', async (t) => {
   mockConsole(t)
-  const pickerCalls = []
-  const answers = ['16:9', 'png']
+  selectCalls = []
+  selectAnswers = ['16:9', 'png']
   const provider = fakeSizingProvider()
   const prefs = { imageDefaults: { venice: { aspectRatio: '1:1', format: 'webp' } } }
 
@@ -675,19 +680,15 @@ test('runImageGeneration sizing pickers preselect the saved default and persist 
     opts: { imageModel: 'flux-1-1' },
     prefs,
     sessionId: '2026-01-01T00-00-00',
-    selectImage: async (models) => models[0],
-    selectImageSizing: async (message, values, defaultValue) => {
-      pickerCalls.push({ message, values, defaultValue })
-      return answers.shift()
-    },
+    sizingInteractive: true,
     stdout: plainStdout,
   })
 
-  assert.equal(pickerCalls.length, 2)
-  assert.equal(pickerCalls[0].message, 'Select an aspect ratio:')
-  assert.equal(pickerCalls[0].defaultValue, '1:1')
-  assert.equal(pickerCalls[1].message, 'Select an image format:')
-  assert.equal(pickerCalls[1].defaultValue, 'webp')
+  assert.equal(selectCalls.length, 2)
+  assert.equal(selectCalls[0].message, 'Select an aspect ratio:')
+  assert.equal(selectCalls[0].default, '1:1')
+  assert.equal(selectCalls[1].message, 'Select an image format:')
+  assert.equal(selectCalls[1].default, 'webp')
   assert.equal(provider.genArgs.aspectRatio, '16:9')
   assert.equal(provider.genArgs.format, 'png')
   assert.deepEqual(outcome.prefsUpdates, { aspectRatio: '16:9', format: 'png' })
@@ -696,7 +697,8 @@ test('runImageGeneration sizing pickers preselect the saved default and persist 
 
 test('sizing pickers are skipped when sizingInteractive is false', async (t) => {
   mockConsole(t)
-  let pickerCalls = 0
+  selectCalls = []
+  selectAnswers = []
   const provider = fakeSizingProvider()
   const prefs = { imageDefaults: { venice: { aspectRatio: '1:1', format: 'webp' } } }
 
@@ -707,13 +709,11 @@ test('sizing pickers are skipped when sizingInteractive is false', async (t) => 
     opts: { imageModel: 'flux-1-1' },
     prefs,
     sessionId: '2026-01-01T00-00-00',
-    selectImage: async (models) => models[0],
-    selectImageSizing: async () => { pickerCalls++ },
-    stdout: plainStdout,
     sizingInteractive: false,
+    stdout: plainStdout,
   })
 
-  assert.equal(pickerCalls, 0)
+  assert.equal(selectCalls.length, 0)
   assert.equal(provider.genArgs.aspectRatio, '1:1')
   assert.equal(provider.genArgs.format, 'webp')
   assert.equal(outcome.prefsUpdates, undefined)
@@ -807,8 +807,8 @@ test('runImageGeneration applies a saved aspect ratio default on a pixel model w
 
 test('runImageGeneration aspect picker on a pixel model preselects the saved ratio and persists non-default choices', async (t) => {
   mockConsole(t)
-  const pickerCalls = []
-  const answers = ['2:3', 'webp']
+  selectCalls = []
+  selectAnswers = ['2:3', 'webp']
   const provider = fakeSizingProvider({
     async fetchImageModels() {
       return [{ id: 'z-image-turbo', name: 'Z-Image Turbo', pricing: null, constraints: { aspectRatios: null, formats: ['png', 'jpeg', 'webp'], resolutions: null, qualities: null, widthHeightDivisor: 8 } }]
@@ -823,19 +823,16 @@ test('runImageGeneration aspect picker on a pixel model preselects the saved rat
     opts: { imageModel: 'z-image-turbo' },
     prefs,
     sessionId: '2026-01-01T00-00-00',
-    selectImage: async (models) => models[0],
-    selectImageSizing: async (message, values, defaultValue, labelFn) => {
-      pickerCalls.push({ message, values, defaultValue, labels: labelFn ? values.map((v) => labelFn(v)) : undefined })
-      return answers.shift()
-    },
+    sizingInteractive: true,
     stdout: plainStdout,
   })
 
-  assert.equal(pickerCalls.length, 2)
-  assert.equal(pickerCalls[0].message, 'Select an aspect ratio:')
-  assert.equal(pickerCalls[0].defaultValue, '16:9')
-  assert.deepEqual(pickerCalls[0].values, ['1:1', '3:2', '16:9', '21:9', '9:16', '2:3', '3:4', '4:5'])
-  assert.deepEqual(pickerCalls[0].labels, [
+  const ratioCall = selectCalls[0]
+  assert.equal(selectCalls.length, 2)
+  assert.equal(ratioCall.message, 'Select an aspect ratio:')
+  assert.equal(ratioCall.default, '16:9')
+  assert.deepEqual(ratioCall.choices.map((c) => c.value), ['1:1', '3:2', '16:9', '21:9', '9:16', '2:3', '3:4', '4:5'])
+  assert.deepEqual(ratioCall.choices.map((c) => c.name), [
     '1:1 · 1280x1280',
     '3:2 · 1272x848',
     '16:9 · 1280x720',
@@ -845,7 +842,7 @@ test('runImageGeneration aspect picker on a pixel model preselects the saved rat
     '3:4 · 960x1280',
     '4:5 · 1024x1280',
   ])
-  assert.equal(pickerCalls[1].message, 'Select an image format:')
+  assert.equal(selectCalls[1].message, 'Select an image format:')
   assert.equal(provider.genArgs.width, 848)
   assert.equal(provider.genArgs.height, 1272)
   assert.equal(provider.genArgs.aspectRatio, undefined)
@@ -856,7 +853,8 @@ test('runImageGeneration aspect picker on a pixel model preselects the saved rat
 
 test('runImageGeneration aspect picker falls back to 1:1 when the saved ratio is not a preset', async (t) => {
   mockConsole(t)
-  const pickerCalls = []
+  selectCalls = []
+  selectAnswers = ['1:1', 'webp']
   const provider = fakeSizingProvider({
     async fetchImageModels() {
       return [{ id: 'z-image-turbo', name: 'Z-Image Turbo', pricing: null, constraints: { aspectRatios: null, formats: ['png', 'jpeg', 'webp'], resolutions: null, qualities: null, widthHeightDivisor: 8 } }]
@@ -871,16 +869,12 @@ test('runImageGeneration aspect picker falls back to 1:1 when the saved ratio is
     opts: { imageModel: 'z-image-turbo' },
     prefs,
     sessionId: '2026-01-01T00-00-00',
-    selectImage: async (models) => models[0],
-    selectImageSizing: async (message, values, defaultValue) => {
-      pickerCalls.push({ message, values, defaultValue })
-      return '1:1'
-    },
+    sizingInteractive: true,
     stdout: plainStdout,
   })
 
-  const ratioCall = pickerCalls.find((c) => c.message === 'Select an aspect ratio:')
-  assert.equal(ratioCall.defaultValue, '1:1')
+  const ratioCall = selectCalls.find((c) => c.message === 'Select an aspect ratio:')
+  assert.equal(ratioCall.default, '1:1')
 })
 
 test('--image --aspect-ratio on a pixel model persists the ratio default via the config file', async (t) => {

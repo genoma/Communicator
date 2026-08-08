@@ -160,9 +160,9 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --image-model requires --image.')
   }
 
-  // Generation-only flags are meaningless outside --image (the /image command
-  // and image sessions validate them on their own paths). --aspect-ratio and
-  // --image-format are exempt: they double as persisted image defaults.
+  // Generation-only flags are meaningless outside --image (image sessions
+  // validate them on their own paths). --aspect-ratio and --image-format are
+  // exempt: they double as persisted image defaults.
   const imageOnlyFlags = ['variants', 'seed', 'resolution', 'quality', 'width', 'height']
   const usedImageOnly = imageOnlyFlags.filter((f) => opts[f] !== undefined)
   if (opts.image !== true && usedImageOnly.length > 0) {

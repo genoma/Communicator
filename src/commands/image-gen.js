@@ -88,16 +88,16 @@ function formatPreselect(list, savedDefault, providerName) {
   return undefined
 }
 
-export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, prefs = {}, sessionId, selectImage, selectImageSizing, sizingInteractive, model = null, stdout = process.stdout }) {
-  const picker = selectImage ?? selectImageModel
-  const sizingPicker = selectImageSizing ?? selectSizingOption
+export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, prefs = {}, sessionId, sizingInteractive, model = null, stdout = process.stdout }) {
+  const picker = selectImageModel
+  const sizingPicker = selectSizingOption
   const providerName = provider.meta.name
 
   let resolved = model
   let modelId = (resolved?.modelId ?? resolved?.id) || opts.imageModel || null
   if (!resolved && opts.imageModel) {
     resolved = await selectImageModelNonInteractive({ provider, apiKey, imageModelId: opts.imageModel })
-  } else if (!resolved && (selectImage || (stdout.isTTY === true && process.stdin.isTTY === true))) {
+  } else if (!resolved && stdout.isTTY === true && process.stdin.isTTY === true) {
     // The picker needs a TTY on both streams: with piped stdin the prompt
     // would run against EOF and fail/hang instead of falling through.
     const models = await provider.fetchImageModels(apiKey)
@@ -119,7 +119,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
       provider,
       apiKey,
       model: resolved,
-      interactive: selectImage != null || (stdout.isTTY === true && process.stdin.isTTY === true),
+      interactive: stdout.isTTY === true && process.stdin.isTTY === true,
     })
     if (endpoint) {
       resolved.imageProvider = endpoint.slug || endpoint.providerName
@@ -152,7 +152,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
   validateSizingConstraints(resolved, { aspectRatio, format, resolution, quality, width, height })
 
   const savedDefaults = getImageDefaults(prefs, providerName)
-  const interactive = sizingInteractive === true || (sizingInteractive !== false && (selectImage != null || (stdout.isTTY === true && process.stdin.isTTY === true)))
+  const interactive = sizingInteractive === true || (sizingInteractive !== false && stdout.isTTY === true && process.stdin.isTTY === true)
   const notes = []
   const prefsUpdates = {}
   let pickedRatio = false
