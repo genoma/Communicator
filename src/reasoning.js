@@ -21,3 +21,10 @@ export function resolveEffortDefault({ reasoning, forcedEffort, prefs, modelId }
 export function isWebSearchSupported(providerMeta, modelData) {
   return providerMeta?.supportsWebSearchOnAll === true || modelData?.capabilities?.supportsWebSearch === true
 }
+
+export function endpointSupportsReasoning(endpoint) {
+  const rawParams = endpoint?.supportedParameters
+  return Array.isArray(rawParams)
+    ? rawParams.includes('reasoning')
+    : !!rawParams?.supportsReasoningEffort
+}

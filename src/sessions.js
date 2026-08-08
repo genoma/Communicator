@@ -173,17 +173,16 @@ async function parseSessionFiles(dir, jsonFiles) {
       const msgCount = Array.isArray(parsed.messages) ? parsed.messages.length : 0
       if (msgCount <= 1) continue
 
-      sessions.push({
-        id,
-        model: parsed.model || 'unknown',
-        providerName: parsed.providerName || 'unknown',
-        providerType: parsed.providerType || 'openrouter',
-        createdAt: parsed.createdAt || null,
-        updatedAt: parsed.updatedAt || null,
+      sessions.push(toSessionItem(id, {
+        model: parsed.model,
+        providerName: parsed.providerName,
+        providerType: parsed.providerType,
+        createdAt: parsed.createdAt,
+        updatedAt: parsed.updatedAt,
         messageCount: msgCount,
         preview: firstUserPreview(parsed.messages),
-        title: parsed.title || '',
-      })
+        title: parsed.title,
+      }))
     } catch {
       // skip corrupt session files
     }
@@ -268,15 +267,18 @@ async function updateSidecar(dir, id, data) {
   try {
     const index = (await readSidecar(dir)) || {}
     index[id] = {
-      model: data.model || 'unknown',
-      providerName: data.providerName || 'unknown',
-      providerType: data.providerType || 'openrouter',
-      createdAt: data.createdAt || null,
-      updatedAt: data.updatedAt || null,
-      messageCount: data.messages.length,
-      preview: firstUserPreview(data.messages),
-      title: data.title || '',
+      ...toSessionItem(id, {
+        model: data.model,
+        providerName: data.providerName,
+        providerType: data.providerType,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        messageCount: data.messages.length,
+        preview: firstUserPreview(data.messages),
+        title: data.title,
+      }),
     }
+    delete index[id].id
     await writeSidecar(dir, index)
   } catch {
     // sidecar failures are non-fatal

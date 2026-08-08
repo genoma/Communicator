@@ -15,11 +15,14 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 │   ├── list-sessions.js  — --list-sessions handler
 │   ├── export-cmd.js     — --export handler
 │   ├── delete-cmd.js     — --delete handler (confirm + remove session)
+│   ├── delete-all-cmd.js — --delete-all-sessions handler (wipe all sessions)
 │   ├── config-set.js     — standalone config setters (--model, --temperature, ... persist defaults)
 │   ├── config-view.js    — bare --config: print the current preferences
 │   ├── one-shot.js       — one-shot mode: prompt argument / stdin piping
 │   ├── resume.js         — --resume handler (load session, return params)
 │   ├── chat-start.js     — session context setup, chat start, end-of-chat persist
+│   ├── image-gen.js      — image generation command (--image flag, sizing validation, persistence)
+│   ├── image-session.js  — interactive image session REPL (sizing commands, /model handoff to chat)
 │   └── chat/
 │       └── index.js      — slash command registry (16 chatCommands) + budgetGuard
 ├── providers/
@@ -32,11 +35,14 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 ├── errors.js             — ApiError (status/provider/retryable), TimeoutError, CliError (exitCode), formatError
 ├── sse-parser.js         — shared SSE stream parser (idle-timeout stall detection; consumed by both providers)
 ├── attachments.js        — attachment model: classify/load files (size limits), capability gate, content parts ↔ text helpers (contentText/messageText)
+├── attachment-store.js   — blob externalization/hydration, ref sentinels, artifact downloads
+├── artifacts.js          — model-produced artifact handling (image/file output downloads and display)
 ├── config.js             — API key lookup (provider meta), preferences load/save (~/.communicator.json)
 ├── constants.js          — shared constants (paths, labels, temperature bounds, SSE markers) and formatCost
 ├── prompts.js            — interactive TUI pickers using @inquirer/prompts (model, provider, reasoning effort)
 ├── flags.js              — CLI flag resolvers (temperature, web search/results, reasoning, budget)
 ├── reasoning.js          — reasoning effort default resolution + web search capability check
+├── image-sizing.js       — pixel sizing helpers for pixel-based Venice image models
 ├── chat-state.js         — ChatState: session state + pure transitions + final-state snapshot
 ├── turn-runner.js        — per-turn orchestration (stream render, abort, interrupt salvage, usage tracking)
 ├── signals.js            — process signal registration (SIGINT/beforeExit/uncaughtException) + cleanup
@@ -104,7 +110,7 @@ The check cannot verify behavioral prose. When touching related code, re-verify 
 - Smooth streaming: default on in TTY sessions, ~40 chars per 20 ms tick, presets slow/normal/fast = 500/2000/8000 chars/s, piped output never paced (`src/constants.js`).
 - One-shot mode: piped stdin capped at 10 MB; exit codes 0 / 1 / 130 (`src/cli-utils.js`, `src/cli-main.js`, `src/turn-runner.js`).
 - Attachment limits: images 20 MB, pdf/office/text 25 MB, inline text 256 KB warning; office formats are Venice-only.
-- Clipboard probe order: macOS `pbcopy`, Windows `clip`, Linux `wl-copy` → `xclip` → `xsel` (`src/clipboard.js`).
+- Clipboard probe order: macOS `pbcopy`, Windows `clip`, Linux `wl-copy` → `xclip` → `xsel`, with a 10 s timeout per tool (`src/clipboard.js`).
 - Reasoning effort: `EFFORT_LABELS` mapping; `none` disables reasoning; Venice uses `reasoning_effort`, OpenRouter its native format.
 - Web search: modes `off`/`auto`/`always` (`on` maps to `auto`); OpenRouter `auto` = server tool with a total result cap, `always` = legacy plugin; Venice maps to `enable_web_search`; the chat banner shows a `[web: <mode>]` badge.
 - ZDR: OpenRouter-only, filters pickers to ZDR-capable endpoints, runtime error kept as a safety net, not persisted.

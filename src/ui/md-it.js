@@ -1,6 +1,6 @@
 import MarkdownIt from 'markdown-it'
 import { styleText } from 'node:util'
-import { THIN_SEP } from '../constants.js'
+import { THIN_SEP, CITATION_GROUP } from '../constants.js'
 import { bold, dim, italic } from './style.js'
 import { hyperlink, sanitizeAnsi } from './hyperlink.js'
 import stringWidth from 'string-width'
@@ -19,7 +19,7 @@ const SGR = {
 }
 
 const LIST_MARKER = /^(\s*(?:[-*+]|\d+[.)])\s+)(.*)$/
-const CITATION = /^\^(\d+(?:,\d+)*)\^/
+const CITATION = new RegExp(`^\\^${CITATION_GROUP}\\^`)
 
 md.inline.ruler.after('backticks', 'citation', (state, silent) => {
   if (state.src.charCodeAt(state.pos) !== 0x5e) return false

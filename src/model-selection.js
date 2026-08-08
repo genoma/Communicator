@@ -1,5 +1,5 @@
 import { selectModel, selectModelWithImages, selectProvider, selectImageProvider, selectReasoningEffort, BACK_SENTINEL } from './prompts.js'
-import { resolveEffortDefault, isWebSearchSupported } from './reasoning.js'
+import { resolveEffortDefault, isWebSearchSupported, endpointSupportsReasoning } from './reasoning.js'
 import { CliError, formatError } from './errors.js'
 
 async function zdrGate(provider, zdr) {
@@ -154,10 +154,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
 
     // Endpoint capabilities differ per provider: OpenRouter reports a raw
     // parameter array, Venice a capability object.
-    const rawParams = ep?.supportedParameters
-    const endpointSupportsEffort = Array.isArray(rawParams)
-      ? rawParams.includes('reasoning')
-      : !!rawParams?.supportsReasoningEffort
+    const endpointSupportsEffort = endpointSupportsReasoning(ep)
 
     return {
       modelId,
@@ -233,12 +230,7 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
     endpointProviderName: ep?.providerName || provider.meta.name,
     pricing: ep?.pricing || null,
     contextLength: ep?.contextLength ?? modelData?.contextLength ?? null,
-    supportsReasoning: (() => {
-    const rawParams = ep?.supportedParameters
-    return Array.isArray(rawParams)
-      ? rawParams.includes('reasoning')
-      : !!rawParams?.supportsReasoningEffort
-  })(),
+    supportsReasoning: endpointSupportsReasoning(ep),
     modelReasoning: reasoning,
     webSearchSupported: isWebSearchSupported(provider.meta, modelData),
     ...capabilityFlags(provider, modelData, ep),

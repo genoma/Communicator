@@ -10,7 +10,7 @@ function clipboardCommands(platform = process.platform) {
   ]
 }
 
-export function copyText(text, { platform = process.platform } = {}) {
+export function copyText(text, { platform = process.platform, timeoutMs = 10000 } = {}) {
   const commands = clipboardCommands(platform)
   return new Promise((resolve) => {
     const tryNext = (index) => {
@@ -20,15 +20,25 @@ export function copyText(text, { platform = process.platform } = {}) {
       }
       const [cmd, args = []] = commands[index]
       const child = spawn(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'] })
+      const timer = setTimeout(() => {
+        settled = true
+        child.kill()
+        tryNext(index + 1)
+      }, timeoutMs)
       let settled = false
+      function cleanup() {
+        clearTimeout(timer)
+      }
       child.on('error', () => {
         if (settled) return
         settled = true
+        cleanup()
         tryNext(index + 1)
       })
       child.on('close', (code) => {
         if (settled) return
         settled = true
+        cleanup()
         if (code === 0) resolve({ ok: true })
         else tryNext(index + 1)
       })
@@ -38,6 +48,7 @@ export function copyText(text, { platform = process.platform } = {}) {
       } catch {
         if (settled) return
         settled = true
+        cleanup()
         tryNext(index + 1)
       }
     }

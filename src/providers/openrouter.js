@@ -2,12 +2,10 @@ import { parseSSEStream } from '../sse-parser.js'
 import { fetchSafeBytes, fetchWithRetry } from '../http.js'
 import { ApiError, makeHandleHttpError } from '../errors.js'
 import { DEFAULT_TEMPERATURE, DEFAULT_WEB_SEARCH_RESULTS, IMAGE_GEN_TIMEOUT_MS, MAX_IMAGE_ATTACHMENT_BYTES } from '../constants.js'
-import { getZdrIndex, getProviderPolicies } from './openrouter-meta.js'
+import { getZdrIndex, getProviderPolicies, OPENROUTER_BASE, CACHE_TTL_MS } from './openrouter-meta.js'
 import { mimeForExt, extForMime } from '../attachments.js'
 
-const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 const CACHE_HEADER = 'x-openrouter-cache-status'
-const CACHE_TTL_MS = 5 * 60 * 1000
 
 // Model/endpoint listings are stable within a process: cache them (same
 // pattern as openrouter-meta) so repeated selection, resume and listing

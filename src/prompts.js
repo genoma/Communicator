@@ -7,6 +7,12 @@ import { bold, dim } from './ui/style.js'
 
 export const BACK_SENTINEL = Symbol('back')
 
+export const BACK_CHOICE = {
+  name: '← Back to model selection',
+  value: BACK_SENTINEL,
+  description: 'Return to the model picker',
+}
+
 export const pickerTheme = {
   style: {
     keysHelpTip: (keys) =>
@@ -135,12 +141,6 @@ export async function selectProvider(endpoints, zdrOnly = false) {
     return ep
   }
 
-  const backChoice = {
-    name: '← Back to model selection',
-    value: BACK_SENTINEL,
-    description: 'Return to the model picker',
-  }
-
   const providerChoices = endpoints.map((ep) => ({
     name: formatEndpointLabel(ep),
     value: ep,
@@ -152,7 +152,7 @@ export async function selectProvider(endpoints, zdrOnly = false) {
       ? `Select a provider (${endpoints.length} available, ZDR only)`
       : `Select a provider (${endpoints.length} available)`,
     providerChoices,
-    backChoice,
+    BACK_CHOICE,
     { withBack: true, filterFields: ['providerName', 'tag'] }
   )
 }
@@ -168,12 +168,6 @@ export async function selectImageProvider(endpoints, { withBack = false } = {}) 
     return ep
   }
 
-  const backChoice = {
-    name: '← Back to model selection',
-    value: BACK_SENTINEL,
-    description: 'Return to the model picker',
-  }
-
   const providerChoices = endpoints.map((ep) => ({
     name: formatImageEndpointLabel(ep),
     value: ep,
@@ -183,7 +177,7 @@ export async function selectImageProvider(endpoints, { withBack = false } = {}) 
   return providerSearchPrompt(
     `Select a provider (${endpoints.length} available)`,
     providerChoices,
-    backChoice,
+    BACK_CHOICE,
     { withBack, filterFields: ['providerName', 'slug', 'tag'] }
   )
 }

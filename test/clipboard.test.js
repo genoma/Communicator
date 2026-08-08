@@ -8,6 +8,7 @@ class FakeChild {
       write: () => {},
       end: () => {},
     }
+    this.killed = false
   }
 
   on(event, fn) {
@@ -29,6 +30,10 @@ class FakeChild {
 
   spawnError(err) {
     this.emit('error', err)
+  }
+
+  kill() {
+    this.killed = true
   }
 }
 
@@ -130,4 +135,19 @@ test('copyText defaults to the current platform', async () => {
   } finally {
     Object.defineProperty(process, 'platform', original)
   }
+})
+
+test('copyText falls through to the next tool when the first one hangs (timeout)', async () => {
+  const { calls } = captureSpawn()
+
+  const promise = copyText('hello', { platform: 'linux', timeoutMs: 50 })
+  // The first tool (wl-copy) is stuck — wait for the timeout
+  await new Promise((r) => setTimeout(r, 80))
+  // After timeout, it should have killed wl-copy and moved to xclip
+  calls[1].child.succeed()
+  const result = await promise
+
+  assert.deepEqual(result, { ok: true })
+  assert.equal(calls[0].child.killed, true)
+  assert.deepEqual(calls.map((c) => c.cmd), ['wl-copy', 'xclip'])
 })

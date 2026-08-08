@@ -1,4 +1,6 @@
-import { MAX_TEMPERATURE, MAX_WEB_SEARCH_RESULTS, SMOOTH_DEFAULT_SPEED, SMOOTH_SPEED_PRESETS, EFFORT_LABELS } from './constants.js'
+import { MAX_TEMPERATURE, MAX_WEB_SEARCH_RESULTS, SMOOTH_DEFAULT_SPEED, SMOOTH_SPEED_PRESETS, EFFORT_LABELS, IMAGE_FORMATS, IMAGE_RESOLUTIONS, IMAGE_QUALITIES, MAX_IMAGE_DIMENSION, MAX_SEED } from './constants.js'
+
+export { IMAGE_FORMATS, IMAGE_RESOLUTIONS, IMAGE_QUALITIES, MAX_IMAGE_DIMENSION, MAX_SEED }
 
 export const WEB_SEARCH_MODES = new Set(['auto', 'always', 'on', 'off'])
 
@@ -96,12 +98,6 @@ export function normalizeSmoothSpeed(value) {
     return SMOOTH_SPEED_PRESETS[SMOOTH_DEFAULT_SPEED]
   }
 }
-
-export const IMAGE_FORMATS = new Set(['png', 'jpeg', 'webp'])
-export const IMAGE_RESOLUTIONS = new Set(['1K', '2K', '4K'])
-export const IMAGE_QUALITIES = new Set(['low', 'medium', 'high'])
-export const MAX_IMAGE_DIMENSION = 1280
-export const MAX_SEED = 999999999
 
 export function resolveImageFormat(value) {
   if (value === undefined || value === null || value === '') return undefined

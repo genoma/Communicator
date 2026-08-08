@@ -1,4 +1,4 @@
-import { MAX_IMAGE_DIMENSION } from './flags.js'
+import { MAX_IMAGE_DIMENSION } from './constants.js'
 
 // Pixel sizing for pixel-based Venice image models (no aspect-ratio list;
 // width/height in multiples of the model's widthHeightDivisor). Live API

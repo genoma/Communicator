@@ -1,8 +1,8 @@
 import { fetchWithRetry } from '../http.js'
 import { ApiError } from '../errors.js'
 
-const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
-const CACHE_TTL_MS = 5 * 60 * 1000
+export const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
+export const CACHE_TTL_MS = 5 * 60 * 1000
 
 const zdrCache = { fetchedAt: 0, tags: null, modelIds: null, degraded: false }
 const policiesCache = { fetchedAt: 0, policies: null }

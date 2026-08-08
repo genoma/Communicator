@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { formatCost } from './constants.js'
+import { formatCost, CITATION_GROUP } from './constants.js'
 import { computeTurnCost } from './tracker.js'
 import { contentText, partLabel, partUrl } from './attachments.js'
 import { dataUrlInfo } from './attachment-store.js'
@@ -23,7 +23,7 @@ function calculateCost(pricing, messages) {
   return totalCost
 }
 
-const CITATION = /\^(\d+(?:,\d+)*)\^/g
+const CITATION = new RegExp(`\\^${CITATION_GROUP}\\^`, 'g')
 
 const SAFE_LINK_RE = /^https?:\/\//i
 

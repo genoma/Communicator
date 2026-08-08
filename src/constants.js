@@ -47,6 +47,12 @@ export const LOADER_TICK_MS = 150
 
 export const STREAM_IDLE_TIMEOUT_MS = 60_000
 
+export const IMAGE_FORMATS = new Set(['png', 'jpeg', 'webp'])
+export const IMAGE_RESOLUTIONS = new Set(['1K', '2K', '4K'])
+export const IMAGE_QUALITIES = new Set(['low', 'medium', 'high'])
+export const MAX_IMAGE_DIMENSION = 1280
+export const MAX_SEED = 999999999
+
 // Image generations are synchronous and queue on the provider: live runs
 // took ~20 s to 2 min, far beyond the default 30 s request timeout.
 export const IMAGE_GEN_TIMEOUT_MS = 600_000
@@ -62,6 +68,8 @@ export const EFFORT_LABELS = {
 }
 
 export const SSE_DONE = '[DONE]'
+
+export const CITATION_GROUP = '(\\d+(?:,\\d+)*)'
 
 export function formatCost(cost) {
   if (cost === null || cost === undefined || !Number.isFinite(cost)) return 'N/A'

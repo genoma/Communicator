@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { applyPreferenceUpdates, loadSystemPrompt, getApiKey, getImageDefaults, mergeImageDefaults } from '../src/config.js'
+import { applyPreferenceUpdates, loadSystemPrompt, getApiKey, getImageDefaults, mergeImageDefaults, loadPreferences } from '../src/config.js'
 import { CliError } from '../src/errors.js'
 
 test('applyPreferenceUpdates merges per-model maps by spread', () => {
@@ -243,4 +243,12 @@ test('getApiKey trims the value from the environment', () => {
     if (previous === undefined) delete process.env.OPENROUTER_API_KEY
     else process.env.OPENROUTER_API_KEY = previous
   }
+})
+
+test('loadPreferences returns empty object for corrupt JSON', async (t) => {
+  const dir = await tempDir(t)
+  const file = join(dir, 'corrupt.json')
+  await writeFile(file, '{ not valid json')
+  const result = await loadPreferences(file)
+  assert.deepEqual(result, {})
 })
