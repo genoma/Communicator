@@ -14,7 +14,7 @@ function imageSessionContext({ provider, apiKey, prefs, imageModelId, sessionId,
   return { imageModelId, provider, apiKey, prefs, sessionId, createdAt, initialMessages, configPath, imageProviderName, pricing }
 }
 
-async function createSessionContext({ apiKey, opts, prefs, providerType }) {
+async function createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, scraped = null }) {
   const { forcedEffort, forcedTemperature, forcedBudget, budget, forcedWebResults, smoothSpeed, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
   if (opts.resume !== undefined) {
@@ -135,6 +135,16 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
     modelReasoning: selection.modelReasoning,
     sessionId,
     sessionCreatedAt: new Date().toISOString(),
+    // A launch-time --scrape injects its page as the first user turn so it
+    // persists in the session like any other message; the flat cost rides on
+    // the scrapes counter (chat.js seeds the tracker from it once).
+    scrapes: scraped ? 1 : 0,
+    initialMessages: scraped
+      ? [
+          { role: 'system', content: systemPrompt || 'You are a helpful assistant.' },
+          { role: 'user', content: `Scraped from ${scraped.url}:\n\n${scraped.content}` },
+        ]
+      : undefined,
   }
 }
 
@@ -160,14 +170,15 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
     imageOutputSupported: ctx.imageOutputSupported,
     smoothStreaming: ctx.smoothStreaming,
     smoothSpeed: ctx.smoothSpeed,
+    scrapes: ctx.scrapes,
     prefs,
     configPath: opts.config,
   })
   await persistSession({ finalState, prefs, config: opts.config })
 }
 
-export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerType }) {
-  const ctx = await createSessionContext({ apiKey, opts, prefs, providerType })
+export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerType, scraped = null }) {
+  const ctx = await createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, scraped })
   if (ctx.imageModelId) {
     const imageResult = await startImageSession({
       provider: ctx.provider,

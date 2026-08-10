@@ -437,6 +437,51 @@ function mockVeniceImageFetch(t, fetchCalls = []) {
   return { bodies, fetchCalls }
 }
 
+test('one-shot with a scraped page injects it as the first user message and persists the scrape count', async (t) => {
+  const models = [{ id: 'venice-model', model_spec: { name: 'V', capabilities: {}, constraints: {} } }]
+  const stream = [
+    event({ choices: [{ delta: { content: 'Summary' } }] }),
+    event({ choices: [{ delta: {}, usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }] }),
+    'data: [DONE]\n\n',
+  ]
+  const calls = []
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    const u = String(url)
+    calls.push(u)
+    if (u.includes('/augment/scrape')) return jsonResponse({ url: 'https://example.com/article', content: '# Article body', format: 'markdown' })
+    if (u.includes('/chat/completions')) return sseResponse(stream)
+    if (u.includes('/models?type=text')) return jsonResponse({ data: models })
+    throw new Error(`unexpected fetch: ${u}`)
+  })
+  const file = await tempConfig(t)
+  mockExit(t)
+  const sessionsDir = join(tempHome, '.communicator', 'sessions')
+  const before = new Set((await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.')))
+
+  const { oneShotCmd } = await import('../src/commands/one-shot.js')
+  await oneShotCmd({
+    apiKey: 'venice-key',
+    opts: opts({ model: 'venice-model', config: file }),
+    prefs: {},
+    systemPrompt: null,
+    providerType: 'venice',
+    prompt: 'Summarize',
+    scraped: { url: 'https://example.com/article', content: '# Article body' },
+  })
+
+  assert.ok(!calls.some((u) => u.includes('/augment/scrape')), 'the scrape itself happens before one-shot dispatch')
+  const files = (await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.') && !before.has(f))
+  assert.equal(files.length, 1)
+  const saved = JSON.parse(await readFile(join(sessionsDir, files[0]), 'utf-8'))
+  assert.equal(saved.scrapes, 1)
+  assert.equal(saved.providerType, 'venice')
+  assert.equal(saved.messages.length, 4)
+  assert.equal(saved.messages[1].role, 'user')
+  assert.equal(saved.messages[1].content, 'Scraped from https://example.com/article:\n\n# Article body')
+  assert.equal(saved.messages[2].content, 'Summarize')
+  assert.equal(saved.messages[3].content, 'Summary')
+})
+
 test('-m with an image model id routes to one-shot image generation', async (t) => {
   const { bodies, fetchCalls } = mockVeniceImageFetch(t)
   const file = await tempConfig(t)

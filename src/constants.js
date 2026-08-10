@@ -17,6 +17,13 @@ export const DEFAULT_WEB_SEARCH_RESULTS = 10
 
 export const MAX_WEB_SEARCH_RESULTS = 100
 
+// Venice web scraping is billed per request regardless of content size.
+export const SCRAPE_COST_USD = 0.01
+
+// Scraped pages are truncated at this many characters before they enter the
+// conversation context (pages are full-page markdown and can be huge).
+export const MAX_SCRAPE_CHARS = 200_000
+
 export const MAX_IMAGE_ATTACHMENT_BYTES = 20 * 1024 * 1024
 
 export const MAX_FILE_ATTACHMENT_BYTES = 25 * 1024 * 1024

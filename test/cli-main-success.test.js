@@ -1,6 +1,6 @@
 import { test, mock, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, readFile } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ExitPromptError } from '@inquirer/core'
@@ -401,6 +401,97 @@ test('--resume with no matching sessions exits 1 with a friendly error', async (
   withApiKey(t)
   const { err } = await runAndExit(t, { resume: 'zzz' }, undefined, 1)
   assert.match(err.join('\n'), /No session found matching "zzz"/)
+})
+
+function mockVeniceScrapeFetch(t) {
+  const models = [{ id: 'venice-model', model_spec: { name: 'V', capabilities: {}, constraints: {} } }]
+  const calls = []
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    const u = String(url)
+    calls.push(u)
+    if (u.includes('/augment/scrape')) {
+      return new Response(JSON.stringify({ url: 'https://example.com/article', content: '# Article body', format: 'markdown' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    if (u.includes('/chat/completions')) {
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const chunk of [
+            'data: {"choices":[{"delta":{"content":"Summary"}}]}\n\n',
+            'data: {"choices":[{"delta":{},"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}]}\n\n',
+            'data: [DONE]\n\n',
+          ]) controller.enqueue(new TextEncoder().encode(chunk))
+          controller.close()
+        },
+      })
+      return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    }
+    if (u.includes('/models?type=text')) {
+      return new Response(JSON.stringify({ data: models }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    throw new Error(`unexpected fetch: ${u}`)
+  })
+  return calls
+}
+
+test('--scrape with an invalid URL exits 1 before any API call', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  const calls = mockVeniceScrapeFetch(t)
+  const { err } = await runAndExit(t, { provider: 'venice', scrape: 'not-a-url' }, 'Summarize', 1)
+  assert.match(err.join('\n'), /--scrape expects a valid http\(s\) URL/)
+  assert.equal(calls.length, 0)
+})
+
+test('--scrape with a prompt scrapes the page, injects it, and answers', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  const calls = mockVeniceScrapeFetch(t)
+
+  const { out } = await runAndExit(t, {
+    provider: 'venice',
+    model: 'venice-model',
+    config: configFile,
+    scrape: 'https://example.com/article',
+  }, 'Summarize', 0)
+
+  assert.ok(calls.some((u) => u.includes('/augment/scrape')))
+  assert.match(out.join('\n'), /Scraped https:\/\/example\.com\/article \(\d+ chars\) into context\./)
+
+  const sessionsDir = join(tempHome, '.communicator', 'sessions')
+  const files = (await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.'))
+  const saved = JSON.parse(await readFile(join(sessionsDir, files[files.length - 1]), 'utf-8'))
+  assert.equal(saved.scrapes, 1)
+  assert.equal(saved.messages[1].content, 'Scraped from https://example.com/article:\n\n# Article body')
+  assert.equal(saved.messages[2].content, 'Summarize')
+})
+
+test('bare --scrape opens a chat with the page already in context', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  const calls = mockVeniceScrapeFetch(t)
+
+  const previousSearch = searchImpl
+  searchImpl = async () => ({ id: 'venice-model', name: 'V' })
+  t.after(() => { searchImpl = previousSearch })
+
+  const { out } = await runCliNoExit(t, {
+    provider: 'venice',
+    config: configFile,
+    scrape: 'https://example.com/article',
+  }, undefined)
+
+  assert.ok(calls.some((u) => u.includes('/augment/scrape')))
+  assert.match(out.join('\n'), /Scraped https:\/\/example\.com\/article \(\d+ chars\) into context\./)
+
+  const call = startChatCalls[startChatCalls.length - 1]
+  assert.equal(call.opts.scrapes, 1)
+  assert.equal(call.opts.initialMessages[1].role, 'user')
+  assert.equal(call.opts.initialMessages[1].content, 'Scraped from https://example.com/article:\n\n# Article body')
 })
 
 test('--no-safe-mode alone opens the chat and persists the pref', async (t) => {

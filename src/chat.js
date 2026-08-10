@@ -1,6 +1,6 @@
 import { UsageTracker, contextSegment } from './tracker.js'
 import { getEffortLabel } from './prompts.js'
-import { DEFAULT_TEMPERATURE, cpsToCharsPerTick } from './constants.js'
+import { DEFAULT_TEMPERATURE, cpsToCharsPerTick, SCRAPE_COST_USD } from './constants.js'
 import { sessionLabel } from './ui/format.js'
 import { chatCommands, budgetGuard, commandAcceptsArgs, visibleChatCommands } from './commands/chat/index.js'
 import { buildContent } from './attachments.js'
@@ -45,6 +45,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     imageOutputSupported = undefined,
     smoothStreaming = true,
     smoothSpeed,
+    scrapes = 0,
     prefs = {},
     configPath = null,
   } = ctx
@@ -104,6 +105,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     modelReasoning,
     messages: initialMessages || undefined,
     systemContent,
+    scrapes,
   })
 
   const sessionState = createSessionState()
@@ -116,6 +118,13 @@ export async function runChatSession(ctx = {}, deps = {}) {
         lastUsage = msg.usage
       }
     }
+  }
+
+  // Flat-fee scrapes are not token usage: a launch-time --scrape and resumed
+  // sessions both carry the count on state, so seed it here exactly once
+  // (interactive /scrape calls add cost live and increment the counter).
+  if (state.scrapes > 0) {
+    sessionState.tracker.addScrapeCost(SCRAPE_COST_USD * state.scrapes, state.scrapes)
   }
 
   const label = sessionLabel(endpointProviderName, model)
@@ -258,7 +267,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
 
   while (true) {
     console.log(sep())
-    const result = await readInput({ commands: visibleChatCommands({ visionSupported: state.visionSupported, e2ee: state.e2ee }) })
+    const result = await readInput({ commands: visibleChatCommands({ visionSupported: state.visionSupported, e2ee: state.e2ee, providerName: provider.meta.name }) })
 
     if (result.cancelled) {
       return exitCleanly()
@@ -274,7 +283,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
       const cmd = spaceIdx === -1 ? firstLine : firstLine.slice(0, spaceIdx)
       const handler = chatCommands[cmd]
       if (!handler || (spaceIdx !== -1 && !commandAcceptsArgs(cmd))) {
-        console.log(`Unknown command "${firstLine}". Available: ${visibleChatCommands({ visionSupported: state.visionSupported, e2ee: state.e2ee }).join(', ')}\n`)
+        console.log(`Unknown command "${firstLine}". Available: ${visibleChatCommands({ visionSupported: state.visionSupported, e2ee: state.e2ee, providerName: provider.meta.name }).join(', ')}\n`)
         continue
       }
       const outcome = await handler({ ...chatCtx, input, args: spaceIdx === -1 ? '' : firstLine.slice(spaceIdx + 1).trim() })

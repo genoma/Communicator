@@ -16,6 +16,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--zdr`               | —        | Force zero-data-retention routing (OpenRouter only). Filters model/provider selection to ZDR-capable endpoints; errors at selection if a model has none |
 |       | `--e2ee`              | —        | Enable end-to-end encryption (Venice only, requires `--provider venice`). Filters model selection to E2EE-capable models; disables web search, attachments, and prompt caching; refuses to resume unencrypted sessions |
 |       | `--attach`            | `<path>` | Attach a file to the one-shot message (repeatable: images, pdf, xlsx/docx/pptx, txt, md, code, ...). Requires a prompt argument or piped stdin |
+|       | `--scrape`            | `<url>`  | Scrape a web page into the session as context, then answer the prompt (Venice only, $0.01 per page; bare use on a TTY opens a chat with the page in context). See [docs/web-scrape.md](web-scrape.md) |
 |       | `--no-smooth-streaming` | —      | Disable smooth streaming (default: on in interactive sessions). Bare use saves the default |
 |       | `--smooth-speed`      | `<level\|cps>` | Smooth streaming speed: `slow`, `normal`, `fast`, or chars per second (default: `normal` ≈ 2000). Bare use saves the default |
 | `-V`  | `--version`           | —        | Print the version and exit                                                           |
@@ -86,6 +87,8 @@ communicator -m "openai/gpt-4o" --temperature 0.2 "Write a haiku"     # with tem
 cat notes.md | communicator -m "openai/gpt-4o" --budget 0.5 "Fix typos:" # with budget cap
 communicator -m "openai/gpt-4o" --attach screenshot.png "What is the bug?"   # vision model + image
 communicator -p venice -m "qwen-3-7-max" --attach data.xlsx "Summarize this" # Venice office file
+communicator -p venice --scrape "https://example.com/article" "Summarize this article" # scrape + answer
+communicator -p venice --scrape "https://example.com/article"                 # opens a chat with the page in context
 
 # Session management
 communicator --list-sessions                                   # list saved sessions
@@ -135,6 +138,7 @@ communicator --no-watermark                                            # hide th
 | `/budget`      | Show used/remaining budget, or set one with `/budget <usd>`                          |
 | `/web-search`  | Set the web search mode (`/web-search auto|always|off`; `on` = `auto`), show the current mode with no args |
 | `/web-results` | Set the web search result count (`/web-results <n>`, OpenRouter only), show it with no args |
+| `/scrape`      | Scrape a web page into the conversation as context (`/scrape <url>`, Venice only, $0.01 per page). Type the message on the next line after the command |
 | `/attach`      | Queue files for the next message (`/attach <path>...`). No args = same as `/attachments` |
 | `/attachments` | List the queued attachments, or clear them with `/attachments clear` |
 | `/retry`       | Re-run the last user turn (regenerates the last answer)                             |

@@ -16,6 +16,34 @@ import { configSetCmd } from './commands/config-set.js'
 import { resolveSmoothSpeed, resolveTemperatureFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
 import { isConfigSetter, hasConfigSetterFlags, validateCliFlags } from './cli-validation.js'
+import { MAX_SCRAPE_CHARS } from './constants.js'
+
+// Fetches a page via the Venice web scraping API and normalizes it for
+// injection into the session context (validated http(s) URL, truncated to
+// MAX_SCRAPE_CHARS). One flat $0.01 per page, tracked by the session.
+async function scrapeForSession({ provider, apiKey, url }) {
+  let parsed
+  try {
+    parsed = new URL(url)
+  } catch {
+    parsed = null
+  }
+  if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
+    throw new CliError('Error: --scrape expects a valid http(s) URL.')
+  }
+  if (typeof provider.scrapePage !== 'function') {
+    throw new CliError(`Error: --scrape is not supported by provider ${provider.meta.name}.`)
+  }
+  const result = await provider.scrapePage({ apiKey, url })
+  const full = String(result.content || '')
+  const truncated = full.length > MAX_SCRAPE_CHARS
+  const content = truncated ? full.slice(0, MAX_SCRAPE_CHARS) : full
+  const size = truncated
+    ? `${MAX_SCRAPE_CHARS.toLocaleString()} chars (full page truncated)`
+    : `${content.length.toLocaleString()} chars`
+  console.log(`Scraped ${url} (${size}) into context.`)
+  return { url, content }
+}
 
 export async function runCli(opts, promptArg) {
   try {
@@ -149,6 +177,10 @@ async function main(opts, promptArg) {
   const prefs = await loadPreferences(opts.config)
   const systemPrompt = await loadSystemPrompt(opts.systemPrompt)
 
+  const scraped = opts.scrape !== undefined
+    ? await scrapeForSession({ provider, apiKey, url: opts.scrape })
+    : null
+
   // --no-safe-mode persists as a global Venice setting in every launch path
   // (interactive chat, one-shot, piped stdin), per its documented behavior.
   if (opts.safeMode === false) {
@@ -162,7 +194,7 @@ async function main(opts, promptArg) {
   }
 
   if (promptArg || !process.stdin.isTTY) {
-    await oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt: promptArg })
+    await oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt: promptArg, scraped })
     process.exit(0)
   }
 
@@ -170,5 +202,5 @@ async function main(opts, promptArg) {
   // inquirer pickers; keep them out of the exit-mode and one-shot paths by
   // loading it only for interactive chat.
   const { chatStart } = await import('./commands/chat-start.js')
-  await chatStart({ apiKey, opts, prefs, systemPrompt, providerType })
+  await chatStart({ apiKey, opts, prefs, systemPrompt, providerType, scraped })
 }

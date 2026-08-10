@@ -87,6 +87,9 @@ export class UsageTracker {
     this.requests = 0
     this.cacheHits = 0
     this.cachedTokens = 0
+    // Flat-fee operations (Venice web scraping) count toward cost and the
+    // session scrape counter but never touch token/request metrics.
+    this.scrapes = 0
     // Peak context occupancy (prompt + completion) across the session. Web
     // search tool results transiently inflate a single turn's prompt tokens,
     // so the per-turn value can shrink; the peak never does.
@@ -106,6 +109,12 @@ export class UsageTracker {
     this.cachedTokens += cached
     this.cost += turnCost
     this.peakContext = Math.max(this.peakContext, pt + ct)
+  }
+
+  addScrapeCost(amount, count = 1) {
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) return
+    this.scrapes += count
+    this.cost += amount
   }
 
   printTurn(usage, pricing, contextLength, budgetNote = null) {
@@ -155,6 +164,9 @@ export class UsageTracker {
     const eq = '\u003d'
 
     let s = `${arrowUp} ${this.promptTokens.toLocaleString()} prompt  ${arrowDown} ${this.completionTokens.toLocaleString()} completion  ${eq} ${this.totalTokens.toLocaleString()} total  |  ${this.requests} request(s)`
+    if (this.scrapes > 0) {
+      s += `  |  ${this.scrapes} scrape${this.scrapes > 1 ? 's' : ''}`
+    }
     if (this.cacheHits > 0) {
       s += `  |  ${this.cacheHits} cache hit(s) [${this.cachedTokens.toLocaleString()} cached tokens]`
     }

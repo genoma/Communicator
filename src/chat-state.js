@@ -2,7 +2,7 @@ import { DEFAULT_TEMPERATURE } from './constants.js'
 import { normalizeSmoothSpeed, normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
-  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent }) {
+  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent, scrapes = 0 }) {
     this.modelId = modelId
     this.endpointProviderName = endpointProviderName
     this.reasoningEffort = reasoningEffort
@@ -30,6 +30,7 @@ export class ChatState {
     this.markdown = markdown
     this.smoothStreaming = smoothStreaming
     this.smoothSpeed = normalizeSmoothSpeed(smoothSpeed)
+    this.scrapes = scrapes
     this.systemContent = systemContent || 'You are a helpful assistant.'
     this.messages = messages || [{ role: 'system', content: this.systemContent }]
   }
@@ -51,6 +52,7 @@ export class ChatState {
       supportsReasoning: this.supportsReasoning,
       webSearchSupported: this.webSearchSupported,
       e2ee: this.e2ee,
+      scrapes: this.scrapes,
       providerType,
     }
   }
@@ -59,6 +61,7 @@ export class ChatState {
     this.messages = [{ role: 'system', content: systemContent }]
     this.budget = null
     this.webResults = null
+    this.scrapes = 0
     this.pendingAttachments = []
     return true
   }

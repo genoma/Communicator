@@ -2,14 +2,14 @@ import { formatError, CliError } from '../../errors.js'
 import { selectModelAndEndpoint } from '../../model-selection.js'
 import { getEffortLabel, selectReasoningEffort } from '../../prompts.js'
 import { resolveTemperatureFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, webSearchGate } from '../../flags.js'
-import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed } from '../../constants.js'
+import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed, SCRAPE_COST_USD, MAX_SCRAPE_CHARS } from '../../constants.js'
 import { budgetStatusLine, budgetExhaustedMessage } from '../../tracker.js'
 import { sessionLabel } from '../../ui/format.js'
 import { dim } from '../../ui/style.js'
 import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
 import { fetchModelPubKey } from '../../e2ee.js'
-const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments'])
+const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments', '/scrape'])
 
 export function budgetGuard(ctx) {
   const { state, tracker } = ctx
@@ -237,6 +237,49 @@ const handlers = {
     console.log(`Web search results set to ${parsed}.\n`)
   },
 
+  '/scrape': async (ctx) => {
+    if (ctx.state.e2ee) {
+      console.error('E2EE does not support web scraping.\n')
+      return
+    }
+    if (typeof ctx.provider.scrapePage !== 'function') {
+      console.error('Web scraping is only supported on Venice.\n')
+      return
+    }
+    const url = ctx.args.trim()
+    if (!url) {
+      console.error('Usage: /scrape <url>\n')
+      return
+    }
+    let parsed
+    try {
+      parsed = new URL(url)
+    } catch {
+      parsed = null
+    }
+    if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
+      console.error('Error: /scrape expects a valid http(s) URL.\n')
+      return
+    }
+    let result
+    try {
+      result = await ctx.provider.scrapePage({ apiKey: ctx.apiKey, url })
+    } catch (err) {
+      console.error(`\nError: ${formatError(err)}\n`)
+      return
+    }
+    const full = String(result.content || '')
+    const truncated = full.length > MAX_SCRAPE_CHARS
+    const content = truncated ? full.slice(0, MAX_SCRAPE_CHARS) : full
+    ctx.state.appendUser(`Scraped from ${url}:\n\n${content}`)
+    ctx.state.scrapes += 1
+    ctx.tracker.addScrapeCost(SCRAPE_COST_USD)
+    const size = truncated
+      ? `${MAX_SCRAPE_CHARS.toLocaleString()} chars (full page truncated)`
+      : `${content.length.toLocaleString()} chars`
+    console.log(`Scraped ${url} (${size}, $${SCRAPE_COST_USD.toFixed(2)}) into context — session cost ${formatCost(ctx.tracker.cost)}.\n`)
+  },
+
   '/retry': async (ctx) => {
     const guard = budgetGuard(ctx)
     if (guard) {
@@ -313,10 +356,13 @@ export const chatCommands = handlers
 
 export const CHAT_COMMANDS = Object.keys(handlers)
 
-export function visibleChatCommands({ visionSupported, e2ee = false }) {
+export function visibleChatCommands({ visionSupported, e2ee = false, providerName }) {
   const hidden = []
   if (visionSupported === false || e2ee) hidden.push('/attach', '/attachments')
   if (e2ee) hidden.push('/web-search', '/web-results')
+  // Web scraping is a Venice-only feature; the provider is fixed at session
+  // start (never switches mid-session), so the list is computed once.
+  if (e2ee || providerName !== 'venice') hidden.push('/scrape')
   return CHAT_COMMANDS.filter((c) => !hidden.includes(c))
 }
 

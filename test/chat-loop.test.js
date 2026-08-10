@@ -128,7 +128,7 @@ test('happy path runs a turn and saves the final session once', async (t) => {
   assert.equal(id, '2026-01-01T00-00-00')
   assert.deepEqual(
     Object.keys(payload).sort(),
-    ['budget', 'contextLength', 'createdAt', 'e2ee', 'isImageModel', 'messages', 'model', 'pricing', 'providerName', 'providerType', 'reasoningEffort', 'supportsReasoning', 'temperature', 'title', 'updatedAt', 'webResults', 'webSearch', 'webSearchSupported']
+    ['budget', 'contextLength', 'createdAt', 'e2ee', 'isImageModel', 'messages', 'model', 'pricing', 'providerName', 'providerType', 'reasoningEffort', 'scrapes', 'supportsReasoning', 'temperature', 'title', 'updatedAt', 'webResults', 'webSearch', 'webSearchSupported']
   )
   assert.equal(payload.model, 'org/model')
   assert.equal(payload.providerName, 'Provider')
@@ -562,6 +562,28 @@ test('resume path renders history, seeds the tracker and shows the previous sess
   assert.equal(calls.length, 1)
   assert.deepEqual(calls[0].messages.map((m) => m.role), ['system', 'user', 'assistant', 'user'])
   assert.equal(calls[0].messages[3].content, 'next question')
+})
+
+test('resumed scrape counts seed the tracker cost and the scrape counter once', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/cost', '/quit']) })
+
+  const initialMessages = [
+    { role: 'system', content: 'You are a helpful assistant.' },
+    { role: 'user', content: 'Scraped from https://example.com:\n\n# Page' },
+    { role: 'assistant', content: 'old answer', usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 } },
+  ]
+
+  await runChatSession(
+    baseCtx(provider, { initialMessages, scrapes: 2 }),
+    harness.deps
+  )
+
+  const costLine = consoleSpy.allLogs().find((l) => l.includes('Current session:'))
+  assert.ok(costLine)
+  assert.match(costLine, /2 scrapes/)
+  assert.match(costLine, /\$0\.020040 cost/)
 })
 
 test('resume summary omits CTX when the previous session occupancy is below 5%', async (t) => {

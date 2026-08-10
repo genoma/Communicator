@@ -77,12 +77,19 @@ test('resumeCmd passes budget through raw for the caller to sanitize', async () 
 })
 
 test('resumeCmd keeps missing capability fields at their safe defaults', async () => {
-  sessionData = session({ supportsReasoning: undefined, webSearchSupported: undefined, isImageModel: undefined })
+  sessionData = session({ supportsReasoning: undefined, webSearchSupported: undefined, isImageModel: undefined, scrapes: undefined })
   const result = await resumeCmd('2026')
 
   assert.equal(result.supportsReasoning, true)
   assert.equal(result.webSearchSupported, undefined)
   assert.equal(result.isImageModel, false)
+  assert.equal(result.scrapes, 0)
+})
+
+test('resumeCmd restores the scraped page count for cost tracking', async () => {
+  sessionData = session({ scrapes: 3 })
+  const result = await resumeCmd('2026')
+  assert.equal(result.scrapes, 3)
 })
 
 test('resumeCmd marks image sessions and maps legacy on web search to auto', async () => {

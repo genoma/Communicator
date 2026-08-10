@@ -1,5 +1,5 @@
 import { getProvider } from '../providers/index.js'
-import { cpsToCharsPerTick } from '../constants.js'
+import { cpsToCharsPerTick, SCRAPE_COST_USD } from '../constants.js'
 import { createNewSession, removeEmptySessionClaim } from '../sessions.js'
 import { createStreamRenderer, printSources } from '../ui/stream.js'
 import { sessionLabel } from '../ui/format.js'
@@ -14,7 +14,7 @@ import { createE2eeSession } from '../e2ee.js'
 import { runImageGeneration, finalizeImageSession } from './image-gen.js'
 import { sanitizeAnsi } from '../ui/hyperlink.js'
 
-export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt }) {
+export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt, scraped = null }) {
   const provider = getProvider(providerType)
   const stdinPiped = !process.stdin.isTTY
 
@@ -92,8 +92,13 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
   const { dir, sessionId, createdAt } = await createNewSession()
   const messages = [
     { role: 'system', content: systemPrompt || 'You are a helpful assistant.' },
+    ...(scraped ? [{ role: 'user', content: `Scraped from ${scraped.url}:\n\n${scraped.content}` }] : []),
     { role: 'user', content: buildContent(text, attachments) },
   ]
+
+  // The scrape already happened (and was billed) before this command ran; add
+  // its flat cost so the turn/budget lines below account for it.
+  if (scraped) tracker.addScrapeCost(SCRAPE_COST_USD)
 
   // E2EE needs its own client key pair plus the attested model public key
   // before the first turn; any failure aborts rather than sending plaintext.
@@ -219,6 +224,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     sessionId,
     createdAt,
     messages,
+    scrapes: scraped ? 1 : 0,
   })
   const finalState = state.toFinalState(provider.meta.name)
 

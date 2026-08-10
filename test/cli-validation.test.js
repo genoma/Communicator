@@ -84,6 +84,56 @@ test('--e2ee rejects --image', () => {
   )
 })
 
+test('--scrape requires the Venice provider', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ scrape: 'https://example.com' }), { ...TTY, ...PROMPT() }),
+    ['Error: --scrape is only available with --provider venice.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ scrape: 'https://example.com', provider: 'venice' }), { ...TTY, ...PROMPT() }),
+    []
+  )
+})
+
+test('--e2ee rejects --scrape', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ e2ee: true, provider: 'venice', scrape: 'https://example.com' }), { ...TTY, ...PROMPT() }),
+    ['Error: --e2ee cannot be combined with --scrape (E2EE does not support web scraping).']
+  )
+})
+
+test('--scrape is a session flag: conflicts with exit modes, export, delete and resume', () => {
+  const scrape = { scrape: 'https://example.com', provider: 'venice' }
+  assert.deepEqual(
+    validateCliFlags(opts({ ...scrape, listModels: true }), TTY),
+    ['Error: --model, --output-dir and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach, --scrape) cannot be combined with --list-* flags.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ ...scrape, export: 'x' }), TTY),
+    ['Error: --model and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach, --scrape) cannot be combined with --export.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ ...scrape, delete: 'x' }), TTY),
+    ['Error: --model, --output-dir and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach, --scrape) cannot be combined with --delete.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ ...scrape, deleteAllSessions: 'y' }), TTY),
+    ['Error: --model, --output-dir and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach, --scrape) cannot be combined with --delete-all-sessions.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ ...scrape, resume: 'x' }), TTY),
+    ['Error: --model, --output-dir, --attach and --scrape cannot be combined with --resume (resumed sessions keep their own model; --output-dir only applies to --export).']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ ...scrape, config: true }), TTY),
+    ['Error: bare --config (config view) cannot be combined with other flags.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ ...scrape, image: true }), TTY),
+    ['Error: --image cannot be combined with chat session flags (--model, --attach, --system-prompt, --temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --zdr, --scrape).']
+  )
+})
+
 test('bare --config rejects --e2ee', () => {
   assert.deepEqual(
     validateCliFlags(opts({ config: true, e2ee: true, provider: 'venice' }), TTY),
@@ -135,7 +185,7 @@ test('rejects --delete-all-sessions combined with --list-* flags', () => {
 test('rejects --delete-all-sessions combined with session flags', () => {
   assert.deepEqual(
     validateCliFlags(opts({ deleteAllSessions: 'y', webSearch: 'auto' }), TTY),
-    ['Error: --model, --output-dir and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach) cannot be combined with --delete-all-sessions.']
+    ['Error: --model, --output-dir and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach, --scrape) cannot be combined with --delete-all-sessions.']
   )
 })
 
@@ -172,11 +222,11 @@ test('rejects interactive flags with piped stdin', () => {
 test('rejects exit-mode flags combined with session flags', () => {
   assert.deepEqual(
     validateCliFlags(opts({ listSessions: true, temperature: 0.5 }), TTY),
-    ['Error: --model, --output-dir and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach) cannot be combined with --list-* flags.']
+    ['Error: --model, --output-dir and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach, --scrape) cannot be combined with --list-* flags.']
   )
   assert.deepEqual(
     validateCliFlags(opts({ listModels: true, model: 'm' }), TTY),
-    ['Error: --model, --output-dir and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach) cannot be combined with --list-* flags.']
+    ['Error: --model, --output-dir and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach, --scrape) cannot be combined with --list-* flags.']
   )
 })
 
@@ -203,7 +253,7 @@ test('rejects interactive flags combined with exit-mode flags', () => {
 test('rejects --export combined with session flags', () => {
   assert.deepEqual(
     validateCliFlags(opts({ export: 'x', budget: 5 }), TTY),
-    ['Error: --model and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach) cannot be combined with --export.']
+    ['Error: --model and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach, --scrape) cannot be combined with --export.']
   )
 })
 
@@ -211,7 +261,7 @@ test('rejects --delete combined with session flags', () => {
   assert.deepEqual(
     validateCliFlags(opts({ delete: 'x', attach: ['a.txt'] }), TTY),
     [
-      'Error: --model, --output-dir and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach) cannot be combined with --delete.',
+      'Error: --model, --output-dir and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach, --scrape) cannot be combined with --delete.',
       'Error: --attach requires a prompt argument or piped stdin.',
     ]
   )
@@ -220,12 +270,12 @@ test('rejects --delete combined with session flags', () => {
 test('rejects --resume combined with --model, --output-dir or --attach', () => {
   assert.deepEqual(
     validateCliFlags(opts({ resume: 'x', model: 'm' }), TTY),
-    ['Error: --model, --output-dir and --attach cannot be combined with --resume (resumed sessions keep their own model; --output-dir only applies to --export).']
+    ['Error: --model, --output-dir, --attach and --scrape cannot be combined with --resume (resumed sessions keep their own model; --output-dir only applies to --export).']
   )
   assert.deepEqual(
     validateCliFlags(opts({ resume: 'x', attach: ['a.txt'] }), TTY),
     [
-      'Error: --model, --output-dir and --attach cannot be combined with --resume (resumed sessions keep their own model; --output-dir only applies to --export).',
+      'Error: --model, --output-dir, --attach and --scrape cannot be combined with --resume (resumed sessions keep their own model; --output-dir only applies to --export).',
       'Error: --attach requires a prompt argument or piped stdin.',
     ]
   )
@@ -287,7 +337,7 @@ test('reports every violated combination in order', () => {
     [
       'Error: --web-search expects "auto", "always", "on", or "off" (bare flag = auto).',
       'Error: Cannot use --resume and --export together. Use one at a time.',
-      'Error: --model and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach) cannot be combined with --export.',
+      'Error: --model and the session flags (--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach, --scrape) cannot be combined with --export.',
     ]
   )
 })
@@ -309,6 +359,7 @@ test('predicates classify flags', () => {
   assert.equal(isSessionOnly(opts({ smoothStreaming: false })), true)
   assert.equal(isSessionOnly(opts({ systemPrompt: '/p' })), true)
   assert.equal(isSessionOnly(opts({ attach: ['a.txt'] })), true)
+  assert.equal(isSessionOnly(opts({ scrape: 'https://example.com' })), true)
 
   assert.equal(isConfigSetter(opts()), false)
   assert.equal(isConfigSetter(opts({ model: 'm' })), true)

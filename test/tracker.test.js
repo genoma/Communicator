@@ -62,6 +62,41 @@ test('summary includes cache hit counts when cached tokens were recorded', () =>
   assert.match(s, /2 cache hit\(s\) \[30 cached tokens\]/)
 })
 
+test('addScrapeCost accumulates the flat fee and scrape count without touching tokens', () => {
+  const tracker = new UsageTracker()
+  tracker.addScrapeCost(0.01)
+  tracker.addScrapeCost(0.02, 2)
+
+  assert.equal(tracker.scrapes, 3)
+  assert.ok(Math.abs(tracker.cost - 0.03) < 1e-9)
+  assert.equal(tracker.promptTokens, 0)
+  assert.equal(tracker.requests, 0)
+})
+
+test('addScrapeCost ignores invalid amounts', () => {
+  const tracker = new UsageTracker()
+  tracker.addScrapeCost(undefined)
+  tracker.addScrapeCost(-1)
+  tracker.addScrapeCost(0)
+  tracker.addScrapeCost(NaN)
+
+  assert.equal(tracker.scrapes, 0)
+  assert.equal(tracker.cost, 0)
+})
+
+test('summary reports scrape counts alongside request and cost totals', () => {
+  const tracker = new UsageTracker()
+  tracker.addScrapeCost(0.01)
+  tracker.record({ prompt_tokens: 100, completion_tokens: 50 }, PRICING)
+
+  const s = tracker.summary()
+  assert.match(s, /1 scrape/)
+  assert.match(s, /1 request\(s\)/)
+  assert.match(s, /\$0\.010450 cost/)
+
+  assert.doesNotMatch(new UsageTracker().summary(), /scrape/)
+})
+
 test('budgetStatus computes pct and remaining with 80/100 boundaries', () => {
   const low = budgetStatus(0.4, 1)
   assert.ok(Math.abs(low.pct - 40) < 1e-9)

@@ -155,6 +155,7 @@ Each session is stored as a JSON file:
   "budget": 0.5,
   "webSearch": "auto",
   "webResults": 5,
+  "scrapes": 0,
   "title": "What is the capital of France?",
   "pricing": {
     "prompt": 0.0000025,
@@ -177,6 +178,7 @@ Each session is stored as a JSON file:
 - `temperature` is the resolved session temperature (0–2); `budget` is the per-session cap in USD (`null` when unset)
 - `pricing` is the endpoint's per-token USD rates (`null` when unknown); `contextLength` is the endpoint's advertised context window (`null` when undisclosed, e.g. some Venice models) — used by the CTX indicator on resume
 - `webSearch` is the web search mode (`"off"`, `"auto"`, or `"always"`); `webResults` is the OpenRouter result count (`null` when unset — the provider default of 10 applies) — both restored on resume
+- `scrapes` is the number of Venice web-scraped pages in the session (`0` when none); the flat $0.01 per page is added to the resumed session cost. The scraped page itself is a normal user message and persists like any other message
 - `title` is auto-generated from the first user message
 - User messages with attachments store `content` as an OpenAI-style parts array (`[{ type: 'text', ... }, { type: 'image_url', ... }, { type: 'file', ... }]`); plain text messages keep the string form, so older sessions stay readable
 - Binary attachment payloads (`image_url.url` / `file.file_data`) are not stored inline: the data URL is replaced by a `ref://attachments/<sha256>.<ext>` sentinel pointing at a blob in `~/.communicator/sessions/attachments/<sessionId>/` (raw bytes, deduplicated by sha256 within the session). On `--resume`/`--export` the blob is read back and re-encoded into the `data:<mime>;base64,...` URL. Text-file attachments stay inline as `text` parts. Old sessions with inline data URLs load unchanged and convert to refs on the next save; a missing blob drops that part with a warning

@@ -24,6 +24,7 @@ export async function resumeCmd(partialId) {
     webSearchSupported: sessionData.webSearchSupported ?? undefined,
     isImageModel: sessionData.isImageModel === true,
     e2ee: sessionData.e2ee === true,
+    scrapes: sessionData.scrapes ?? 0,
     initialMessages: sessionData.messages,
     sessionId: matchedId,
     sessionCreatedAt: sessionData.createdAt,

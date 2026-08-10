@@ -869,7 +869,7 @@ test('/model keeps compatible attachments on switch', async (t) => {
   assert.equal(consoleSpy.log(0), '\nSwitched to NewProvider / new/model\n')
 })
 
-test('CHAT_COMMANDS keeps the 16-command order', () => {
+test('CHAT_COMMANDS keeps the 17-command order', () => {
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/exit',
@@ -882,6 +882,7 @@ test('CHAT_COMMANDS keeps the 16-command order', () => {
     '/budget',
     '/web-search',
     '/web-results',
+    '/scrape',
     '/retry',
     '/copy',
     '/markdown',
@@ -891,19 +892,24 @@ test('CHAT_COMMANDS keeps the 16-command order', () => {
 })
 
 test('visibleChatCommands hides /attach and /attachments only when vision is known unsupported', () => {
-  const hidden = visibleChatCommands({ visionSupported: false })
+  const hidden = visibleChatCommands({ visionSupported: false, providerName: 'venice' })
   assert.ok(!hidden.includes('/attach'))
   assert.ok(!hidden.includes('/attachments'))
   assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => c !== '/attach' && c !== '/attachments'))
 
-  assert.deepEqual(visibleChatCommands({ visionSupported: true }), CHAT_COMMANDS)
-  assert.deepEqual(visibleChatCommands({ visionSupported: undefined }), CHAT_COMMANDS)
+  assert.deepEqual(visibleChatCommands({ visionSupported: true, providerName: 'venice' }), CHAT_COMMANDS)
+  assert.deepEqual(visibleChatCommands({ visionSupported: undefined, providerName: 'venice' }), CHAT_COMMANDS)
+})
+
+test('visibleChatCommands hides /scrape outside Venice', () => {
+  const hidden = visibleChatCommands({ visionSupported: true, providerName: 'openrouter' })
+  assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => c !== '/scrape'))
 })
 
 test('visibleChatCommands hides attach and web commands under e2ee', () => {
-  const hidden = visibleChatCommands({ visionSupported: true, e2ee: true })
-  assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => !['/attach', '/attachments', '/web-search', '/web-results'].includes(c)))
-  for (const cmd of ['/attach', '/attachments', '/web-search', '/web-results']) {
+  const hidden = visibleChatCommands({ visionSupported: true, e2ee: true, providerName: 'venice' })
+  assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => !['/attach', '/attachments', '/web-search', '/web-results', '/scrape'].includes(c)))
+  for (const cmd of ['/attach', '/attachments', '/web-search', '/web-results', '/scrape']) {
     assert.ok(!hidden.includes(cmd), `${cmd} must be hidden under e2ee`)
   }
 })
@@ -939,6 +945,131 @@ test('e2ee blocks /attach, /attachments, /web-search and /web-results', async (t
   assert.equal(errors.filter((e) => e.includes('E2EE does not support web search')).length, 2)
   assert.equal(ctx.state.pendingAttachments.length, 0)
   assert.equal(ctx.state.webSearch, 'off')
+})
+
+function veniceCtx(t, overrides = {}) {
+  return makeCtx({
+    provider: fakeProvider({
+      meta: { name: 'venice' },
+      async scrapePage({ url }) {
+        return { url, content: `# ${url}\n\nPage body for ${url}`, format: 'markdown' }
+      },
+    }),
+    ...overrides,
+  })
+}
+
+test('/scrape shows usage without args', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = veniceCtx(t)
+  await chatCommands['/scrape']({ ...ctx, args: '' })
+  assert.equal(consoleSpy.error(0), 'Usage: /scrape <url>\n')
+  assert.equal(ctx.state.messages.length, 1)
+})
+
+test('/scrape rejects a non-http(s) URL without calling the provider', async (t) => {
+  const consoleSpy = mockConsole(t)
+  let called = false
+  const { ctx } = veniceCtx(t, {
+    provider: fakeProvider({
+      meta: { name: 'venice' },
+      async scrapePage() {
+        called = true
+        return { url: '', content: '' }
+      },
+    }),
+  })
+  await chatCommands['/scrape']({ ...ctx, args: 'ftp://example.com/file' })
+  assert.equal(consoleSpy.error(0), 'Error: /scrape expects a valid http(s) URL.\n')
+  assert.equal(called, false)
+})
+
+test('/scrape injects the page as a context turn and tracks its flat cost', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = veniceCtx(t)
+  ctx.state.messages.push({ role: 'user', content: 'hello' })
+
+  await chatCommands['/scrape']({ ...ctx, args: 'https://example.com/article' })
+
+  assert.equal(ctx.state.messages.length, 3)
+  assert.equal(ctx.state.messages[2].role, 'user')
+  assert.equal(ctx.state.messages[2].content, 'Scraped from https://example.com/article:\n\n# https://example.com/article\n\nPage body for https://example.com/article')
+  assert.equal(ctx.state.scrapes, 1)
+  assert.equal(ctx.tracker.cost, 0.01)
+  assert.equal(ctx.tracker.scrapes, 1)
+  assert.match(consoleSpy.log(0), /^Scraped https:\/\/example\.com\/article \(\d+ chars, \$0\.01\) into context — session cost \$0\.010000\.\n$/)
+})
+
+test('/scrape truncates oversized pages with a notice', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const big = 'x'.repeat(300_000)
+  const { ctx } = veniceCtx(t, {
+    provider: fakeProvider({
+      meta: { name: 'venice' },
+      async scrapePage() {
+        return { url: 'https://example.com/big', content: big, format: 'markdown' }
+      },
+    }),
+  })
+
+  await chatCommands['/scrape']({ ...ctx, args: 'https://example.com/big' })
+
+  assert.equal(ctx.state.messages[1].content.length, 'Scraped from https://example.com/big:\n\n'.length + 200_000)
+  assert.match(consoleSpy.log(0), /full page truncated/)
+})
+
+test('/scrape surfaces provider errors and keeps state unchanged', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = veniceCtx(t, {
+    provider: fakeProvider({
+      meta: { name: 'venice' },
+      async scrapePage() {
+        throw new Error('Cannot scrape this page')
+      },
+    }),
+  })
+
+  await chatCommands['/scrape']({ ...ctx, args: 'https://x.com/post' })
+
+  assert.match(consoleSpy.error(0), /Error: Cannot scrape this page/)
+  assert.equal(ctx.state.messages.length, 1)
+  assert.equal(ctx.state.scrapes, 0)
+  assert.equal(ctx.tracker.cost, 0)
+})
+
+test('/scrape is refused outside Venice', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  await chatCommands['/scrape']({ ...ctx, args: 'https://example.com' })
+  assert.equal(consoleSpy.error(0), 'Web scraping is only supported on Venice.\n')
+  assert.equal(ctx.state.scrapes, 0)
+})
+
+test('/scrape is refused under e2ee', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = veniceCtx(t, {
+    state: new ChatState({
+      modelId: 'org/model',
+      endpointProviderName: 'venice',
+      reasoningEffort: 'high',
+      temperature: 0.7,
+      budget: null,
+      pricing: null,
+      supportsReasoning: true,
+      webSearch: false,
+      webResults: null,
+      webSearchSupported: true,
+      e2ee: true,
+      sessionId: '2026-01-01T00-00-00',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      modelReasoning: null,
+    }),
+  })
+
+  await chatCommands['/scrape']({ ...ctx, args: 'https://example.com' })
+
+  assert.equal(consoleSpy.error(0), 'E2EE does not support web scraping.\n')
+  assert.equal(ctx.state.scrapes, 0)
 })
 
 test('/model under e2ee refreshes the attested model key and keeps e2ee state', async (t) => {

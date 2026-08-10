@@ -1,6 +1,6 @@
 import { WEB_SEARCH_MODES } from './flags.js'
 
-const SESSION_FLAGS_LIST = '--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach'
+const SESSION_FLAGS_LIST = '--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach, --scrape'
 
 export function hasAttachments(opts) {
   return (opts.attach?.length ?? 0) > 0
@@ -24,7 +24,8 @@ export function isSessionOnly(opts) {
     opts.smoothSpeed !== undefined ||
     opts.smoothStreaming === false ||
     opts.systemPrompt !== undefined ||
-    hasAttachments(opts)
+    hasAttachments(opts) ||
+    opts.scrape !== undefined
   )
 }
 
@@ -80,7 +81,8 @@ function hasBareConfigOtherFlags(opts, promptArg) {
     opts.deleteAllSessions !== undefined ||
     opts.image === true ||
     opts.e2ee === true ||
-    hasAttachments(opts)
+    hasAttachments(opts) ||
+    opts.scrape !== undefined
   )
 }
 
@@ -115,6 +117,14 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
 
   if (opts.e2ee === true && opts.image === true) {
     errors.push('Error: --e2ee cannot be combined with --image (E2EE is text-only).')
+  }
+
+  if (opts.e2ee === true && opts.scrape !== undefined) {
+    errors.push('Error: --e2ee cannot be combined with --scrape (E2EE does not support web scraping).')
+  }
+
+  if (opts.scrape !== undefined && opts.provider !== 'venice') {
+    errors.push('Error: --scrape is only available with --provider venice.')
   }
 
   if (opts.resume !== undefined && opts.export !== undefined) {
@@ -165,8 +175,8 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push(exclusionError('--model, --output-dir', '--delete'))
   }
 
-  if (opts.resume !== undefined && (opts.model !== undefined || opts.outputDir !== undefined || attachments)) {
-    errors.push('Error: --model, --output-dir and --attach cannot be combined with --resume (resumed sessions keep their own model; --output-dir only applies to --export).')
+  if (opts.resume !== undefined && (opts.model !== undefined || opts.outputDir !== undefined || attachments || opts.scrape !== undefined)) {
+    errors.push('Error: --model, --output-dir, --attach and --scrape cannot be combined with --resume (resumed sessions keep their own model; --output-dir only applies to --export).')
   }
 
   if (interactiveFlags && exitModeFlags) {
@@ -195,7 +205,7 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
   }
 
   if (opts.image && (opts.model !== undefined || opts.zdr === true || sessionOnlyFlags)) {
-    errors.push('Error: --image cannot be combined with chat session flags (--model, --attach, --system-prompt, --temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --zdr).')
+    errors.push('Error: --image cannot be combined with chat session flags (--model, --attach, --system-prompt, --temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --zdr, --scrape).')
   }
 
   if (opts.image && (opts.width !== undefined || opts.height !== undefined)) {

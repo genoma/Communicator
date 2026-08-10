@@ -83,6 +83,22 @@ export async function fetchModelsByType(apiKey, type) {
   return res.json()
 }
 
+// Scrapes a public web page and returns its content as markdown. Venice-only
+// (no OpenRouter counterpart); experimental API, billed per request. Sites
+// that block automated access (e.g. X/Twitter, Reddit) return a 400.
+export async function scrapePage({ apiKey, url, signal }) {
+  const res = await fetchWithRetry(`${VENICE_BASE}/augment/scrape`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ url }),
+  }, { errorResponse: handleHttpError, signal })
+
+  return res.json()
+}
+
 export async function fetchModels(apiKey) {
   const { data } = await fetchModelsByType(apiKey, 'text')
 

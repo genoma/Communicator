@@ -840,6 +840,32 @@ test('chatCompletion rewrites a 400 ZDR rejection with a friendly hint', async (
   )
 })
 
+test('venice scrapePage posts the url with Bearer auth and returns the markdown', async (t) => {
+  const calls = []
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    calls.push({ url, opts })
+    return jsonResponse({ url: 'https://example.com/article', content: '# Title\n\nBody', format: 'markdown' })
+  })
+
+  const result = await venice.scrapePage({ apiKey: 'key', url: 'https://example.com/article' })
+
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].url, 'https://api.venice.ai/api/v1/augment/scrape')
+  assert.equal(calls[0].opts.method, 'POST')
+  assert.equal(calls[0].opts.headers.Authorization, 'Bearer key')
+  assert.deepEqual(JSON.parse(calls[0].opts.body), { url: 'https://example.com/article' })
+  assert.deepEqual(result, { url: 'https://example.com/article', content: '# Title\n\nBody', format: 'markdown' })
+})
+
+test('venice scrapePage surfaces blocked-site 400s as ApiError', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => jsonResponse({ error: 'Cannot scrape this page' }, 400))
+
+  await assert.rejects(
+    () => venice.scrapePage({ apiKey: 'key', url: 'https://x.com/post' }),
+    (err) => err instanceof ApiError && err.status === 400 && err.message.includes('Cannot scrape this page')
+  )
+})
+
 test('metadata indexes cache within the TTL and degrade to empty on failure', async (t) => {
   resetMetadataCaches()
   let zdrCalls = 0

@@ -43,6 +43,7 @@ program
   .option('--zdr', 'force zero-data-retention routing (OpenRouter only; filters model/provider selection to ZDR-capable endpoints)')
   .option('--e2ee', 'enable end-to-end encryption (Venice only; filters model selection to E2EE-capable models, disables web search and attachments)')
   .option('--attach <path>', 'attach a file (repeatable; images/pdf/xlsx/txt/...)', collectFlag, [])
+  .option('--scrape <url>', 'scrape a web page into the session as context, then chat or answer (Venice only, $0.01 per page)')
   .option('--no-smooth-streaming', 'disable smooth streaming (default: on in interactive sessions)')
   .option('--smooth-speed <level|cps>', 'smooth streaming speed: slow, normal, fast, or chars per second')
   .option('--delete [partial-id]', 'delete saved sessions (with confirmation, select one or more)')
