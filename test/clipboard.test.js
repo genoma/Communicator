@@ -7,6 +7,14 @@ class FakeChild {
     this.stdin = {
       write: () => {},
       end: () => {},
+      listeners: {},
+      on: (event, fn) => {
+        this.stdin.listeners[event] = fn
+        return this.stdin
+      },
+      emit: (event, ...args) => {
+        this.stdin.listeners[event]?.(...args)
+      },
     }
     this.killed = false
   }
@@ -135,6 +143,30 @@ test('copyText defaults to the current platform', async () => {
   } finally {
     Object.defineProperty(process, 'platform', original)
   }
+})
+
+test('copyText falls through to the next tool when stdin errors (EPIPE)', async () => {
+  const { calls } = captureSpawn()
+
+  const promise = copyText('hello', { platform: 'linux' })
+  calls[0].child.stdin.emit('error', Object.assign(new Error('EPIPE'), { code: 'EPIPE' }))
+  calls[1].child.succeed()
+  const result = await promise
+
+  assert.deepEqual(result, { ok: true })
+  assert.deepEqual(calls.map((c) => c.cmd), ['wl-copy', 'xclip'])
+})
+
+test('copyText settles once when stdin errors after a successful close', async () => {
+  const { calls } = captureSpawn()
+
+  const promise = copyText('hello', { platform: 'darwin' })
+  calls[0].child.succeed()
+  const result = await promise
+  calls[0].child.stdin.emit('error', new Error('EPIPE'))
+
+  assert.deepEqual(result, { ok: true })
+  assert.equal(calls.length, 1)
 })
 
 test('copyText falls through to the next tool when the first one hangs (timeout)', async () => {

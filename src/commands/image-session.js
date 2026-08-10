@@ -248,7 +248,8 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
           }
         } else if (!handler.listKey) {
           if (handler.flagKey === 'variants') {
-            console.log(current === undefined ? 'Variants: 1-4 (none set).\n' : `Variants: 1-4 (current: ${current}).\n`)
+            const maxN = model.constraints?.maxN != null ? model.constraints.maxN : 4
+            console.log(current === undefined ? `Variants: 1-${maxN} (none set).\n` : `Variants: 1-${maxN} (current: ${current}).\n`)
           } else {
             console.log(current === undefined ? 'Seed: not set.\n' : `Seed: ${current}.\n`)
           }
@@ -284,6 +285,9 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
           console.error(`${unsupportedListError(handler.errorKind, parsed, model, list)}\n`)
           continue
         }
+      } else if (handler.flagKey === 'variants' && model.constraints?.maxN != null && parsed > model.constraints.maxN) {
+        console.error(`Error: variants ${parsed} is not supported by ${model.id}. Supported: 1-${model.constraints.maxN}.\n`)
+        continue
       }
       sessionValues[handler.flagKey] = parsed
       if (handler.persisted) {

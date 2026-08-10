@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { hasAttachments, hasConfigSetterFlags, isConfigSetter, isExitMode, isInteractiveFlag, isSessionOnly, validateCliFlags } from '../src/cli-validation.js'
+import { hasAttachments, hasConfigSetterFlags, isConfigSetter, isExitMode, isInteractiveFlag, isPureConfigSetter, isSessionOnly, validateCliFlags } from '../src/cli-validation.js'
 
 const BASE_OPTS = {
   model: undefined,
@@ -372,6 +372,15 @@ test('predicates classify flags', () => {
   assert.equal(hasConfigSetterFlags(opts({ safeMode: false })), false)
   assert.equal(hasConfigSetterFlags(opts({ watermark: false })), true)
   assert.equal(hasConfigSetterFlags(opts({ outputDir: '/x' })), true)
+
+  assert.equal(isPureConfigSetter(opts()), false)
+  assert.equal(isPureConfigSetter(opts({ imageFormat: 'png' })), true)
+  assert.equal(isPureConfigSetter(opts({ aspectRatio: '16:9' })), true)
+  assert.equal(isPureConfigSetter(opts({ watermark: false })), true)
+  assert.equal(isPureConfigSetter(opts({ safeMode: false })), true)
+  assert.equal(isPureConfigSetter(opts({ temperature: 0.5 })), false)
+  assert.equal(isPureConfigSetter(opts({ model: 'm' })), false)
+  assert.equal(isPureConfigSetter(opts({ outputDir: '/x' })), false)
 
   assert.equal(hasAttachments(opts()), false)
   assert.equal(hasAttachments(opts({ attach: [] })), false)

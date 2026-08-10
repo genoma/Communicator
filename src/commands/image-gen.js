@@ -13,7 +13,7 @@ import { createLoader } from '../ui/loader.js'
 import { resolveAspectRatio, resolveHeight, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants, resolveWidth } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizeLabel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
 
-function validateSizingConstraints(model, { aspectRatio, format, resolution, quality, width, height }) {
+function validateSizingConstraints(model, { aspectRatio, format, resolution, quality, width, height, variants }) {
   if (!model) return
   const constraints = model.constraints || {}
   if (aspectRatio && Array.isArray(constraints.aspectRatios) && !constraints.aspectRatios.includes(aspectRatio)) {
@@ -41,6 +41,9 @@ function validateSizingConstraints(model, { aspectRatio, format, resolution, qua
   }
   if (quality && Array.isArray(constraints.qualities) && !constraints.qualities.includes(quality)) {
     throw new CliError(`Error: --quality ${quality} is not supported by ${model.id}. Supported: ${constraints.qualities.join(', ')}.`)
+  }
+  if (variants != null && constraints.maxN != null && variants > constraints.maxN) {
+    throw new CliError(`Error: --variants ${variants} is not supported by ${model.id}. Supported: 1-${constraints.maxN}.`)
   }
   if (constraints.widthHeightDivisor != null) {
     for (const [flag, value] of [['--width', width], ['--height', height]]) {
@@ -149,7 +152,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
     throw new CliError(`Error: ${err.message}`)
   }
 
-  validateSizingConstraints(resolved, { aspectRatio, format, resolution, quality, width, height })
+  validateSizingConstraints(resolved, { aspectRatio, format, resolution, quality, width, height, variants })
 
   const savedDefaults = getImageDefaults(prefs, providerName)
   const interactive = sizingInteractive === true || (sizingInteractive !== false && stdout.isTTY === true && process.stdin.isTTY === true)
@@ -208,7 +211,11 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
     if (applied.note) notes.push(applied.note)
   }
   if (opts.variants === undefined && savedDefaults.variants != null) {
-    variants = savedDefaults.variants
+    if (resolved?.constraints?.maxN != null && savedDefaults.variants > resolved.constraints.maxN) {
+      notes.push(sizingDropNote('variants', savedDefaults.variants, resolved.id))
+    } else {
+      variants = savedDefaults.variants
+    }
   }
 
   if (opts.aspectRatio !== undefined) prefsUpdates.aspectRatio = aspectRatio
@@ -334,7 +341,12 @@ export async function finalizeImageSession({ prefs, opts = {}, config, sessionId
     hideWatermark: opts.watermark === false ? true : undefined,
     safeMode: opts.safeMode === false ? false : undefined,
   })
-  await savePreferences(mergeImageDefaults(updated, providerName, outcome.prefsUpdates), config)
+  try {
+    await savePreferences(mergeImageDefaults(updated, providerName, outcome.prefsUpdates), config)
+  } catch (err) {
+    // prefs save failures are non-fatal: the session already persisted
+    console.warn(`Warning: could not save preferences: ${err.message}`)
+  }
   printImageOutcome(outcome, stdout)
 }
 

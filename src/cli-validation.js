@@ -46,6 +46,17 @@ export function hasConfigSetterFlags(opts) {
   )
 }
 
+// Flags that are ONLY config setters (never session flags): piped stdin can
+// never be a prompt for them, so the config-set path may run without a TTY.
+export function isPureConfigSetter(opts) {
+  return (
+    opts.aspectRatio !== undefined ||
+    opts.imageFormat !== undefined ||
+    opts.watermark === false ||
+    opts.safeMode === false
+  )
+}
+
 export function isConfigSetter(opts) {
   return hasConfigSetterFlags(opts) || opts.safeMode === false
 }

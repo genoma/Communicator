@@ -694,6 +694,37 @@ test('runImageGeneration applies saved resolution, quality and variants defaults
   assert.equal(outcome.prefsUpdates, undefined)
 })
 
+test('runImageGeneration rejects an explicit variants count above the model maxN', async (t) => {
+  mockConsole(t)
+  const provider = fakeSizingProvider({
+    async fetchImageModels() {
+      return [{ id: 'flux-1-1', name: 'Flux 1.1', pricing: null, constraints: { aspectRatios: ['1:1'], formats: ['png'], resolutions: null, qualities: null, widthHeightDivisor: null, maxN: 2 } }]
+    },
+  })
+
+  await assert.rejects(
+    runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'flux-1-1', variants: '3' }, prefs: {}, sessionId: '2026-01-01T00-00-00', stdout: plainStdout }),
+    (err) => err instanceof CliError && err.message === 'Error: --variants 3 is not supported by flux-1-1. Supported: 1-2.'
+  )
+})
+
+test('runImageGeneration drops a saved variants count above the model maxN with a note', async (t) => {
+  const warns = []
+  t.mock.method(console, 'warn', (m) => { warns.push(String(m)) })
+  const provider = fakeSizingProvider({
+    async fetchImageModels() {
+      return [{ id: 'flux-1-1', name: 'Flux 1.1', pricing: null, constraints: { aspectRatios: ['1:1'], formats: ['png'], resolutions: null, qualities: null, widthHeightDivisor: null, maxN: 2 } }]
+    },
+  })
+  const prefs = { imageDefaults: { venice: { variants: 3 } } }
+
+  const outcome = await runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'flux-1-1' }, prefs, sessionId: '2026-01-01T00-00-00', stdout: plainStdout })
+
+  assert.equal(provider.genArgs.variants, 1)
+  assert.ok(warns.some((w) => w.includes('saved variants 3 is not supported by flux-1-1; it was not sent.')), warns.join('\n'))
+  assert.equal(outcome.prefsUpdates, undefined)
+})
+
 test('runImageGeneration drops saved resolution and quality defaults outside the model list with a note', async (t) => {
   const warns = []
   t.mock.method(console, 'warn', (m) => { warns.push(String(m)) })

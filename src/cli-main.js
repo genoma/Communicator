@@ -15,7 +15,7 @@ import { configViewCmd } from './commands/config-view.js'
 import { configSetCmd } from './commands/config-set.js'
 import { resolveSmoothSpeed, resolveTemperatureFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
-import { isConfigSetter, hasConfigSetterFlags, validateCliFlags } from './cli-validation.js'
+import { isConfigSetter, isPureConfigSetter, hasConfigSetterFlags, validateCliFlags } from './cli-validation.js'
 import { MAX_SCRAPE_CHARS } from './constants.js'
 
 // Fetches a page via the Venice web scraping API and normalizes it for
@@ -152,6 +152,20 @@ async function main(opts, promptArg) {
     const apiKey = opts.model !== undefined ? getApiKey(providerType) : ''
     try {
       await configSetCmd({ opts, prefs, providerType, apiKey })
+    } catch (err) {
+      if (err instanceof CliError) throw err
+      fail(`Error: ${formatError(err)}`)
+    }
+    process.exit(0)
+  }
+
+  // Pure config-setter flags have no session meaning, so piped stdin can
+  // never be a prompt for them: run the config-set path without a TTY.
+  // Excluded with -m, where piped stdin means one-shot.
+  if (!promptArg && !process.stdin.isTTY && opts.model === undefined && opts.resume === undefined && opts.image !== true && isPureConfigSetter(opts)) {
+    const prefs = await loadPreferences(opts.config)
+    try {
+      await configSetCmd({ opts, prefs, providerType, apiKey: '' })
     } catch (err) {
       if (err instanceof CliError) throw err
       fail(`Error: ${formatError(err)}`)

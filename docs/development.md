@@ -52,7 +52,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 ├── tracker.js            — per-turn + cumulative token/cost accounting with cache detection, budget status helpers
 ├── clipboard.js          — clipboard copy via pbcopy/clip/wl-copy/xclip/xsel
 ├── input.js              — chat input via vendored read-multiline (with command suggestions)
-├── suggest.js            — pure suggestion helpers (matchCommands, shouldSuggest, nextMatchIndex)
+├── suggest.js            — prefix matching for command suggestions (matchCommands)
 ├── vendor/
 │   └── read-multiline/   — vendored @toiroakr/read-multiline@0.4.1 + suggest patch (see its README)
 ├── ui/

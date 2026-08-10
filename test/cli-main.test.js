@@ -337,6 +337,33 @@ test('--no-safe-mode combined with another config setter keeps config-set mode',
   assert.equal(saved.outputDir, '/tmp/x')
 })
 
+test('piped stdin with --image-format runs the config-set path and exits 0', async (t) => {
+  withTTY(t, false)
+  const file = await tempConfig(t)
+  const { out } = await runAndExit(t, { config: file, imageFormat: 'png' }, undefined, 0)
+  assert.match(out[0], /Image format set to png \(openrouter image defaults\)/)
+  const saved = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(saved.imageDefaults.openrouter, { format: 'png' })
+})
+
+test('piped stdin with --no-safe-mode persists the pref and exits 0', async (t) => {
+  withTTY(t, false)
+  const file = await tempConfig(t)
+  const { out } = await runAndExit(t, { config: file, safeMode: false }, undefined, 0)
+  assert.match(out[0], /Venice safe mode disabled/)
+  const saved = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(saved.safeMode, false)
+})
+
+test('piped stdin with --aspect-ratio runs the config-set path and exits 0', async (t) => {
+  withTTY(t, false)
+  const file = await tempConfig(t)
+  const { out } = await runAndExit(t, { config: file, aspectRatio: '16:9' }, undefined, 0)
+  assert.match(out[0], /Aspect ratio set to 16:9 \(openrouter image defaults\)/)
+  const saved = JSON.parse(await readFile(file, 'utf-8'))
+  assert.deepEqual(saved.imageDefaults.openrouter, { aspectRatio: '16:9' })
+})
+
 test('per-model setters without --model are rejected', async (t) => {
   withTTY(t, true)
   const file = await tempConfig(t)

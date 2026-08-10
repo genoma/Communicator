@@ -1134,6 +1134,37 @@ test('/variants with a value outside the range errors', async (t) => {
   assert.deepEqual(genCalls, [])
 })
 
+const maxNProvider = {
+  meta: { name: 'venice' },
+  async fetchImageModels() {
+    return [{ id: 'venice-sd35', name: 'SD 3.5', pricing: { perImage: 0.02 }, constraints: { aspectRatios: ['1:1', '16:9', '3:2'], formats: ['png', 'jpeg', 'webp'], resolutions: ['1K', '2K', '4K'], qualities: ['low', 'medium', 'high'], maxN: 2 } }]
+  },
+}
+
+test('/variants above the model maxN errors', async (t) => {
+  genCalls.length = 0
+  genOpts.length = 0
+  printed.length = 0
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+
+  await startImageSession(baseOpts({ provider: maxNProvider, readInput: scriptedInput(['/variants 3', '/quit']) }))
+
+  assert.ok(errors.some((e) => e.includes('Error: variants 3 is not supported by venice-sd35. Supported: 1-2.')))
+  assert.deepEqual(genCalls, [])
+})
+
+test('/variants bare shows the model maxN when the model advertises one', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({ provider: maxNProvider, readInput: scriptedInput(['/variants', '/quit']) }))
+
+  assert.ok(logs.some((l) => l.includes('Variants: 1-2 (none set).')))
+})
+
 test('/variants clear unsets the variants and removes the persisted key', async (t) => {
   genCalls.length = 0
   genOpts.length = 0

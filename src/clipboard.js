@@ -20,12 +20,12 @@ export function copyText(text, { platform = process.platform, timeoutMs = 10000 
       }
       const [cmd, args = []] = commands[index]
       const child = spawn(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'] })
+      let settled = false
       const timer = setTimeout(() => {
         settled = true
         child.kill()
         tryNext(index + 1)
       }, timeoutMs)
-      let settled = false
       function cleanup() {
         clearTimeout(timer)
       }
@@ -41,6 +41,14 @@ export function copyText(text, { platform = process.platform, timeoutMs = 10000 
         cleanup()
         if (code === 0) resolve({ ok: true })
         else tryNext(index + 1)
+      })
+      // The tool may exit before stdin drains (EPIPE): treat that like a tool
+      // failure and probe the next one instead of crashing the CLI.
+      child.stdin.on('error', () => {
+        if (settled) return
+        settled = true
+        cleanup()
+        tryNext(index + 1)
       })
       try {
         child.stdin.write(text)
