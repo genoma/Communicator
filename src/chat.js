@@ -13,6 +13,8 @@ import { ensureSessionsDir, generateSessionId, persistSessionFile, buildSessionP
 import { savePreferences, applyPreferenceUpdates } from './config.js'
 import { copyText } from './clipboard.js'
 import { ChatState } from './chat-state.js'
+import { createE2eeSession } from './e2ee.js'
+import { CliError, formatError } from './errors.js'
 import { registerSignalHandlers } from './signals.js'
 import { createSessionState, createTurnRunner } from './turn-runner.js'
 
@@ -36,6 +38,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     webSearch = 'off',
     webResults = null,
     zdr = false,
+    e2ee = false,
     webSearchSupported = undefined,
     visionSupported = undefined,
     fileSupported = undefined,
@@ -67,6 +70,15 @@ export async function runChatSession(ctx = {}, deps = {}) {
 
   const systemContent = systemPrompt || 'You are a helpful assistant.'
 
+  // An E2EE session needs its own client key pair plus the attested model
+  // public key before the first turn. Any attestation failure aborts the
+  // session: never fall back to sending plaintext when --e2ee was requested.
+  const e2eeContext = e2ee === true
+    ? await createE2eeSession({ apiKey, modelId: model }).catch((err) => {
+        throw new CliError(`Error: ${formatError(err)}`)
+      })
+    : null
+
   const state = new ChatState({
     modelId: model,
     endpointProviderName,
@@ -79,6 +91,8 @@ export async function runChatSession(ctx = {}, deps = {}) {
     webSearch,
     webResults,
     zdr,
+    e2ee,
+    e2eeContext,
     webSearchSupported,
     visionSupported,
     fileSupported,
@@ -109,6 +123,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
   if (reasoningEffort != null) bannerParts.push(`[thinking: ${getEffortLabel(reasoningEffort)}]`)
   if (temperature !== DEFAULT_TEMPERATURE) bannerParts.push(`[temp: ${temperature}]`)
   if (state.zdr) bannerParts.push('[zdr]')
+  if (state.e2ee) bannerParts.push('[e2ee]')
   if (state.webSearch !== 'off') {
     const results = state.webResults != null ? `: ${state.webResults}` : ''
     bannerParts.push(`[web: ${state.webSearch}${results}]`)
@@ -119,7 +134,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     out(`\nConnected to ${label}`)
   }
   const hintParts = []
-  if (state.visionSupported !== false) hintParts.push('/attach <path> to queue files')
+  if (state.visionSupported !== false && !state.e2ee) hintParts.push('/attach <path> to queue files')
   hintParts.push('/quit to exit')
   out(`${hintParts.join('  |  ')}\n`)
 
@@ -243,7 +258,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
 
   while (true) {
     console.log(sep())
-    const result = await readInput({ commands: visibleChatCommands({ visionSupported: state.visionSupported }) })
+    const result = await readInput({ commands: visibleChatCommands({ visionSupported: state.visionSupported, e2ee: state.e2ee }) })
 
     if (result.cancelled) {
       return exitCleanly()
@@ -259,7 +274,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
       const cmd = spaceIdx === -1 ? firstLine : firstLine.slice(0, spaceIdx)
       const handler = chatCommands[cmd]
       if (!handler || (spaceIdx !== -1 && !commandAcceptsArgs(cmd))) {
-        console.log(`Unknown command "${firstLine}". Available: ${visibleChatCommands({ visionSupported: state.visionSupported }).join(', ')}\n`)
+        console.log(`Unknown command "${firstLine}". Available: ${visibleChatCommands({ visionSupported: state.visionSupported, e2ee: state.e2ee }).join(', ')}\n`)
         continue
       }
       const outcome = await handler({ ...chatCtx, input, args: spaceIdx === -1 ? '' : firstLine.slice(spaceIdx + 1).trim() })

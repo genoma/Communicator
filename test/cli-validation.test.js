@@ -46,6 +46,51 @@ test('rejects an invalid --web-search mode', () => {
   assert.deepEqual(validateCliFlags(opts({ webSearch: true }), TTY), [])
 })
 
+test('--e2ee requires --provider venice', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ e2ee: true }), TTY),
+    ['Error: --e2ee is only available with --provider venice.']
+  )
+  assert.deepEqual(validateCliFlags(opts({ e2ee: true, provider: 'venice' }), TTY), [])
+})
+
+test('--e2ee rejects --zdr', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ e2ee: true, zdr: true, provider: 'venice' }), TTY),
+    ['Error: --e2ee cannot be combined with --zdr.']
+  )
+})
+
+test('--e2ee rejects web search flags', () => {
+  for (const other of [{ webSearch: 'auto' }, { webSearch: true }, { webSearch: 'off' }, { webResults: 5 }]) {
+    assert.deepEqual(
+      validateCliFlags(opts({ e2ee: true, provider: 'venice', ...other }), TTY),
+      ['Error: --e2ee cannot be combined with --web-search or --web-results (E2EE does not support web search).']
+    )
+  }
+})
+
+test('--e2ee rejects --attach', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ e2ee: true, provider: 'venice', attach: ['a.png'] }), { ...TTY, ...PROMPT() }),
+    ['Error: --e2ee cannot be combined with --attach (E2EE does not support file uploads).']
+  )
+})
+
+test('--e2ee rejects --image', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ e2ee: true, provider: 'venice', image: true }), TTY),
+    ['Error: --e2ee cannot be combined with --image (E2EE is text-only).']
+  )
+})
+
+test('bare --config rejects --e2ee', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ config: true, e2ee: true, provider: 'venice' }), TTY),
+    ['Error: bare --config (config view) cannot be combined with other flags.']
+  )
+})
+
 test('rejects --resume combined with --export', () => {
   assert.deepEqual(
     validateCliFlags(opts({ resume: 'x', export: 'y' }), TTY),

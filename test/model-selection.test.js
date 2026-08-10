@@ -130,6 +130,61 @@ test('non-interactive selection defaults web search unsupported without meta or 
   assert.equal(sel.webSearchSupported, false)
 })
 
+test('selection reports E2EE support from venice capabilities', async () => {
+  const provider = fakeProvider({
+    async fetchModels() {
+      return [
+        { id: 'e2ee-model', reasoning: null, pricing: null, capabilities: { supportsE2EE: true } },
+        { id: 'plain-model', reasoning: null, pricing: null, capabilities: { supportsE2EE: false } },
+      ]
+    },
+  })
+  const e2eeSel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'e2ee-model' })
+  const plainSel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'plain-model' })
+  assert.equal(e2eeSel.supportsE2EE, true)
+  assert.equal(plainSel.supportsE2EE, false)
+})
+
+test('selection leaves E2EE support undefined for openrouter models', async () => {
+  const provider = fakeProvider({
+    meta: { name: 'openrouter', hasEndpoints: true },
+    async fetchModels() {
+      return [{ id: 'm', reasoning: null, pricing: null, capabilities: { supportsE2EE: true } }]
+    },
+  })
+  const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'm' })
+  assert.equal(sel.supportsE2EE, undefined)
+})
+
+test('--e2ee rejects models without E2EE support', async () => {
+  const provider = fakeProvider({
+    async fetchModels() {
+      return [
+        { id: 'e2ee-model', reasoning: null, pricing: null, capabilities: { supportsE2EE: true } },
+        { id: 'plain-model', reasoning: null, pricing: null, capabilities: {} },
+      ]
+    },
+  })
+  const e2eeSel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'e2ee-model', e2ee: true })
+  assert.equal(e2eeSel.supportsE2EE, true)
+  await assert.rejects(
+    selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'plain-model', e2ee: true }),
+    (err) => err instanceof CliError && /does not support E2EE/.test(err.message)
+  )
+})
+
+test('--e2ee rejects unknown models without falling back to image models', async () => {
+  const provider = fakeProvider({
+    async fetchModels() {
+      return [{ id: 'e2ee-model', reasoning: null, pricing: null, capabilities: { supportsE2EE: true } }]
+    },
+  })
+  await assert.rejects(
+    selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'some-image', e2ee: true }),
+    (err) => err instanceof CliError && /not an E2EE-capable model/.test(err.message)
+  )
+})
+
 test('non-interactive selection keeps forced string effort over saved pref', async () => {
   const sel = await selectModelNonInteractive({
     provider: fakeProvider(),

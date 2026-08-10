@@ -899,3 +899,174 @@ test('visibleChatCommands hides /attach and /attachments only when vision is kno
   assert.deepEqual(visibleChatCommands({ visionSupported: true }), CHAT_COMMANDS)
   assert.deepEqual(visibleChatCommands({ visionSupported: undefined }), CHAT_COMMANDS)
 })
+
+test('visibleChatCommands hides attach and web commands under e2ee', () => {
+  const hidden = visibleChatCommands({ visionSupported: true, e2ee: true })
+  assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => !['/attach', '/attachments', '/web-search', '/web-results'].includes(c)))
+  for (const cmd of ['/attach', '/attachments', '/web-search', '/web-results']) {
+    assert.ok(!hidden.includes(cmd), `${cmd} must be hidden under e2ee`)
+  }
+})
+
+test('e2ee blocks /attach, /attachments, /web-search and /web-results', async (t) => {
+  mockConsole(t)
+  const { ctx } = makeCtx({
+    state: new ChatState({
+      modelId: 'e2ee-model',
+      endpointProviderName: 'venice',
+      reasoningEffort: null,
+      temperature: 0.7,
+      budget: null,
+      pricing: null,
+      supportsReasoning: true,
+      webSearch: false,
+      webResults: null,
+      webSearchSupported: true,
+      e2ee: true,
+      sessionId: '2026-01-01T00-00-00',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      modelReasoning: null,
+    }),
+  })
+
+  await chatCommands['/attach']({ ...ctx, args: 'a.png' })
+  await chatCommands['/attachments']({ ...ctx, args: '' })
+  await chatCommands['/web-search']({ ...ctx, args: 'auto' })
+  await chatCommands['/web-results']({ ...ctx, args: '5' })
+
+  const errors = console.error.mock.calls.map((c) => String(c.arguments[0]))
+  assert.equal(errors.filter((e) => e.includes('E2EE does not support file uploads')).length, 2)
+  assert.equal(errors.filter((e) => e.includes('E2EE does not support web search')).length, 2)
+  assert.equal(ctx.state.pendingAttachments.length, 0)
+  assert.equal(ctx.state.webSearch, 'off')
+})
+
+test('/model under e2ee refreshes the attested model key and keeps e2ee state', async (t) => {
+  mockConsole(t)
+  const e2eeContext = { clientPubKeyHex: '04'.repeat(65), modelPubKeyHex: 'old-key' }
+  const { ctx, prefsUpdates } = makeCtx({
+    state: new ChatState({
+      modelId: 'org/model',
+      endpointProviderName: 'Provider',
+      reasoningEffort: 'high',
+      temperature: 0.7,
+      budget: null,
+      pricing: null,
+      supportsReasoning: true,
+      webSearch: false,
+      webResults: null,
+      webSearchSupported: true,
+      e2ee: true,
+      e2eeContext,
+      sessionId: '2026-01-01T00-00-00',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      modelReasoning: null,
+    }),
+    prefs: { webSearch: { 'new/model': true } },
+    selectModelAndEndpoint: async (opts) => {
+      assert.equal(opts.e2ee, true)
+      return {
+        modelId: 'new/model',
+        endpointProviderName: 'venice',
+        pricing: null,
+        reasoningEffort: undefined,
+        supportsReasoning: true,
+        modelReasoning: null,
+        webSearchSupported: true,
+        supportsE2EE: true,
+      }
+    },
+  })
+
+  t.mock.method(globalThis, 'fetch', async (url) => new Response(JSON.stringify({
+    verified: true,
+    nonce: new URL(String(url)).searchParams.get('nonce'),
+    signing_key: '04'.repeat(65),
+  })))
+
+  await chatCommands['/model'](ctx)
+
+  assert.equal(ctx.state.modelId, 'new/model')
+  assert.equal(ctx.state.e2ee, true)
+  assert.equal(ctx.state.webSearch, 'off')
+  assert.equal(e2eeContext.modelPubKeyHex, '04'.repeat(65))
+  assert.deepEqual(prefsUpdates, [{ modelId: 'new/model', lastModel: 'new/model', lastProvider: 'venice', reasoningEffort: undefined }])
+})
+
+test('/model under e2ee refuses models without E2EE support and keeps the current model', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({
+    state: new ChatState({
+      modelId: 'org/model',
+      endpointProviderName: 'Provider',
+      reasoningEffort: 'high',
+      temperature: 0.7,
+      budget: null,
+      pricing: null,
+      supportsReasoning: true,
+      webSearch: false,
+      webResults: null,
+      webSearchSupported: true,
+      e2ee: true,
+      e2eeContext: { modelPubKeyHex: 'old-key' },
+      sessionId: '2026-01-01T00-00-00',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      modelReasoning: null,
+    }),
+    selectModelAndEndpoint: async () => ({
+      modelId: 'plain/model',
+      endpointProviderName: 'venice',
+      pricing: null,
+      reasoningEffort: undefined,
+      supportsReasoning: true,
+      modelReasoning: null,
+      webSearchSupported: true,
+      supportsE2EE: false,
+    }),
+  })
+
+  await chatCommands['/model'](ctx)
+
+  assert.equal(ctx.state.modelId, 'org/model')
+  assert.equal(consoleSpy.error(0), '\nError: the selected model does not support E2EE; staying on the current model.\n')
+})
+
+test('/model under e2ee keeps the current model when attestation fails', async (t) => {
+  mockConsole(t)
+  const { ctx } = makeCtx({
+    state: new ChatState({
+      modelId: 'org/model',
+      endpointProviderName: 'Provider',
+      reasoningEffort: 'high',
+      temperature: 0.7,
+      budget: null,
+      pricing: null,
+      supportsReasoning: true,
+      webSearch: false,
+      webResults: null,
+      webSearchSupported: true,
+      e2ee: true,
+      e2eeContext: { modelPubKeyHex: 'old-key' },
+      sessionId: '2026-01-01T00-00-00',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      modelReasoning: null,
+    }),
+    selectModelAndEndpoint: async () => ({
+      modelId: 'new/model',
+      endpointProviderName: 'venice',
+      pricing: null,
+      reasoningEffort: undefined,
+      supportsReasoning: true,
+      modelReasoning: null,
+      webSearchSupported: true,
+      supportsE2EE: true,
+    }),
+  })
+
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ verified: false })))
+
+  await chatCommands['/model'](ctx)
+
+  assert.equal(ctx.state.modelId, 'org/model')
+  assert.ok(console.error.mock.calls.some((c) => String(c.arguments[0]).includes('TEE attestation verification failed')))
+})

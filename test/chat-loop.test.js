@@ -128,7 +128,7 @@ test('happy path runs a turn and saves the final session once', async (t) => {
   assert.equal(id, '2026-01-01T00-00-00')
   assert.deepEqual(
     Object.keys(payload).sort(),
-    ['budget', 'contextLength', 'createdAt', 'isImageModel', 'messages', 'model', 'pricing', 'providerName', 'providerType', 'reasoningEffort', 'supportsReasoning', 'temperature', 'title', 'updatedAt', 'webResults', 'webSearch', 'webSearchSupported']
+    ['budget', 'contextLength', 'createdAt', 'e2ee', 'isImageModel', 'messages', 'model', 'pricing', 'providerName', 'providerType', 'reasoningEffort', 'supportsReasoning', 'temperature', 'title', 'updatedAt', 'webResults', 'webSearch', 'webSearchSupported']
   )
   assert.equal(payload.model, 'org/model')
   assert.equal(payload.providerName, 'Provider')
@@ -421,6 +421,41 @@ test('banner shows the zdr badge when active', async (t) => {
   )
 
   assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [zdr]')
+})
+
+test('e2ee shows the badge, forces web search off, and flows to chatCompletion', async (t) => {
+  const consoleSpy = mockConsole(t)
+  t.mock.method(globalThis, 'fetch', async (url) => new Response(JSON.stringify({
+    verified: true,
+    nonce: new URL(String(url)).searchParams.get('nonce'),
+    signing_key: '04'.repeat(65),
+  })))
+  const { provider, calls } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['hello', '/quit']) })
+
+  await runChatSession(
+    baseCtx(provider, { reasoningEffort: null, temperature: 0.7, e2ee: true, webSearch: 'always' }),
+    harness.deps
+  )
+
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [e2ee]')
+  assert.equal(consoleSpy.logText(1), '/quit to exit\n')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].e2ee, true)
+  assert.equal(calls[0].webSearch, 'off')
+  assert.ok(calls[0].e2eeContext)
+})
+
+test('e2ee aborts the session when the attestation fails', async (t) => {
+  mockConsole(t)
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ verified: false })))
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/quit']) })
+
+  await assert.rejects(
+    runChatSession(baseCtx(provider, { e2ee: true }), harness.deps),
+    (err) => /TEE attestation verification failed/.test(err.message)
+  )
 })
 
 test('banner shows a bare web badge when results are not set', async (t) => {

@@ -476,3 +476,67 @@ test('only collects http(s) source urls', async () => {
   )
   assert.deepEqual(sources, [{ title: 'A', url: 'https://example.com/a' }])
 })
+
+const ENCRYPTED = 'ab'.repeat(100)
+
+test('decryptToken option decrypts streamed content and reasoning deltas', async () => {
+  const tokens = []
+  const decrypted = []
+  const { fullText, fullReasoning } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { reasoning_content: ENCRYPTED } }] }),
+      event({ choices: [{ delta: { content: ENCRYPTED } }] }),
+    ]),
+    (t, type) => tokens.push([type, t]),
+    null,
+    { decryptToken: (hex) => { decrypted.push(hex); return hex === ENCRYPTED ? 'PLAIN' : hex } }
+  )
+  assert.equal(fullText, 'PLAIN')
+  assert.equal(fullReasoning, 'PLAIN')
+  assert.equal(decrypted.length, 2)
+  assert.deepEqual(tokens, [
+    ['start_reasoning', '\n'],
+    ['reasoning', 'PLAIN'],
+    ['end_reasoning', null],
+    ['content', 'PLAIN'],
+  ])
+})
+
+test('decryptToken option decrypts final message content and array text parts', async () => {
+  const finalMessage = await parseSSEStream(
+    streamReader([event({ choices: [{ message: { content: ENCRYPTED } }] })]),
+    () => {},
+    null,
+    { decryptToken: () => 'PLAIN' }
+  )
+  assert.equal(finalMessage.fullText, 'PLAIN')
+
+  const arrayParts = await parseSSEStream(
+    streamReader([event({ choices: [{ delta: { content: [{ type: 'text', text: ENCRYPTED }] } }] })]),
+    () => {},
+    null,
+    { decryptToken: () => 'PLAIN' }
+  )
+  assert.equal(arrayParts.fullText, 'PLAIN')
+})
+
+test('decryptToken option leaves plaintext tokens untouched', async () => {
+  const tokens = []
+  const calls = []
+  const { fullText } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: 'plain' } }] }),
+      event({ choices: [{ delta: { reasoning_content: 'think' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t]),
+    null,
+    { decryptToken: (hex) => { calls.push(hex); return 'NOPE' } }
+  )
+  assert.equal(fullText, 'plain')
+  assert.equal(calls.length, 0)
+  assert.deepEqual(tokens, [
+    ['content', 'plain'],
+    ['start_reasoning', '\n'],
+    ['reasoning', 'think'],
+  ])
+})

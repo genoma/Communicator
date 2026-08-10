@@ -1,6 +1,7 @@
 import { getProvider } from '../providers/index.js'
 import { resolveWebSearchFlag, resolveBudget, resolveWebResultsFlag, resolvePrefOrNull } from '../flags.js'
 import { DEFAULT_TEMPERATURE } from '../constants.js'
+import { CliError } from '../errors.js'
 import { startChat } from '../chat.js'
 import { createNewSession } from '../sessions.js'
 import { resumeCmd } from './resume.js'
@@ -14,11 +15,20 @@ function imageSessionContext({ provider, apiKey, prefs, imageModelId, sessionId,
 }
 
 async function createSessionContext({ apiKey, opts, prefs, providerType }) {
-  const { forcedEffort, forcedTemperature, forcedBudget, budget, forcedWebResults, smoothSpeed, zdr } = resolveSessionFlags(opts, prefs)
+  const { forcedEffort, forcedTemperature, forcedBudget, budget, forcedWebResults, smoothSpeed, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
   if (opts.resume !== undefined) {
     const result = await resumeCmd(opts.resume)
     if (!result) process.exit(0)
+
+    // E2EE sessions never silently degrade: an encrypted session may only be
+    // resumed with --e2ee, and --e2ee refuses to resume an unencrypted one.
+    if (e2ee && result.e2ee !== true) {
+      throw new CliError('Error: this session was not created with --e2ee; refusing to resume it unencrypted.')
+    }
+    if (result.e2ee === true && !e2ee) {
+      throw new CliError('Error: this session was created with --e2ee; resume it with --e2ee to keep it encrypted.')
+    }
 
     const provider = getProvider(result.providerType || providerType)
     const apiKey = getApiKey(result.providerType || providerType)
@@ -51,9 +61,10 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
       reasoningEffort: forcedEffort !== undefined ? forcedEffort : resumedEffort,
       temperature: forcedTemperature ?? result.temperature ?? DEFAULT_TEMPERATURE,
       budget: forcedBudget ?? resolvePrefOrNull(resolveBudget, result.budget) ?? null,
-      webSearch: resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: result.webSearch }),
-      webResults: forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), result.webResults) ?? null,
+      webSearch: e2ee ? 'off' : resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: result.webSearch }),
+      webResults: e2ee ? null : forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), result.webResults) ?? null,
       zdr,
+      e2ee,
       smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
       smoothSpeed,
       pricing: result.pricing,
@@ -80,6 +91,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
     forcedTemperature,
     forcedWebResults,
     zdr,
+    e2ee,
   })
 
   const { sessionId, createdAt } = await createNewSession()
@@ -108,6 +120,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType }) {
     webSearch,
     webResults,
     zdr,
+    e2ee,
     smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
     smoothSpeed,
     webSearchSupported: selection.webSearchSupported,
@@ -139,6 +152,7 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
     webSearch: ctx.webSearch,
     webResults: ctx.webResults,
     zdr: ctx.zdr,
+    e2ee: ctx.e2ee,
     contextLength: ctx.contextLength,
     webSearchSupported: ctx.webSearchSupported,
     visionSupported: ctx.visionSupported,
@@ -171,7 +185,7 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerTyp
     // chat REPL, same session id and history.
     if (!imageResult?.switchToChat) return
     const { selection, messages, sessionId, createdAt } = imageResult.switchToChat
-    const { budget, smoothSpeed, zdr } = resolveSessionFlags(opts, prefs)
+    const { budget, smoothSpeed, zdr, e2ee } = resolveSessionFlags(opts, prefs)
     await runChatToEnd({
       apiKey,
       provider: ctx.provider,
@@ -189,6 +203,7 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, providerTyp
       webSearch: 'off',
       webResults: null,
       zdr,
+      e2ee,
       contextLength: selection.contextLength,
       webSearchSupported: selection.webSearchSupported,
       visionSupported: selection.visionSupported,

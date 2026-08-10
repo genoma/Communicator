@@ -2,7 +2,7 @@ import { DEFAULT_TEMPERATURE } from './constants.js'
 import { normalizeSmoothSpeed, normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
-  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent }) {
+  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent }) {
     this.modelId = modelId
     this.endpointProviderName = endpointProviderName
     this.reasoningEffort = reasoningEffort
@@ -11,9 +11,14 @@ export class ChatState {
     this.pricing = pricing
     this.contextLength = contextLength
     this.supportsReasoning = supportsReasoning
-    this.webSearch = normalizeWebSearchMode(webSearch)
-    this.webResults = webResults
+    this.webSearch = e2ee ? 'off' : normalizeWebSearchMode(webSearch)
+    this.webResults = e2ee ? null : webResults
     this.zdr = zdr === true
+    this.e2ee = e2ee === true
+    // Session-scoped E2EE crypto state: client key pair plus the attested
+    // model public key. Never serialized; modelPubKeyHex is refreshed when
+    // the active model changes via /model.
+    this.e2eeContext = this.e2ee ? e2eeContext : null
     this.webSearchSupported = webSearchSupported
     this.visionSupported = visionSupported
     this.fileSupported = fileSupported
@@ -45,6 +50,7 @@ export class ChatState {
       contextLength: this.contextLength,
       supportsReasoning: this.supportsReasoning,
       webSearchSupported: this.webSearchSupported,
+      e2ee: this.e2ee,
       providerType,
     }
   }
@@ -87,7 +93,7 @@ export class ChatState {
     this.modelReasoning = sel.modelReasoning
     this.temperature = prefs.temperature?.[sel.modelId] ?? DEFAULT_TEMPERATURE
     this.webSearchSupported = sel.webSearchSupported
-    this.webSearch = sel.webSearchSupported === false ? 'off' : normalizeWebSearchMode(prefs.webSearch?.[sel.modelId])
+    this.webSearch = this.e2ee ? 'off' : (sel.webSearchSupported === false ? 'off' : normalizeWebSearchMode(prefs.webSearch?.[sel.modelId]))
     this.visionSupported = sel.visionSupported
     this.fileSupported = sel.fileSupported
     this.imageOutputSupported = sel.imageOutputSupported

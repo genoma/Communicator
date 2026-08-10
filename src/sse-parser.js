@@ -1,6 +1,7 @@
 import { SSE_DONE, STREAM_IDLE_TIMEOUT_MS } from './constants.js'
 import { createHash } from 'node:crypto'
 import { ApiError } from './errors.js'
+import { isEncryptedHex } from './e2ee.js'
 
 function unescapeJson(s) {
   try {
@@ -68,7 +69,7 @@ function collectSources(parsed, fullSources, seenUrls, onSources) {
   if (found && onSources) onSources(fullSources)
 }
 
-export async function parseSSEStream(reader, onToken, onSources = null, { idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS } = {}) {
+export async function parseSSEStream(reader, onToken, onSources = null, { idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, decryptToken = null } = {}) {
   const decoder = new TextDecoder()
   let fullText = ''
   let fullReasoning = ''
@@ -99,6 +100,11 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     fullParts.push(part)
     onToken(part, part.type === 'image_url' ? 'image' : 'file')
   }
+
+  // E2EE providers deliver each delta as a hex-encrypted chunk; decryption
+  // happens here so the caller only ever sees plaintext. Non-encrypted
+  // tokens pass through untouched.
+  const maybeDecrypt = (token) => (decryptToken && isEncryptedHex(token) ? decryptToken(token) : token)
 
   const readChunk = () => new Promise((resolve, reject) => {
     let timer = null
@@ -167,8 +173,9 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
               inThinking = false
               onToken(null, 'end_reasoning')
             }
-            fullText += part.text
-            onToken(part.text, 'content')
+            const text = maybeDecrypt(part.text)
+            fullText += text
+            onToken(text, 'content')
           }
         } else {
           addPart(part)
@@ -179,20 +186,22 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
         inThinking = false
         onToken(null, 'end_reasoning')
       }
-      fullText += finalContent
-      onToken(finalContent, 'content')
+      const text = maybeDecrypt(finalContent)
+      fullText += text
+      onToken(text, 'content')
     }
 
     if (!delta) return
 
     const reasoningToken = delta.reasoning_content ?? (typeof delta.reasoning === 'string' ? delta.reasoning : undefined)
     if (reasoningToken) {
-      fullReasoning += reasoningToken
+      const text = maybeDecrypt(reasoningToken)
+      fullReasoning += text
       if (!inThinking) {
         inThinking = true
         onToken('\n', 'start_reasoning')
       }
-      onToken(reasoningToken, 'reasoning')
+      onToken(text, 'reasoning')
       return
     }
 
@@ -203,13 +212,15 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
         onToken(null, 'end_reasoning')
       }
       if (typeof contentToken === 'string' && contentToken) {
-        fullText += contentToken
-        onToken(contentToken, 'content')
+        const text = maybeDecrypt(contentToken)
+        fullText += text
+        onToken(text, 'content')
       } else if (Array.isArray(contentToken)) {
         for (const part of contentToken) {
           if (part?.type === 'text' && typeof part.text === 'string') {
-            fullText += part.text
-            onToken(part.text, 'content')
+            const text = maybeDecrypt(part.text)
+            fullText += text
+            onToken(text, 'content')
           } else {
             addPart(part)
           }

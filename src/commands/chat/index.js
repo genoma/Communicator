@@ -8,6 +8,7 @@ import { sessionLabel } from '../../ui/format.js'
 import { dim } from '../../ui/style.js'
 import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
+import { fetchModelPubKey } from '../../e2ee.js'
 const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments'])
 
 export function budgetGuard(ctx) {
@@ -38,10 +39,24 @@ const handlers = {
     await ctx.saveSession()
     let sel
     try {
-      sel = await (ctx.selectModelAndEndpoint ?? selectModelAndEndpoint)({ provider: ctx.provider, apiKey: ctx.apiKey, prefs: ctx.prefs, reasoningEffort: undefined, zdr: ctx.state.zdr })
+      sel = await (ctx.selectModelAndEndpoint ?? selectModelAndEndpoint)({ provider: ctx.provider, apiKey: ctx.apiKey, prefs: ctx.prefs, reasoningEffort: undefined, zdr: ctx.state.zdr, e2ee: ctx.state.e2ee })
     } catch (err) {
       console.error(err instanceof CliError ? `\n${err.message}\n` : `\nError: ${formatError(err)}\n`)
       return
+    }
+    if (ctx.state.e2ee) {
+      if (sel.supportsE2EE !== true) {
+        console.error('\nError: the selected model does not support E2EE; staying on the current model.\n')
+        return
+      }
+      // The client key pair stays per-session; only the model public key
+      // changes, so attest the new model before committing the switch.
+      try {
+        ctx.state.e2eeContext.modelPubKeyHex = await fetchModelPubKey({ apiKey: ctx.apiKey, modelId: sel.modelId })
+      } catch (err) {
+        console.error(`\nError: ${formatError(err)}\n`)
+        return
+      }
     }
     ctx.state.applyModelSelection(sel, ctx.prefs)
     const gateOptions = attachmentGateOptions(ctx)
@@ -66,6 +81,10 @@ const handlers = {
   },
 
   '/attach': async (ctx) => {
+    if (ctx.state.e2ee) {
+      console.error('E2EE does not support file uploads.\n')
+      return
+    }
     if (!ctx.args) return handlers['/attachments'](ctx)
     const gateOptions = attachmentGateOptions(ctx)
     const { attachments, ignored } = await loadAttachments(splitPathArgs(ctx.args), gateOptions, {
@@ -80,6 +99,10 @@ const handlers = {
   },
 
   '/attachments': async (ctx) => {
+    if (ctx.state.e2ee) {
+      console.error('E2EE does not support file uploads.\n')
+      return
+    }
     if (ctx.args && ctx.args !== 'clear') {
       console.error('Error: /attachments expects "clear" or no argument.\n')
       return
@@ -163,6 +186,10 @@ const handlers = {
   },
 
   '/web-search': async (ctx) => {
+    if (ctx.state.e2ee) {
+      console.error('E2EE does not support web search.\n')
+      return
+    }
     const value = ctx.args
     if (!value) {
       const results = ctx.state.webResults != null ? ` (${ctx.state.webResults} results)` : ''
@@ -185,6 +212,10 @@ const handlers = {
   },
 
   '/web-results': async (ctx) => {
+    if (ctx.state.e2ee) {
+      console.error('E2EE does not support web search.\n')
+      return
+    }
     const value = ctx.args
     if (!value) {
       if (ctx.state.webResults == null) {
@@ -282,9 +313,10 @@ export const chatCommands = handlers
 
 export const CHAT_COMMANDS = Object.keys(handlers)
 
-export function visibleChatCommands({ visionSupported }) {
+export function visibleChatCommands({ visionSupported, e2ee = false }) {
   const hidden = []
-  if (visionSupported === false) hidden.push('/attach', '/attachments')
+  if (visionSupported === false || e2ee) hidden.push('/attach', '/attachments')
+  if (e2ee) hidden.push('/web-search', '/web-results')
   return CHAT_COMMANDS.filter((c) => !hidden.includes(c))
 }
 

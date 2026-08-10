@@ -22,3 +22,34 @@ Privacy metadata comes from OpenRouter's own public endpoints and is fetched liv
 - **Privacy policy links** — each provider row in `--list-endpoints` prints its `privacy policy` URL, and the picker's description line shows a clickable `privacy policy` OSC 8 hyperlink (plain text in terminals without hyperlink support)
 
 Caveats: `--zdr` is a per-invocation flag, not persisted. ZDR-capable providers may not support web search — combining `--zdr` with `--web-search` is allowed, but the request can be rejected by the API depending on the provider. If OpenRouter's ZDR index can't be fetched, `--zdr` prints a warning and skips filtering, relying on the runtime error instead. `--resume` keeps the session's model/effort/temperature but ZDR must be re-passed with `--zdr` on the resuming invocation.
+
+## End-to-end encryption (E2EE)
+
+Venice runs a subset of its models inside hardware-secured enclaves (TEE) and offers **end-to-end encryption**: prompts are encrypted **client-side** before leaving your machine and only the attested enclave can decrypt them — Venice's own infrastructure cannot read the conversation.
+
+### Usage
+
+```bash
+communicator --provider venice --e2ee
+communicator --provider venice --e2ee -m "e2ee-qwen3-5-122b-a10b" "What is 2+2?"
+```
+
+`--e2ee` requires `--provider venice` and filters model selection to E2EE-capable models (those advertising `capabilities.supportsE2EE`). The model picker, `-m`, and the `/model` command all refuse non-E2EE models, so a session never leaves encrypted mode. The session banner shows an `[e2ee]` badge.
+
+### How it works
+
+- Per session, Communicator generates an ephemeral secp256k1 key pair and fetches the model's **TEE attestation** (`/tee/attestation`), verifying the enclave is genuine before trusting its public key. Any verification failure aborts the session — there is no fallback to plaintext.
+- `user` and `system` messages are encrypted per message with ECDH → HKDF-SHA256 → AES-256-GCM and sent with the `X-Venice-TEE-*` headers; streamed responses arrive as encrypted chunks that are decrypted locally in real time.
+- Encryption is streaming-only (which is what this client always uses), and the Venice system prompt is disabled so nothing leaks outside your ciphertext.
+
+### Constraints
+
+E2EE intentionally disables features that would leak content or that the enclave cannot serve:
+
+- **Web search** — rejected at the CLI (`--web-search`, `--web-results`) and in the REPL (`/web-search`, `/web-results` are hidden and refused); web search is forced off even if a per-model preference says otherwise.
+- **Attachments** — `--attach` is rejected; `/attach` and `/attachments` are hidden and refused.
+- **Prompt caching** — `prompt_cache_key` is not sent; the host cannot key a cache on ciphertext.
+- **Image generation** — `--image` is rejected; E2EE is text-only.
+- **Resume** — sessions record an `e2ee` marker. An encrypted session may only be resumed with `--e2ee`, and `--e2ee` refuses to resume an unencrypted session — both directions fail fast rather than silently downgrade.
+
+If you need web search or file uploads, run the same model without `--e2ee` (it will still run inside the TEE, though prompts stay readable to the host).

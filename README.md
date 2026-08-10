@@ -16,6 +16,7 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **One-shot mode** — pass a prompt argument or pipe stdin for a single non-interactive answer. TTY-aware output: styled with a usage footer on a terminal, plain answer text only when piped
 - **Per-session budget caps** — `--budget <usd>` or `/budget <usd>` limits accumulated session cost; warns at 80% used and refuses turns at 100%
 - **Zero data retention** — `--zdr` (OpenRouter only) forces every request through zero-data-retention routing: no caching, no logging, no training. Picker selection filters to ZDR-capable entries
+- **End-to-end encryption** — `--e2ee` (Venice only) runs the session against E2EE-capable models: prompts are encrypted client-side with ECDH + AES-256-GCM before leaving your machine, and only the attested TEE enclave can decrypt them. Web search, attachments, and prompt caching are disabled; model selection and `/model` switch only to E2EE-capable models, and unencrypted sessions cannot be resumed. See [docs/providers.md#end-to-end-encryption-e2ee](docs/providers.md#end-to-end-encryption-e2ee)
 - **Terminal markdown rendering** — responses styled in the terminal (headers, bold/italic, code blocks, lists, quotes, links) with a `/markdown` toggle
 - **Streaming responses** — tokens appear as they arrive, with reasoning shown in gray under a `❯ Thinking` banner
 - **Smooth streaming** — interactive output is paced for a steady render rate (default on; disable with `--no-smooth-streaming` or `/smooth off`)

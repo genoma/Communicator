@@ -4,6 +4,7 @@ import { ApiError, makeHandleHttpError } from '../errors.js'
 import { formatPricePerM, formatImagePrice, imageUnitPrice } from '../ui/format.js'
 import { DEFAULT_TEMPERATURE, IMAGE_GEN_TIMEOUT_MS } from '../constants.js'
 import { mimeForExt, extForMime } from '../attachments.js'
+import { encryptMessages, decryptToken } from '../e2ee.js'
 
 const VENICE_BASE = 'https://api.venice.ai/api/v1'
 
@@ -218,17 +219,32 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   }]
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, onSources, reasoningEffort, supportsReasoning, sessionId, temperature = DEFAULT_TEMPERATURE, webSearch, signal }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, onSources, reasoningEffort, supportsReasoning, sessionId, temperature = DEFAULT_TEMPERATURE, webSearch, signal, e2ee = false, e2eeContext = null }) {
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+  }
+  let sentMessages = messages
+  if (e2ee) {
+    sentMessages = encryptMessages(messages, e2eeContext.modelPubKeyHex)
+    headers['X-Venice-TEE-Client-Pub-Key'] = e2eeContext.clientPubKeyHex
+    headers['X-Venice-TEE-Model-Pub-Key'] = e2eeContext.modelPubKeyHex
+    headers['X-Venice-TEE-Signing-Algo'] = 'ecdsa'
+  }
+
   const body = {
     model,
-    messages,
+    messages: sentMessages,
     stream: true,
     stream_options: { include_usage: true },
     temperature,
     venice_parameters: { include_venice_system_prompt: false },
   }
 
-  const webMode = webSearch === 'always' ? 'on' : (webSearch || 'off')
+  // E2EE cannot be combined with web search: the host must never see query
+  // or result content. Prompt caching is disabled too because the host
+  // cannot key a cache on ciphertext.
+  const webMode = e2ee ? 'off' : (webSearch === 'always' ? 'on' : (webSearch || 'off'))
   body.venice_parameters.enable_web_search = webMode
   if (webMode !== 'off') {
     body.venice_parameters.enable_web_citations = true
@@ -238,7 +254,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
     body.venice_parameters.include_search_results_in_stream = true
   }
 
-  if (sessionId) {
+  if (sessionId && !e2ee) {
     body.prompt_cache_key = sessionId
   }
 
@@ -250,15 +266,13 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
 
   const res = await fetchWithRetry(`${VENICE_BASE}/chat/completions`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(body),
   }, { errorResponse: handleHttpError, signal })
 
   const reader = res.body.getReader()
-  const { fullText, fullReasoning, finalUsage, fullSources, skippedChunks, fullParts } = await parseSSEStream(reader, onToken, onSources)
+  const streamOptions = e2ee ? { decryptToken: (hex) => decryptToken(hex, e2eeContext.clientKey) } : undefined
+  const { fullText, fullReasoning, finalUsage, fullSources, skippedChunks, fullParts } = await parseSSEStream(reader, onToken, onSources, streamOptions)
 
   return { content: fullText, reasoning: fullReasoning || undefined, usage: finalUsage, sources: fullSources, skippedChunks, parts: fullParts.length > 0 ? fullParts : undefined }
 }

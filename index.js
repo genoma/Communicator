@@ -41,6 +41,7 @@ program
   .option('--web-search [mode]', 'web search mode: auto, always, on, off (bare flag = auto; per-model default persisted)')
   .option('--web-results <n>', 'number of web search results (OpenRouter only, default 10)')
   .option('--zdr', 'force zero-data-retention routing (OpenRouter only; filters model/provider selection to ZDR-capable endpoints)')
+  .option('--e2ee', 'enable end-to-end encryption (Venice only; filters model selection to E2EE-capable models, disables web search and attachments)')
   .option('--attach <path>', 'attach a file (repeatable; images/pdf/xlsx/txt/...)', collectFlag, [])
   .option('--no-smooth-streaming', 'disable smooth streaming (default: on in interactive sessions)')
   .option('--smooth-speed <level|cps>', 'smooth streaming speed: slow, normal, fast, or chars per second')

@@ -10,6 +10,7 @@ import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { loadAttachments, buildContent, contentText } from '../attachments.js'
 import { resolveArtifacts, printArtifacts } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
+import { createE2eeSession } from '../e2ee.js'
 import { runImageGeneration, finalizeImageSession } from './image-gen.js'
 import { sanitizeAnsi } from '../ui/hyperlink.js'
 
@@ -25,7 +26,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     throw new CliError(NO_PROMPT_MESSAGE)
   }
 
-  const { forcedEffort, forcedTemperature, budget, forcedWebResults, smoothSpeed, zdr } = resolveSessionFlags(opts, prefs)
+  const { forcedEffort, forcedTemperature, budget, forcedWebResults, smoothSpeed, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
   const tracker = new UsageTracker()
 
@@ -40,6 +41,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
       forcedTemperature,
       forcedWebResults,
       zdr,
+      e2ee,
       allowInteractive: !stdinPiped,
     })
   } catch (err) {
@@ -93,6 +95,17 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     { role: 'user', content: buildContent(text, attachments) },
   ]
 
+  // E2EE needs its own client key pair plus the attested model public key
+  // before the first turn; any failure aborts rather than sending plaintext.
+  let e2eeContext = null
+  if (e2ee) {
+    try {
+      e2eeContext = await createE2eeSession({ apiKey, modelId: selection.modelId })
+    } catch (err) {
+      throw new CliError(`Error: ${formatError(err)}`)
+    }
+  }
+
   const ttyOut = process.stdout.isTTY === true
   const controller = new AbortController()
   const onSigint = () => controller.abort()
@@ -113,12 +126,14 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
       webSearch,
       webResults,
       zdr,
+      e2ee,
+      e2eeContext,
       signal: controller.signal,
     }
 
     if (ttyOut) {
       const label = sessionLabel(selection.endpointProviderName, selection.modelId)
-      console.log(`\nConnected to ${label}${zdr ? '  [zdr]' : ''}\n`)
+      console.log(`\nConnected to ${label}${zdr ? '  [zdr]' : ''}${e2ee ? '  [e2ee]' : ''}\n`)
       const render = createStreamRenderer({ markdown: true, smooth: opts.smoothStreaming !== false && prefs.smoothStreaming !== false, smoothCharsPerTick: cpsToCharsPerTick(smoothSpeed) })
       result = await provider.chatCompletion({
         ...completionOpts,
@@ -198,6 +213,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     webSearch,
     webResults,
     zdr,
+    e2ee,
     pricing: selection.pricing,
     contextLength: selection.contextLength,
     sessionId,

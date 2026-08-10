@@ -482,6 +482,50 @@ test('interactive selection degrades to text-only when the image listing fails',
   assert.deepEqual(searchChoices[0].map((c) => c.value.id), ['venice/llama'])
 })
 
+test('interactive selection with e2ee shows only E2EE models and skips image models', async (t) => {
+  const e2eeModel = { id: 'e2ee-qwen3-5-122b-a10b', name: 'E2EE Qwen', contextLength: 122000, reasoning: null, capabilities: { supportsE2EE: true } }
+  const plainModel = { id: 'venice/llama', name: 'Llama', contextLength: 32000, reasoning: null, capabilities: {} }
+  let imageFetchCalls = 0
+  searchQueue = [e2eeModel]
+  searchMessages = []
+  searchChoices = []
+  t.mock.method(console, 'log', () => {})
+
+  const provider = {
+    meta: { name: 'venice', hasEndpoints: false, supportsWebSearchOnAll: false },
+    async fetchModels() { return [plainModel, e2eeModel] },
+    async fetchImageModels() { imageFetchCalls++; return [] },
+    async fetchEndpoints() {
+      return [{ providerName: 'venice', pricing: { prompt: 1e-6, completion: 2e-6 }, supportedParameters: {} }]
+    },
+  }
+
+  const sel = await selectModelAndEndpoint({ provider, apiKey: 'k', prefs: {}, reasoningEffort: undefined, e2ee: true })
+
+  assert.equal(sel.modelId, 'e2ee-qwen3-5-122b-a10b')
+  assert.equal(sel.supportsE2EE, true)
+  assert.equal(sel.endpointProviderName, 'venice')
+  assert.equal(imageFetchCalls, 0)
+  assert.deepEqual(searchChoices[0].map((c) => c.value.id), ['e2ee-qwen3-5-122b-a10b'])
+})
+
+test('interactive selection errors when no E2EE models exist', async (t) => {
+  const plainModel = { id: 'venice/llama', name: 'Llama', contextLength: 32000, reasoning: null, capabilities: {} }
+  searchQueue = []
+  t.mock.method(console, 'log', () => {})
+
+  const provider = {
+    meta: { name: 'venice', hasEndpoints: false, supportsWebSearchOnAll: false },
+    async fetchModels() { return [plainModel] },
+    async fetchEndpoints() { return [] },
+  }
+
+  await assert.rejects(
+    selectModelAndEndpoint({ provider, apiKey: 'k', prefs: {}, reasoningEffort: undefined, e2ee: true }),
+    (err) => err instanceof Error && /No E2EE-capable models available on Venice/.test(err.message)
+  )
+})
+
 test('interactive selection skips the image merge when zdr is active', async (t) => {
   const provider = veniceImageProvider()
   provider.meta = { ...provider.meta, supportsZdr: true }

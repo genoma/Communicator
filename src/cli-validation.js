@@ -79,6 +79,7 @@ function hasBareConfigOtherFlags(opts, promptArg) {
     opts.delete !== undefined ||
     opts.deleteAllSessions !== undefined ||
     opts.image === true ||
+    opts.e2ee === true ||
     hasAttachments(opts)
   )
 }
@@ -94,6 +95,26 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
 
   if (opts.webSearch !== undefined && opts.webSearch !== true && !WEB_SEARCH_MODES.has(opts.webSearch)) {
     errors.push('Error: --web-search expects "auto", "always", "on", or "off" (bare flag = auto).')
+  }
+
+  if (opts.e2ee === true && opts.provider !== 'venice') {
+    errors.push('Error: --e2ee is only available with --provider venice.')
+  }
+
+  if (opts.e2ee === true && opts.zdr === true) {
+    errors.push('Error: --e2ee cannot be combined with --zdr.')
+  }
+
+  if (opts.e2ee === true && (opts.webSearch !== undefined || opts.webResults !== undefined)) {
+    errors.push('Error: --e2ee cannot be combined with --web-search or --web-results (E2EE does not support web search).')
+  }
+
+  if (opts.e2ee === true && hasAttachments(opts)) {
+    errors.push('Error: --e2ee cannot be combined with --attach (E2EE does not support file uploads).')
+  }
+
+  if (opts.e2ee === true && opts.image === true) {
+    errors.push('Error: --e2ee cannot be combined with --image (E2EE is text-only).')
   }
 
   if (opts.resume !== undefined && opts.export !== undefined) {

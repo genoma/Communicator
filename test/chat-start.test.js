@@ -116,6 +116,9 @@ function baseOpts(overrides = {}) {
     smoothSpeed: undefined,
     config: undefined,
     resume: undefined,
+    e2ee: undefined,
+    zdr: undefined,
+    image: undefined,
     ...overrides,
   }
 }
@@ -275,6 +278,42 @@ test('chatStart exits 0 when the resumed session does not resolve', async (t) =>
     (e) => e instanceof ExitSignal && e.code === 0
   )
   assert.equal(exitCode, 0)
+})
+
+test('chatStart rejects --e2ee resume of an unencrypted session', async (t) => {
+  resumeResult = resumeSession({ e2ee: false })
+  withApiKey(t)
+  t.mock.method(console, 'log', () => {})
+
+  await assert.rejects(
+    chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x', e2ee: true }), prefs: {}, systemPrompt: null, providerType: 'venice' }),
+    (err) => err instanceof Error && /not created with --e2ee; refusing to resume it unencrypted/.test(err.message)
+  )
+})
+
+test('chatStart rejects resuming an e2ee session without --e2ee', async (t) => {
+  resumeResult = resumeSession({ e2ee: true })
+  withApiKey(t)
+  t.mock.method(console, 'log', () => {})
+
+  await assert.rejects(
+    chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x' }), prefs: {}, systemPrompt: null, providerType: 'venice' }),
+    (err) => err instanceof Error && /was created with --e2ee; resume it with --e2ee/.test(err.message)
+  )
+})
+
+test('chatStart resumes an e2ee session with --e2ee and keeps the marker', async (t) => {
+  resumeResult = resumeSession({ e2ee: true, isImageModel: false, providerType: 'venice', providerName: 'venice' })
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(console, 'log', () => {})
+
+  await chatStart({ apiKey: 'ignored', opts: baseOpts({ resume: 'x', e2ee: true, config: configFile }), prefs: {}, systemPrompt: null, providerType: 'venice' })
+
+  const call = startChatCalls[startChatCalls.length - 1]
+  assert.equal(call.opts.e2ee, true)
+  assert.equal(call.opts.webSearch, 'off')
+  assert.equal(call.opts.webResults, null)
 })
 
 test('chatStart non-resume branch builds the context from selection and prefs', async (t) => {

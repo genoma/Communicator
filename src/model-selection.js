@@ -34,10 +34,12 @@ function capabilityFlags(provider, modelData, endpoint) {
 
   const fileSupported = isVenice ? capabilities?.supportsFileInput !== false : true
 
+  const supportsE2EE = isVenice ? capabilities?.supportsE2EE === true : undefined
+
   const outputModalities = modelData?.architecture?.output_modalities ?? modelData?.outputModalities ?? null
   const imageOutputSupported = Array.isArray(outputModalities) && outputModalities.includes('image') ? true : undefined
 
-  return { visionSupported, fileSupported, imageOutputSupported }
+  return { visionSupported, fileSupported, imageOutputSupported, supportsE2EE }
 }
 
 export async function findImageModel(provider, apiKey, modelId) {
@@ -78,7 +80,7 @@ export async function selectImageEndpoint({ provider, apiKey, model, interactive
   return selectImageProvider(endpoints)
 }
 
-export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort, zdr = false }) {
+export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort, zdr = false, e2ee = false }) {
   const zdrActive = await zdrGate(provider, zdr)
   // Model and image-model listings are independent: fetch them concurrently
   // to cut startup latency. Image pricing is intentionally not requested
@@ -87,7 +89,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
   const [models, imageModels] = await Promise.all([
     provider.fetchModels(apiKey),
     (async () => {
-      if (zdrActive || typeof provider.fetchImageModels !== 'function') return null
+      if (zdrActive || e2ee || typeof provider.fetchImageModels !== 'function') return null
       try {
         return await provider.fetchImageModels(apiKey)
       } catch (err) {
@@ -97,9 +99,13 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
     })(),
   ])
   const withImages = imageModels !== null
-  const pickable = zdrActive ? models.filter((m) => m.zdr === true) : models
+  let pickable = zdrActive ? models.filter((m) => m.zdr === true) : models
+  if (e2ee) pickable = pickable.filter((m) => m.capabilities?.supportsE2EE === true)
   if (zdrActive && pickable.length === 0) {
     throw new CliError('Error: No zero-retention models available on OpenRouter right now.')
+  }
+  if (e2ee && pickable.length === 0) {
+    throw new CliError('Error: No E2EE-capable models available on Venice right now.')
   }
 
   for (;;) {
@@ -194,12 +200,12 @@ export async function selectImageModelNonInteractive({ provider, apiKey, imageMo
   return model
 }
 
-export async function selectModelNonInteractive({ provider, apiKey, prefs, modelId, forcedEffort, zdr = false }) {
+export async function selectModelNonInteractive({ provider, apiKey, prefs, modelId, forcedEffort, zdr = false, e2ee = false }) {
   const models = await provider.fetchModels(apiKey)
   const zdrActive = await zdrGate(provider, zdr)
   const modelData = models.find((m) => m.id === modelId)
   if (!modelData) {
-    if (!zdrActive) {
+    if (!zdrActive && !e2ee) {
       const imageModel = await findImageModel(provider, apiKey, modelId)
       if (imageModel) {
         const endpoint = await selectImageEndpoint({ provider, apiKey, model: imageModel, interactive: false })
@@ -207,9 +213,15 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
       }
       throw new CliError(`Error: model ${modelId} not found. Use --list-models to see available models.`)
     }
+    if (e2ee) {
+      throw new CliError(`Error: model ${modelId} is not an E2EE-capable model. Pick an E2EE-capable model or retry without --e2ee.`)
+    }
     // Under zdr the model may only exist as an image model which has no
     // ZDR endpoints; let the downstream fetchEndpoints/zdr-filter error
     // surface the correct message.
+  }
+  if (e2ee && modelData.capabilities?.supportsE2EE !== true) {
+    throw new CliError(`Error: model ${modelId} does not support E2EE. Pick an E2EE-capable model or retry without --e2ee.`)
   }
   const reasoning = modelData?.reasoning || null
 

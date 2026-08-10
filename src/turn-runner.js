@@ -1,6 +1,7 @@
 import { UsageTracker, budgetLine } from './tracker.js'
 import { formatError, ApiError } from './errors.js'
 import { extractPartialToken } from './sse-parser.js'
+import { isEncryptedHex, decryptToken } from './e2ee.js'
 import { debug } from './ui/io.js'
 import { printPostStreamMetrics } from './artifacts.js'
 
@@ -56,6 +57,8 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         webSearch: state.webSearch,
         webResults: state.webResults,
         zdr: state.zdr,
+        e2ee: state.e2ee,
+        e2eeContext: state.e2eeContext,
         signal: sessionState.streamController.signal,
       })
       loader.stop()
@@ -91,8 +94,18 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         if (!partial.content && !partial.reasoning && err.pendingBuffer) {
           const pending = extractPartialToken(err.pendingBuffer)
           if (pending) {
-            if (pending.type === 'reasoning') partial.reasoning = pending.text
-            else partial.content = pending.text
+            let text = pending.text
+            if (state.e2ee && isEncryptedHex(text)) {
+              try {
+                text = decryptToken(text, state.e2eeContext.clientKey)
+              } catch {
+                text = null
+              }
+            }
+            if (text != null) {
+              if (pending.type === 'reasoning') partial.reasoning = text
+              else partial.content = text
+            }
           }
         }
         if (partial.content || partial.reasoning) {
