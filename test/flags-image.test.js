@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolveImageFormat, resolveVariants, resolveAspectRatio, resolveResolution, resolveQuality, resolveSeed, resolveWidth, resolveHeight, MAX_IMAGE_DIMENSION } from '../src/flags.js'
+import { resolveImageFormat, resolveVariants, resolveAspectRatio, resolveResolution, resolveQuality, resolveSeed, resolveWidth, resolveHeight } from '../src/flags.js'
+import { MAX_IMAGE_DIMENSION } from '../src/constants.js'
 
 const throws = (fn, message) => assert.throws(fn, (err) => err.message === message)
 

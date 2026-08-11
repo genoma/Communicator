@@ -5,7 +5,7 @@ import { createNewSession, removeEmptySessionClaim, persistSessionFile, buildSes
 import { attachmentDirFor, externalizeAttachments, savedAttachmentPath } from '../attachment-store.js'
 import { selectImageModelNonInteractive, selectImageEndpoint } from '../model-selection.js'
 import { selectImageModel, selectSizingOption } from '../prompts.js'
-import { SESSIONS_DIR } from '../constants.js'
+import { SESSIONS_DIR, DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { CliError, formatError } from '../errors.js'
 import { readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { getImageDefaults, mergeImageDefaults, savePreferences, applyPreferenceUpdates } from '../config.js'
@@ -396,7 +396,7 @@ export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, s
   }
 
   const messages = [
-    { role: 'system', content: 'You are a helpful assistant.' },
+    { role: 'system', content: DEFAULT_SYSTEM_PROMPT },
     { role: 'user', content: text },
     outcome.message,
   ]

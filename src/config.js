@@ -1,5 +1,6 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { writeFileAtomic } from './fs-utils.js'
 import { getProvider } from './providers/index.js'
 import { CliError } from './errors.js'
 import { DEFAULT_CONFIG_FILE, DEFAULT_SYSTEM_PROMPT_FILE } from './constants.js'
@@ -43,7 +44,7 @@ export async function loadSystemPrompt(customPath) {
 export async function savePreferences(prefs, customPath) {
   const configFile = customPath || DEFAULT_CONFIG_FILE
   await mkdir(dirname(configFile), { recursive: true })
-  await writeFile(configFile, JSON.stringify(prefs, null, 2) + '\n', { encoding: 'utf-8', mode: 0o600 })
+  await writeFileAtomic(configFile, JSON.stringify(prefs, null, 2) + '\n', { mode: 0o600 })
 }
 
 export function getImageDefaults(prefs, providerName) {
@@ -60,6 +61,14 @@ export function mergeImageDefaults(prefs, providerName, { aspectRatio, format, r
   if (quality !== undefined) merged.quality = quality
   if (variants !== undefined) merged.variants = variants
   return { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [providerName]: merged } }
+}
+
+// Removes one persisted image-default key (aspectRatio/format/...) for the
+// provider; returns the updated prefs object.
+export function clearImageDefault(prefs, providerName, key) {
+  const defaults = { ...getImageDefaults(prefs, providerName) }
+  delete defaults[key]
+  return { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [providerName]: defaults } }
 }
 
 export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageModel, lastProvider, reasoningEffort, temperature, webSearch, smoothStreaming, smoothSpeed, budget, webResults, outputDir, hideWatermark, safeMode, imageDefaults } = {}) {

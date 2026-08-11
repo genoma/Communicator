@@ -1,9 +1,9 @@
 import { join } from 'node:path'
-import { homedir } from 'node:os'
 import { readMultiline } from './vendor/read-multiline/index.js'
 import { matchCommands } from './suggest.js'
+import { DATA_DIR } from './constants.js'
 
-const HISTORY_PATH = join(homedir(), '.communicator', 'history.json')
+const HISTORY_PATH = join(DATA_DIR, 'history.json')
 
 export async function readInput({ commands } = {}) {
   const input = process.stdin

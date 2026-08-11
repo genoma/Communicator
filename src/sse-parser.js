@@ -71,8 +71,10 @@ function collectSources(parsed, fullSources, seenUrls, onSources) {
 
 export async function parseSSEStream(reader, onToken, onSources = null, { idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, decryptToken = null } = {}) {
   const decoder = new TextDecoder()
-  let fullText = ''
-  let fullReasoning = ''
+  // Text accumulates in arrays and is joined once at the end: `+=` on the
+  // growing string is quadratic in the answer length.
+  const fullTextParts = []
+  const fullReasoningParts = []
   const fullParts = []
   const seenParts = new Set()
   let buffer = ''
@@ -102,9 +104,16 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
   }
 
   // E2EE providers deliver each delta as a hex-encrypted chunk; decryption
-  // happens here so the caller only ever sees plaintext. Non-encrypted
-  // tokens pass through untouched.
-  const maybeDecrypt = (token) => (decryptToken && isEncryptedHex(token) ? decryptToken(token) : token)
+  // happens here so the caller only ever sees plaintext. E2EE mode fails
+  // closed: a plaintext delta would mean the host silently downgraded the
+  // stream, which the session contract forbids.
+  const maybeDecrypt = (token) => {
+    if (!decryptToken) return token
+    if (!isEncryptedHex(token)) {
+      throw new ApiError('E2EE stream delivered an unencrypted chunk — aborting.', { retryable: false })
+    }
+    return decryptToken(token)
+  }
 
   const readChunk = () => new Promise((resolve, reject) => {
     let timer = null
@@ -127,11 +136,8 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     if (idleTimeoutMs > 0) timer = setTimeout(onTimeout, idleTimeoutMs)
   })
 
-  const handleLine = (line) => {
-    const trimmed = line.trim()
-    const match = trimmed.match(/^data:( ?)(.*)$/)
-    if (!match) return
-    const data = match[2]
+  let pendingDataLines = []
+  const handleDataEvent = (data) => {
     if (data === SSE_DONE) return
     let parsed
     try {
@@ -165,7 +171,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     // The delta may be an empty object on the final chunk, so the dedup
     // gate is based solely on the streamed text, never on the delta shape.
     if (Array.isArray(finalContent)) {
-      const noTextYet = fullText === ''
+      const noTextYet = fullTextParts.length === 0
       for (const part of finalContent) {
         if (part?.type === 'text' && typeof part.text === 'string') {
           if (noTextYet) {
@@ -174,20 +180,20 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
               onToken(null, 'end_reasoning')
             }
             const text = maybeDecrypt(part.text)
-            fullText += text
+            fullTextParts.push(text)
             onToken(text, 'content')
           }
         } else {
           addPart(part)
         }
       }
-    } else if (typeof finalContent === 'string' && fullText === '') {
+    } else if (typeof finalContent === 'string' && fullTextParts.length === 0) {
       if (inThinking) {
         inThinking = false
         onToken(null, 'end_reasoning')
       }
       const text = maybeDecrypt(finalContent)
-      fullText += text
+      fullTextParts.push(text)
       onToken(text, 'content')
     }
 
@@ -196,7 +202,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     const reasoningToken = delta.reasoning_content ?? (typeof delta.reasoning === 'string' ? delta.reasoning : undefined)
     if (reasoningToken) {
       const text = maybeDecrypt(reasoningToken)
-      fullReasoning += text
+      fullReasoningParts.push(text)
       if (!inThinking) {
         inThinking = true
         onToken('\n', 'start_reasoning')
@@ -213,13 +219,13 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
       }
       if (typeof contentToken === 'string' && contentToken) {
         const text = maybeDecrypt(contentToken)
-        fullText += text
+        fullTextParts.push(text)
         onToken(text, 'content')
       } else if (Array.isArray(contentToken)) {
         for (const part of contentToken) {
           if (part?.type === 'text' && typeof part.text === 'string') {
             const text = maybeDecrypt(part.text)
-            fullText += text
+            fullTextParts.push(text)
             onToken(text, 'content')
           } else {
             addPart(part)
@@ -229,32 +235,61 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     }
   }
 
-  while (true) {
-    let chunk
-    try {
-      chunk = await readChunk()
-    } catch (err) {
-      if (!err.pendingBuffer) err.pendingBuffer = buffer
-      throw err
+  const handleLine = (line) => {
+    const trimmed = line.trim()
+    const match = trimmed.match(/^data:( ?)(.*)$/)
+    if (match) {
+      // Per the SSE spec consecutive `data:` lines form ONE event whose
+      // payload is the lines joined with \n; parsing each line alone would
+      // drop events split across multiple lines (e.g. a delta containing an
+      // embedded newline). The event is only parsed at the boundary (a blank
+      // line or EOF), when the data: sequence ends.
+      pendingDataLines.push(match[2])
+      return
     }
-    const { done, value } = chunk
-    if (done) {
-      buffer += decoder.decode()
-      break
+    if (trimmed === '' && pendingDataLines.length > 0) {
+      const data = pendingDataLines.join('\n')
+      pendingDataLines = []
+      handleDataEvent(data)
+    }
+  }
+
+  try {
+    while (true) {
+      let chunk
+      try {
+        chunk = await readChunk()
+      } catch (err) {
+        if (!err.pendingBuffer) err.pendingBuffer = buffer
+        throw err
+      }
+      const { done, value } = chunk
+      if (done) {
+        buffer += decoder.decode()
+        break
+      }
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        handleLine(line)
+      }
     }
 
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-
-    for (const line of lines) {
+    for (const line of buffer.split('\n')) {
       handleLine(line)
     }
+    if (pendingDataLines.length > 0) {
+      handleDataEvent(pendingDataLines.join('\n'))
+    }
+  } finally {
+    // A stall or stream error must not leave the connection parked until the
+    // server closes it; cancelling the reader aborts the fetch. A fully
+    // consumed stream cancels as a no-op.
+    await reader.cancel?.().catch(() => {})
   }
 
-  for (const line of buffer.split('\n')) {
-    handleLine(line)
-  }
-
-  return { fullText, fullReasoning, finalUsage, fullSources, skippedChunks, fullParts }
+  return { fullText: fullTextParts.join(''), fullReasoning: fullReasoningParts.join(''), finalUsage, fullSources, skippedChunks, fullParts }
 }

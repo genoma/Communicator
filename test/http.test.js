@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fetchWithTimeout, fetchWithRetry, sleep } from '../src/http.js'
+import { fetchWithTimeout, fetchWithRetry, fetchSafeBytes, assertSafeUrl, sleep } from '../src/http.js'
 import { ApiError, TimeoutError } from '../src/errors.js'
 
 function abortAwareFetch() {
@@ -185,4 +185,38 @@ test('fetchWithRetry propagates an external abort immediately', async (t) => {
   controller.abort(new Error('Aborted'))
   await flushTimers(t)
   await assertion
+})
+
+test('assertSafeUrl blocks deprecated IPv6 site-local addresses', async () => {
+  for (const url of ['http://[fec0::1]/x', 'http://[fecf::1]/x', 'http://[feff::1]/x']) {
+    assert.equal(await assertSafeUrl(url), 'blocked URL (private or loopback address)')
+  }
+  assert.equal(await assertSafeUrl('http://[feb0::1]/x'), 'blocked URL (private or loopback address)')
+  assert.equal(await assertSafeUrl('https://[2600:1f18:2::42]/x'), null)
+})
+
+test('fetchSafeBytes bounds a slow-drip body with the read deadline', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let cancelled = false
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('half'))
+    },
+    cancel() {
+      cancelled = true
+    },
+  })
+  t.mock.method(globalThis, 'fetch', async () => new Response(body, { status: 200 }))
+
+  const promise = fetchSafeBytes('https://93.184.216.34/blob', { maxBytes: 1000, timeoutMs: 1000 })
+  await flushTimers(t)
+  t.mock.timers.tick(1000)
+  const result = await promise
+
+  assert.equal(result, null)
+  assert.equal(cancelled, true)
+})
+
+test('fetchSafeBytes rejects private IPv6 targets and reports oversized bodies', async () => {
+  assert.equal(await fetchSafeBytes('http://[fec0::1]/x', { maxBytes: 100 }), null)
 })

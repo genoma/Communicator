@@ -111,6 +111,64 @@ test('skips unparseable lines and counts them', async () => {
   assert.equal(skippedChunks, 2)
 })
 
+test('joins multi-line data fields into a single event per the SSE spec', async () => {
+  const tokens = []
+  const { fullText, skippedChunks } = await parseSSEStream(
+    streamReader([
+      'data: {\n',
+      'data:   "choices": [\n',
+      'data:     { "delta": { "content": "pretty" } }\n',
+      'data:   ]\n',
+      'data: }\n',
+      '\n',
+      event({ choices: [{ delta: { content: ' second' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t])
+  )
+  // Consecutive data: lines form one event whose payload is them joined with
+  // \n; re-joined they are valid (pretty-printed) JSON, so the delta arrives
+  // whole instead of both halves being dropped as malformed.
+  assert.equal(fullText, 'pretty second')
+  assert.equal(skippedChunks, 0)
+})
+
+test('flushes a trailing data event at EOF without a blank line', async () => {
+  const { fullText, skippedChunks } = await parseSSEStream(
+    streamReader([`data: ${JSON.stringify({ choices: [{ delta: { content: 'eof' } }] })}\n`]),
+    () => {}
+  )
+  assert.equal(fullText, 'eof')
+  assert.equal(skippedChunks, 0)
+})
+
+test('cancels the reader when the stream stalls', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let cancelled = 0
+  const reader = {
+    read: () => new Promise(() => {}),
+    cancel: async () => { cancelled++ },
+  }
+
+  const promise = parseSSEStream(reader, () => {}, null, { idleTimeoutMs: 10_000 })
+  const assertion = assert.rejects(promise, (err) => err instanceof ApiError && /stalled/.test(err.message))
+  await Promise.resolve()
+  await Promise.resolve()
+  t.mock.timers.tick(10_000)
+  await assertion
+  assert.equal(cancelled, 1)
+})
+
+test('cancels the reader when the provider sends an error event', async () => {
+  let cancelled = 0
+  const reader = {
+    read: async () => ({ done: false, value: new TextEncoder().encode(event({ error: { message: 'boom' } })) }),
+    cancel: async () => { cancelled++ },
+  }
+
+  await assert.rejects(parseSSEStream(reader, () => {}), (err) => err.message === 'boom')
+  assert.equal(cancelled, 1)
+})
+
 test('throws an ApiError on SSE-level error events instead of an empty success', async () => {
   await assert.rejects(
     parseSSEStream(
@@ -520,23 +578,31 @@ test('decryptToken option decrypts final message content and array text parts', 
   assert.equal(arrayParts.fullText, 'PLAIN')
 })
 
-test('decryptToken option leaves plaintext tokens untouched', async () => {
+test('decryptToken mode fails closed on plaintext tokens', async () => {
   const tokens = []
   const calls = []
-  const { fullText } = await parseSSEStream(
-    streamReader([
-      event({ choices: [{ delta: { content: 'plain' } }] }),
-      event({ choices: [{ delta: { reasoning_content: 'think' } }] }),
-    ]),
-    (t, type) => tokens.push([type, t]),
-    null,
-    { decryptToken: (hex) => { calls.push(hex); return 'NOPE' } }
+  await assert.rejects(
+    parseSSEStream(
+      streamReader([
+        event({ choices: [{ delta: { content: 'plain' } }] }),
+      ]),
+      (t, type) => tokens.push([type, t]),
+      null,
+      { decryptToken: (hex) => { calls.push(hex); return 'NOPE' } }
+    ),
+    (err) => err instanceof ApiError && err.retryable === false && /unencrypted chunk/.test(err.message)
   )
-  assert.equal(fullText, 'plain')
   assert.equal(calls.length, 0)
-  assert.deepEqual(tokens, [
-    ['content', 'plain'],
-    ['start_reasoning', '\n'],
-    ['reasoning', 'think'],
-  ])
+  assert.deepEqual(tokens, [])
+
+  // A plaintext reasoning delta is rejected the same way.
+  await assert.rejects(
+    parseSSEStream(
+      streamReader([event({ choices: [{ delta: { reasoning_content: 'think' } }] })]),
+      () => {},
+      null,
+      { decryptToken: () => 'NOPE' }
+    ),
+    (err) => /unencrypted chunk/.test(err.message)
+  )
 })

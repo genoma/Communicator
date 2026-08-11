@@ -34,6 +34,14 @@ The upstream library has no suggestion/autocomplete support. A minimal patch add
   the list visible while a session is active, highlights the selected entry, and scrolls
   the window around the selection.
 
+## Local deltas (3.29.0 audit)
+
+- `history.js` — prompt history is written with private modes (`0o600` file, `0o700`
+  directory), matching the config/session file posture; the write is already atomic
+  (temp + rename).
+- `presets/` (clack, inquirer) and `types.js` removed, and `createPrompt` + the
+  `presets` re-export stripped from `index.js` — the app only uses `readMultiline`.
+
 Diff with upstream:
 
 ```

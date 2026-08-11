@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { createCipheriv, createECDH, hkdfSync, randomBytes } from 'node:crypto'
 import * as venice from '../src/providers/venice.js'
 import { createE2eeClient, isEncryptedHex } from '../src/e2ee.js'
+import { ApiError } from '../src/errors.js'
 
 const HKDF_INFO = new TextEncoder().encode('ecdsa_encryption')
 
@@ -40,7 +41,7 @@ test('chatCompletion with e2ee encrypts messages and sets the TEE headers', asyn
 
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
     calls.push({ url: String(url), body: JSON.parse(opts.body), headers: opts.headers })
-    return sseResponse([event({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+    return sseResponse([event({ choices: [{ delta: { content: serverEncrypt('ok', client.clientPubKeyHex) } }] }), 'data: [DONE]\n\n'])
   })
 
   const messages = [
@@ -143,7 +144,7 @@ test('chatCompletion decrypts encrypted reasoning deltas', async (t) => {
 
   t.mock.method(globalThis, 'fetch', async () => sseResponse([
     event({ choices: [{ delta: { reasoning_content: encryptedReasoning } }] }),
-    event({ choices: [{ delta: { content: 'answer' } }] }),
+    event({ choices: [{ delta: { content: serverEncrypt('answer', client.clientPubKeyHex) } }] }),
     'data: [DONE]\n\n',
   ]))
 
@@ -160,7 +161,7 @@ test('chatCompletion decrypts encrypted reasoning deltas', async (t) => {
   assert.equal(result.content, 'answer')
 })
 
-test('chatCompletion passes plaintext deltas through untouched under e2ee', async (t) => {
+test('chatCompletion fails closed on plaintext deltas under e2ee', async (t) => {
   const client = createE2eeClient()
   const modelKey = createECDH('secp256k1')
   const modelPubKeyHex = modelKey.generateKeys('hex')
@@ -171,14 +172,15 @@ test('chatCompletion passes plaintext deltas through untouched under e2ee', asyn
     'data: [DONE]\n\n',
   ]))
 
-  const result = await venice.chatCompletion({
-    apiKey: 'key',
-    model: 'e2ee-qwen3-5-122b-a10b',
-    messages: [{ role: 'user', content: 'hi' }],
-    onToken: () => {},
-    e2ee: true,
-    e2eeContext,
-  })
-
-  assert.equal(result.content, 'plain')
+  await assert.rejects(
+    venice.chatCompletion({
+      apiKey: 'key',
+      model: 'e2ee-qwen3-5-122b-a10b',
+      messages: [{ role: 'user', content: 'hi' }],
+      onToken: () => {},
+      e2ee: true,
+      e2eeContext,
+    }),
+    (err) => err instanceof ApiError && /unencrypted chunk/.test(err.message)
+  )
 })

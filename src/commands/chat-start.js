@@ -1,6 +1,7 @@
 import { getProvider } from '../providers/index.js'
 import { resolveWebSearchFlag, resolveBudget, resolveWebResultsFlag, resolvePrefOrNull } from '../flags.js'
 import { DEFAULT_TEMPERATURE } from '../constants.js'
+import { scrapeMessage } from '../scrape.js'
 import { CliError } from '../errors.js'
 import { startChat } from '../chat.js'
 import { createNewSession } from '../sessions.js'
@@ -77,6 +78,10 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
       provider,
       apiKey,
       modelReasoning: null,
+      // Seed the tracker's flat scrape cost for resumed sessions exactly like
+      // the new-session branch does; without this the counter is reset to 0
+      // and the session file permanently loses the scrape history.
+      scrapes: result.scrapes ?? 0,
     }
   }
 
@@ -142,7 +147,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     initialMessages: scraped
       ? [
           { role: 'system', content: systemPrompt || 'You are a helpful assistant.' },
-          { role: 'user', content: `Scraped from ${scraped.url}:\n\n${scraped.content}` },
+          { role: 'user', content: scrapeMessage(scraped.url, scraped.content) },
         ]
       : undefined,
   }

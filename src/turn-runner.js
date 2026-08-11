@@ -18,20 +18,45 @@ export function createSessionState() {
 }
 
 export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState }) {
-  const runTurn = async (opts = {}) => {
-    let apiResult
-    let streamedContent = ''
-    let streamedReasoning = ''
+  const apiResultMessage = (apiResult) => {
+    const msg = { role: 'assistant', content: apiResult.content }
+    if (apiResult.reasoning) {
+      msg.reasoning = apiResult.reasoning
+    }
+    if (apiResult.usage) {
+      msg.usage = apiResult.usage
+    }
+    if (apiResult.sources?.length > 0) {
+      msg.sources = apiResult.sources
+    }
+    return msg
+  }
 
-    // When the caller appended the user message for this turn, a retryable
-    // failure pops it so the user can re-send. /retry re-runs an existing
-    // user message without appending, so the pop must not fire there.
-    const userAppended = opts.userAppended === true
+  const runTurn = async () => {
+    let apiResult
+    // Tokens are accumulated as arrays and joined on demand: `+=` on the
+    // growing string is quadratic in the answer length.
+    const contentParts = []
+    const reasoningParts = []
 
     render.sources = []
     sessionState.streaming = true
     sessionState.streamController = new AbortController()
     sessionState.interrupted = false
+
+    // Ctrl+C is also honored while the stream is draining (slow smooth
+    // rendering, artifact downloads): save the response produced so far,
+    // persist and exit 130.
+    const interruptedExit = async (message) => {
+      loader.stop()
+      render.flush({ sync: true })
+      stdout.write('\n')
+      if (message.content || message.reasoning) {
+        state.appendAssistant(message)
+      }
+      await interruptSave()
+      exit(130)
+    }
 
     try {
       stdout.write('\n')
@@ -42,8 +67,8 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         messages: state.messages,
         onToken: (token, type) => {
           if (type === 'reasoning' || type === 'content') loader.stop({ done: true })
-          if (type === 'reasoning') streamedReasoning += token
-          else if (type === 'content') streamedContent += token
+          if (type === 'reasoning') reasoningParts.push(token)
+          else if (type === 'content') contentParts.push(token)
           render(token, type)
         },
         onSources: (sources) => {
@@ -63,6 +88,10 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       })
       loader.stop()
       await render.flush()
+      if (sessionState.interrupted) {
+        await interruptedExit(apiResultMessage(apiResult))
+        return
+      }
       stdout.write('\n\n')
 
       await printPostStreamMetrics(apiResult, {
@@ -70,6 +99,11 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         imageOutputSupported: state.imageOutputSupported,
         stdout,
       })
+
+      if (sessionState.interrupted) {
+        await interruptedExit(apiResultMessage(apiResult))
+        return
+      }
 
       if (apiResult.usage) {
         sessionState.tracker.record(apiResult.usage, state.pricing)
@@ -88,8 +122,8 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       if (sessionState.interrupted) {
         render.flush({ sync: true })
         stdout.write('\n')
-        const partial = { role: 'assistant', content: streamedContent }
-        if (streamedReasoning) partial.reasoning = streamedReasoning
+        const partial = { role: 'assistant', content: contentParts.join('') }
+        if (reasoningParts.length > 0) partial.reasoning = reasoningParts.join('')
         if (render.sources?.length > 0) partial.sources = render.sources
         if (!partial.content && !partial.reasoning && err.pendingBuffer) {
           const pending = extractPartialToken(err.pendingBuffer)
@@ -108,16 +142,17 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
             }
           }
         }
-        if (partial.content || partial.reasoning) {
-          state.appendAssistant(partial)
-        }
-        await interruptSave()
-        exit(130)
+        await interruptedExit(partial)
+        return
       }
       render.flush({ sync: true })
       debug(err?.stack)
       console.error(`\nError: ${formatError(err)}\n`)
-      if (err instanceof ApiError && err.retryable && userAppended) {
+      // A retryable failure drops the user message that triggered this turn
+      // whenever it is still the last one, so it is never silently re-sent
+      // with the next prompt (the /retry path re-runs an existing message
+      // without appending a new one).
+      if (err instanceof ApiError && err.retryable && state.messages[state.messages.length - 1]?.role === 'user') {
         state.messages.pop()
       }
       return
@@ -127,17 +162,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
     }
 
     if (apiResult.content) {
-      const msg = { role: 'assistant', content: apiResult.content }
-      if (apiResult.reasoning) {
-        msg.reasoning = apiResult.reasoning
-      }
-      if (apiResult.usage) {
-        msg.usage = apiResult.usage
-      }
-      if (apiResult.sources?.length > 0) {
-        msg.sources = apiResult.sources
-      }
-      state.appendAssistant(msg)
+      state.appendAssistant(apiResultMessage(apiResult))
     }
   }
 

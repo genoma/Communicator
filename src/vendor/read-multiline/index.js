@@ -3,26 +3,8 @@ import { handleDelete } from "./editing.js";
 import { buildHelpFooter, detectKittyProtocol } from "./footer.js";
 import { appendPersistedHistory, loadHistory } from "./history.js";
 import { buildKeyMap, onData } from "./input.js";
-import * as presets from "./presets/index.js";
 import { clearBelowEditor, clearScreen, cursorVisualRow, refreshSuggestions, renderLine, setFooter, setStatusWithVisualState, tCol, w, } from "./rendering.js";
 import { applyStyle, buildPromptHeader, buildStyledLinePrefix, computeHeaderHeight, resolveStateful, } from "./style.js";
-export { presets };
-/**
- * Create a reusable prompt function with shared configuration.
- * Per-call options are shallow-merged over the shared config.
- *
- * @example
- * ```typescript
- * const ask = createPrompt({ prefix: "? ", theme: { prompt: "bold" } });
- * const [name] = await ask("Name:");
- * const [email] = await ask("Email:");
- * ```
- */
-export function createPrompt(shared) {
-    return (prompt, options = {}) => {
-        return readMultiline(prompt, { ...shared, ...options });
-    };
-}
 /**
  * Read multi-line input from the terminal.
  *

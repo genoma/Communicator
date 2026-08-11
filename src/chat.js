@@ -1,5 +1,5 @@
 import { UsageTracker, contextSegment } from './tracker.js'
-import { cpsToCharsPerTick, SCRAPE_COST_USD } from './constants.js'
+import { cpsToCharsPerTick, SCRAPE_COST_USD, DEFAULT_SYSTEM_PROMPT } from './constants.js'
 import { buildStatusBadges } from './status-line.js'
 import { sessionLabel } from './ui/format.js'
 import { chatCommands, budgetGuard, commandAcceptsArgs, visibleChatCommands } from './commands/chat/index.js'
@@ -69,7 +69,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     return generateSessionId(dir)
   })
 
-  const systemContent = systemPrompt || 'You are a helpful assistant.'
+  const systemContent = systemPrompt || DEFAULT_SYSTEM_PROMPT
 
   // An E2EE session needs its own client key pair plus the attested model
   // public key before the first turn. Any attestation failure aborts the
@@ -176,6 +176,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
   }
 
   let exitSaveDone = false
+  let exitSavePromise = null
   const bestEffortSave = async () => {
     if (exitSaveDone) return
     exitSaveDone = true
@@ -202,12 +203,15 @@ export async function runChatSession(ctx = {}, deps = {}) {
 
   const cleanupSignals = onSignal({
     sigint: () => {
-      if (!sessionState.streaming) {
-        void bestEffortExitSave().finally(() => exit(130))
+      if (sessionState.streaming) {
+        sessionState.interrupted = true
+        sessionState.streamController?.abort()
         return
       }
-      sessionState.interrupted = true
-      sessionState.streamController?.abort()
+      // A second Ctrl+C while the exit save is in flight must not call
+      // exit(130) early and truncate the write; the first press chains the
+      // exit onto the save, so repeat presses are no-ops.
+      exitSavePromise ??= bestEffortExitSave().finally(() => exit(130))
     },
     beforeExit: () => {
       void bestEffortSave()
@@ -295,7 +299,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
         const content = buildContent(trailing, state.pendingAttachments)
         state.pendingAttachments = []
         state.appendUser(content)
-        await runTurn({ userAppended: true })
+        await runTurn()
       }
       continue
     }
@@ -309,7 +313,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     const content = buildContent(input, state.pendingAttachments)
     state.pendingAttachments = []
     state.appendUser(content)
-    await runTurn({ userAppended: true })
+    await runTurn()
   }
 }
 

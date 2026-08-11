@@ -16,7 +16,7 @@ import { configSetCmd } from './commands/config-set.js'
 import { resolveSmoothSpeed, resolveTemperatureFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
 import { isConfigSetter, isPureConfigSetter, hasConfigSetterFlags, validateCliFlags } from './cli-validation.js'
-import { MAX_SCRAPE_CHARS } from './constants.js'
+import { scrapeContext } from './scrape.js'
 
 // Fetches a page via the Venice web scraping API and normalizes it for
 // injection into the session context (validated http(s) URL, truncated to
@@ -35,14 +35,9 @@ async function scrapeForSession({ provider, apiKey, url }) {
     throw new CliError(`Error: --scrape is not supported by provider ${provider.meta.name}.`)
   }
   const result = await provider.scrapePage({ apiKey, url })
-  const full = String(result.content || '')
-  const truncated = full.length > MAX_SCRAPE_CHARS
-  const content = truncated ? full.slice(0, MAX_SCRAPE_CHARS) : full
-  const size = truncated
-    ? `${MAX_SCRAPE_CHARS.toLocaleString()} chars (full page truncated)`
-    : `${content.length.toLocaleString()} chars`
-  console.log(`Scraped ${url} (${size}) into context.`)
-  return { url, content }
+  const { text, sizeLabel } = scrapeContext(url, result.content)
+  console.log(`Scraped ${url} (${sizeLabel}) into context.`)
+  return { url, content: text }
 }
 
 export async function runCli(opts, promptArg) {

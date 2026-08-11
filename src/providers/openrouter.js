@@ -33,15 +33,6 @@ export async function isZdrIndexDegraded() {
   return (await getZdrIndex()).degraded === true
 }
 
-export function normalizePricing(raw) {
-  const prompt = raw?.prompt != null ? parseFloat(raw.prompt) : null
-  const completion = raw?.completion != null ? parseFloat(raw.completion) : null
-  return {
-    prompt: Number.isNaN(prompt) ? null : prompt,
-    completion: Number.isNaN(completion) ? null : completion,
-  }
-}
-
 export async function fetchModels(apiKey) {
   // The ZDR index is independent of the models response; fetching them
   // concurrently saves one round trip of startup latency.

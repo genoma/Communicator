@@ -1,10 +1,11 @@
-import { access, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join, basename, extname } from 'node:path'
 import { SESSIONS_DIR } from './constants.js'
 import { selectSession, selectSessions } from './session-picker.js'
 import { messageText } from './attachments.js'
 import { attachmentDirFor, externalizeAttachments, hydrateAttachments } from './attachment-store.js'
 import { CliError } from './errors.js'
+import { writeFileAtomic } from './fs-utils.js'
 
 const SIDECAR_FILE = '.index.json'
 
@@ -85,14 +86,6 @@ export function generateTitle(messages) {
   return collapsed.length > 50 ? collapsed.slice(0, 50) + '...' : collapsed
 }
 
-export function formatSessionTime(value, { utc = false } = {}) {
-  if (!value) return 'Unknown'
-  let time = String(value).replace('T', ' ')
-  time = time.replace(/^(\d{4}-\d{2}-\d{2} )(\d{2})-(\d{2})-(\d{2})/, '$1$2:$3:$4')
-  if (utc) time = time.replace(/\.\d+Z$/, '') + ' UTC'
-  return time
-}
-
 export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, budget, webSearch, webResults, pricing, contextLength, supportsReasoning, webSearchSupported, isImageModel = false, e2ee = false, scrapes = 0, createdAt }) {
   return {
     model: modelId,
@@ -127,21 +120,18 @@ async function readSidecar(dir) {
 
 async function writeSidecar(dir, index) {
   try {
-    await writeFile(join(dir, SIDECAR_FILE), JSON.stringify(index, null, 2) + '\n', { mode: 0o600 })
+    await writeFileAtomic(join(dir, SIDECAR_FILE), JSON.stringify(index, null, 2) + '\n', { mode: 0o600 })
   } catch {
     // sidecar failures are non-fatal
   }
 }
 
-async function sidecarStale(dir, sidecarPath) {
+async function sidecarStale(dir, sidecarPath, jsonFiles) {
   try {
     const sidecarStat = await stat(sidecarPath)
-    const entries = await readdir(dir)
-    for (const file of entries) {
-      if (!file.startsWith('.') && extname(file) === '.json') {
-        const fileStat = await stat(join(dir, file))
-        if (fileStat.mtimeMs > sidecarStat.mtimeMs) return true
-      }
+    for (const file of jsonFiles) {
+      const fileStat = await stat(join(dir, file))
+      if (fileStat.mtimeMs > sidecarStat.mtimeMs) return true
     }
     return false
   } catch {
@@ -195,22 +185,27 @@ async function parseSessionFiles(dir, jsonFiles) {
 export async function listSessions(dir) {
   let entries
   try {
-    entries = await readdir(dir)
+    // One readdir sweep for existence and mtime checks: the sidecar fast path
+    // and the file listing share it, so the picker stays cheap on hundreds
+    // of sessions.
+    entries = await readdir(dir, { withFileTypes: true })
   } catch {
     return []
   }
 
-  const jsonFiles = entries.filter((f) => !f.startsWith('.') && extname(f) === '.json')
+  const jsonFiles = entries
+    .filter((e) => e.isFile() && !e.name.startsWith('.') && extname(e.name) === '.json')
+    .map((e) => e.name)
   const sidecarPath = join(dir, SIDECAR_FILE)
   const index = await readSidecar(dir)
 
-  if (index && Object.keys(index).length > 0 && !(await sidecarStale(dir, sidecarPath))) {
+  if (index && Object.keys(index).length > 0 && !(await sidecarStale(dir, sidecarPath, jsonFiles))) {
     // A session file deleted outside the app (or a stale sidecar key) leaves
     // a ghost entry: drop entries whose files no longer exist so the picker
     // never offers a resume that fails.
     const valid = []
     for (const [id, meta] of Object.entries(index)) {
-      if (await sessionFileExists(dir, id)) valid.push(toSessionItem(id, meta))
+      if (jsonFiles.includes(`${id}.json`)) valid.push(toSessionItem(id, meta))
       else await dropSidecarEntry(dir, id)
     }
     return valid.sort(byIdDesc)
@@ -254,7 +249,7 @@ export async function saveSession(dir, id, data) {
 
   try {
     const payload = { ...data, messages: await externalizeAttachments(data.messages, attachmentDirFor(dir, id)) }
-    await writeFile(filePath, JSON.stringify(payload, null, 2) + '\n', { mode: 0o600 })
+    await writeFileAtomic(filePath, JSON.stringify(payload, null, 2) + '\n', { mode: 0o600 })
     await updateSidecar(dir, id, payload)
   } catch (err) {
     if (err.code === 'ENOSPC') {
@@ -296,15 +291,6 @@ async function dropSidecarEntry(dir, id) {
     }
   } catch {
     // sidecar failures are non-fatal
-  }
-}
-
-async function sessionFileExists(dir, id) {
-  try {
-    await access(join(dir, `${id}.json`))
-    return true
-  } catch {
-    return false
   }
 }
 
@@ -357,16 +343,6 @@ export async function loadSession(dir, id) {
   data.messages = messages
 
   return data
-}
-
-export function formatSessionItem(s) {
-  const time = formatSessionTime(s.id)
-  const model = s.model.length > 35 ? s.model.slice(0, 32) + '...' : s.model
-  const count = `${s.messageCount} msg${s.messageCount !== 1 ? 's' : ''}`
-  const preview = s.title || s.preview || ''
-  const previewText = preview ? `"${preview}${preview.length >= 60 ? '...' : ''}"` : ''
-  const line = `${time}  ${model.padEnd(37)} ${count.padEnd(12)} ${previewText}`
-  return { time, model, count, preview, line }
 }
 
 export async function deleteSession(dir, id) {

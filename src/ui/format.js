@@ -59,3 +59,21 @@ export function sessionLabel(endpointProviderName, modelId) {
   const name = endpointProviderName ? `${endpointProviderName} / ${modelId}` : modelId
   return sanitizeAnsi(name)
 }
+
+export function formatSessionTime(value, { utc = false } = {}) {
+  if (!value) return 'Unknown'
+  let time = String(value).replace('T', ' ')
+  time = time.replace(/^(\d{4}-\d{2}-\d{2} )(\d{2})-(\d{2})-(\d{2})/, '$1$2:$3:$4')
+  if (utc) time = time.replace(/\.\d+Z$/, '') + ' UTC'
+  return time
+}
+
+export function formatSessionItem(s) {
+  const time = formatSessionTime(s.id)
+  const model = s.model.length > 35 ? s.model.slice(0, 32) + '...' : s.model
+  const count = `${s.messageCount} msg${s.messageCount !== 1 ? 's' : ''}`
+  const preview = s.title || s.preview || ''
+  const previewText = preview ? `"${preview}${preview.length >= 60 ? '...' : ''}"` : ''
+  const line = `${time}  ${model.padEnd(37)} ${count.padEnd(12)} ${previewText}`
+  return { time, model, count, preview, line }
+}

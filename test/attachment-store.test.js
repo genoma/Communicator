@@ -190,3 +190,22 @@ test('refs not matching the hash.ext shape are treated as missing', async (t) =>
   assert.ok(path.endsWith(`${'a'.repeat(64)}.png`))
   assert.ok(!path.includes('..'))
 })
+
+test('repeat externalization of the same data URL skips re-writing the blob', async (t) => {
+  const { stat } = await import('node:fs/promises')
+  const dir = await tempDir(t)
+  const messages = messagesWith([{ type: 'image_url', image_url: { url: PNG_URL } }])
+
+  await externalizeAttachments(messages, attachmentDirFor(dir, 'sess'))
+  const blobDir = attachmentDirFor(dir, 'sess')
+  const files = await readdir(blobDir)
+  assert.equal(files.length, 1)
+  const firstMtime = (await stat(join(blobDir, files[0]))).mtimeMs
+
+  await externalizeAttachments(messages, attachmentDirFor(dir, 'sess'))
+  const filesAfter = await readdir(blobDir)
+  assert.equal(filesAfter.length, 1)
+  assert.equal(filesAfter[0], files[0])
+  const secondMtime = (await stat(join(blobDir, filesAfter[0]))).mtimeMs
+  assert.equal(secondMtime, firstMtime)
+})

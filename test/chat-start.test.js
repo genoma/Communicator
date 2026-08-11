@@ -208,6 +208,20 @@ test('chatStart resume branch keeps disabled reasoning for sessions written pre-
   assert.equal(startChatCalls[startChatCalls.length - 1].reasoningEffort, null)
 })
 
+test('chatStart resume branch forwards the persisted scrape count for cost tracking', async (t) => {
+  resumeResult = resumeSession({ scrapes: 2 })
+  withApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(console, 'log', () => {})
+
+  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'openrouter' })
+  assert.equal(startChatCalls[startChatCalls.length - 1].opts.scrapes, 2)
+
+  resumeResult = resumeSession()
+  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'openrouter' })
+  assert.equal(startChatCalls[startChatCalls.length - 1].opts.scrapes, 0)
+})
+
 test('chatStart resume branch applies --temperature, --budget and --web-search overrides', async (t) => {
   resumeResult = resumeSession()
   withApiKey(t)

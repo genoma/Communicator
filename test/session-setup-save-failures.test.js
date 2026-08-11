@@ -2,13 +2,14 @@ import { test, mock, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import * as realFs from 'node:fs/promises'
 
 const tempHome = await mkdtemp(join(tmpdir(), 'communicator-home-'))
 after(() => rm(tempHome, { recursive: true, force: true }))
 
 const failPaths = new Set()
+const tempOf = (p) => join(dirname(p), `.${basename(p)}.tmp-`)
 mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 mock.module('node:fs/promises', {
   namedExports: {
@@ -17,10 +18,14 @@ mock.module('node:fs/promises', {
     mkdir: realFs.mkdir,
     readdir: realFs.readdir,
     readFile: realFs.readFile,
+    rename: realFs.rename,
     rm: realFs.rm,
     stat: realFs.stat,
     writeFile: async (...args) => {
-      if (failPaths.has(String(args[0]))) {
+      // Atomic writes land in a sibling temp file first; inject the failure
+      // on the temp write of any target in failPaths.
+      const target = String(args[0])
+      if ([...failPaths].some((p) => target.startsWith(tempOf(p)))) {
         const err = new Error('injected failure')
         err.code = 'EACCES'
         throw err

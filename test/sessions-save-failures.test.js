@@ -12,6 +12,7 @@ mock.module('node:fs/promises', {
     mkdir: realFs.mkdir,
     readdir: realFs.readdir,
     readFile: realFs.readFile,
+    rename: realFs.rename,
     rm: realFs.rm,
     stat: realFs.stat,
     writeFile: async (...args) => {
@@ -72,4 +73,23 @@ test('saveSession warns on other write failures and does not throw', async (t) =
     failCode = null
   }
   assert.ok(errors.some((e) => e.includes('could not save session')))
+})
+
+test('a failed session save leaves the previous file intact and no temp file behind', async (t) => {
+  const dir = await tempDir(t)
+  t.mock.method(console, 'error', () => {})
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  const original = await realFs.readFile(join(dir, '2026-01-01T00-00-00.json'), 'utf-8')
+
+  failCode = 'ENOSPC'
+  try {
+    await saveSession(dir, '2026-01-01T00-00-00', sessionData({ title: 'changed title' }))
+  } finally {
+    failCode = null
+  }
+
+  const after = await realFs.readFile(join(dir, '2026-01-01T00-00-00.json'), 'utf-8')
+  assert.equal(after, original)
+  const leftovers = (await realFs.readdir(dir)).filter((f) => f.includes('.tmp-'))
+  assert.deepEqual(leftovers, [])
 })

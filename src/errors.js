@@ -28,6 +28,13 @@ export function formatError(err) {
   return err?.message || String(err)
 }
 
+// One-line rendering of a command failure: CliErrors already carry their
+// user-facing text, everything else is prefixed and passed through
+// formatError.
+export function commandErrorLine(err) {
+  return err instanceof CliError ? `\n${err.message}\n` : `\nError: ${formatError(err)}\n`
+}
+
 export function makeHandleHttpError({ providerName, providerId = providerName, apiKeyEnv, notFoundMessage = null }) {
   return function handleHttpError(status, body) {
     if (status === 401) {

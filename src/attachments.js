@@ -59,8 +59,21 @@ const TEXT_EXTS = new Set([
 export function splitPathArgs(input) {
   const tokens = []
   let current = ''
+  let inQuotes = false
   for (let i = 0; i < input.length; i++) {
     const ch = input[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        inQuotes = false
+      } else {
+        current += ch
+      }
+      continue
+    }
+    if (ch === '"' && current === '') {
+      inQuotes = true
+      continue
+    }
     if (ch === '\\' && i + 1 < input.length && /\s/.test(input[i + 1])) {
       current += input[i + 1]
       i++

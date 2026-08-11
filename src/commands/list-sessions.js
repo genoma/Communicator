@@ -1,4 +1,5 @@
-import { ensureSessionsDir, listSessions, formatSessionItem } from '../sessions.js'
+import { ensureSessionsDir, listSessions } from '../sessions.js'
+import { formatSessionItem } from '../ui/format.js'
 
 export async function listSessionsCmd() {
   const dir = await ensureSessionsDir()

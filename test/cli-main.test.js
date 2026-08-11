@@ -488,3 +488,11 @@ test('one-shot gates office attachments before reading them on openrouter', asyn
   assert.match(err[0], /xlsx\/docx\/pptx are only supported on Venice/)
   assert.doesNotMatch(err[0], /Cannot read attachment/)
 })
+
+test('an unknown --provider exits 1 with a friendly message, not a raw stack', async (t) => {
+  withTTY(t, true)
+  const { exitCode, err } = await runAndExit(t, { provider: 'bogus' }, undefined, 1)
+  assert.equal(exitCode, 1)
+  assert.ok(err.some((l) => /Unknown provider: bogus/.test(l)))
+  assert.ok(!err.some((l) => /at /.test(l)))
+})

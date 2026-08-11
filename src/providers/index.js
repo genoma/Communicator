@@ -1,5 +1,6 @@
 import * as openrouter from './openrouter.js'
 import * as venice from './venice.js'
+import { CliError } from '../errors.js'
 
 /**
  * Common provider contract (providers may ignore options they do not support):
@@ -14,6 +15,6 @@ const registry = { openrouter, venice }
 
 export function getProvider(name) {
   const p = registry[name]
-  if (!p) throw new Error(`Unknown provider: ${name}. Valid providers: ${Object.keys(registry).join(', ')}`)
+  if (!p) throw new CliError(`Error: Unknown provider: ${name}. Valid providers: ${Object.keys(registry).join(', ')}`)
   return p
 }

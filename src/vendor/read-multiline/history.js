@@ -34,14 +34,16 @@ export function loadHistory(filePath, maxEntries) {
 export function saveHistory(filePath, entries) {
     const resolved = expandHome(filePath);
     try {
-        mkdirSync(dirname(resolved), { recursive: true });
+        mkdirSync(dirname(resolved), { recursive: true, mode: 0o700 });
     }
     catch {
         // ignore
     }
     const tmpPath = `${resolved}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
     try {
-        writeFileSync(tmpPath, JSON.stringify(entries));
+        // Prompt history can contain sensitive content: same private mode as
+        // the config and session files.
+        writeFileSync(tmpPath, JSON.stringify(entries), { mode: 0o600 });
         renameSync(tmpPath, resolved);
     }
     catch {

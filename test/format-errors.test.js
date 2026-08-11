@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import { ApiError, formatError } from '../src/errors.js'
 import { resolveReasoningFlag } from '../src/flags.js'
 import { formatModelPrice, formatPricePerM } from '../src/ui/format.js'
-import { normalizePricing as normalizeOpenrouter } from '../src/providers/openrouter.js'
 import { normalizePricing as normalizeVenice } from '../src/providers/venice.js'
 
 test('ApiError carries status, provider, and retryable', () => {
@@ -47,12 +46,6 @@ test('formatPricePerM renders per-1M prices with fallbacks', () => {
   assert.equal(formatPricePerM({ prompt: 0.0000027, completion: 0.00000805 }), 'in $2.70 / out $8.05 per 1M')
   assert.equal(formatPricePerM({ prompt: null, completion: null }), '?')
   assert.equal(formatPricePerM(null), '?')
-})
-
-test('openrouter normalizePricing converts string prices to numbers', () => {
-  assert.deepEqual(normalizeOpenrouter({ prompt: '0.0000015', completion: '0.000006' }), { prompt: 0.0000015, completion: 0.000006 })
-  assert.deepEqual(normalizeOpenrouter({}), { prompt: null, completion: null })
-  assert.deepEqual(normalizeOpenrouter(null), { prompt: null, completion: null })
 })
 
 test('venice normalizePricing converts per-1M to per-token', () => {

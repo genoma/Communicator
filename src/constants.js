@@ -3,7 +3,9 @@ import { join } from 'node:path'
 
 export const THIN_SEP = '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500'
 
-export const SESSIONS_DIR = join(homedir(), '.communicator', 'sessions')
+export const DATA_DIR = join(homedir(), '.communicator')
+
+export const SESSIONS_DIR = join(DATA_DIR, 'sessions')
 
 export const DEFAULT_CONFIG_FILE = join(homedir(), '.communicator.json')
 
@@ -63,6 +65,10 @@ export const MAX_SEED = 999999999
 // Image generations are synchronous and queue on the provider: live runs
 // took ~20 s to 2 min, far beyond the default 30 s request timeout.
 export const IMAGE_GEN_TIMEOUT_MS = 600_000
+
+export const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.'
+
+export const VENICE_BASE = 'https://api.venice.ai/api/v1'
 
 export const EFFORT_LABELS = {
   max: 'X-High (max)',

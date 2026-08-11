@@ -4,7 +4,7 @@ import { formatCost, CITATION_GROUP } from './constants.js'
 import { computeTurnCost } from './tracker.js'
 import { contentText, partLabel, partUrl } from './attachments.js'
 import { dataUrlInfo } from './attachment-store.js'
-import { formatSessionTime } from './sessions.js'
+import { formatSessionTime } from './ui/format.js'
 
 function calculateCost(pricing, messages) {
   if (pricing?.prompt == null || pricing?.completion == null) return null

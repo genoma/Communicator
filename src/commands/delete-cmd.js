@@ -1,5 +1,6 @@
 import { confirm } from '@inquirer/prompts'
-import { ensureSessionsDir, resolveSessionsInteractive, deleteSession, listSessions, formatSessionItem } from '../sessions.js'
+import { ensureSessionsDir, resolveSessionsInteractive, deleteSession, listSessions } from '../sessions.js'
+import { formatSessionItem } from '../ui/format.js'
 
 export async function deleteCmd(partialId) {
   const dir = await ensureSessionsDir()

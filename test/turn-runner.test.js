@@ -269,7 +269,7 @@ test('a retryable error pops the last user message when the turn appended it', a
   assert.equal(state.messages.length, 1)
 })
 
-test('a retryable error keeps the user message when the turn did not append it (/retry)', async (t) => {
+test('a retryable error pops the last user message even for /retry turns', async (t) => {
   mockConsole(t)
   const provider = okProvider({
     async chatCompletion() {
@@ -281,8 +281,10 @@ test('a retryable error keeps the user message when the turn did not append it (
 
   await runTurn(deps, state)
 
-  assert.equal(state.messages.length, 2)
-  assert.equal(state.messages[1].role, 'user')
+  // The /retry path re-runs an existing user message without appending; when
+  // it fails retryably the message must still be dropped, otherwise the next
+  // typed prompt would silently replay the failed one alongside itself.
+  assert.equal(state.messages.length, 1)
 })
 
 test('a non-retryable error keeps the user message', async (t) => {
@@ -339,4 +341,54 @@ test('an interrupted stream salvages the partial response, saves and exits 130',
   assert.deepEqual(exitCodes, [130])
   assert.deepEqual(saves, ['interrupt'])
   assert.equal(state.messages[2].content, 'Hel')
+})
+
+test('Ctrl+C during the post-stream flush saves the full response and exits 130', async (t) => {
+  mockConsole(t)
+  let flushResolve
+  const render = () => {}
+  render.sources = []
+  render.flush = () => new Promise((resolve) => { flushResolve = resolve })
+  const state = fakeState()
+  const sessionState = createSessionState()
+  const { deps, exitCodes, saves } = makeDeps({ render, provider: okProvider(), sessionState })
+
+  const turn = runTurn(deps, state)
+  while (!flushResolve) await new Promise((resolve) => setTimeout(resolve, 0))
+  sessionState.interrupted = true
+  flushResolve()
+  await turn
+
+  // The stream completed, so the whole response is persisted, not a partial.
+  assert.deepEqual(exitCodes, [130])
+  assert.deepEqual(saves, ['interrupt'])
+  assert.equal(state.messages.length, 3)
+  assert.equal(state.messages[2].content, 'Hello!')
+  assert.deepEqual(state.messages[2].usage, { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 })
+})
+
+test('an interrupt with no streamed content saves nothing and still exits 130', async (t) => {
+  mockConsole(t)
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  const provider = okProvider({
+    async chatCompletion(opts) {
+      opts.signal.addEventListener('abort', () => rejectCompletion(new Error('aborted')))
+      return pending
+    },
+  })
+  const state = fakeState()
+  const sessionState = createSessionState()
+  sessionState.streaming = true
+  sessionState.streamController = new AbortController()
+  const { deps, exitCodes, saves } = makeDeps({ provider, sessionState })
+
+  const turn = runTurn(deps, state)
+  sessionState.interrupted = true
+  sessionState.streamController.abort()
+  await turn
+
+  assert.deepEqual(exitCodes, [130])
+  assert.deepEqual(saves, ['interrupt'])
+  assert.equal(state.messages.length, 2)
 })

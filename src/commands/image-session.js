@@ -1,9 +1,10 @@
 import { readInput as readInputFromInput } from '../input.js'
 import { persistSessionFile } from '../sessions.js'
-import { getImageDefaults, mergeImageDefaults, savePreferences, applyPreferenceUpdates } from '../config.js'
+import { DEFAULT_SYSTEM_PROMPT } from '../constants.js'
+import { getImageDefaults, mergeImageDefaults, clearImageDefault, savePreferences, applyPreferenceUpdates } from '../config.js'
 import { findImageModel, selectImageEndpoint, selectModelAndEndpoint } from '../model-selection.js'
 import { sessionLabel } from '../ui/format.js'
-import { CliError, formatError } from '../errors.js'
+import { CliError, commandErrorLine } from '../errors.js'
 import { resolveAspectRatio, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
 import { runImageGeneration, printImageOutcome, buildImageSessionPayload, handleWatermarkCommand } from './image-gen.js'
@@ -49,12 +50,10 @@ function stripImageParts(content) {
   return parts
 }
 
-// Removes a persisted image-default key (aspectRatio/format) for the
-// provider and persists the change through the given saver.
-async function clearImageDefault(prefs, providerName, key, save, message) {
-  const defaults = { ...getImageDefaults(prefs, providerName) }
-  delete defaults[key]
-  const updated = { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [providerName]: defaults } }
+// Clears a persisted image-default key (aspectRatio/format) and persists the
+// change through the given saver.
+async function persistClearedDefault(prefs, providerName, key, save, message) {
+  const updated = clearImageDefault(prefs, providerName, key)
   Object.assign(prefs, updated)
   await save(updated)
   console.log(message)
@@ -120,7 +119,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     }
   }
 
-  let messages = initialMessages.length > 0 ? [...initialMessages] : [{ role: 'system', content: 'You are a helpful assistant.' }]
+  let messages = initialMessages.length > 0 ? [...initialMessages] : [{ role: 'system', content: DEFAULT_SYSTEM_PROMPT }]
   const persist = () => persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: imageModelId, createdAt, providerName: provider.meta.name, endpointProviderName: model.endpointProviderName, pricing: model.pricing }))
 
   // Preference writes are non-fatal here: a failing disk must not take the
@@ -193,7 +192,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       try {
         sel = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: undefined, zdr: false })
       } catch (err) {
-        console.error(err instanceof CliError ? `\n${err.message}\n` : `\nError: ${formatError(err)}\n`)
+        console.error(commandErrorLine(err))
         continue
       }
       if (sel.isImageModel === true) {
@@ -261,7 +260,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       if (value === 'clear') {
         sessionValues[handler.flagKey] = undefined
         if (handler.persisted) {
-          await clearImageDefault(prefs, providerName, handler.defaultKey, savePrefs, `${handler.kind} cleared.\n`)
+          await persistClearedDefault(prefs, providerName, handler.defaultKey, savePrefs, `${handler.kind} cleared.\n`)
         } else {
           console.log(`${handler.kind} cleared.\n`)
         }
@@ -319,7 +318,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       }
       if (value === 'clear') {
         sessionValues.aspectRatio = undefined
-        await clearImageDefault(prefs, provider.meta.name, 'aspectRatio', savePrefs, 'Aspect ratio cleared.\n')
+        await persistClearedDefault(prefs, provider.meta.name, 'aspectRatio', savePrefs, 'Aspect ratio cleared.\n')
         continue
       }
       let parsed
@@ -382,7 +381,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         sizingInteractive: false,
       })
     } catch (err) {
-      console.error(err instanceof CliError ? `\n${err.message}\n` : `\nError: ${formatError(err)}\n`)
+      console.error(commandErrorLine(err))
       continue
     }
 

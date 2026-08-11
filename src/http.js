@@ -23,6 +23,7 @@ function isPrivateAddress(address) {
     if (lower.startsWith('::ffff:')) return isPrivateAddress(lower.slice(7))
     if (lower.startsWith('fc') || lower.startsWith('fd')) return true
     if (lower.startsWith('fe8') || lower.startsWith('fe9') || lower.startsWith('fea') || lower.startsWith('feb')) return true
+    if (lower.startsWith('fec') || lower.startsWith('fed') || lower.startsWith('fee') || lower.startsWith('fef')) return true
     if (lower.startsWith('ff')) return true
     return false
   }
@@ -40,7 +41,10 @@ export async function assertSafeUrl(url) {
     return 'invalid URL'
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return 'unsupported URL scheme'
-  const host = parsed.hostname
+  // URL.hostname serializes IPv6 literals with brackets; strip them so
+  // isIP/isPrivateAddress see the bare address.
+  const rawHost = parsed.hostname
+  const host = rawHost.startsWith('[') && rawHost.endsWith(']') ? rawHost.slice(1, -1) : rawHost
   if (!host) return 'invalid URL'
   if (isIP(host) !== 0) {
     return isPrivateAddress(host) ? 'blocked URL (private or loopback address)' : null
@@ -57,49 +61,87 @@ export async function assertSafeUrl(url) {
 // Fetches a URL through SSRF-validated manual redirects (max 5 hops). Each
 // hop is re-validated via `assertSafeUrl` before the fetch. The `fetchFn`
 // must accept a URL string and return a Response or throw.
-// Returns the final Response on success, or null when a hop fails.
+// Returns { res, url, error }: `res` is the final Response (non-redirect)
+// on success, `url` its final URL after the hops; `error` carries the
+// failure reason when `res` is null.
 export async function fetchWithRedirects(url, fetchFn, { maxHops = 5 } = {}) {
   let current = url
-  let res = null
   for (let hop = 0; hop <= maxHops; hop++) {
     const unsafe = await assertSafeUrl(current)
-    if (unsafe) return null
+    if (unsafe) return { res: null, error: unsafe }
+    let res
     try {
       res = await fetchFn(current)
-    } catch {
-      return null
+    } catch (err) {
+      return { res: null, error: err?.message || 'network error' }
     }
-    if (res.status < 300 || res.status >= 400) break
+    if (res.status < 300 || res.status >= 400) return { res, url: current, error: null }
     const location = res.headers.get('location')
     await res.body?.cancel?.()
-    if (!location) return null
+    if (!location) return { res: null, error: 'redirect without location' }
     try {
       current = new URL(location, current).href
     } catch {
-      return null
+      return { res: null, error: 'invalid redirect URL' }
     }
   }
-  return res
+  return { res: null, error: 'too many redirects' }
+}
+
+// Reads a response body with an idle deadline that covers a slow-drip body
+// (the fetch timeout alone dies at the headers) and an optional hard byte cap
+// enforced mid-stream. Returns null when the cap is crossed; throws on
+// deadline or read errors. Falls back to arrayBuffer for non-streaming
+// bodies, where only the cap applies.
+export async function readBodyWithDeadline(res, { limit = Infinity, timeoutMs = 30_000 } = {}) {
+  const body = res.body
+  if (body && typeof body.getReader === 'function') {
+    const reader = body.getReader()
+    const chunks = []
+    let total = 0
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      reader.cancel().catch(() => {})
+    }, timeoutMs)
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (timedOut) throw new Error('could not read response body')
+        if (done) break
+        total += value.byteLength
+        if (total > limit) {
+          await reader.cancel()
+          return null
+        }
+        chunks.push(Buffer.from(value))
+      }
+    } finally {
+      clearTimeout(timer)
+    }
+    return Buffer.concat(chunks)
+  }
+  const bytes = Buffer.from(await res.arrayBuffer())
+  return bytes.length > limit ? null : bytes
 }
 
 // Fetches a URL with the SSRF guard and a hard byte cap. Follows redirects
 // manually so every hop is re-validated. Returns null on any unsafe/invalid/
 // oversized outcome and throws only on unexpected body-read errors.
 export async function fetchSafeBytes(url, { maxBytes, timeoutMs = 30_000 } = {}) {
-  const res = await fetchWithRedirects(url, (current) =>
+  const { res } = await fetchWithRedirects(url, (current) =>
     fetchWithTimeout(current, { redirect: 'manual' }, { timeoutMs })
   )
   if (!res) return null
   if (res.status >= 400) return null
   const contentLength = Number(res.headers.get('content-length') || 0)
   if (contentLength > maxBytes) return null
-  let bytes
   try {
-    bytes = Buffer.from(await res.arrayBuffer())
+    const bytes = await readBodyWithDeadline(res, { limit: maxBytes, timeoutMs })
+    return bytes !== null && bytes.length <= maxBytes ? bytes : null
   } catch {
     return null
   }
-  return bytes.length <= maxBytes ? bytes : null
 }
 
 export function sleep(ms, signal) {

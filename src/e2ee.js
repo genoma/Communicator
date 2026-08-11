@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createECDH, hkdfSync, randomBytes } from 'node:crypto'
 import { fetchWithRetry } from './http.js'
 import { ApiError } from './errors.js'
+import { VENICE_BASE } from './constants.js'
 
 // Venice E2EE protocol (TEE attestation + client-side encryption):
 // ECDH on secp256k1 for key agreement, HKDF-SHA256 for key derivation and
@@ -10,7 +11,6 @@ import { ApiError } from './errors.js'
 // messages are encrypted; the response stream delivers one encrypted chunk
 // per delta that decrypts with the client's session private key.
 
-const VENICE_BASE = 'https://api.venice.ai/api/v1'
 const HKDF_INFO = new TextEncoder().encode('ecdsa_encryption')
 const HKDF_SALT = Buffer.alloc(32)
 const EPHEMERAL_PUB_BYTES = 65

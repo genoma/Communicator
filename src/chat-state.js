@@ -1,4 +1,4 @@
-import { DEFAULT_TEMPERATURE } from './constants.js'
+import { DEFAULT_TEMPERATURE, DEFAULT_SYSTEM_PROMPT } from './constants.js'
 import { normalizeSmoothSpeed, normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
@@ -31,7 +31,7 @@ export class ChatState {
     this.smoothStreaming = smoothStreaming
     this.smoothSpeed = normalizeSmoothSpeed(smoothSpeed)
     this.scrapes = scrapes
-    this.systemContent = systemContent || 'You are a helpful assistant.'
+    this.systemContent = systemContent || DEFAULT_SYSTEM_PROMPT
     this.messages = messages || [{ role: 'system', content: this.systemContent }]
   }
 

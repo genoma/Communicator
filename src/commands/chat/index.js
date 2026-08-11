@@ -1,8 +1,8 @@
-import { formatError, CliError } from '../../errors.js'
+import { formatError, commandErrorLine } from '../../errors.js'
 import { selectModelAndEndpoint } from '../../model-selection.js'
 import { getEffortLabel, selectReasoningEffort } from '../../prompts.js'
 import { resolveTemperatureFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, webSearchGate } from '../../flags.js'
-import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed, SCRAPE_COST_USD, MAX_SCRAPE_CHARS } from '../../constants.js'
+import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed, SCRAPE_COST_USD } from '../../constants.js'
 import { budgetStatusLine, budgetExhaustedMessage } from '../../tracker.js'
 import { sessionLabel } from '../../ui/format.js'
 import { dim } from '../../ui/style.js'
@@ -10,6 +10,7 @@ import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArg
 import { attachGateOptions } from '../../session-setup.js'
 import { fetchModelPubKey } from '../../e2ee.js'
 import { buildStatusLine } from '../../status-line.js'
+import { scrapeContext, scrapeMessage } from '../../scrape.js'
 const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments', '/scrape'])
 
 export function showStatus(ctx) {
@@ -49,7 +50,7 @@ const handlers = {
     try {
       sel = await (ctx.selectModelAndEndpoint ?? selectModelAndEndpoint)({ provider: ctx.provider, apiKey: ctx.apiKey, prefs: ctx.prefs, reasoningEffort: undefined, zdr: ctx.state.zdr, e2ee: ctx.state.e2ee })
     } catch (err) {
-      console.error(err instanceof CliError ? `\n${err.message}\n` : `\nError: ${formatError(err)}\n`)
+      console.error(commandErrorLine(err))
       return
     }
     if (ctx.state.e2ee) {
@@ -282,16 +283,11 @@ const handlers = {
       console.error(`\nError: ${formatError(err)}\n`)
       return
     }
-    const full = String(result.content || '')
-    const truncated = full.length > MAX_SCRAPE_CHARS
-    const content = truncated ? full.slice(0, MAX_SCRAPE_CHARS) : full
-    ctx.state.appendUser(`Scraped from ${url}:\n\n${content}`)
+    const { text, sizeLabel } = scrapeContext(url, result.content)
+    ctx.state.appendUser(scrapeMessage(url, text))
     ctx.state.scrapes += 1
     ctx.tracker.addScrapeCost(SCRAPE_COST_USD)
-    const size = truncated
-      ? `${MAX_SCRAPE_CHARS.toLocaleString()} chars (full page truncated)`
-      : `${content.length.toLocaleString()} chars`
-    console.log(`Scraped ${url} (${size}, $${SCRAPE_COST_USD.toFixed(2)}) into context — session cost ${formatCost(ctx.tracker.cost)}.\n`)
+    console.log(`Scraped ${url} (${sizeLabel}, $${SCRAPE_COST_USD.toFixed(2)}) into context — session cost ${formatCost(ctx.tracker.cost)}.\n`)
   },
 
   '/retry': async (ctx) => {

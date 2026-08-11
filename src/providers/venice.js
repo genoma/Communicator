@@ -2,11 +2,10 @@ import { parseSSEStream } from '../sse-parser.js'
 import { fetchWithRetry } from '../http.js'
 import { ApiError, makeHandleHttpError } from '../errors.js'
 import { formatPricePerM, formatImagePrice, imageUnitPrice } from '../ui/format.js'
-import { DEFAULT_TEMPERATURE, IMAGE_GEN_TIMEOUT_MS } from '../constants.js'
+import { DEFAULT_TEMPERATURE, IMAGE_GEN_TIMEOUT_MS, VENICE_BASE } from '../constants.js'
 import { mimeForExt, extForMime } from '../attachments.js'
 import { encryptMessages, decryptToken } from '../e2ee.js'
 
-const VENICE_BASE = 'https://api.venice.ai/api/v1'
 
 export const meta = {
   name: 'venice',

@@ -472,3 +472,58 @@ test('stream renderer routes content through the markdown renderer when enabled'
   render.flush()
   assert.ok(plain(chunks.join('')).includes('\x1b[1A\r\x1b[Ja  b\n---  ---\n1  2'))
 })
+
+test('incremental streaming matches the one-shot renderer on a long mixed document', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  // Mixed blocks that exercise every boundary kind: fences, lists, quotes,
+  // tables, headings, ref-style links and a long unbroken paragraph. The
+  // reference definition precedes its use so the incremental tail parses
+  // resolve it at emit time (a later definition can never retro-style an
+  // already-emitted line, in the one-shot renderer either).
+  const doc = [
+    '# Heading',
+    '',
+    '[target]: https://example.com',
+    '',
+    'Paragraph with **bold** and `code` and a [ref-style][target] link.',
+    '',
+    '```js',
+    'const x = 1',
+    'const y = 2',
+    '```',
+    '',
+    '- first',
+    '- second with *italic*',
+    '- third',
+    '',
+    '> quoted line',
+    '> another quoted line',
+    '',
+    '| a | b |',
+    '| - | - |',
+    '| 1 | 2 |',
+    '| 3 | 4 |',
+    '',
+    'The quick brown fox jumps over the lazy dog. '.repeat(30).trim(),
+    '',
+    '---',
+    '',
+    'final line',
+    '',
+  ].join('\n')
+
+  // Feed the document one complete line at a time so every block boundary
+  // lands in its own batch (partial-line redraws have their own tests).
+  for (const line of doc.split('\n')) {
+    renderer.write(`${line}\n`)
+  }
+  renderer.flush()
+
+  // A held table re-emits its header line with a rewind-and-clear; drop the
+  // overwritten copy and the cursor motion, as the terminal would.
+  const streamed = plain(output()).replace(/[^\n]*\n\x1b\[\d*A\r\x1b\[J/g, '')
+  const oneShot = plain(renderText(doc))
+  assert.equal(streamed, oneShot + '\n')
+})

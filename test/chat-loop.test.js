@@ -201,7 +201,9 @@ test('exitSaveDone guards against a double save on repeated idle SIGINT', async 
   await tick()
 
   assert.equal(harness.saveCalls.length, 1)
-  assert.deepEqual(harness.exitCodes, [130, 130])
+  // The second press lands while the exit save is in flight; it must not
+  // exit early and truncate the write, so only one exit fires.
+  assert.deepEqual(harness.exitCodes, [130])
 })
 
 test('idle SIGINT saves then exits 130', async (t) => {

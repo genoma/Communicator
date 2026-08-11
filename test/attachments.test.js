@@ -57,6 +57,13 @@ test('splitPathArgs splits on whitespace but keeps backslash-escaped spaces', ()
   assert.deepEqual(splitPathArgs('   '), [])
 })
 
+test('splitPathArgs strips matched double quotes around paths with spaces', () => {
+  assert.deepEqual(splitPathArgs('"my notes.txt"'), ['my notes.txt'])
+  assert.deepEqual(splitPathArgs('/a.png "my notes.txt" /b.png'), ['/a.png', 'my notes.txt', '/b.png'])
+  assert.deepEqual(splitPathArgs('"folder with spaces/file.txt" "other file.txt"'), ['folder with spaces/file.txt', 'other file.txt'])
+  assert.deepEqual(splitPathArgs('"unclosed quote'), ['unclosed quote'])
+})
+
 test('loadAttachment encodes images as base64 data URLs', async (t) => {
   const file = await writeFixture(t, 'shot.png', 'PNGDATA')
   const att = await loadAttachment(file)

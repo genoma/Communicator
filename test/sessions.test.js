@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readdir, readFile, stat, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { deleteSession, deleteAllSessions, formatSessionItem, generateTitle, listSessions, saveSession, loadSession, generateSessionId, removeEmptySessionClaim, buildSessionPayload } from '../src/sessions.js'
+import { deleteSession, deleteAllSessions, generateTitle, listSessions, saveSession, loadSession, generateSessionId, removeEmptySessionClaim, buildSessionPayload } from '../src/sessions.js'
+import { formatSessionItem } from '../src/ui/format.js'
 import { CliError } from '../src/errors.js'
 
 async function tempDir(t) {

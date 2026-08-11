@@ -38,9 +38,10 @@ communicator --provider venice --e2ee -m "e2ee-qwen3-5-122b-a10b" "What is 2+2?"
 
 ### How it works
 
-- Per session, Communicator generates an ephemeral secp256k1 key pair and fetches the model's **TEE attestation** (`/tee/attestation`), verifying the enclave is genuine before trusting its public key. Any verification failure aborts the session — there is no fallback to plaintext.
+- Per session, Communicator generates an ephemeral secp256k1 key pair and fetches the model's **TEE attestation** (`/tee/attestation`), checking the reported `verified` flag, the nonce echo and the enclave signing key before trusting it. Any verification failure aborts the session — there is no fallback to plaintext.
 - `user` and `system` messages are encrypted per message with ECDH → HKDF-SHA256 → AES-256-GCM and sent with the `X-Venice-TEE-*` headers; streamed responses arrive as encrypted chunks that are decrypted locally in real time.
 - Encryption is streaming-only (which is what this client always uses), and the Venice system prompt is disabled so nothing leaks outside your ciphertext.
+- **Trust model**: the attestation is a JSON assertion reported by the Venice API — the client checks its fields but performs no cryptographic quote/signature verification. E2EE therefore keeps prompts secret from *passive* infrastructure (the host processes ciphertext), but a compromised Venice backend could attest dishonestly and see your prompts. The guarantee is TLS plus a server-side secrecy claim, not an independently verifiable enclave proof. Streamed responses also **fail closed**: if the host ever sends an unencrypted chunk in an E2EE session, the stream is aborted rather than silently downgraded.
 
 ### Constraints
 

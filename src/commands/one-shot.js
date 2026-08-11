@@ -1,5 +1,6 @@
 import { getProvider } from '../providers/index.js'
-import { cpsToCharsPerTick, SCRAPE_COST_USD } from '../constants.js'
+import { cpsToCharsPerTick, SCRAPE_COST_USD, DEFAULT_SYSTEM_PROMPT } from '../constants.js'
+import { scrapeMessage } from '../scrape.js'
 import { createNewSession, removeEmptySessionClaim } from '../sessions.js'
 import { createStreamRenderer, printSources } from '../ui/stream.js'
 import { sessionLabel } from '../ui/format.js'
@@ -71,7 +72,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
       config: opts.config,
       sessionId,
       messages: [
-        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'system', content: DEFAULT_SYSTEM_PROMPT },
         { role: 'user', content: text },
         outcome.message,
       ],
@@ -91,8 +92,8 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
 
   const { dir, sessionId, createdAt } = await createNewSession()
   const messages = [
-    { role: 'system', content: systemPrompt || 'You are a helpful assistant.' },
-    ...(scraped ? [{ role: 'user', content: `Scraped from ${scraped.url}:\n\n${scraped.content}` }] : []),
+    { role: 'system', content: systemPrompt || DEFAULT_SYSTEM_PROMPT },
+    ...(scraped ? [{ role: 'user', content: scrapeMessage(scraped.url, scraped.content) }] : []),
     { role: 'user', content: buildContent(text, attachments) },
   ]
 

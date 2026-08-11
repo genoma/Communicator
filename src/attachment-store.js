@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 import { extForMime, mimeForExt, partUrl } from './attachments.js'
-import { assertSafeUrl, fetchWithTimeout } from './http.js'
+import { fetchWithRedirects, fetchWithTimeout, readBodyWithDeadline } from './http.js'
 import { SESSIONS_DIR, MAX_IMAGE_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES } from './constants.js'
 
 export const REF_PREFIX = 'ref://attachments/'
@@ -38,28 +38,50 @@ export function savedAttachmentPath(ref, sessionId) {
   return target
 }
 
+// Writes a content-addressed blob file (wx: never overwrites, so a hash
+// collision or repeat store is a no-op). Returns the stored path or an error
+// message; the caller decides how to degrade.
+async function storeBlob(dir, file, bytes) {
+  try {
+    await mkdir(dir, { recursive: true, mode: 0o700 })
+    try {
+      await writeFile(join(dir, file), bytes, { flag: 'wx', mode: 0o600 })
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err
+    }
+    return { path: join(dir, file), error: null }
+  } catch (err) {
+    return { path: null, error: err?.message || 'could not store blob' }
+  }
+}
+
 async function externalizeDataUrl(value, dir) {
   const info = dataUrlInfo(value)
   if (!info) return value
+
+  // Blobs are content-addressed, so the same data URL in the same session
+  // dir always maps to the same ref; remembering it skips re-hashing every
+  // attachment on every session save. Keyed by dir because blobs are stored
+  // per session, not shared across sessions.
+  const cacheKey = `${dir}\u0000${value}`
+  const cached = dataUrlRefCache.get(cacheKey)
+  if (cached) return cached
 
   const bytes = Buffer.from(info.base64, 'base64')
   const hash = createHash('sha256').update(bytes).digest('hex')
   const ext = extForMime(info.mime)
   const ref = `${REF_PREFIX}${hash}.${ext}`
 
-  try {
-    await mkdir(dir, { recursive: true, mode: 0o700 })
-    try {
-      await writeFile(join(dir, `${hash}.${ext}`), bytes, { flag: 'wx', mode: 0o600 })
-    } catch (err) {
-      if (err.code !== 'EEXIST') throw err
-    }
+  const { path, error } = await storeBlob(dir, `${hash}.${ext}`, bytes)
+  if (path) {
+    dataUrlRefCache.set(cacheKey, ref)
     return ref
-  } catch (err) {
-    console.warn(`Warning: could not store attachment blob: ${err.message}`)
-    return value
   }
+  console.warn(`Warning: could not store attachment blob: ${error}`)
+  return value
 }
+
+const dataUrlRefCache = new Map()
 
 export async function externalizeAttachments(messages, dir) {
   const cloned = structuredClone(messages)
@@ -132,30 +154,13 @@ export async function downloadRemotePart(part, sessionId) {
   const limit = part.type === 'image_url' ? MAX_IMAGE_ATTACHMENT_BYTES : MAX_FILE_ATTACHMENT_BYTES
   const exceedsMsg = `response exceeds ${Math.round(limit / 1024 / 1024)} MB`
 
-  // Follow redirects manually so every hop is SSRF-checked; fetch would
-  // otherwise follow them unchecked.
-  let res = null
-  let current = url
-  for (let hop = 0; hop <= 5; hop++) {
-    const unsafe = await assertSafeUrl(current)
-    if (unsafe) return { part, error: unsafe }
-    try {
-      res = await fetchWithTimeout(current, { redirect: 'manual' }, { timeoutMs: 30_000 })
-    } catch (err) {
-      return { part, error: err?.message || 'network error' }
-    }
-    if (res.status < 300 || res.status >= 400) break
-    const location = res.headers.get('location')
-    await res.body?.cancel?.()
-    if (!location) return { part, error: 'redirect without location' }
-    try {
-      current = new URL(location, current).href
-    } catch {
-      return { part, error: 'invalid redirect URL' }
-    }
-  }
+  // Redirects are followed manually so every hop is SSRF-checked; fetch
+  // would otherwise follow them unchecked.
+  const { res, error, url: finalUrl } = await fetchWithRedirects(url, (current) =>
+    fetchWithTimeout(current, { redirect: 'manual' }, { timeoutMs: 30_000 })
+  )
+  if (!res) return { part, error: error || 'could not fetch URL' }
   if (res.status >= 400) return { part, error: `HTTP ${res.status}` }
-  if (res.status >= 300) return { part, error: 'too many redirects' }
 
   let bytes
   try {
@@ -163,7 +168,7 @@ export async function downloadRemotePart(part, sessionId) {
     if (contentLength > limit) {
       return { part, error: exceedsMsg }
     }
-    bytes = await readBodyWithLimit(res, limit)
+    bytes = await readBodyWithDeadline(res, { limit, timeoutMs: 30_000 })
   } catch (err) {
     return { part, error: err?.message || 'could not read response body' }
   }
@@ -173,7 +178,7 @@ export async function downloadRemotePart(part, sessionId) {
   let ext = mime ? extForMime(mime) : ''
   if (!ext || ext === 'bin') {
     try {
-      const last = new URL(current).pathname.split('/').pop() || ''
+      const last = new URL(finalUrl).pathname.split('/').pop() || ''
       const dot = last.lastIndexOf('.')
       if (dot !== -1 && /^[a-z0-9]{1,5}$/.test(last.slice(dot + 1).toLowerCase())) ext = last.slice(dot + 1).toLowerCase()
     } catch { /* invalid URL: keep the mime-derived extension */ }
@@ -186,55 +191,10 @@ export async function downloadRemotePart(part, sessionId) {
   let savedTo = null
   if (sessionId) {
     const hash = createHash('sha256').update(bytes).digest('hex')
-    const dir = attachmentDirFor(SESSIONS_DIR, sessionId)
-    const file = `${hash}.${ext}`
-    try {
-      await mkdir(dir, { recursive: true, mode: 0o700 })
-      try {
-        await writeFile(join(dir, file), bytes, { flag: 'wx', mode: 0o600 })
-      } catch (err) {
-        if (err.code !== 'EEXIST') throw err
-      }
-      savedTo = join(dir, file)
-    } catch (err) {
-      console.warn(`Warning: could not store produced attachment blob: ${err.message}`)
-    }
+    const { path, error: storeError } = await storeBlob(attachmentDirFor(SESSIONS_DIR, sessionId), `${hash}.${ext}`, bytes)
+    if (path) savedTo = path
+    else console.warn(`Warning: could not store produced attachment blob: ${storeError}`)
   }
 
   return { part, dataUrl, savedTo }
-}
-
-// Reads the response body with a hard byte cap enforced mid-stream (aborts
-// once the cap is crossed instead of buffering the whole body first) and a
-// deadline covering a slow-drip body. Returns null when the cap is exceeded.
-async function readBodyWithLimit(res, limit, timeoutMs = 30_000) {
-  const body = res.body
-  if (body && typeof body.getReader === 'function') {
-    const reader = body.getReader()
-    const chunks = []
-    let total = 0
-    let timedOut = false
-    const timer = setTimeout(() => {
-      timedOut = true
-      reader.cancel().catch(() => {})
-    }, timeoutMs)
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (timedOut) throw new Error('could not read response body')
-        if (done) break
-        total += value.byteLength
-        if (total > limit) {
-          await reader.cancel()
-          return null
-        }
-        chunks.push(Buffer.from(value))
-      }
-    } finally {
-      clearTimeout(timer)
-    }
-    return Buffer.concat(chunks)
-  }
-  const bytes = Buffer.from(await res.arrayBuffer())
-  return bytes.length > limit ? null : bytes
 }
