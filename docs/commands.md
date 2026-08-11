@@ -131,6 +131,7 @@ communicator --no-watermark                                            # hide th
 |----------------|-------------------------------------------------------------------------------------|
 | `/quit`        | Save the session and exit the chat                                                  |
 | `/exit`        | Same as `/quit`                                                                     |
+| `/status`      | Print the current settings snapshot (`[thinking]`, `[temp]`, `[web]`, `[budget]`, `[smooth]`) — also re-printed after every config change |
 | `/new`         | Save the current session and start a fresh one (same model and reasoning effort)    |
 | `/model`       | Save, then switch models mid-chat — re-picks reasoning effort and endpoint          |
 | `/reasoning`   | Re-run the reasoning effort picker for the current model                            |

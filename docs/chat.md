@@ -54,6 +54,16 @@ The row appears only when the context window is known and at least 5% occupied (
 
 The `Cache ⚡` line appears only when OpenRouter serves a cached response — on a cache miss it is omitted entirely. The session cost accumulates across turns within the same chat, and Venice pricing is normalized from per-1M-token rates to per-token for a consistent cost display.
 
+## Current settings line
+
+On connect, the banner shows the active per-model settings as badges — `[thinking: High]`, `[temp: 0.3]`, `[zdr]`, `[e2ee]`, `[web: auto: 5]` — each shown only when it deviates from the default. The same badges are re-printed as a `Current settings:` line after every mid-chat config change (`/temp`, `/reasoning`, `/web-search`, `/web-results`, `/smooth`, `/budget`, `/model`, `/new`), extended with the session budget and smooth streaming state so the line is always a complete snapshot:
+
+```
+Current settings: [thinking: High]  [temp: 0.3]  [web: auto: 5]  [budget: $2.000000]  [smooth: on (normal, ~2000 chars/s)]
+```
+
+`/status` prints the same line on demand. All values are persisted per model where applicable, so the next session's banner reflects what you last set.
+
 ## Markdown rendering
 
 By default, assistant responses are rendered as markdown in the terminal: `#` headers bold, `**bold**` / `*italic*` styled inline, `~~strikethrough~~` struck through, `` `code` `` in cyan, fenced code blocks dimmed, lists and blockquotes styled, aligned tables with a bold header row and dim separator, horizontal rules as a thin separator, and `[text](url)` links shown in italics (URL hidden, clickable in supporting terminals); bare URLs and `<url>` autolinks are clickable too. Reasoning text is never restyled.

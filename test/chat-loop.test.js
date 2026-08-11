@@ -347,7 +347,7 @@ test('unknown command is rejected with the exact message and the provider is not
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /exit, /new, /model, /attach, /attachments, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
+    'Unknown command "/nope". Available: /quit, /exit, /status, /new, /model, /attach, /attachments, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
   )
 })
 
@@ -362,7 +362,7 @@ test('unknown command list omits /attach and /attachments when the model lacks v
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /exit, /new, /model, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
+    'Unknown command "/nope". Available: /quit, /exit, /status, /new, /model, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
   )
 })
 
@@ -495,6 +495,30 @@ test('banner shows the always badge with a result count', async (t) => {
   )
 
   assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [web: always: 5]')
+})
+
+test('status line updates after a config command and persists the pref', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/temp 0.5', '/quit']) })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  const statusLine = consoleSpy.allLogs().find((l) => l.startsWith('Current settings:'))
+  assert.equal(statusLine, 'Current settings: [thinking: High]  [temp: 0.5]  [smooth: on (normal, ~2000 chars/s)]\n')
+  const saved = harness.prefsCalls.flat()
+  assert.ok(saved.some((u) => u.modelId === 'org/model' && u.temperature === 0.5))
+})
+
+test('/status prints the current settings in the live session', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/status', '/quit']) })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  const statusLine = consoleSpy.allLogs().find((l) => l.startsWith('Current settings:'))
+  assert.equal(statusLine, 'Current settings: [thinking: High]  [temp: 1.1]  [smooth: on (normal, ~2000 chars/s)]\n')
 })
 
 test('startup hint includes /attach when vision capability is unknown', async (t) => {

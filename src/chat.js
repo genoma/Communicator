@@ -1,6 +1,6 @@
 import { UsageTracker, contextSegment } from './tracker.js'
-import { getEffortLabel } from './prompts.js'
-import { DEFAULT_TEMPERATURE, cpsToCharsPerTick, SCRAPE_COST_USD } from './constants.js'
+import { cpsToCharsPerTick, SCRAPE_COST_USD } from './constants.js'
+import { buildStatusBadges } from './status-line.js'
 import { sessionLabel } from './ui/format.js'
 import { chatCommands, budgetGuard, commandAcceptsArgs, visibleChatCommands } from './commands/chat/index.js'
 import { buildContent } from './attachments.js'
@@ -128,15 +128,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
   }
 
   const label = sessionLabel(endpointProviderName, model)
-  const bannerParts = []
-  if (reasoningEffort != null) bannerParts.push(`[thinking: ${getEffortLabel(reasoningEffort)}]`)
-  if (temperature !== DEFAULT_TEMPERATURE) bannerParts.push(`[temp: ${temperature}]`)
-  if (state.zdr) bannerParts.push('[zdr]')
-  if (state.e2ee) bannerParts.push('[e2ee]')
-  if (state.webSearch !== 'off') {
-    const results = state.webResults != null ? `: ${state.webResults}` : ''
-    bannerParts.push(`[web: ${state.webSearch}${results}]`)
-  }
+  const bannerParts = buildStatusBadges(state)
   if (bannerParts.length > 0) {
     out(`\nConnected to ${label}  ${bannerParts.join('  ')}`)
   } else {

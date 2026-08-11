@@ -9,7 +9,12 @@ import { dim } from '../../ui/style.js'
 import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
 import { fetchModelPubKey } from '../../e2ee.js'
+import { buildStatusLine } from '../../status-line.js'
 const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments', '/scrape'])
+
+export function showStatus(ctx) {
+  console.log(`Current settings: ${buildStatusLine(ctx.state).join('  ')}\n`)
+}
 
 export function budgetGuard(ctx) {
   const { state, tracker } = ctx
@@ -26,12 +31,17 @@ const handlers = {
 
   '/exit': async () => ({ exit: true }),
 
+  '/status': async (ctx) => {
+    showStatus(ctx)
+  },
+
   '/new': async (ctx) => {
     await ctx.saveSession()
     ctx.state.sessionId = await ctx.newSessionId()
     ctx.state.createdAt = new Date().toISOString()
     ctx.state.resetForNewSession(ctx.systemContent)
     console.log('\nNew session started.\n')
+    showStatus(ctx)
     return { reset: true }
   },
 
@@ -78,6 +88,7 @@ const handlers = {
     })
     const label = sessionLabel(sel.endpointProviderName, sel.modelId)
     console.log(`\nSwitched to ${label}\n`)
+    showStatus(ctx)
   },
 
   '/attach': async (ctx) => {
@@ -143,6 +154,7 @@ const handlers = {
     ctx.state.setReasoningEffort(newEffort)
     await ctx.savePrefs({ modelId: ctx.state.modelId, reasoningEffort: newEffort })
     console.log(`Reasoning effort set to ${getEffortLabel(newEffort)}\n`)
+    showStatus(ctx)
   },
 
   '/temp': async (ctx) => {
@@ -161,6 +173,7 @@ const handlers = {
     ctx.state.setTemperature(parsed)
     await ctx.savePrefs({ modelId: ctx.state.modelId, temperature: parsed })
     console.log(`Temperature set to ${parsed}\n`)
+    showStatus(ctx)
   },
 
   '/budget': async (ctx) => {
@@ -175,6 +188,7 @@ const handlers = {
       }
       ctx.state.setBudget(parsed)
       console.log(`Budget set to ${formatCost(parsed)} for this session.\n`)
+      showStatus(ctx)
       return { resetBudgetWarning: true }
     }
     if (ctx.state.budget == null) {
@@ -209,6 +223,7 @@ const handlers = {
     ctx.state.setWebSearch(mode)
     await ctx.savePrefs({ modelId: ctx.state.modelId, webSearch: mode })
     console.log(mode === 'off' ? 'Web search disabled.\n' : `Web search set to ${mode}.\n`)
+    showStatus(ctx)
   },
 
   '/web-results': async (ctx) => {
@@ -235,6 +250,7 @@ const handlers = {
     ctx.state.setWebResults(parsed)
     await ctx.savePrefs({ webResults: parsed })
     console.log(`Web search results set to ${parsed}.\n`)
+    showStatus(ctx)
   },
 
   '/scrape': async (ctx) => {
@@ -327,6 +343,7 @@ const handlers = {
       ctx.render.smooth = next
       await ctx.savePrefs({ smoothStreaming: next })
       console.log(`Smooth streaming ${next ? 'enabled' : 'disabled'}.\n`)
+      showStatus(ctx)
       return
     }
     let cps
@@ -344,6 +361,7 @@ const handlers = {
     // /config-set), not the raw preset label.
     await ctx.savePrefs({ smoothStreaming: true, smoothSpeed: cps })
     console.log(`Smooth streaming enabled (${formatSmoothSpeed(cps)}).\n`)
+    showStatus(ctx)
   },
 
   '/cost': async (ctx) => {

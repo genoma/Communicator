@@ -104,6 +104,7 @@ test('/new saves the session, requests a fresh id, resets state', async (t) => {
   assert.equal(ctx.state.webResults, null)
   assert.deepEqual(prefsUpdates, [])
   assert.equal(consoleSpy.log(0), '\nNew session started.\n')
+  assert.equal(consoleSpy.log(1), 'Current settings: [thinking: High]  [smooth: on (normal, ~2000 chars/s)]\n')
 })
 
 test('/model switches state and saves prefs', async (t) => {
@@ -869,10 +870,11 @@ test('/model keeps compatible attachments on switch', async (t) => {
   assert.equal(consoleSpy.log(0), '\nSwitched to NewProvider / new/model\n')
 })
 
-test('CHAT_COMMANDS keeps the 17-command order', () => {
+test('CHAT_COMMANDS keeps the 18-command order', () => {
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/exit',
+    '/status',
     '/new',
     '/model',
     '/attach',
@@ -1200,4 +1202,119 @@ test('/model under e2ee keeps the current model when attestation fails', async (
 
   assert.equal(ctx.state.modelId, 'org/model')
   assert.ok(console.error.mock.calls.some((c) => String(c.arguments[0]).includes('TEE attestation verification failed')))
+})
+
+test('/new prints the status line and drops the web results count', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  ctx.state.setWebSearch('auto')
+  ctx.state.setWebResults(3)
+
+  await chatCommands['/new'](ctx)
+
+  assert.equal(ctx.state.webResults, null)
+  assert.equal(consoleSpy.log(1), 'Current settings: [thinking: High]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n')
+})
+
+test('/status prints the full settings snapshot', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  ctx.state.setTemperature(1.1)
+  ctx.state.setWebSearch('auto')
+  ctx.state.setWebResults(3)
+  ctx.state.setBudget(5)
+
+  await chatCommands['/status'](ctx)
+
+  assert.equal(
+    consoleSpy.log(0),
+    'Current settings: [thinking: High]  [temp: 1.1]  [web: auto: 3]  [budget: $5.000000]  [smooth: on (normal, ~2000 chars/s)]\n'
+  )
+})
+
+test('/status reflects defaults without badges', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({ state: new ChatState({
+    modelId: 'org/model',
+    endpointProviderName: 'Provider',
+    reasoningEffort: null,
+    temperature: 0.7,
+    budget: null,
+    pricing: null,
+    supportsReasoning: true,
+    webSearch: false,
+    webResults: null,
+    webSearchSupported: true,
+    sessionId: '2026-01-01T00-00-00',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    modelReasoning: null,
+  }) })
+
+  await chatCommands['/status'](ctx)
+
+  assert.equal(consoleSpy.log(0), 'Current settings: [smooth: on (normal, ~2000 chars/s)]\n')
+})
+
+test('/temp prints the updated status line after setting', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+
+  await chatCommands['/temp']({ ...ctx, args: '1.3' })
+
+  assert.equal(consoleSpy.log(0), 'Temperature set to 1.3\n')
+  assert.equal(consoleSpy.log(1), 'Current settings: [thinking: High]  [temp: 1.3]  [smooth: on (normal, ~2000 chars/s)]\n')
+})
+
+test('/web-search prints the updated status line after setting', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+
+  await chatCommands['/web-search']({ ...ctx, args: 'auto' })
+  await chatCommands['/web-results']({ ...ctx, args: '5' })
+
+  assert.equal(consoleSpy.log(0), 'Web search set to auto.\n')
+  assert.equal(consoleSpy.log(1), 'Current settings: [thinking: High]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n')
+  assert.equal(consoleSpy.log(2), 'Web search results set to 5.\n')
+  assert.equal(consoleSpy.log(3), 'Current settings: [thinking: High]  [web: auto: 5]  [smooth: on (normal, ~2000 chars/s)]\n')
+})
+
+test('/smooth off prints the updated status line', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+
+  await chatCommands['/smooth']({ ...ctx, args: 'off' })
+
+  assert.equal(consoleSpy.log(0), 'Smooth streaming disabled.\n')
+  assert.equal(consoleSpy.log(1), 'Current settings: [thinking: High]  [smooth: off]\n')
+})
+
+test('/budget prints the updated status line after setting', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+
+  await chatCommands['/budget']({ ...ctx, args: '2' })
+
+  assert.equal(consoleSpy.log(0), 'Budget set to $2.000000 for this session.\n')
+  assert.equal(consoleSpy.log(1), 'Current settings: [thinking: High]  [budget: $2.000000]  [smooth: on (normal, ~2000 chars/s)]\n')
+})
+
+test('/model prints the updated status line with the new model values', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({
+    prefs: { temperature: { 'new/model': 0.3 }, webSearch: { 'new/model': true } },
+    selectModelAndEndpoint: async () => ({
+      modelId: 'new/model',
+      endpointProviderName: 'NewProvider',
+      pricing: null,
+      reasoningEffort: 'low',
+      supportsReasoning: true,
+      modelReasoning: { supported: true, supportsEffort: true },
+      webSearchSupported: true,
+    }),
+  })
+
+  await chatCommands['/model'](ctx)
+
+  assert.equal(consoleSpy.log(0), '\nSwitched to NewProvider / new/model\n')
+  assert.equal(consoleSpy.log(1), 'Current settings: [thinking: Low]  [temp: 0.3]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n')
 })
