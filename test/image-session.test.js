@@ -269,7 +269,7 @@ test('resume continues from initialMessages without re-adding a system message',
       { role: 'user', content: 'old prompt' },
       { role: 'assistant', content: [{ type: 'image_url', image_url: { url: 'ref://attachments/old.webp' } }] },
     ],
-    readInput: scriptedInput(['new prompt', '/exit']),
+    readInput: scriptedInput(['new prompt', '/quit']),
   }))
 
   assert.deepEqual(genCalls, ['new prompt'])
@@ -279,24 +279,24 @@ test('resume continues from initialMessages without re-adding a system message',
   assert.equal(saved.messages[3].content, 'new prompt')
 })
 
-test('/exit leaves the session without generating', async (t) => {
+test('/quit leaves the session without generating', async (t) => {
   genCalls.length = 0
   printed.length = 0
   mockConsole(t)
 
-  await startImageSession(baseOpts({ readInput: scriptedInput(['/exit']) }))
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/quit']) }))
 
   assert.deepEqual(genCalls, [])
   assert.deepEqual(printed, [])
 })
 
-test('/exit without generating persists the last image model', async (t) => {
+test('/quit without generating persists the last image model', async (t) => {
   genCalls.length = 0
   printed.length = 0
   mockConsole(t)
   const file = await tempConfig(t)
 
-  await startImageSession(baseOpts({ configPath: file, readInput: scriptedInput(['/exit']) }))
+  await startImageSession(baseOpts({ configPath: file, readInput: scriptedInput(['/quit']) }))
 
   const prefs = JSON.parse(await readFile(file, 'utf-8'))
   assert.equal(prefs.lastImageModel, 'venice-sd35')

@@ -347,7 +347,7 @@ test('unknown command is rejected with the exact message and the provider is not
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /exit, /status, /new, /model, /attach, /attachments, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
+    'Unknown command "/nope". Available: /quit, /status, /new, /model, /attach, /attachments, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
   )
 })
 
@@ -362,7 +362,7 @@ test('unknown command list omits /attach and /attachments when the model lacks v
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /exit, /status, /new, /model, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
+    'Unknown command "/nope". Available: /quit, /status, /new, /model, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
   )
 })
 

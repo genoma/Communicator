@@ -29,8 +29,6 @@ function attachmentGateOptions(ctx) {
 const handlers = {
   '/quit': async () => ({ exit: true }),
 
-  '/exit': async () => ({ exit: true }),
-
   '/status': async (ctx) => {
     showStatus(ctx)
   },

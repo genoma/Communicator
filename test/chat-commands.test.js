@@ -870,10 +870,9 @@ test('/model keeps compatible attachments on switch', async (t) => {
   assert.equal(consoleSpy.log(0), '\nSwitched to NewProvider / new/model\n')
 })
 
-test('CHAT_COMMANDS keeps the 18-command order', () => {
+test('CHAT_COMMANDS keeps the 17-command order', () => {
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
-    '/exit',
     '/status',
     '/new',
     '/model',

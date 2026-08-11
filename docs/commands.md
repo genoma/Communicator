@@ -78,7 +78,7 @@ communicator -p venice --aspect-ratio 16:9 --image-format png        # save per-
 communicator -p venice --resume <image-session-id>                   # re-enter an image session
 
 # Image sessions (interactive): pick an image model from the unified picker (tagged [image]);
-# every prompt generates an image; /help, /exit and /quit control the session.
+# every prompt generates an image; /help and /quit control the session.
 
 # One-shot mode (non-interactive, no chat loop)
 communicator -m "openai/gpt-4o" "What is the capital of France?"     # positional prompt
@@ -130,7 +130,6 @@ communicator --no-watermark                                            # hide th
 | Input          | Action                                                                              |
 |----------------|-------------------------------------------------------------------------------------|
 | `/quit`        | Save the session and exit the chat                                                  |
-| `/exit`        | Same as `/quit`                                                                     |
 | `/status`      | Print the current settings snapshot (`[thinking]`, `[temp]`, `[web]`, `[budget]`, `[smooth]`) — also re-printed after every config change |
 | `/new`         | Save the current session and start a fresh one (same model and reasoning effort)    |
 | `/model`       | Save, then switch models mid-chat — re-picks reasoning effort and endpoint          |

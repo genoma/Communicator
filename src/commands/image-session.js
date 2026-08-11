@@ -14,7 +14,7 @@ function imageSessionCommands(providerName, model) {
   const c = model?.constraints
   const showAspect = Array.isArray(c?.aspectRatios) || isPixelModel(model)
   const showVariants = c?.maxN == null || c?.maxN > 1
-  const cmds = ['/help', '/model', '/quit', '/exit']
+  const cmds = ['/help', '/model', '/quit']
   if (providerName === 'venice') cmds.push('/watermark')
   if (showAspect) cmds.push('/aspect')
   if (Array.isArray(c?.resolutions)) cmds.push('/resolution')
@@ -148,7 +148,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     const input = result.value.trim()
     if (!input) continue
 
-    if (input === '/quit' || input === '/exit') {
+    if (input === '/quit') {
       await savePrefs(applyPreferenceUpdates(prefs, { lastImageModel: imageModelId }))
       await persist()
       return
