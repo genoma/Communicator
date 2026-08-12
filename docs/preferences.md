@@ -5,6 +5,7 @@ The preferences file (`~/.communicator.json`, customizable with `--config`), per
 ```json
 {
   "lastModel": "openai/gpt-4o",
+  "lastImageModel": "venice-sd35",
   "lastProvider": "OpenAI",
   "reasoningEffort": {
     "openai/o1-pro": "high"
@@ -26,6 +27,7 @@ The preferences file (`~/.communicator.json`, customizable with `--config`), per
 ```
 
 - `lastModel` / `lastProvider` — become the defaults in the interactive pickers.
+- `lastImageModel` — becomes the default in the interactive image model picker.
 - `reasoningEffort` / `temperature` / `webSearch` — saved per model ID and restored automatically.
 - `smoothStreaming` / `smoothSpeed` — global defaults; the speed is stored as a chars-per-second number, e.g. `2000`.
 - `budget` / `webResults` — session defaults applied when no flag is given.

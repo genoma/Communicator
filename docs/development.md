@@ -28,10 +28,12 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 ├── providers/
 │   ├── index.js          — factory: getProvider(name) → provider module; common chatCompletion contract
 │   ├── openrouter.js     — OpenRouter API client: models, endpoints, chat completions
+│   ├── openrouter-meta.js — ZDR index / provider policies metadata with TTL caches
 │   └── venice.js         — Venice.ai API client: models, synthetic endpoints, chat
 ├── model-selection.js    — interactive and non-interactive (-m) selection flows
 ├── session-setup.js      — shared one-shot/chat-start helpers: resolveSessionFlags, attachGateOptions, persistSession
-├── http.js               — fetchWithTimeout (30s) + fetchWithRetry (backoff, retries timeouts)
+├── http.js               — fetchWithTimeout (30s) + fetchWithRetry (backoff, retries timeouts), pinned-SSRF fetch for artifact downloads
+├── fs-utils.js           — writeFileAtomic (tmp + rename, private mode)
 ├── errors.js             — ApiError (status/provider/retryable), TimeoutError, CliError (exitCode), formatError
 ├── sse-parser.js         — shared SSE stream parser (idle-timeout stall detection; consumed by both providers)
 ├── attachments.js        — attachment model: classify/load files (size limits), capability gate, content parts ↔ text helpers (contentText/messageText)
@@ -50,6 +52,9 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 ├── session-picker.js     — interactive session selector for --resume, --export, and --delete
 ├── export.js             — markdown exporter: format session data, write to file
 ├── tracker.js            — per-turn + cumulative token/cost accounting with cache detection, budget status helpers
+├── status-line.js        — session-setting badges and the live chat status line
+├── scrape.js             — web-scraping context normalization (--scrape)
+├── e2ee.js               — E2EE crypto (ECDH + HKDF + AES-256-GCM) and TEE attestation
 ├── clipboard.js          — clipboard copy via pbcopy/clip/wl-copy/xclip/xsel
 ├── input.js              — chat input via vendored read-multiline (with command suggestions)
 ├── suggest.js            — prefix matching for command suggestions (matchCommands)
@@ -103,7 +108,7 @@ See `src/providers/openrouter.js` and `src/providers/venice.js` for reference im
 
 `test/docs-consistency.test.js` mechanically verifies that the user-facing docs (`README.md`, `docs/`) stay in line with the code: CLI flags and slash commands match their registries, env vars / data paths / Node version / key defaults are mentioned, example flags exist, and every markdown link resolves. It runs as part of `npm test` — keep it green whenever a flag, command, default, path, or doc page changes.
 
-The check cannot verify behavioral prose. When touching related code, re-verify these documented behaviors (each is correct as of v3.29.0):
+The check cannot verify behavioral prose. When touching related code, re-verify these documented behaviors (last verified as of v3.30.0):
 
 - CTX indicator: hidden below 5% occupancy, yellow at ≥80%, red at ≥95%, peak never decreases (`src/tracker.js`).
 - Budget: warning row at ≥80% used, turns refused at ≥100% (`src/tracker.js`, `src/commands/chat/index.js`).

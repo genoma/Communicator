@@ -22,7 +22,7 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Streaming responses** — tokens appear as they arrive, with reasoning shown in gray under a `❯ Thinking` banner
 - **Smooth streaming** — interactive output is paced for a steady render rate (default on; disable with `--no-smooth-streaming` or `/smooth off`)
 - **Usage & cost tracking** — per-turn and cumulative token counts, a context-window (CTX) indicator, cache-hit detection, and dollar-cost breakdowns; check anytime with `/cost`
-- **Slash commands** — `/new`, `/model`, `/reasoning`, `/temp`, `/budget`, `/web-search`, `/attach`, `/retry`, `/copy`, `/markdown`, `/smooth`, `/cost`, `/watermark`, `/quit`, and more. See [docs/commands.md#slash-commands](docs/commands.md#slash-commands)
+- **Slash commands** — `/new`, `/model`, `/reasoning`, `/temp`, `/budget`, `/web-search`, `/attach`, `/retry`, `/copy`, `/markdown`, `/smooth`, `/cost`, `/quit`, and more (image sessions add sizing commands plus Venice-only `/watermark`). See [docs/commands.md#slash-commands](docs/commands.md#slash-commands)
 - **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/` with an auto-generated title, on quit, model switch, new session, or `Ctrl+C` — the last exchange is never lost
 - **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, reasoning effort, temperature, and budget
 - **Session deletion** — remove one or more saved sessions with `--delete` (multi-select checkbox with confirmation), or wipe everything with `--delete-all-sessions y` (default no)
@@ -53,7 +53,7 @@ You can set up both to switch between them at runtime.
 ## Quick start
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/communicator.git ~/Communicator
+git clone <your-fork-or-original-repo-url> ~/Communicator
 cd ~/Communicator
 npm install
 npm link

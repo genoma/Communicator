@@ -45,6 +45,7 @@ All persistent data is resolved from `os.homedir()` at runtime, so the paths are
 | `~/.communicator/sessions/attachments/<sessionId>/` | Binary attachment blobs (images, PDFs, office files), referenced via `ref://attachments/` in session JSON |
 | `~/.communicator.json` | Preferences |
 | `~/.communicator-system-prompt.md` | Optional custom system prompt |
+| `~/.communicator/history.json` | Prompt input history (max 200 entries) |
 
 ## Install & environment on Linux/Windows
 

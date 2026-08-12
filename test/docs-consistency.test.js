@@ -292,3 +292,61 @@ test('markdown links resolve to existing files and anchors', async () => {
 
   assert.deepEqual(problems, [], problems.join('\n'))
 })
+
+async function listSourceFiles(dir) {
+  const entries = await readdir(dir, { withFileTypes: true })
+  const files = []
+  for (const entry of entries) {
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      if (entry.name === 'vendor') continue
+      files.push(...await listSourceFiles(full))
+    } else if (entry.name.endsWith('.js')) {
+      files.push(relative(ROOT, full))
+    }
+  }
+  return files
+}
+
+test('docs/development.md module tree lists every src module', async () => {
+  const devDoc = await readText('docs/development.md')
+  const fence = devDoc.match(/```\n([\s\S]*?)```/)
+  assert.ok(fence, 'development.md must contain the module tree code block')
+  const tree = fence[1]
+  const entryRe = /[├└]─{1,2} ([^\s—]+)(?:\s+—.*)?$/gm
+  const entries = [...tree.matchAll(entryRe)].map((m) => m[1].split('/').pop())
+  const srcFiles = await listSourceFiles(join(ROOT, 'src'))
+
+  const problems = []
+  for (const file of srcFiles) {
+    const name = basename(file)
+    const expected = srcFiles.filter((f) => basename(f) === name).length
+    const actual = entries.filter((e) => e === name).length
+    if (actual !== expected) problems.push(`${file}: tree lists ${name} ${actual} time(s), expected ${expected}`)
+  }
+  assert.deepEqual(problems, [], problems.join('\n'))
+})
+
+test('docs/sessions.md list-sessions sample shows the session ID line', async () => {
+  const sessionsDoc = await readText('docs/sessions.md')
+  assert.ok(sessionsDoc.includes('ID: 2026-07-30T19-15-22'), 'the sample output must include the ID: line')
+})
+
+test('MEMORY.md field counts match the payload shapes (local-only doc)', async () => {
+  const memory = await readText('MEMORY.md').catch(() => null)
+  if (memory === null) return // MEMORY.md is gitignored; CI has no copy
+
+  const [{ ChatState }, sessionsModule] = await Promise.all([
+    import('../src/chat-state.js'),
+    import('../src/sessions.js'),
+  ])
+  const finalState = new ChatState({}).toFinalState('openrouter')
+  assert.ok(memory.includes(`toFinalState(providerType)\` returns the exact ${Object.keys(finalState).length}-field`), 'MEMORY.md toFinalState field count is stale')
+
+  const payload = sessionsModule.buildSessionPayload({
+    messages: [], modelId: 'm', endpointProviderName: 'p', providerType: 'openrouter',
+    reasoningEffort: 'auto', temperature: null, budget: null, webSearch: 'off', webResults: null,
+    pricing: null, contextLength: null, supportsReasoning: false, webSearchSupported: null,
+  })
+  assert.ok(memory.includes(`buildSessionPayload\` (single source for the ${Object.keys(payload).length}-field save shape)`), 'MEMORY.md buildSessionPayload field count is stale')
+})

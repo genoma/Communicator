@@ -23,7 +23,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 | `-h`  | `--help`              | —        | Show the help menu and exit                                                          |
 |       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
 |       | `--list-endpoints`    | `[model]`| List providers for a model (pricing, uptime, ZDR support, privacy policy link). No arg = picker, partial ID = fuzzy match |
-|       | `--list-sessions`     | —        | List saved sessions (timestamp, model, message count, title) and exit                |
+|       | `--list-sessions`     | —        | List saved sessions (ID, timestamp, model, message count, title) and exit                |
 | `-r`  | `--resume`            | `[partial-id]` | Resume a saved session. No arg = picker, partial ID = prefix match                   |
 | `-x`  | `--export`            | `[partial-id]` | Export saved session(s) to markdown. No arg = multi-select checkbox; partial ID = prefix match, unique prefix exports directly |
 |       | `--delete`            | `[partial-id]` | Delete saved session(s) (asks for confirmation). No arg = multi-select checkbox; partial ID = prefix match, unique prefix deletes directly |
@@ -34,7 +34,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--image`             | —        | Generate an image with an image model and exit (both providers). See [docs/images.md](images.md) |
 |       | `--image-model`       | `<id>`   | Image model ID, skipping the interactive image model picker (required when piping input) |
 |       | `--image-format`      | `<fmt>`  | Image output format: `png`, `jpeg`, `webp` (default `webp` on Venice, `png` on OpenRouter; only sent when the model supports it). Bare use saves the per-provider default |
-|       | `--variants`          | `<n>`    | Number of images to generate, 1–4 (default 1; capped at the model's advertised `maxN` when present) |
+|       | `--variants`          | `<n>`    | Number of images to generate, 1–4 (default 1; values above the model's advertised `maxN` are rejected) |
 |       | `--aspect-ratio`      | `<x:y>`  | Image aspect ratio, model-dependent (e.g. `16:9`, `auto`; decimal ratios like `9:19.5` accepted). Bare use saves the per-provider default. Conflicts with `--width`/`--height` |
 |       | `--resolution`        | `<tier>` | Image resolution tier, model-dependent: `1K`, `2K`, `4K`. Conflicts with `--width`/`--height` |
 |       | `--quality`           | `<level>`| Image quality tier, model-dependent: `low`, `medium`, `high` |
@@ -109,7 +109,7 @@ communicator -m "openai/gpt-4o" --web-search auto "Latest AI news"      # auto m
 communicator -m "openai/gpt-4o" --web-search always "Latest AI news"    # force a web search on every request
 communicator -m "openai/gpt-4o" --web-search off "Latest AI news"       # disable web search
 communicator -m "openai/gpt-4o" --web-results 5 "Latest AI news"        # 5 results, implies auto mode
-communicator -p venice -m "qwen-3-7-max" --web-search "Latest AI news"  # Venice: no result count; always maps to on
+communicator -p venice -m "qwen-3-7-max" --web-search "Latest AI news"  # Venice: no result count knob; bare flag means auto
 
 # Standalone config commands (persist defaults to ~/.communicator.json and exit)
 communicator --output-dir ~/Documents                                  # save the default export directory

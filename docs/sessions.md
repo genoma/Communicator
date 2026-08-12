@@ -18,14 +18,17 @@ automatically from the session files.
 communicator --list-sessions
 ```
 
-Output shows each session's timestamp, model, message count, and the session title:
+Output shows each session's ID, timestamp, model, message count, and the session title:
 
 ```
 3 saved session(s):
 
-2026-07-30 19:15:22  openai/gpt-4o                        12 msgs       "Write a Python script that..."
-2026-07-30 18:42:10  deepseek-v4-flash                     5 msgs       "Explain how garbage collection..."
-2026-07-30 17:11:45  google/gemini-2.5-pro                 23 msgs       "Compare Rust and Go for..."
+  ID: 2026-07-30T19-15-22
+     2026-07-30 19:15:22  openai/gpt-4o                        12 msgs       "Write a Python script that..."
+  ID: 2026-07-30T18-42-10
+     2026-07-30 18:42:10  deepseek-v4-flash                     5 msgs       "Explain how garbage collection..."
+  ID: 2026-07-30T17-11-45
+     2026-07-30 17:11:45  google/gemini-2.5-pro                 23 msgs       "Compare Rust and Go for..."
 ```
 
 ## Resuming a session
@@ -47,7 +50,9 @@ endpoint provider, reasoning effort, temperature, budget, and web search state
 right where you left off — all previous messages are preserved. Session flags
 override the stored values on resume (`--temperature`, `--budget`,
 `--web-search`, `--web-results`, `--reasoning-effort`), while `-p` is silently
-ignored and `-m`, `--output-dir`, and `--attach` are rejected with an error.
+ignored and `-m`, `--output-dir`, `--attach`, and `--scrape` are rejected with
+an error. An ambiguous prefix (matching more than one session) opens an
+interactive picker.
 
 Older sessions saved without a `providerType` field default to OpenRouter for
 backward compatibility.

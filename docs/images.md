@@ -39,7 +39,7 @@ The description is the positional prompt; piped stdin works too (`echo "a red ca
 |----------------------|---------------------------------------------------------------------------|
 | `--image-model <id>` | Skip the interactive model picker and use this image model directly (required when piping input) |
 | `--image-format`     | Output format: `png`, `jpeg`, `webp` (default: `webp` on Venice, `png` on OpenRouter; only sent when the model supports it) |
-| `--variants <n>`     | Number of images to generate, 1–4 (default 1; capped at the model's advertised `maxN` when present — OpenRouter accepts more upstream but the CLI contract stays 1–4) |
+| `--variants <n>`     | Number of images to generate, 1–4 (default 1; values above the model's advertised `maxN` are rejected — OpenRouter accepts more upstream but the CLI contract stays 1–4) |
 | `--aspect-ratio <x:y>` | Aspect ratio (model-dependent, e.g. `16:9`, `1:1`, `auto`; decimal ratios like `9:19.5` are accepted) |
 | `--resolution <tier>` | Resolution tier (model-dependent): `1K`, `2K`, `4K` (the same values are sent to OpenRouter; support is model-dependent) |
 | `--quality <level>`  | Quality tier (model-dependent): `low`, `medium`, `high`                    |
