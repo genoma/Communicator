@@ -5,7 +5,7 @@ export const WEB_SEARCH_MODES = new Set(['auto', 'always', 'on', 'off'])
 export function resolveReasoningFlag({ reasoningEffort }) {
   if (reasoningEffort === undefined || reasoningEffort === null || reasoningEffort === '') return undefined
   if (reasoningEffort === 'none') return null
-  if (!(reasoningEffort in EFFORT_LABELS)) {
+  if (!Object.hasOwn(EFFORT_LABELS, reasoningEffort)) {
     throw new Error(`--reasoning-effort must be one of: ${Object.keys(EFFORT_LABELS).join(', ')}.`)
   }
   return reasoningEffort

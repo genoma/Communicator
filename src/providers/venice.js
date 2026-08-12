@@ -201,12 +201,17 @@ export async function generateImage({ apiKey, model, prompt, format = 'webp', va
 
   const mime = mimeForExt(format)
   const ext = extForMime(mime)
-  const images = rawImages.map((b64) => ({
-    bytes: Buffer.from(b64, 'base64'),
-    dataUrl: `data:${mime};base64,${b64}`,
-    mime,
-    ext,
-  }))
+  const images = rawImages.map((b64) => {
+    if (typeof b64 !== 'string' || !b64) {
+      throw new ApiError('Venice returned a malformed image payload.', { provider: 'venice', retryable: false })
+    }
+    return {
+      bytes: Buffer.from(b64, 'base64'),
+      dataUrl: `data:${mime};base64,${b64}`,
+      mime,
+      ext,
+    }
+  })
 
   return {
     id: parsed.id,

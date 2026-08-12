@@ -26,5 +26,13 @@ test('hyperlink returns null for empty or nullish urls', () => {
 })
 
 test('hyperlink coerces non-string urls and labels', () => {
-  assert.equal(hyperlink(42, 7), '\x1b]8;;42\x1b\\7\x1b]8;;\x1b\\')
+  assert.equal(hyperlink('https://example.com', 7), '\x1b]8;;https://example.com\x1b\\7\x1b]8;;\x1b\\')
+})
+
+test('hyperlink returns null for non-http(s) schemes', () => {
+  assert.equal(hyperlink(42, 7), null)
+  for (const url of ['javascript:alert(1)', 'file:///etc/passwd', 'ftp://example.com/x', 'data:text/plain,hi']) {
+    assert.equal(hyperlink(url, 'x'), null)
+  }
+  assert.ok(hyperlink('http://example.com', 'x'))
 })

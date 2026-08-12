@@ -1,4 +1,4 @@
-import { mkdir, readFile } from 'node:fs/promises'
+import { mkdir, readFile, rename } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { writeFileAtomic } from './fs-utils.js'
 import { getProvider } from './providers/index.js'
@@ -16,12 +16,26 @@ export function getApiKey(providerType = 'openrouter') {
 
 export async function loadPreferences(customPath) {
   const configFile = customPath || DEFAULT_CONFIG_FILE
+  let data
   try {
-    const data = await readFile(configFile, 'utf-8')
-    return JSON.parse(data)
+    data = await readFile(configFile, 'utf-8')
   } catch (err) {
     if (err.code !== 'ENOENT') {
       console.error(`Warning: could not read preferences ${configFile}: ${err.message}`)
+    }
+    return {}
+  }
+  try {
+    return JSON.parse(data)
+  } catch (err) {
+    // A corrupt file must not be silently clobbered by the next save: move
+    // it aside so the original preferences survive as a backup.
+    const backup = `${configFile}.corrupt-${new Date().toISOString().replace(/[:.]/g, '-')}`
+    try {
+      await rename(configFile, backup)
+      console.error(`Warning: preferences file ${configFile} is corrupt (${err.message}); it was moved to ${backup}. Starting with empty preferences.`)
+    } catch {
+      console.error(`Warning: preferences file ${configFile} is corrupt (${err.message}); starting with empty preferences.`)
     }
     return {}
   }

@@ -342,6 +342,25 @@ test('selection reads venice vision and file capabilities', async () => {
   assert.equal(noFiles.fileSupported, false)
 })
 
+test('openrouter file support comes from the supported_parameters list', async () => {
+  const provider = fakeProvider({
+    meta: { name: 'openrouter', hasEndpoints: true },
+    async fetchModels() {
+      return [
+        { id: 'files', reasoning: null, pricing: null, supportedParameters: ['file', 'image_url'] },
+        { id: 'no-files', reasoning: null, pricing: null, supportedParameters: ['image_url'] },
+      ]
+    },
+    async fetchEndpoints() {
+      return [{ providerName: 'P', pricing: null, supportedParameters: [] }]
+    },
+  })
+  const files = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'files' })
+  assert.equal(files.fileSupported, true)
+  const noFiles = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'no-files' })
+  assert.equal(noFiles.fileSupported, false)
+})
+
 test('non-interactive selection with zdr picks the cheapest zero-retention endpoint', async () => {
   const provider = fakeProvider({
     meta: { name: 'openrouter', hasEndpoints: true, supportsZdr: true },

@@ -223,6 +223,49 @@ test('--image happy path writes a resumable session with refs and prints saved/c
   assert.equal(prefs.lastImageModel, 'flux-1-1')
 })
 
+test('--image persists the session creation time, not the generation end time', async (t) => {
+  const RealDate = Date
+  let offset = 0
+  class ShiftedDate extends RealDate {
+    constructor(...args) {
+      super(...(args.length === 0 ? [RealDate.now() + offset] : args))
+    }
+    static now() {
+      return RealDate.now() + offset
+    }
+  }
+  globalThis.Date = ShiftedDate
+  t.after(() => { globalThis.Date = RealDate })
+
+  mockVeniceFetch(t, {
+    onGenerate: async () => {
+      // A generation that "takes a minute": the session's createdAt must
+      // still be the claim time, not the moment the response landed.
+      offset = 60_000
+      return jsonResponse({ id: 'gen-1', images: [B64_1], timing: {} })
+    },
+  })
+  withApiKey(t)
+  const file = await tempConfig(t)
+  mockConsole(t)
+
+  const dir = await sessionsDir()
+  const before = new Set((await readdir(dir).catch(() => [])).filter((f) => f.endsWith('.json') && !f.startsWith('.')))
+
+  const { exited } = await runImageGen(t, { overrides: { config: file }, prefs: {} })
+  assert.equal(exited, false)
+
+  const created = (await readdir(dir)).filter((f) => f.endsWith('.json') && !f.startsWith('.') && !before.has(f))
+  assert.equal(created.length, 1)
+  const saved = JSON.parse(await readFile(join(dir, created[0]), 'utf-8'))
+  const createdAt = new RealDate(saved.createdAt).getTime()
+  const updatedAt = new RealDate(saved.updatedAt).getTime()
+  // createdAt must be the claim time (before the mocked 60s generation);
+  // updatedAt lands after it. With the bug, both equal the finalize time
+  // (diff ~0ms).
+  assert.ok(updatedAt - createdAt >= 60_000 && updatedAt - createdAt <= 61_000, `diff was ${updatedAt - createdAt}ms`)
+})
+
 test('--image with --image-model skips the picker', async (t) => {
   const { bodies } = mockVeniceFetch(t)
   withApiKey(t)

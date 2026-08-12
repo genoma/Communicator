@@ -114,6 +114,10 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --e2ee is only available with --provider venice.')
   }
 
+  if (opts.zdr === true && opts.provider !== 'openrouter') {
+    errors.push('Error: --zdr is only available with --provider openrouter.')
+  }
+
   if (opts.e2ee === true && opts.zdr === true) {
     errors.push('Error: --e2ee cannot be combined with --zdr.')
   }

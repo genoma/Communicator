@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { Readable } from 'node:stream'
 import { ApiError } from '../src/errors.js'
 import { fetchImageModels, resetImageModelCaches, generateImage } from '../src/providers/openrouter.js'
 
@@ -210,15 +211,25 @@ test('generateImage downloads URL-only image responses', async (t) => {
   let fetchCount = 0
   t.mock.method(globalThis, 'fetch', async (url) => {
     fetchCount++
-    if (fetchCount === 1) {
-      return jsonResponse({ data: [{ url: 'https://example.com/img.png', media_type: 'image/png' }], usage: { cost: 0.01 } })
-    }
-    assert.equal(String(url), 'https://example.com/img.png')
-    return new Response(Buffer.from('fetched-bytes'), { status: 200, headers: { 'Content-Type': 'image/png' } })
+    assert.equal(String(url).endsWith('/images'), true)
+    return jsonResponse({ data: [{ url: 'https://example.com/img.png', media_type: 'image/png' }], usage: { cost: 0.01 } })
   })
+  const requestFn = (parsed) => {
+    assert.equal(parsed.hostname, 'example.com')
+    const res = Readable.from([Buffer.from('fetched-bytes')])
+    res.statusCode = 200
+    res.headers = { 'content-type': 'image/png' }
+    return {
+      on(event, listener) {
+        if (event === 'response') queueMicrotask(() => listener(res))
+        return this
+      },
+      end() {},
+    }
+  }
 
-  const result = await generateImage({ apiKey: 'key', model: 'qwen/qwen-image-3', prompt: 'p' })
-  assert.equal(fetchCount, 2)
+  const result = await generateImage({ apiKey: 'key', model: 'qwen/qwen-image-3', prompt: 'p', requestFn })
+  assert.equal(fetchCount, 1)
   assert.equal(result.images.length, 1)
   assert.equal(result.images[0].dataUrl, `data:image/png;base64,${Buffer.from('fetched-bytes').toString('base64')}`)
 })

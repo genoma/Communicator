@@ -64,7 +64,9 @@ export function formatSessionTime(value, { utc = false } = {}) {
   if (!value) return 'Unknown'
   let time = String(value).replace('T', ' ')
   time = time.replace(/^(\d{4}-\d{2}-\d{2} )(\d{2})-(\d{2})-(\d{2})/, '$1$2:$3:$4')
-  if (utc) time = time.replace(/\.\d+Z$/, '') + ' UTC'
+  // UTC rendering drops the trailing Z or numeric offset (with or without
+  // fractional seconds) and appends a single explicit suffix.
+  if (utc) time = `${time.replace(/(\.\d+)?(Z|[+-]\d{2}:\d{2})$/, '')} UTC`
   return time
 }
 

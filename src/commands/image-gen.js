@@ -385,7 +385,9 @@ export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, s
     throw new CliError(NO_PROMPT_MESSAGE)
   }
 
-  const { dir, sessionId } = await createNewSession()
+  // createdAt comes from createNewSession, not generation-end time: the id
+  // encodes the true session creation moment and the export header shows it.
+  const { dir, sessionId, createdAt } = await createNewSession()
 
   let outcome
   try {
@@ -409,7 +411,7 @@ export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, s
     sessionId,
     messages,
     outcome,
-    createdAt: new Date().toISOString(),
+    createdAt,
     providerName: providerType,
     stdout,
   })

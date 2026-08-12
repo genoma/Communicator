@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { Readable } from 'node:stream'
 import { ApiError } from '../src/errors.js'
 
 // Do not statically import src modules that pull in constants.js here: the
@@ -28,14 +29,60 @@ function sessionDir(sessionId) {
   return join(tempHome, '.communicator', 'sessions', 'attachments', sessionId)
 }
 
-test('downloads a remote image into the session attachment dir', async (t) => {
-  const fetchMock = t.mock.method(globalThis, 'fetch', async () => new Response(Buffer.from('png-bytes'), {
-    status: 200,
-    headers: { 'Content-Type': 'image/png' },
-  }))
-  const res = await downloadRemotePart(imagePart('https://example.com/photo.png'), 'sess-1')
+// Fakes the pinned-fetch transport (http.js): a request function shaped like
+// node's http(s).request that answers with a fixed Node-Readable response.
+function nodeResponse({ status = 200, headers = {}, body = null }) {
+  let stream
+  if (body == null) stream = Readable.from([])
+  else if (body instanceof ReadableStream) stream = Readable.fromWeb(body)
+  else if (typeof body.pipe === 'function') stream = body
+  else stream = Readable.from([Buffer.isBuffer(body) ? body : Buffer.from(body)])
+  stream.statusCode = status
+  stream.headers = headers
+  return stream
+}
 
-  assert.equal(fetchMock.mock.callCount(), 1)
+function respond(response) {
+  return () => ({
+    on(event, listener) {
+      if (event === 'response') queueMicrotask(() => listener(response))
+      return this
+    },
+    end() {},
+  })
+}
+
+function failWith(err) {
+  return () => ({
+    on(event, listener) {
+      if (event === 'error') queueMicrotask(() => listener(err))
+      return this
+    },
+    end() {},
+  })
+}
+
+function spyRequest(response) {
+  let calls = 0
+  const requestFn = () => {
+    calls++
+    return {
+      on(event, listener) {
+        if (event === 'response') queueMicrotask(() => listener(response))
+        return this
+      },
+      end() {},
+    }
+  }
+  requestFn.calls = () => calls
+  return requestFn
+}
+
+test('downloads a remote image into the session attachment dir', async () => {
+  const requestFn = spyRequest(nodeResponse({ headers: { 'Content-Type': 'image/png' }, body: Buffer.from('png-bytes') }))
+  const res = await downloadRemotePart(imagePart('https://example.com/photo.png'), 'sess-1', { requestFn })
+
+  assert.equal(requestFn.calls(), 1)
   assert.equal(res.error, undefined)
   assert.equal(res.part.image_url.url, `data:image/png;base64,${Buffer.from('png-bytes').toString('base64')}`)
   const dir = sessionDir('sess-1')
@@ -46,74 +93,67 @@ test('downloads a remote image into the session attachment dir', async (t) => {
   assert.equal(res.savedTo, join(dir, files[0]))
 })
 
-test('passes inline data URLs through without fetching', async (t) => {
-  const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('should not fetch') })
+test('passes inline data URLs through without fetching', async () => {
+  const requestFn = failWith(new Error('should not fetch'))
   const part = imagePart('data:image/png;base64,AAAA')
-  const res = await downloadRemotePart(part, 'sess-2')
-  assert.equal(fetchMock.mock.callCount(), 0)
+  const res = await downloadRemotePart(part, 'sess-2', { requestFn })
   assert.deepEqual(res, { part })
 })
 
-test('rejects non-http URLs without fetching', async (t) => {
-  const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('should not fetch') })
-  const res = await downloadRemotePart(filePart('ftp://example.com/doc.pdf'), 'sess-3')
-  assert.equal(fetchMock.mock.callCount(), 0)
+test('rejects non-http URLs without fetching', async () => {
+  const requestFn = failWith(new Error('should not fetch'))
+  const res = await downloadRemotePart(filePart('ftp://example.com/doc.pdf'), 'sess-3', { requestFn })
   assert.equal(res.error, 'unsupported URL')
   assert.equal(res.dataUrl, undefined)
 })
 
-test('reports the status when the remote responds with an error', async (t) => {
-  t.mock.method(globalThis, 'fetch', async () => new Response('nope', { status: 404 }))
-  const res = await downloadRemotePart(imagePart('https://example.com/missing.png'), 'sess-4')
+test('reports the status when the remote responds with an error', async () => {
+  const requestFn = respond(nodeResponse({ status: 404, body: Buffer.from('nope') }))
+  const res = await downloadRemotePart(imagePart('https://example.com/missing.png'), 'sess-4', { requestFn })
   assert.equal(res.error, 'HTTP 404')
   assert.equal(res.dataUrl, undefined)
   assert.equal(res.savedTo, undefined)
 })
 
-test('reports network failures', async (t) => {
-  t.mock.method(globalThis, 'fetch', async () => { throw new ApiError('network down', { retryable: false }) })
-  const res = await downloadRemotePart(imagePart('https://example.com/a.png'), 'sess-5')
+test('reports network failures', async () => {
+  const requestFn = failWith(new ApiError('network down', { retryable: false }))
+  const res = await downloadRemotePart(imagePart('https://example.com/a.png'), 'sess-5', { requestFn })
   assert.equal(res.error, 'network down')
 })
 
-test('rejects responses over the size cap', async (t) => {
+test('rejects responses over the size cap', async () => {
   const big = new Uint8Array(MAX_IMAGE_ATTACHMENT_BYTES + 1)
-  t.mock.method(globalThis, 'fetch', async () => new Response(big, { status: 200 }))
-  const res = await downloadRemotePart(imagePart('https://example.com/huge.png'), 'sess-6')
+  const requestFn = respond(nodeResponse({ body: big }))
+  const res = await downloadRemotePart(imagePart('https://example.com/huge.png'), 'sess-6', { requestFn })
   assert.match(res.error, /exceeds 20 MB/)
   assert.equal(res.dataUrl, undefined)
 })
 
-test('rejects oversized responses from the content-length header without reading the body', async (t) => {
+test('rejects oversized responses from the content-length header without reading the body', async () => {
   let bodyRead = false
-  const body = new ReadableStream({
-    start(controller) {
-      controller.enqueue(new TextEncoder().encode('small'))
-      controller.close()
-    },
-    pull() {
-      bodyRead = true
-    },
-  })
-  t.mock.method(globalThis, 'fetch', async () => new Response(body, {
-    status: 200,
+  async function* trackedBody() {
+    bodyRead = true
+    yield Buffer.from('small')
+  }
+  const requestFn = respond(nodeResponse({
     headers: { 'Content-Length': String(MAX_IMAGE_ATTACHMENT_BYTES + 1) },
+    body: Readable.from(trackedBody()),
   }))
-  const res = await downloadRemotePart(imagePart('https://example.com/huge.png'), 'sess-10')
+  const res = await downloadRemotePart(imagePart('https://example.com/huge.png'), 'sess-10', { requestFn })
   assert.match(res.error, /exceeds 20 MB/)
   assert.equal(res.dataUrl, undefined)
   assert.equal(bodyRead, false)
 })
 
-test('infers the extension from the URL when no content-type is sent', async (t) => {
-  t.mock.method(globalThis, 'fetch', async () => new Response(Buffer.from('bytes'), { status: 200 }))
-  const res = await downloadRemotePart(imagePart('https://example.com/photo.webp'), 'sess-7')
+test('infers the extension from the URL when no content-type is sent', async () => {
+  const requestFn = respond(nodeResponse({ body: Buffer.from('bytes') }))
+  const res = await downloadRemotePart(imagePart('https://example.com/photo.webp'), 'sess-7', { requestFn })
   assert.equal(res.part.image_url.url, `data:image/webp;base64,${Buffer.from('bytes').toString('base64')}`)
 })
 
-test('falls back to bin ext and octet-stream when nothing identifies the type', async (t) => {
-  t.mock.method(globalThis, 'fetch', async () => new Response(Buffer.from('bytes'), { status: 200 }))
-  const res = await downloadRemotePart(filePart('https://example.com/blob'), 'sess-8')
+test('falls back to bin ext and octet-stream when nothing identifies the type', async () => {
+  const requestFn = respond(nodeResponse({ body: Buffer.from('bytes') }))
+  const res = await downloadRemotePart(filePart('https://example.com/blob'), 'sess-8', { requestFn })
   assert.equal(res.part.file.file_data, `data:application/octet-stream;base64,${Buffer.from('bytes').toString('base64')}`)
   const files = await readdir(sessionDir('sess-8'))
   assert.match(files[0], /\.bin$/)
@@ -126,73 +166,64 @@ test('keeps the data URL when the blob write fails', async (t) => {
   await mkdir(join(homeDir, 'sessions'), { recursive: true })
   const blockerDir = join(homeDir, 'sessions', 'attachments')
   await writeFile(blockerDir, 'not a dir')
-  t.mock.method(globalThis, 'fetch', async () => new Response(Buffer.from('png-bytes'), {
-    status: 200,
-    headers: { 'Content-Type': 'image/png' },
-  }))
-  const res = await downloadRemotePart(imagePart('https://example.com/a.png'), 'sess-9')
+  const requestFn = respond(nodeResponse({ headers: { 'Content-Type': 'image/png' }, body: Buffer.from('png-bytes') }))
+  const res = await downloadRemotePart(imagePart('https://example.com/a.png'), 'sess-9', { requestFn })
   assert.equal(res.part.image_url.url, `data:image/png;base64,${Buffer.from('png-bytes').toString('base64')}`)
   assert.equal(res.savedTo, null)
   await rm(blockerDir)
 })
 
-test('skips the blob write without a session id', async (t) => {
-  t.mock.method(globalThis, 'fetch', async () => new Response(Buffer.from('png-bytes'), {
-    status: 200,
-    headers: { 'Content-Type': 'image/png' },
-  }))
-  const res = await downloadRemotePart(imagePart('https://example.com/a.png'), null)
+test('skips the blob write without a session id', async () => {
+  const requestFn = respond(nodeResponse({ headers: { 'Content-Type': 'image/png' }, body: Buffer.from('png-bytes') }))
+  const res = await downloadRemotePart(imagePart('https://example.com/a.png'), null, { requestFn })
   assert.equal(res.savedTo, null)
   assert.ok(res.dataUrl.startsWith('data:image/png;base64,'))
 })
 
-test('blocks loopback and private address literals without fetching', async (t) => {
-  const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('should not fetch') })
+test('blocks loopback and private address literals without fetching', async () => {
+  const requestFn = failWith(new Error('should not fetch'))
   for (const url of ['http://127.0.0.1/x.png', 'http://10.0.0.5/x.png', 'http://192.168.1.10/x.png', 'http://169.254.169.254/latest/meta-data/', 'http://[::1]/x.png']) {
-    const res = await downloadRemotePart(imagePart(url), 'sess-blocked')
+    const res = await downloadRemotePart(imagePart(url), 'sess-blocked', { requestFn })
     assert.match(res.error, /blocked URL/)
     assert.equal(res.dataUrl, undefined)
   }
-  assert.equal(fetchMock.mock.callCount(), 0)
 })
 
-test('blocks hosts resolving to loopback addresses without fetching', async (t) => {
-  const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('should not fetch') })
-  const res = await downloadRemotePart(imagePart('http://localhost/x.png'), 'sess-local')
+test('blocks hosts resolving to loopback addresses without fetching', async () => {
+  const requestFn = failWith(new Error('should not fetch'))
+  const res = await downloadRemotePart(imagePart('http://localhost/x.png'), 'sess-local', { requestFn })
   assert.match(res.error, /blocked URL/)
-  assert.equal(fetchMock.mock.callCount(), 0)
 })
 
-test('re-validates redirect targets and blocks hops to private addresses', async (t) => {
-  let calls = 0
-  t.mock.method(globalThis, 'fetch', async () => {
-    calls++
-    if (calls === 1) {
-      return new Response(null, { status: 302, headers: { Location: 'http://127.0.0.1/internal.png' } })
-    }
-    throw new Error('should not fetch the private target')
-  })
-  const res = await downloadRemotePart(imagePart('https://example.com/redir.png'), 'sess-redir')
+test('re-validates redirect targets and blocks hops to private addresses', async () => {
+  const requestFn = spyRequest(nodeResponse({ status: 302, headers: { Location: 'http://127.0.0.1/internal.png' } }))
+  const res = await downloadRemotePart(imagePart('https://example.com/redir.png'), 'sess-redir', { requestFn })
   assert.match(res.error, /blocked URL/)
-  assert.equal(calls, 1)
+  assert.equal(requestFn.calls(), 1)
 })
 
-test('follows safe redirects and downloads the final target', async (t) => {
+test('follows safe redirects and downloads the final target', async () => {
   let calls = 0
-  t.mock.method(globalThis, 'fetch', async () => {
+  const requestFn = () => {
     calls++
-    if (calls === 1) {
-      return new Response(null, { status: 302, headers: { Location: 'https://example.com/final.png' } })
+    const response = calls === 1
+      ? nodeResponse({ status: 302, headers: { Location: 'https://example.com/final.png' } })
+      : nodeResponse({ status: 200, headers: { 'Content-Type': 'image/png' }, body: Buffer.from('final-bytes') })
+    return {
+      on(event, listener) {
+        if (event === 'response') queueMicrotask(() => listener(response))
+        return this
+      },
+      end() {},
     }
-    return new Response(Buffer.from('final-bytes'), { status: 200, headers: { 'Content-Type': 'image/png' } })
-  })
-  const res = await downloadRemotePart(imagePart('https://example.com/start.png'), 'sess-redir2')
+  }
+  const res = await downloadRemotePart(imagePart('https://example.com/start.png'), 'sess-redir2', { requestFn })
   assert.equal(calls, 2)
   assert.equal(res.error, undefined)
   assert.equal(res.part.image_url.url, `data:image/png;base64,${Buffer.from('final-bytes').toString('base64')}`)
 })
 
-test('aborts the body read once the size cap is crossed mid-stream', async (t) => {
+test('aborts the body read once the size cap is crossed mid-stream', async () => {
   const chunk = new Uint8Array(1024 * 1024)
   let cancelled = false
   const body = new ReadableStream({
@@ -204,8 +235,8 @@ test('aborts the body read once the size cap is crossed mid-stream', async (t) =
       cancelled = true
     },
   })
-  t.mock.method(globalThis, 'fetch', async () => new Response(body, { status: 200 }))
-  const res = await downloadRemotePart(imagePart('https://example.com/streamed.png'), 'sess-cap')
+  const requestFn = respond(nodeResponse({ body }))
+  const res = await downloadRemotePart(imagePart('https://example.com/streamed.png'), 'sess-cap', { requestFn })
   assert.match(res.error, /exceeds 20 MB/)
   assert.equal(res.dataUrl, undefined)
   assert.equal(cancelled, true)

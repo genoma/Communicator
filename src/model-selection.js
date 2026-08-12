@@ -32,7 +32,15 @@ function capabilityFlags(provider, modelData, endpoint) {
     }
   }
 
-  const fileSupported = isVenice ? capabilities?.supportsFileInput !== false : true
+  // Venice advertises file input via its capabilities object. OpenRouter
+  // reports the `file` parameter through supported_parameters; when the
+  // list is present (non-empty) it is authoritative, otherwise file support
+  // stays assumed so the attachment gate keeps its current behavior.
+  const fileSupported = isVenice
+    ? capabilities?.supportsFileInput !== false
+    : Array.isArray(supportedParams) && supportedParams.length > 0
+      ? supportedParams.includes('file')
+      : true
 
   const supportsE2EE = isVenice ? capabilities?.supportsE2EE === true : undefined
 

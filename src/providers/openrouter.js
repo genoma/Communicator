@@ -190,7 +190,7 @@ async function mapWithConcurrency(items, limit, fn) {
   return results
 }
 
-export async function generateImage({ apiKey, model, prompt, format, variants = 1, aspectRatio, resolution, quality, seed, width, height, provider, signal, timeoutMs = IMAGE_GEN_TIMEOUT_MS }) {
+export async function generateImage({ apiKey, model, prompt, format, variants = 1, aspectRatio, resolution, quality, seed, width, height, provider, signal, timeoutMs = IMAGE_GEN_TIMEOUT_MS, requestFn }) {
   const body = { model, prompt, n: variants }
   if (provider) {
     body.provider = { order: [provider], allow_fallbacks: false }
@@ -223,7 +223,7 @@ export async function generateImage({ apiKey, model, prompt, format, variants = 
     if (!b64 && typeof d.url === 'string') {
       // URL-only responses (no base64 payload) are downloaded the same way
       // produced artifacts are: SSRF-checked, redirect re-validated, size-capped.
-      const fetched = await fetchSafeBytes(d.url, { maxBytes: MAX_IMAGE_ATTACHMENT_BYTES })
+      const fetched = await fetchSafeBytes(d.url, { maxBytes: MAX_IMAGE_ATTACHMENT_BYTES, requestFn })
       if (fetched) b64 = fetched.toString('base64')
     }
     if (!b64) {

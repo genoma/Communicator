@@ -98,6 +98,58 @@ test('captures usage chunk and skips [DONE]', async () => {
   assert.deepEqual(finalUsage, usage)
 })
 
+test('captures full-message content carried on the usage chunk', async () => {
+  const usage = { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 }
+  const { fullText, finalUsage } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ message: { content: 'full answer' } }], usage }),
+      'data: [DONE]\n\n',
+    ]),
+    () => {}
+  )
+  assert.equal(fullText, 'full answer')
+  assert.deepEqual(finalUsage, usage)
+})
+
+test('captures a final delta token carried on the usage chunk', async () => {
+  const { fullText, finalUsage } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: 'Hello' } }] }),
+      event({ choices: [{ delta: { content: ' tail' } }], usage: { total_tokens: 5 } }),
+    ]),
+    () => {}
+  )
+  assert.equal(fullText, 'Hello tail')
+  assert.deepEqual(finalUsage, { total_tokens: 5 })
+})
+
+test('does not duplicate text when the usage chunk carries both message and delta content', async () => {
+  const { fullText } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ message: { content: 'once' }, delta: { content: 'once' } }], usage: { total_tokens: 2 } }),
+    ]),
+    () => {}
+  )
+  assert.equal(fullText, 'once')
+})
+
+test('closes the thinking block when the stream ends mid-reasoning', async () => {
+  const tokens = []
+  const { fullReasoning, fullText } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { reasoning_content: 'deep thoughts' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t])
+  )
+  assert.equal(fullReasoning, 'deep thoughts')
+  assert.equal(fullText, '')
+  assert.deepEqual(tokens, [
+    ['start_reasoning', '\n'],
+    ['reasoning', 'deep thoughts'],
+    ['end_reasoning', null],
+  ])
+})
+
 test('skips unparseable lines and counts them', async () => {
   const { fullText, skippedChunks } = await parseSSEStream(
     streamReader([

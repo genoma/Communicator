@@ -194,6 +194,22 @@ test('generateImage throws ApiError when the images key is missing entirely', as
   )
 })
 
+test('generateImage throws ApiError on malformed image payloads', async (t) => {
+  const calls = []
+  mockGenerate(t, calls, { response: { id: 'gen-1', images: [null] } })
+
+  await assert.rejects(
+    venice.generateImage({ apiKey: 'key', model: 'm', prompt: 'x' }),
+    (err) => err instanceof ApiError && err.message.includes('malformed image payload')
+  )
+
+  mockGenerate(t, calls, { response: { id: 'gen-2', images: [{ not: 'base64' }] } })
+  await assert.rejects(
+    venice.generateImage({ apiKey: 'key', model: 'm', prompt: 'x' }),
+    (err) => err instanceof ApiError && err.message.includes('malformed image payload')
+  )
+})
+
 test('generateImage rejects with TimeoutError when the request exceeds timeoutMs', async (t) => {
   t.mock.method(globalThis, 'fetch', hangingFetch())
 

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 import { extForMime, mimeForExt, partUrl } from './attachments.js'
-import { fetchWithRedirects, fetchWithTimeout, readBodyWithDeadline } from './http.js'
+import { fetchWithRedirects, readBodyWithDeadline } from './http.js'
 import { SESSIONS_DIR, MAX_IMAGE_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES } from './constants.js'
 
 export const REF_PREFIX = 'ref://attachments/'
@@ -59,16 +59,16 @@ async function externalizeDataUrl(value, dir) {
   const info = dataUrlInfo(value)
   if (!info) return value
 
+  const bytes = Buffer.from(info.base64, 'base64')
   // Blobs are content-addressed, so the same data URL in the same session
-  // dir always maps to the same ref; remembering it skips re-hashing every
-  // attachment on every session save. Keyed by dir because blobs are stored
-  // per session, not shared across sessions.
-  const cacheKey = `${dir}\u0000${value}`
+  // dir always maps to the same ref; remembering it (keyed by the content
+  // hash, never the payload itself) skips the blob write on every session
+  // save without pinning the full data URL in memory.
+  const hash = createHash('sha256').update(bytes).digest('hex')
+  const cacheKey = `${dir}\u0000${hash}`
   const cached = dataUrlRefCache.get(cacheKey)
   if (cached) return cached
 
-  const bytes = Buffer.from(info.base64, 'base64')
-  const hash = createHash('sha256').update(bytes).digest('hex')
   const ext = extForMime(info.mime)
   const ref = `${REF_PREFIX}${hash}.${ext}`
 
@@ -145,7 +145,7 @@ export async function hydrateAttachments(messages, dir) {
 // success. Inline data URLs pass through untouched. Returns
 // { part, dataUrl?, savedTo? } on success and { part, error } on failure —
 // the original URL stays in the part when download fails.
-export async function downloadRemotePart(part, sessionId) {
+export async function downloadRemotePart(part, sessionId, { requestFn } = {}) {
   const url = partUrl(part)
   if (!url || typeof url !== 'string') return { part, error: 'no URL' }
   if (url.startsWith('data:')) return { part }
@@ -154,18 +154,20 @@ export async function downloadRemotePart(part, sessionId) {
   const limit = part.type === 'image_url' ? MAX_IMAGE_ATTACHMENT_BYTES : MAX_FILE_ATTACHMENT_BYTES
   const exceedsMsg = `response exceeds ${Math.round(limit / 1024 / 1024)} MB`
 
-  // Redirects are followed manually so every hop is SSRF-checked; fetch
-  // would otherwise follow them unchecked.
-  const { res, error, url: finalUrl } = await fetchWithRedirects(url, (current) =>
-    fetchWithTimeout(current, { redirect: 'manual' }, { timeoutMs: 30_000 })
-  )
+  // Redirects are followed manually so every hop is SSRF-checked and the
+  // DNS is pinned to the validated addresses (rebinding-safe).
+  const { res, error, url: finalUrl } = await fetchWithRedirects(url, { timeoutMs: 30_000, requestFn })
   if (!res) return { part, error: error || 'could not fetch URL' }
-  if (res.status >= 400) return { part, error: `HTTP ${res.status}` }
+  if (res.status >= 400) {
+    await res.body?.cancel?.()
+    return { part, error: `HTTP ${res.status}` }
+  }
 
   let bytes
   try {
     const contentLength = Number(res.headers.get('content-length') || 0)
     if (contentLength > limit) {
+      await res.body?.cancel?.()
       return { part, error: exceedsMsg }
     }
     bytes = await readBodyWithDeadline(res, { limit, timeoutMs: 30_000 })

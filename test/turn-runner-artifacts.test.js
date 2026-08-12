@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { Readable } from 'node:stream'
 import { ApiError } from '../src/errors.js'
 
 const tempHome = await mkdtemp(join(tmpdir(), 'communicator-turn-home-'))
@@ -11,6 +12,40 @@ mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 const { createTurnRunner, createSessionState } = await import('../src/turn-runner.js')
 
 after(() => rm(tempHome, { recursive: true, force: true }))
+
+function nodeResponse({ status = 200, headers = {}, body = null }) {
+  let stream
+  if (body == null) stream = Readable.from([])
+  else if (body instanceof ReadableStream) stream = Readable.fromWeb(body)
+  else if (typeof body.pipe === 'function') stream = body
+  else stream = Readable.from([Buffer.isBuffer(body) ? body : Buffer.from(body)])
+  stream.statusCode = status
+  stream.headers = headers
+  return stream
+}
+
+function respond(response) {
+  return () => ({
+    on(event, listener) {
+      if (event === 'response') queueMicrotask(() => listener(response))
+      return this
+    },
+    end() {},
+  })
+}
+
+function failWith(err) {
+  return () => ({
+    on(event, listener) {
+      if (event === 'error') queueMicrotask(() => listener(err))
+      return this
+    },
+    end() {},
+  })
+}
+
+const pngBytes = Buffer.from('png-bytes')
+const pngResponse = () => nodeResponse({ headers: { 'Content-Type': 'image/png' }, body: pngBytes })
 
 function fakeState(overrides = {}) {
   const state = {
@@ -76,6 +111,7 @@ function runTurn(deps, state) {
     interruptSave: deps.interruptSave,
     exit: deps.exit,
     sessionState: deps.sessionState ?? createSessionState(),
+    requestFn: deps.requestFn,
   })
   return runner.runTurn()
 }
@@ -104,19 +140,18 @@ test('a turn with streamed image parts saves parts content and prints artifact l
 test('an image part from a data URL is saved verbatim without fetching', async (t) => {
   t.mock.method(console, 'log', () => {})
   t.mock.method(console, 'error', () => {})
-  const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('should not fetch') })
+  const requestFn = () => { throw new Error('should not fetch') }
   const part = { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }
   const provider = {
     async chatCompletion() {
       return { content: 'Here', parts: [part] }
     },
   }
-  const { deps } = makeDeps({ provider })
+  const { deps } = makeDeps({ provider, requestFn })
   const state = fakeState()
 
   await runTurn(deps, state)
 
-  assert.equal(fetchMock.mock.callCount(), 0)
   assert.deepEqual(state.messages[2].content, [
     { type: 'text', text: 'Here' },
     { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
@@ -126,24 +161,21 @@ test('an image part from a data URL is saved verbatim without fetching', async (
 test('a remote image part is downloaded and replaced by a data URL', async (t) => {
   t.mock.method(console, 'log', () => {})
   t.mock.method(console, 'error', () => {})
-  t.mock.method(globalThis, 'fetch', async () => new Response(Buffer.from('png-bytes'), {
-    status: 200,
-    headers: { 'Content-Type': 'image/png' },
-  }))
+  const requestFn = respond(pngResponse())
   const part = { type: 'image_url', image_url: { url: 'https://example.com/photo.png' } }
   const provider = {
     async chatCompletion() {
       return { content: 'Here', parts: [part] }
     },
   }
-  const { deps, text } = makeDeps({ provider })
+  const { deps, text } = makeDeps({ provider, requestFn })
   const state = fakeState()
 
   await runTurn(deps, state)
 
   assert.deepEqual(state.messages[2].content, [
     { type: 'text', text: 'Here' },
-    { type: 'image_url', image_url: { url: `data:image/png;base64,${Buffer.from('png-bytes').toString('base64')}` } },
+    { type: 'image_url', image_url: { url: `data:image/png;base64,${pngBytes.toString('base64')}` } },
   ])
   assert.match(text(), /image: photo\.png/)
   assert.match(text(), /saved to .*attachments[\\/]2026-01-01T00-00-00/)
@@ -152,14 +184,14 @@ test('a remote image part is downloaded and replaced by a data URL', async (t) =
 test('a failed download keeps the remote URL and prints the failure', async (t) => {
   t.mock.method(console, 'log', () => {})
   t.mock.method(console, 'error', () => {})
-  t.mock.method(globalThis, 'fetch', async () => { throw new ApiError('network down', { retryable: false }) })
+  const requestFn = failWith(new ApiError('network down', { retryable: false }))
   const part = { type: 'image_url', image_url: { url: 'https://example.com/photo.png' } }
   const provider = {
     async chatCompletion() {
       return { content: 'Here', parts: [part] }
     },
   }
-  const { deps, text } = makeDeps({ provider })
+  const { deps, text } = makeDeps({ provider, requestFn })
   const state = fakeState()
 
   await runTurn(deps, state)
@@ -174,23 +206,20 @@ test('a failed download keeps the remote URL and prints the failure', async (t) 
 test('markdown images become parts for image-output models and are downloaded', async (t) => {
   t.mock.method(console, 'log', () => {})
   t.mock.method(console, 'error', () => {})
-  t.mock.method(globalThis, 'fetch', async () => new Response(Buffer.from('png-bytes'), {
-    status: 200,
-    headers: { 'Content-Type': 'image/png' },
-  }))
+  const requestFn = respond(pngResponse())
   const provider = {
     async chatCompletion() {
       return { content: 'Here: ![](https://example.com/a.png)' }
     },
   }
-  const { deps, text } = makeDeps({ provider })
+  const { deps, text } = makeDeps({ provider, requestFn })
   const state = fakeState({ imageOutputSupported: true })
 
   await runTurn(deps, state)
 
   assert.deepEqual(state.messages[2].content, [
     { type: 'text', text: 'Here: ![](https://example.com/a.png)' },
-    { type: 'image_url', image_url: { url: `data:image/png;base64,${Buffer.from('png-bytes').toString('base64')}` } },
+    { type: 'image_url', image_url: { url: `data:image/png;base64,${pngBytes.toString('base64')}` } },
   ])
   assert.match(text(), /image: a\.png/)
 })
@@ -198,18 +227,17 @@ test('markdown images become parts for image-output models and are downloaded', 
 test('markdown images stay plain text when image output is not advertised', async (t) => {
   t.mock.method(console, 'log', () => {})
   t.mock.method(console, 'error', () => {})
-  const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('should not fetch') })
+  const requestFn = () => { throw new Error('should not fetch') }
   const provider = {
     async chatCompletion() {
       return { content: 'Here: ![](https://example.com/a.png)' }
     },
   }
-  const { deps } = makeDeps({ provider })
+  const { deps } = makeDeps({ provider, requestFn })
   const state = fakeState()
 
   await runTurn(deps, state)
 
-  assert.equal(fetchMock.mock.callCount(), 0)
   assert.equal(state.messages[2].content, 'Here: ![](https://example.com/a.png)')
 })
 

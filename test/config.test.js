@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, writeFile, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { applyPreferenceUpdates, loadSystemPrompt, getApiKey, getImageDefaults, mergeImageDefaults, loadPreferences } from '../src/config.js'
@@ -245,10 +245,18 @@ test('getApiKey trims the value from the environment', () => {
   }
 })
 
-test('loadPreferences returns empty object for corrupt JSON', async (t) => {
+test('loadPreferences returns empty object for corrupt JSON and backs up the file', async (t) => {
   const dir = await tempDir(t)
   const file = join(dir, 'corrupt.json')
   await writeFile(file, '{ not valid json')
+  t.mock.method(console, 'error', () => {})
   const result = await loadPreferences(file)
   assert.deepEqual(result, {})
+  const entries = await readdir(dir)
+  const backup = entries.find((e) => e !== 'corrupt.json')
+  assert.ok(backup, 'expected a backup file')
+  assert.match(backup, /^corrupt\.json\.corrupt-/)
+  assert.equal(await readFile(join(dir, backup), 'utf-8'), '{ not valid json')
+  // The corrupt original is gone, so a later save cannot clobber it.
+  await assert.rejects(readFile(file, 'utf-8'), /ENOENT/)
 })

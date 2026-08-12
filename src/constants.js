@@ -86,6 +86,7 @@ export const CITATION_GROUP = '(\\d+(?:,\\d+)*)'
 
 export function formatCost(cost) {
   if (cost === null || cost === undefined || !Number.isFinite(cost)) return 'N/A'
-  if (cost < 0.000001) return '$0.000000'
+  if (cost === 0) return '$0.000000'
+  if (cost < 0.000001) return '< $0.000001'
   return `$${cost.toFixed(6)}`
 }

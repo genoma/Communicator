@@ -13,6 +13,7 @@ const nodeGlobals = {
   AbortSignal: 'readonly',
   DOMException: 'readonly',
   EventTarget: 'readonly',
+  Headers: 'readonly',
   TextDecoder: 'readonly',
   TextEncoder: 'readonly',
   ReadableStream: 'readonly',

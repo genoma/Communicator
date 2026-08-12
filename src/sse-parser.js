@@ -156,10 +156,9 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
 
     collectSources(parsed, fullSources, seenUrls, onSources)
 
-    if (parsed.usage) {
-      finalUsage = parsed.usage
-      return
-    }
+    // Usage must not short-circuit content extraction: some providers attach
+    // the full message on the same final chunk that carries usage.
+    if (parsed.usage) finalUsage = parsed.usage
 
     const choice = parsed.choices?.[0]
     const delta = choice?.delta
@@ -170,6 +169,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     // always collected but text is only emitted when nothing was streamed.
     // The delta may be an empty object on the final chunk, so the dedup
     // gate is based solely on the streamed text, never on the delta shape.
+    let finalTextEmitted = false
     if (Array.isArray(finalContent)) {
       const noTextYet = fullTextParts.length === 0
       for (const part of finalContent) {
@@ -182,6 +182,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
             const text = maybeDecrypt(part.text)
             fullTextParts.push(text)
             onToken(text, 'content')
+            finalTextEmitted = true
           }
         } else {
           addPart(part)
@@ -195,6 +196,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
       const text = maybeDecrypt(finalContent)
       fullTextParts.push(text)
       onToken(text, 'content')
+      finalTextEmitted = true
     }
 
     if (!delta) return
@@ -218,12 +220,17 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
         onToken(null, 'end_reasoning')
       }
       if (typeof contentToken === 'string' && contentToken) {
-        const text = maybeDecrypt(contentToken)
-        fullTextParts.push(text)
-        onToken(text, 'content')
+        // Skip delta text when the same chunk already emitted the final
+        // message content (it duplicates it exactly).
+        if (!finalTextEmitted) {
+          const text = maybeDecrypt(contentToken)
+          fullTextParts.push(text)
+          onToken(text, 'content')
+        }
       } else if (Array.isArray(contentToken)) {
         for (const part of contentToken) {
           if (part?.type === 'text' && typeof part.text === 'string') {
+            if (finalTextEmitted) continue
             const text = maybeDecrypt(part.text)
             fullTextParts.push(text)
             onToken(text, 'content')
@@ -237,14 +244,14 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
 
   const handleLine = (line) => {
     const trimmed = line.trim()
-    const match = trimmed.match(/^data:( ?)(.*)$/)
+    const match = trimmed.match(/^data: ?(.*)$/)
     if (match) {
       // Per the SSE spec consecutive `data:` lines form ONE event whose
       // payload is the lines joined with \n; parsing each line alone would
       // drop events split across multiple lines (e.g. a delta containing an
       // embedded newline). The event is only parsed at the boundary (a blank
       // line or EOF), when the data: sequence ends.
-      pendingDataLines.push(match[2])
+      pendingDataLines.push(match[1])
       return
     }
     if (trimmed === '' && pendingDataLines.length > 0) {
@@ -284,6 +291,9 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     if (pendingDataLines.length > 0) {
       handleDataEvent(pendingDataLines.join('\n'))
     }
+    // A stream that ends mid-thinking (reasoning deltas with no content
+    // delta) must still close the thinking block for the renderer.
+    if (inThinking) onToken(null, 'end_reasoning')
   } finally {
     // A stall or stream error must not leave the connection parked until the
     // server closes it; cancelling the reader aborts the fetch. A fully

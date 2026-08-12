@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fetchWithTimeout, fetchWithRetry, fetchSafeBytes, assertSafeUrl, sleep } from '../src/http.js'
+import { Readable } from 'node:stream'
+import { fetchWithTimeout, fetchWithRetry, fetchSafeBytes, assertSafeUrl, readBodyWithDeadline, pinnedFetch, sleep } from '../src/http.js'
 import { ApiError, TimeoutError } from '../src/errors.js'
 
 function abortAwareFetch() {
@@ -195,6 +196,29 @@ test('assertSafeUrl blocks deprecated IPv6 site-local addresses', async () => {
   assert.equal(await assertSafeUrl('https://[2600:1f18:2::42]/x'), null)
 })
 
+function nodeResponse({ status = 200, headers = {}, body = null }) {
+  let stream
+  if (body == null) stream = Readable.from([])
+  else if (body instanceof ReadableStream) stream = Readable.fromWeb(body)
+  else if (typeof body.pipe === 'function') stream = body
+  else stream = Readable.from([Buffer.isBuffer(body) ? body : Buffer.from(body)])
+  stream.statusCode = status
+  stream.headers = headers
+  return stream
+}
+
+// Delivers synchronously so mocked timers can never fire the transport's
+// own timeout before the response arrives.
+function respond(response) {
+  return () => ({
+    on(event, listener) {
+      if (event === 'response') listener(response)
+      return this
+    },
+    end() {},
+  })
+}
+
 test('fetchSafeBytes bounds a slow-drip body with the read deadline', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   let cancelled = false
@@ -206,9 +230,9 @@ test('fetchSafeBytes bounds a slow-drip body with the read deadline', async (t) 
       cancelled = true
     },
   })
-  t.mock.method(globalThis, 'fetch', async () => new Response(body, { status: 200 }))
+  const requestFn = respond(nodeResponse({ body }))
 
-  const promise = fetchSafeBytes('https://93.184.216.34/blob', { maxBytes: 1000, timeoutMs: 1000 })
+  const promise = fetchSafeBytes('https://93.184.216.34/blob', { maxBytes: 1000, timeoutMs: 1000, requestFn })
   await flushTimers(t)
   t.mock.timers.tick(1000)
   const result = await promise
@@ -219,4 +243,80 @@ test('fetchSafeBytes bounds a slow-drip body with the read deadline', async (t) 
 
 test('fetchSafeBytes rejects private IPv6 targets and reports oversized bodies', async () => {
   assert.equal(await fetchSafeBytes('http://[fec0::1]/x', { maxBytes: 100 }), null)
+})
+
+test('pinnedFetch pins DNS to the validated addresses and exposes status/headers', async () => {
+  let lookupOptions = null
+  const requestFn = (parsed, options) => {
+    assert.equal(parsed.hostname, 'example.com')
+    assert.equal(typeof options.lookup, 'function')
+    options.lookup('example.com', { all: true }, (err, entries) => {
+      lookupOptions = { err, entries }
+    })
+    return {
+      on(event, listener) {
+        if (event === 'response') queueMicrotask(() => listener(nodeResponse({ headers: { 'content-type': 'image/png' }, body: Buffer.from('x') })))
+        return this
+      },
+      end() {},
+    }
+  }
+  const res = await pinnedFetch('https://example.com/a.png', { addresses: ['1.2.3.4'], family: 4, requestFn })
+  assert.equal(res.status, 200)
+  assert.equal(res.headers.get('content-type'), 'image/png')
+  assert.deepEqual(lookupOptions.entries, [{ address: '1.2.3.4', family: 4 }])
+})
+
+test('readBodyWithDeadline resets the idle deadline on every chunk', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  // Chunks at t=0, 800, 1600 (then close): each read gap is under the 1000ms
+  // deadline, but the total is far over it — only an idle (reset-per-chunk)
+  // deadline survives this stream.
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('a'))
+      setTimeout(() => {
+        controller.enqueue(new TextEncoder().encode('b'))
+        setTimeout(() => {
+          controller.enqueue(new TextEncoder().encode('c'))
+          controller.close()
+        }, 800)
+      }, 800)
+    },
+  })
+  const res = { body }
+  const promise = readBodyWithDeadline(res, { timeoutMs: 1000 })
+  for (let i = 0; i < 2; i++) {
+    t.mock.timers.tick(800)
+    await Promise.resolve()
+  }
+  const bytes = await promise
+  assert.equal(Buffer.from(bytes).toString(), 'abc')
+})
+
+test('readBodyWithDeadline still dies on a stalled body', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let cancelled = false
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('a'))
+    },
+    cancel() {
+      cancelled = true
+    },
+  })
+  const promise = readBodyWithDeadline({ body }, { timeoutMs: 1000 })
+  const assertion = assert.rejects(promise, /could not read response body/)
+  t.mock.timers.tick(1000)
+  await assertion
+  assert.equal(cancelled, true)
+})
+
+test('fetchWithRetry wraps a non-throwing errorResponse as a non-retryable ApiError', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => new Response('nope', { status: 500 }))
+
+  await assert.rejects(
+    fetchWithRetry('https://example.test', {}, { errorResponse: () => undefined, retryDelays: [0, 0] }),
+    (err) => err instanceof ApiError && err.status === 500 && err.retryable === true
+  )
 })

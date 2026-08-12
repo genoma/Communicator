@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { ApiError, formatError } from '../src/errors.js'
 import { resolveReasoningFlag } from '../src/flags.js'
-import { formatModelPrice, formatPricePerM } from '../src/ui/format.js'
+import { formatModelPrice, formatPricePerM, formatSessionTime } from '../src/ui/format.js'
 import { normalizePricing as normalizeVenice } from '../src/providers/venice.js'
 
 test('ApiError carries status, provider, and retryable', () => {
@@ -35,6 +35,12 @@ test('resolveReasoningFlag rejects unknown levels', () => {
   assert.throws(() => resolveReasoningFlag({ reasoningEffort: 'auto' }), /must be one of/)
 })
 
+test('resolveReasoningFlag rejects prototype-chain keys', () => {
+  for (const level of ['toString', 'constructor', 'hasOwnProperty', 'valueOf', '__proto__']) {
+    assert.throws(() => resolveReasoningFlag({ reasoningEffort: level }), /must be one of/)
+  }
+})
+
 test('formatModelPrice renders per-1M prices with fallbacks', () => {
   assert.equal(formatModelPrice(0.0000025, 0.00001), 'in $2.50 / out $10.00/M')
   assert.equal(formatModelPrice(0.0000025, null), 'in $2.50 / out ?/M')
@@ -53,4 +59,13 @@ test('venice normalizePricing converts per-1M to per-token', () => {
   assert.equal(normalizeVenice({ input: { usd: 2.7 }, output: { usd: 8.05 } }).completion, 8.05 / 1_000_000)
   assert.deepEqual(normalizeVenice({}), { prompt: null, completion: null })
   assert.deepEqual(normalizeVenice(null), { prompt: null, completion: null })
+})
+
+test('formatSessionTime drops the trailing Z/offset before appending UTC', () => {
+  assert.equal(formatSessionTime('2026-01-01T00:00:00Z', { utc: true }), '2026-01-01 00:00:00 UTC')
+  assert.equal(formatSessionTime('2026-01-01T00:00:00.123Z', { utc: true }), '2026-01-01 00:00:00 UTC')
+  assert.equal(formatSessionTime('2026-01-01T00:00:00+02:00', { utc: true }), '2026-01-01 00:00:00 UTC')
+  assert.equal(formatSessionTime('2026-07-30T19-15-22.500Z', { utc: true }), '2026-07-30 19:15:22 UTC')
+  assert.equal(formatSessionTime('2026-01-01T00:00:00Z'), '2026-01-01 00:00:00Z')
+  assert.equal(formatSessionTime(null), 'Unknown')
 })

@@ -1,5 +1,5 @@
 import { UsageTracker, contextSegment } from './tracker.js'
-import { cpsToCharsPerTick, SCRAPE_COST_USD, DEFAULT_SYSTEM_PROMPT } from './constants.js'
+import { cpsToCharsPerTick, SCRAPE_COST_USD, DEFAULT_SYSTEM_PROMPT, SESSIONS_DIR } from './constants.js'
 import { buildStatusBadges } from './status-line.js'
 import { sessionLabel } from './ui/format.js'
 import { chatCommands, budgetGuard, commandAcceptsArgs, visibleChatCommands } from './commands/chat/index.js'
@@ -9,14 +9,15 @@ import { createStreamRenderer, renderHistory } from './ui/stream.js'
 import { createLoader } from './ui/loader.js'
 import { dim, sep } from './ui/style.js'
 import { out } from './ui/io.js'
-import { ensureSessionsDir, generateSessionId, persistSessionFile, buildSessionPayload } from './sessions.js'
+import { ensureSessionsDir, generateSessionId, persistSessionFile, buildSessionPayload, removeEmptySessionClaim } from './sessions.js'
 import { savePreferences, applyPreferenceUpdates } from './config.js'
 import { copyText } from './clipboard.js'
 import { ChatState } from './chat-state.js'
 import { createE2eeSession } from './e2ee.js'
-import { CliError, formatError } from './errors.js'
+import { CliError, formatError, commandErrorLine } from './errors.js'
 import { registerSignalHandlers } from './signals.js'
 import { createSessionState, createTurnRunner } from './turn-runner.js'
+import { ExitPromptError } from '@inquirer/core'
 
 export async function runChatSession(ctx = {}, deps = {}) {
   const {
@@ -159,7 +160,13 @@ export async function runChatSession(ctx = {}, deps = {}) {
   const loader = createLoader({ stdout })
 
   const saveCurrentSession = async () => {
-    if (!state.sessionId || state.messages.length <= 1) return
+    if (!state.sessionId) return
+    if (state.messages.length <= 1) {
+      // Nothing worth saving: drop the empty claim file generateSessionId
+      // created so it does not linger on disk.
+      await removeEmptySessionClaim(SESSIONS_DIR, state.sessionId)
+      return
+    }
     try {
       await saveSessionFile(state.sessionId, buildSessionPayload(state.toFinalState(provider.meta.name)))
     } catch {
@@ -282,7 +289,20 @@ export async function runChatSession(ctx = {}, deps = {}) {
         console.log(`Unknown command "${firstLine}". Available: ${visibleChatCommands({ visionSupported: state.visionSupported, e2ee: state.e2ee, providerName: provider.meta.name }).join(', ')}\n`)
         continue
       }
-      const outcome = await handler({ ...chatCtx, input, args: spaceIdx === -1 ? '' : firstLine.slice(spaceIdx + 1).trim() })
+      // A failing command must not take the whole session down: picker
+      // aborts just return to the prompt, other errors are printed and the
+      // loop continues.
+      let outcome
+      try {
+        outcome = await handler({ ...chatCtx, input, args: spaceIdx === -1 ? '' : firstLine.slice(spaceIdx + 1).trim() })
+      } catch (err) {
+        if (err instanceof ExitPromptError) {
+          console.log('Aborted.')
+          continue
+        }
+        console.error(commandErrorLine(err))
+        continue
+      }
       if (outcome?.exit) return exitCleanly()
       if (outcome?.reset) {
         sessionState.tracker = new UsageTracker()

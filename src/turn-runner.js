@@ -17,7 +17,7 @@ export function createSessionState() {
   }
 }
 
-export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState }) {
+export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState, requestFn }) {
   const apiResultMessage = (apiResult) => {
     const msg = { role: 'assistant', content: apiResult.content }
     if (apiResult.reasoning) {
@@ -98,6 +98,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         sessionId: state.sessionId,
         imageOutputSupported: state.imageOutputSupported,
         stdout,
+        requestFn,
       })
 
       if (sessionState.interrupted) {

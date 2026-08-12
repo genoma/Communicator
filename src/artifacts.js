@@ -20,8 +20,9 @@ export function extractMarkdownImageUrls(text) {
 // Resolves the parts a model produced: streamed non-text parts plus (for
 // image-capable models) markdown images found in the answer text. Remote URLs
 // are downloaded to the session's attachment dir and replaced by data URLs in
-// the parts; failures keep the original URL.
-export async function produceParts(streamedParts, { sessionId, imageOutputSupported, fullText }) {
+// the parts; failures keep the original URL. `requestFn` is a test seam for
+// the download transport.
+export async function produceParts(streamedParts, { sessionId, imageOutputSupported, fullText, requestFn }) {
   const parts = [...streamedParts]
   if (parts.length === 0 && imageOutputSupported === true) {
     for (const url of extractMarkdownImageUrls(fullText)) {
@@ -32,7 +33,7 @@ export async function produceParts(streamedParts, { sessionId, imageOutputSuppor
     // The label is captured before download so the original filename (e.g.
     // photo.png) survives replacement with a generic data-URL-derived one.
     const label = partLabel(part)
-    const res = await downloadRemotePart(part, sessionId)
+    const res = await downloadRemotePart(part, sessionId, { requestFn })
     return { ...res, label }
   }))
   return { parts, results }
@@ -41,12 +42,13 @@ export async function produceParts(streamedParts, { sessionId, imageOutputSuppor
 // Shared post-stream step for chat (turn-runner) and one-shot: turns a
 // provider result into a message with a parts-array content when the model
 // produced artifacts, and returns the download results for printing.
-export async function resolveArtifacts(apiResult, { sessionId, imageOutputSupported }) {
+export async function resolveArtifacts(apiResult, { sessionId, imageOutputSupported, requestFn }) {
   if (!apiResult.content && !apiResult.parts?.length) return []
   const { parts, results } = await produceParts(apiResult.parts ?? [], {
     sessionId,
     imageOutputSupported,
     fullText: apiResult.content,
+    requestFn,
   })
   if (parts.length > 0) {
     apiResult.content = buildPartsContent(apiResult.content, parts)
@@ -73,8 +75,8 @@ export function printArtifacts(results, stdout = process.stdout) {
   }
 }
 
-export async function printPostStreamMetrics(apiResult, { sessionId, imageOutputSupported, stdout = process.stdout }) {
-  const results = await resolveArtifacts(apiResult, { sessionId, imageOutputSupported })
+export async function printPostStreamMetrics(apiResult, { sessionId, imageOutputSupported, stdout = process.stdout, requestFn }) {
+  const results = await resolveArtifacts(apiResult, { sessionId, imageOutputSupported, requestFn })
   if (results.length > 0) printArtifacts(results, stdout)
 
   if (apiResult.sources?.length > 0) {

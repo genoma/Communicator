@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { Readable } from 'node:stream'
 import { extractMarkdownImageUrls, produceParts, buildPartsContent, printArtifacts, resolveArtifacts } from '../src/artifacts.js'
 
 function capture() {
@@ -7,6 +8,28 @@ function capture() {
   const stdout = { write: (chunk) => chunks.push(String(chunk)) }
   return { stdout, text: () => chunks.join('') }
 }
+
+function nodeResponse({ status = 200, headers = {}, body = null }) {
+  const stream = body instanceof ReadableStream
+    ? Readable.fromWeb(body)
+    : Readable.from(body == null ? [] : [Buffer.isBuffer(body) ? body : Buffer.from(body)])
+  stream.statusCode = status
+  stream.headers = headers
+  return stream
+}
+
+function respond(response) {
+  return () => ({
+    on(event, listener) {
+      if (event === 'response') queueMicrotask(() => listener(response))
+      return this
+    },
+    end() {},
+  })
+}
+
+const pngBytes = Buffer.from('png-bytes')
+const pngResponse = () => nodeResponse({ headers: { 'Content-Type': 'image/png' }, body: pngBytes })
 
 test('extractMarkdownImageUrls finds only http(s) markdown images', () => {
   assert.deepEqual(
@@ -29,47 +52,60 @@ test('buildPartsContent puts text first and omits it when empty', () => {
   assert.deepEqual(buildPartsContent('', [part]), [part])
 })
 
-test('produceParts downloads remote parts and replaces the URL', async (t) => {
-  const fetchMock = t.mock.method(globalThis, 'fetch', async () => new Response(Buffer.from('png-bytes'), {
-    status: 200,
-    headers: { 'Content-Type': 'image/png' },
-  }))
+test('produceParts downloads remote parts and replaces the URL', async () => {
+  let calls = 0
+  const requestFn = () => {
+    calls++
+    return {
+      on(event, listener) {
+        if (event === 'response') queueMicrotask(() => listener(pngResponse()))
+        return this
+      },
+      end() {},
+    }
+  }
   const part = { type: 'image_url', image_url: { url: 'https://example.com/a.png' } }
-  const { parts, results } = await produceParts([part], { sessionId: null, imageOutputSupported: undefined, fullText: '' })
-  assert.equal(fetchMock.mock.callCount(), 1)
-  assert.deepEqual(parts, [{ type: 'image_url', image_url: { url: `data:image/png;base64,${Buffer.from('png-bytes').toString('base64')}` } }])
+  const { parts, results } = await produceParts([part], { sessionId: null, imageOutputSupported: undefined, fullText: '', requestFn })
+  assert.equal(calls, 1)
+  assert.deepEqual(parts, [{ type: 'image_url', image_url: { url: `data:image/png;base64,${pngBytes.toString('base64')}` } }])
   assert.equal(results.length, 1)
   assert.equal(results[0].savedTo, null)
 })
 
-test('produceParts passes data URLs through without fetching', async (t) => {
-  const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('should not fetch') })
+test('produceParts passes data URLs through without fetching', async () => {
+  const requestFn = () => { throw new Error('should not fetch') }
   const part = { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }
-  const { parts } = await produceParts([part], { sessionId: null, imageOutputSupported: true, fullText: 'x' })
-  assert.equal(fetchMock.mock.callCount(), 0)
+  const { parts } = await produceParts([part], { sessionId: null, imageOutputSupported: true, fullText: 'x', requestFn })
   assert.deepEqual(parts, [part])
 })
 
-test('produceParts extracts markdown images only for image-output models', async (t) => {
-  const fetchMock = t.mock.method(globalThis, 'fetch', async () => new Response(Buffer.from('png-bytes'), {
-    status: 200,
-    headers: { 'Content-Type': 'image/png' },
-  }))
+test('produceParts extracts markdown images only for image-output models', async () => {
+  let calls = 0
+  const requestFn = () => {
+    calls++
+    return {
+      on(event, listener) {
+        if (event === 'response') queueMicrotask(() => listener(pngResponse()))
+        return this
+      },
+      end() {},
+    }
+  }
   const text = 'here: ![](https://example.com/a.png)'
-  const gated = await produceParts([], { sessionId: null, imageOutputSupported: true, fullText: text })
-  assert.equal(fetchMock.mock.callCount(), 1)
+  const gated = await produceParts([], { sessionId: null, imageOutputSupported: true, fullText: text, requestFn })
+  assert.equal(calls, 1)
   assert.equal(gated.parts.length, 1)
   assert.equal(gated.parts[0].image_url.url.startsWith('data:image/png;base64,'), true)
 
-  const ungated = await produceParts([], { sessionId: null, imageOutputSupported: false, fullText: text })
-  assert.equal(fetchMock.mock.callCount(), 1)
+  const ungated = await produceParts([], { sessionId: null, imageOutputSupported: false, fullText: text, requestFn })
+  assert.equal(calls, 1)
   assert.deepEqual(ungated.parts, [])
 })
 
-test('produceParts keeps failed downloads inline with the error', async (t) => {
-  t.mock.method(globalThis, 'fetch', async () => new Response('nope', { status: 500 }))
+test('produceParts keeps failed downloads inline with the error', async () => {
+  const requestFn = respond(nodeResponse({ status: 500, body: Buffer.from('nope') }))
   const part = { type: 'file', file: { filename: 'doc.pdf', file_data: 'https://example.com/doc.pdf' } }
-  const { parts, results } = await produceParts([part], { sessionId: null, imageOutputSupported: undefined, fullText: '' })
+  const { parts, results } = await produceParts([part], { sessionId: null, imageOutputSupported: undefined, fullText: '', requestFn })
   assert.deepEqual(parts, [part])
   assert.match(results[0].error, /HTTP 500/)
 })
@@ -88,11 +124,11 @@ test('printArtifacts renders saved, failed and inline lines', () => {
   assert.match(text(), /image: image\.png/)
 })
 
-test('resolveArtifacts rewrites a parts-bearing result into a parts-array message', async (t) => {
-  t.mock.method(globalThis, 'fetch', async () => { throw new Error('should not fetch') })
+test('resolveArtifacts rewrites a parts-bearing result into a parts-array message', async () => {
+  const requestFn = () => { throw new Error('should not fetch') }
   const part = { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }
   const result = { content: 'Here', parts: [part] }
-  const results = await resolveArtifacts(result, { sessionId: null, imageOutputSupported: undefined })
+  const results = await resolveArtifacts(result, { sessionId: null, imageOutputSupported: undefined, requestFn })
   assert.deepEqual(result.content, [
     { type: 'text', text: 'Here' },
     part,
@@ -100,27 +136,23 @@ test('resolveArtifacts rewrites a parts-bearing result into a parts-array messag
   assert.equal(results.length, 1)
 })
 
-test('resolveArtifacts is a no-op without content or parts', async (t) => {
-  const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('should not fetch') })
+test('resolveArtifacts is a no-op without content or parts', async () => {
+  const requestFn = () => { throw new Error('should not fetch') }
   const result = { content: 'plain' }
-  const results = await resolveArtifacts(result, { sessionId: null, imageOutputSupported: true })
+  const results = await resolveArtifacts(result, { sessionId: null, imageOutputSupported: true, requestFn })
   assert.deepEqual(results, [])
   assert.equal(result.content, 'plain')
-  assert.equal(fetchMock.mock.callCount(), 0)
 })
 
-test('resolveArtifacts runs the markdown-image heuristic only for image-output models', async (t) => {
-  t.mock.method(globalThis, 'fetch', async () => new Response(Buffer.from('png-bytes'), {
-    status: 200,
-    headers: { 'Content-Type': 'image/png' },
-  }))
+test('resolveArtifacts runs the markdown-image heuristic only for image-output models', async () => {
+  const requestFn = respond(nodeResponse({ headers: { 'Content-Type': 'image/png' }, body: pngBytes }))
   const gated = { content: 'here: ![](https://example.com/a.png)' }
-  const gatedResults = await resolveArtifacts(gated, { sessionId: null, imageOutputSupported: true })
+  const gatedResults = await resolveArtifacts(gated, { sessionId: null, imageOutputSupported: true, requestFn })
   assert.equal(gatedResults.length, 1)
   assert.equal(Array.isArray(gated.content), true)
 
   const plain = { content: 'here: ![](https://example.com/a.png)' }
-  const plainResults = await resolveArtifacts(plain, { sessionId: null, imageOutputSupported: undefined })
+  const plainResults = await resolveArtifacts(plain, { sessionId: null, imageOutputSupported: undefined, requestFn })
   assert.deepEqual(plainResults, [])
   assert.equal(plain.content, 'here: ![](https://example.com/a.png)')
 })

@@ -54,10 +54,18 @@ test('--e2ee requires --provider venice', () => {
   assert.deepEqual(validateCliFlags(opts({ e2ee: true, provider: 'venice' }), TTY), [])
 })
 
+test('--zdr requires --provider openrouter', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ zdr: true, provider: 'venice' }), TTY),
+    ['Error: --zdr is only available with --provider openrouter.']
+  )
+  assert.deepEqual(validateCliFlags(opts({ zdr: true }), TTY), [])
+})
+
 test('--e2ee rejects --zdr', () => {
   assert.deepEqual(
     validateCliFlags(opts({ e2ee: true, zdr: true, provider: 'venice' }), TTY),
-    ['Error: --e2ee cannot be combined with --zdr.']
+    ['Error: --zdr is only available with --provider openrouter.', 'Error: --e2ee cannot be combined with --zdr.']
   )
 })
 

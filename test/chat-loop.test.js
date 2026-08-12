@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { ExitPromptError } from '@inquirer/core'
 import { runChatSession } from '../src/chat.js'
 
 function scriptedInput(values) {
@@ -877,4 +878,35 @@ test('typed /attach still works on a non-vision model while hidden from the UI',
   assert.ok(Array.isArray(content))
   assert.deepEqual(content[0], { type: 'text', text: 'read it' })
   assert.deepEqual(content[1], { type: 'text', text: 'hello' })
+})
+
+test('a throwing command handler prints the error and keeps the session alive', async (t) => {
+  mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({
+    readInput: scriptedInput(['/new', 'hello', '/quit']),
+    newSessionId: async () => { throw new Error('disk exploded') },
+  })
+
+  const finalState = await runChatSession(baseCtx(provider), harness.deps)
+
+  const errors = console.error.mock.calls.map((c) => String(c.arguments[0] ?? '')).join(' ')
+  assert.ok(errors.includes('disk exploded'))
+  assert.equal(harness.exitCodes.length, 0)
+  assert.equal(finalState.modelId, 'org/model')
+})
+
+test('a picker abort inside a command returns to the prompt', async (t) => {
+  const c = mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({
+    readInput: scriptedInput(['/new', '/quit']),
+    newSessionId: async () => { throw new ExitPromptError() },
+  })
+
+  const finalState = await runChatSession(baseCtx(provider), harness.deps)
+
+  assert.ok(c.allLogs().some((l) => l.includes('Aborted.')))
+  assert.equal(harness.exitCodes.length, 0)
+  assert.equal(finalState.modelId, 'org/model')
 })
