@@ -82,7 +82,6 @@ class ExitSignal {
 function resumeSession(overrides = {}) {
   return {
     modelId: 'test/model',
-    modelName: 'test/model',
     providerName: 'ProviderX',
     providerType: 'openrouter',
     reasoningEffort: 'low',

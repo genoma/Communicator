@@ -3,7 +3,7 @@ import { CliError } from './errors.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from './model-selection.js'
 import { DEFAULT_TEMPERATURE } from './constants.js'
 import { persistSessionFile, buildSessionPayload } from './sessions.js'
-import { savePreferences, applyPreferenceUpdates } from './config.js'
+import { savePreferences, savePrefsBestEffort, applyPreferenceUpdates } from './config.js'
 
 export function resolveSessionFlags(opts, prefs) {
   try {
@@ -58,17 +58,13 @@ export async function persistSession({ finalState, prefs, config }) {
     await persistSessionFile(finalState.sessionId, buildSessionPayload(finalState))
   }
 
-  try {
-    await savePreferences(applyPreferenceUpdates(prefs, {
-      modelId: finalState.modelId,
-      lastModel: finalState.modelId,
-      lastProvider: finalState.endpointProviderName,
-      reasoningEffort: finalState.reasoningEffort,
-      temperature: finalState.temperature,
-      webSearch: finalState.webSearch,
-    }), config)
-  } catch (err) {
-    // prefs save failures are non-fatal: the session already persisted
-    console.error(`Warning: could not save preferences: ${err.message}`)
-  }
+  // prefs save failures are non-fatal: the session already persisted
+  await savePrefsBestEffort((finalPrefs) => savePreferences(finalPrefs, config))(applyPreferenceUpdates(prefs, {
+    modelId: finalState.modelId,
+    lastModel: finalState.modelId,
+    lastProvider: finalState.endpointProviderName,
+    reasoningEffort: finalState.reasoningEffort,
+    temperature: finalState.temperature,
+    webSearch: finalState.webSearch,
+  }))
 }

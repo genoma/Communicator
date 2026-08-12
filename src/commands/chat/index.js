@@ -195,7 +195,7 @@ const handlers = {
       return
     }
     const line = budgetStatusLine(ctx.tracker.cost, ctx.state.budget)
-    console.log(`${line ?? 'No budget set. Use /budget <usd> to cap this session.'}\n`)
+    console.log(`${line}\n`)
   },
 
   '/web-search': async (ctx) => {

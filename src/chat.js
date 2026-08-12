@@ -10,7 +10,7 @@ import { createLoader } from './ui/loader.js'
 import { dim, sep } from './ui/style.js'
 import { out } from './ui/io.js'
 import { ensureSessionsDir, generateSessionId, persistSessionFile, buildSessionPayload, removeEmptySessionClaim } from './sessions.js'
-import { savePreferences, applyPreferenceUpdates } from './config.js'
+import { savePreferences, applyPreferenceUpdates, savePrefsBestEffort } from './config.js'
 import { copyText } from './clipboard.js'
 import { ChatState } from './chat-state.js'
 import { createE2eeSession } from './e2ee.js'
@@ -174,13 +174,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
     }
   }
 
-  const savePrefs = async (updates) => {
-    try {
-      await savePrefsFile(updates)
-    } catch {
-      // prefs save failures are non-fatal
-    }
-  }
+  // prefs save failures are non-fatal (shared wrapper, same warning wording
+  // as the other persistence paths)
+  const savePrefs = savePrefsBestEffort((updates) => savePrefsFile(updates))
 
   let exitSaveDone = false
   let exitSavePromise = null

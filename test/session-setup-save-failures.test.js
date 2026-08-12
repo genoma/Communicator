@@ -64,15 +64,15 @@ test('persistSession warns and keeps the session save when the prefs write fails
   const dir = await mkdtemp(join(tmpdir(), 'communicator-config-'))
   const file = join(dir, 'config.json')
   t.after(() => rm(dir, { recursive: true, force: true }))
-  const errors = []
-  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+  const warnings = []
+  t.mock.method(console, 'warn', (line) => { warnings.push(String(line)) })
   failPaths.add(file)
   try {
     await persistSession({ finalState: finalState(), prefs: { budget: 2 }, config: file })
   } finally {
     failPaths.delete(file)
   }
-  assert.ok(errors.some((e) => e.includes('could not save preferences')))
+  assert.ok(warnings.some((e) => e.includes('could not save preferences')))
 
   const sessionsDir = join(tempHome, '.communicator', 'sessions')
   const files = (await realFs.readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.'))

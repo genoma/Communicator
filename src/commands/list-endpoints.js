@@ -1,6 +1,6 @@
 import { formatModelPrice } from '../ui/format.js'
 import { selectModel } from '../prompts.js'
-import { fail } from '../cli-utils.js'
+import { CliError } from '../errors.js'
 
 export function matchModelId(models, partial) {
   const exact = models.find((m) => m.id === partial)
@@ -46,7 +46,7 @@ export async function listEndpointsCmd(provider, apiKey, modelArg, prefs) {
   let modelId
   if (modelArg === true) {
     if (!process.stdin.isTTY) {
-      fail('Error: interactive model selection needs a TTY. Pass a model id: --list-endpoints <model>')
+      throw new CliError('Error: interactive model selection needs a TTY. Pass a model id: --list-endpoints <model>')
     }
     const models = await provider.fetchModels(apiKey)
     const selected = await selectModel(models, prefs?.lastModel)
@@ -56,15 +56,15 @@ export async function listEndpointsCmd(provider, apiKey, modelArg, prefs) {
     const { model, candidates } = matchModelId(models, modelArg.trim())
     if (!model) {
       if (!candidates.length) {
-        fail(`Error: Model "${modelArg}" not found. Use --list-models to list available models.`)
+        throw new CliError(`Error: Model "${modelArg}" not found. Use --list-models to list available models.`)
       }
       const shown = candidates.slice(0, 10).map((m) => `  ${m.id}`).join('\n')
       const more = candidates.length > 10 ? `\n  ... and ${candidates.length - 10} more` : ''
-      fail(`Error: "${modelArg}" matches ${candidates.length} models. Be more specific:\n${shown}${more}`)
+      throw new CliError(`Error: "${modelArg}" matches ${candidates.length} models. Be more specific:\n${shown}${more}`)
     }
     modelId = model.id
   } else {
-    fail('Error: --list-endpoints requires a model id. Use --list-models to list available models.')
+    throw new CliError('Error: --list-endpoints requires a model id. Use --list-models to list available models.')
   }
   await printEndpoints(provider, apiKey, modelId)
 }

@@ -49,6 +49,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 ├── turn-runner.js        — per-turn orchestration (stream render, abort, interrupt salvage, usage tracking)
 ├── signals.js            — process signal registration (SIGINT/beforeExit/uncaughtException) + cleanup
 ├── sessions.js           — session persistence: save, load, list, title generation, delete, sidecar index, resolve
+├── session-sidecar.js    — sessions .index.json storage layer (read/write, staleness, entry maintenance)
 ├── session-picker.js     — interactive session selector for --resume, --export, and --delete
 ├── export.js             — markdown exporter: format session data, write to file
 ├── tracker.js            — per-turn + cumulative token/cost accounting with cache detection, budget status helpers

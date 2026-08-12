@@ -1,6 +1,6 @@
 import { getProvider } from '../providers/index.js'
 import { resolveWebSearchFlag, resolveBudget, resolveWebResultsFlag, resolvePrefOrNull } from '../flags.js'
-import { DEFAULT_TEMPERATURE } from '../constants.js'
+import { DEFAULT_TEMPERATURE, DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { scrapeMessage } from '../scrape.js'
 import { CliError } from '../errors.js'
 import { startChat } from '../chat.js'
@@ -146,7 +146,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     scrapes: scraped ? 1 : 0,
     initialMessages: scraped
       ? [
-          { role: 'system', content: systemPrompt || 'You are a helpful assistant.' },
+          { role: 'system', content: systemPrompt || DEFAULT_SYSTEM_PROMPT },
           { role: 'user', content: scrapeMessage(scraped.url, scraped.content) },
         ]
       : undefined,

@@ -10,7 +10,6 @@ export async function resumeCmd(partialId) {
   const sessionData = await loadSession(dir, matchedId)
   return {
     modelId: sessionData.model,
-    modelName: sessionData.model,
     providerName: sessionData.providerName || null,
     providerType: sessionData.providerType || 'openrouter',
     reasoningEffort: sessionData.reasoningEffort,

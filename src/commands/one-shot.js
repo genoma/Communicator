@@ -13,7 +13,7 @@ import { loadAttachments, buildContent, contentText } from '../attachments.js'
 import { resolveArtifacts, printArtifacts } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
 import { createE2eeSession } from '../e2ee.js'
-import { runImageGeneration, finalizeImageSession } from './image-gen.js'
+import { runImageCommand } from './image-gen.js'
 import { sanitizeAnsi } from '../ui/hyperlink.js'
 
 export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt, scraped = null }) {
@@ -56,31 +56,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     if (opts.attach?.length) {
       throw new CliError('Error: --attach is not supported with image models.')
     }
-    const { dir, sessionId, createdAt } = await createNewSession()
-
-    let outcome
-    try {
-      outcome = await runImageGeneration({ provider, apiKey, prompt: text, opts, prefs, sessionId, model: selection, stdout: process.stdout })
-    } catch (err) {
-      await removeEmptySessionClaim(dir, sessionId)
-      if (err instanceof CliError || err instanceof ExitPromptError) throw err
-      throw new CliError(`Error: ${formatError(err)}`)
-    }
-
-    await finalizeImageSession({
-      prefs,
-      opts,
-      config: opts.config,
-      sessionId,
-      messages: [
-        { role: 'system', content: DEFAULT_SYSTEM_PROMPT },
-        { role: 'user', content: text },
-        outcome.message,
-      ],
-      outcome,
-      createdAt,
-      providerName: provider.meta.name,
-    })
+    await runImageCommand({ provider, apiKey, opts, prefs, providerType: provider.meta.name, prompt: text, model: selection })
     return
   }
 

@@ -6,8 +6,7 @@ import { messageText } from './attachments.js'
 import { attachmentDirFor, externalizeAttachments, hydrateAttachments } from './attachment-store.js'
 import { CliError } from './errors.js'
 import { writeFileAtomic } from './fs-utils.js'
-
-const SIDECAR_FILE = '.index.json'
+import { readSidecar, writeSidecar, sidecarStale, updateSidecar, dropSidecarEntry, dropSidecarEntries, SIDECAR_FILE } from './session-sidecar.js'
 
 // Session ids are app-generated timestamps; anything else (path separators,
 // dots, other characters) is rejected so ids can never escape the sessions dir.
@@ -110,32 +109,6 @@ export function buildSessionPayload({ messages, modelId, endpointProviderName, p
   }
 }
 
-async function readSidecar(dir) {
-  try {
-    return JSON.parse(await readFile(join(dir, SIDECAR_FILE), 'utf-8'))
-  } catch {
-    return null
-  }
-}
-
-async function writeSidecar(dir, index) {
-  try {
-    await writeFileAtomic(join(dir, SIDECAR_FILE), JSON.stringify(index, null, 2) + '\n', { mode: 0o600 })
-  } catch {
-    // sidecar failures are non-fatal
-  }
-}
-
-async function sidecarStale(dir, sidecarPath, jsonFiles) {
-  try {
-    const sidecarStat = await stat(sidecarPath)
-    const fileStats = await Promise.all(jsonFiles.map((file) => stat(join(dir, file))))
-    return fileStats.some((s) => s.mtimeMs > sidecarStat.mtimeMs)
-  } catch {
-    return true
-  }
-}
-
 function toSessionItem(id, meta) {
   return {
     id,
@@ -193,10 +166,9 @@ export async function listSessions(dir) {
   const jsonFiles = entries
     .filter((e) => e.isFile() && !e.name.startsWith('.') && extname(e.name) === '.json')
     .map((e) => e.name)
-  const sidecarPath = join(dir, SIDECAR_FILE)
   const index = await readSidecar(dir)
 
-  if (index && Object.keys(index).length > 0 && !(await sidecarStale(dir, sidecarPath, jsonFiles))) {
+  if (index && Object.keys(index).length > 0 && !(await sidecarStale(dir, jsonFiles))) {
     // A session file deleted outside the app (or a stale sidecar key) leaves
     // a ghost entry: drop entries whose files no longer exist so the picker
     // never offers a resume that fails. Ghosts are collected and dropped in
@@ -251,7 +223,7 @@ export async function saveSession(dir, id, data) {
   try {
     const payload = { ...data, messages: await externalizeAttachments(data.messages, attachmentDirFor(dir, id)) }
     await writeFileAtomic(filePath, JSON.stringify(payload, null, 2) + '\n', { mode: 0o600 })
-    await updateSidecar(dir, id, payload)
+    await updateSidecarEntry(dir, id, payload)
   } catch (err) {
     if (err.code === 'ENOSPC') {
       console.error('Warning: disk full, could not save session')
@@ -261,54 +233,17 @@ export async function saveSession(dir, id, data) {
   }
 }
 
-async function updateSidecar(dir, id, data) {
-  try {
-    const index = (await readSidecar(dir)) || {}
-    index[id] = {
-      ...toSessionItem(id, {
-        model: data.model,
-        providerName: data.providerName,
-        providerType: data.providerType,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt,
-        messageCount: data.messages.length,
-        preview: firstUserPreview(data.messages),
-        title: data.title,
-      }),
-    }
-    delete index[id].id
-    await writeSidecar(dir, index)
-  } catch {
-    // sidecar failures are non-fatal
-  }
-}
-
-async function dropSidecarEntry(dir, id) {
-  try {
-    const index = (await readSidecar(dir)) || {}
-    if (index[id]) {
-      delete index[id]
-      await writeSidecar(dir, index)
-    }
-  } catch {
-    // sidecar failures are non-fatal
-  }
-}
-
-async function dropSidecarEntries(dir, ids) {
-  try {
-    const index = (await readSidecar(dir)) || {}
-    let changed = false
-    for (const id of ids) {
-      if (index[id]) {
-        delete index[id]
-        changed = true
-      }
-    }
-    if (changed) await writeSidecar(dir, index)
-  } catch {
-    // sidecar failures are non-fatal
-  }
+async function updateSidecarEntry(dir, id, data) {
+  await updateSidecar(dir, toSessionItem(id, {
+    model: data.model,
+    providerName: data.providerName,
+    providerType: data.providerType,
+    createdAt: data.createdAt,
+    updatedAt: data.updatedAt,
+    messageCount: data.messages.length,
+    preview: firstUserPreview(data.messages),
+    title: data.title,
+  }))
 }
 
 export async function generateSessionId(dir) {

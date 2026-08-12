@@ -1,5 +1,12 @@
 import { sanitizeAnsi } from './hyperlink.js'
 
+// Rounds to `decimals` places and returns a plain string (no locale/sign
+// formatting): the shared money formatter for image prices and cost lines.
+export function formatUsd(value, decimals) {
+  const factor = 10 ** decimals
+  return String(Math.round(value * factor) / factor)
+}
+
 function priceParts(prompt, completion) {
   const inPrice = prompt != null ? `$${(prompt * 1_000_000).toFixed(2)}` : '?'
   const outPrice = completion != null ? `$${(completion * 1_000_000).toFixed(2)}` : '?'
@@ -46,10 +53,10 @@ function imagePriceFloor(pricing) {
 export function formatImagePrice(pricing, opts = {}) {
   const unit = imageUnitPrice(pricing, opts)
   if (unit != null) {
-    return `$${String(Math.round(unit * 1000) / 1000)} per image`
+    return `$${formatUsd(unit, 3)} per image`
   }
   const floor = imagePriceFloor(pricing)
-  if (floor != null) return `from $${String(Math.round(floor * 1000) / 1000)} per image`
+  if (floor != null) return `from $${formatUsd(floor, 3)} per image`
   const perToken = pricing?.perToken
   if (perToken != null) return `$${(perToken * 1_000_000).toFixed(2)} per 1M tokens`
   return '?'

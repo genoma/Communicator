@@ -9,10 +9,11 @@ import { selectImageModel, selectSizingOption } from '../prompts.js'
 import { SESSIONS_DIR, DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { CliError, formatError } from '../errors.js'
 import { readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
-import { getImageDefaults, mergeImageDefaults, savePreferences, applyPreferenceUpdates } from '../config.js'
+import { getImageDefaults, mergeImageDefaults, savePreferences, savePrefsBestEffort, applyPreferenceUpdates } from '../config.js'
 import { createLoader } from '../ui/loader.js'
 import { resolveAspectRatio, resolveHeight, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants, resolveWidth } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizeLabel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
+import { formatUsd } from '../ui/format.js'
 
 function validateSizingConstraints(model, { aspectRatio, format, resolution, quality, width, height, variants }) {
   if (!model) return
@@ -286,7 +287,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
   const unit = result.cost
   let costLine = null
   if (unit != null) {
-    costLine = `Cost: $${String(Math.round(unit * 1000) / 1000)} per image × ${count} = $${String(Math.round(unit * count * 10000) / 10000)}`
+    costLine = `Cost: $${formatUsd(unit, 3)} per image × ${count} = $${formatUsd(unit * count, 4)}`
   }
 
   const sizingParts = []
@@ -342,12 +343,8 @@ export async function finalizeImageSession({ prefs, opts = {}, config, sessionId
     hideWatermark: opts.watermark === false ? true : undefined,
     safeMode: opts.safeMode === false ? false : undefined,
   })
-  try {
-    await savePreferences(mergeImageDefaults(updated, providerName, outcome.prefsUpdates), config)
-  } catch (err) {
-    // prefs save failures are non-fatal: the session already persisted
-    console.warn(`Warning: could not save preferences: ${err.message}`)
-  }
+  // prefs save failures are non-fatal: the session already persisted
+  await savePrefsBestEffort((finalPrefs) => savePreferences(finalPrefs, config))(mergeImageDefaults(updated, providerName, outcome.prefsUpdates))
   printImageOutcome(outcome, stdout)
 }
 
@@ -373,25 +370,16 @@ export async function handleWatermarkCommand({ providerName, args, prefs, savePr
   errOut('Error: /watermark expects "on" or "off".\n')
 }
 
-export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, stdout = process.stdout }) {
-  const provider = getProvider(providerType)
-  const stdinPiped = !process.stdin.isTTY
-
-  let text = prompt
-  if (!text && stdinPiped) {
-    text = await readStdin()
-  }
-  if (!text) {
-    throw new CliError(NO_PROMPT_MESSAGE)
-  }
-
-  // createdAt comes from createNewSession, not generation-end time: the id
-  // encodes the true session creation moment and the export header shows it.
+// Shared image one-shot flow: claim a session, run a generation (the model
+// picker runs when `model` is null), clean the claim on failure, and persist
+// the three-message session + prefs. Used by --image and the -m one-shot
+// image path (identical session shape in both).
+export async function runImageCommand({ provider, apiKey, opts, prefs, providerType, prompt, model = null, stdout = process.stdout }) {
   const { dir, sessionId, createdAt } = await createNewSession()
 
   let outcome
   try {
-    outcome = await runImageGeneration({ provider, apiKey, prompt: text, opts, prefs, sessionId, stdout })
+    outcome = await runImageGeneration({ provider, apiKey, prompt, opts, prefs, sessionId, model, stdout })
   } catch (err) {
     await removeEmptySessionClaim(dir, sessionId)
     if (err instanceof CliError || err instanceof ExitPromptError) throw err
@@ -400,7 +388,7 @@ export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, s
 
   const messages = [
     { role: 'system', content: DEFAULT_SYSTEM_PROMPT },
-    { role: 'user', content: text },
+    { role: 'user', content: prompt },
     outcome.message,
   ]
 
@@ -415,4 +403,19 @@ export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, s
     providerName: providerType,
     stdout,
   })
+}
+
+export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, stdout = process.stdout }) {
+  const provider = getProvider(providerType)
+  const stdinPiped = !process.stdin.isTTY
+
+  let text = prompt
+  if (!text && stdinPiped) {
+    text = await readStdin()
+  }
+  if (!text) {
+    throw new CliError(NO_PROMPT_MESSAGE)
+  }
+
+  await runImageCommand({ provider, apiKey, opts, prefs, providerType, prompt: text, stdout })
 }

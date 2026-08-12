@@ -1,7 +1,7 @@
 import { readInput as readInputFromInput } from '../input.js'
 import { persistSessionFile } from '../sessions.js'
 import { DEFAULT_SYSTEM_PROMPT } from '../constants.js'
-import { getImageDefaults, mergeImageDefaults, clearImageDefault, savePreferences, applyPreferenceUpdates } from '../config.js'
+import { getImageDefaults, mergeImageDefaults, clearImageDefault, savePreferences, savePrefsBestEffort, applyPreferenceUpdates } from '../config.js'
 import { findImageModel, selectImageEndpoint, selectModelAndEndpoint } from '../model-selection.js'
 import { sessionLabel } from '../ui/format.js'
 import { CliError, commandErrorLine } from '../errors.js'
@@ -124,13 +124,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
 
   // Preference writes are non-fatal here: a failing disk must not take the
   // whole session down with a raw fs error.
-  const savePrefs = async (updates) => {
-    try {
-      await savePreferences(updates, configPath)
-    } catch (err) {
-      console.warn(`Warning: could not save preferences: ${err.message}`)
-    }
-  }
+  const savePrefs = savePrefsBestEffort((updates) => savePreferences(updates, configPath))
 
   const sessionValues = {}
 

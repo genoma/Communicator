@@ -61,6 +61,19 @@ export async function savePreferences(prefs, customPath) {
   await writeFileAtomic(configFile, JSON.stringify(prefs, null, 2) + '\n', { mode: 0o600 })
 }
 
+// Best-effort prefs persistence: a failing disk must never take a session
+// down with a raw fs error. All call sites share this wrapper so the warning
+// wording stays consistent.
+export function savePrefsBestEffort(save, onError = (message) => console.warn(message)) {
+  return async (...args) => {
+    try {
+      await save(...args)
+    } catch (err) {
+      onError(`Warning: could not save preferences: ${err.message}`)
+    }
+  }
+}
+
 export function getImageDefaults(prefs, providerName) {
   return prefs?.imageDefaults?.[providerName] || {}
 }

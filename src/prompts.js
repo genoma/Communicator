@@ -251,7 +251,7 @@ export async function selectReasoningEffort(reasoning, lastEffort, opts = {}) {
 
   const choices = opts.withBack
     ? [
-        { name: '← Back to model selection', value: BACK_SENTINEL, description: 'Return to the model picker' },
+        BACK_CHOICE,
         new Separator(),
         ...effortChoices,
       ]
