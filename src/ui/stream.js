@@ -4,6 +4,17 @@ import { hyperlink, sanitizeAnsi } from './hyperlink.js'
 import { SMOOTH_CHARS_PER_TICK, SMOOTH_TICK_MS } from '../constants.js'
 import { contentText, contentAttachments } from '../attachments.js'
 
+// The one attachment/artifact line format shared by history replay, live
+// /attach confirmations, artifact reports and image outcomes: dim italic
+// kind word, label, optional dim meta, then the undimmed link (OSC 8 escapes
+// must not be styled) and a dim note.
+export function attachmentLine(word, label, { meta = null, note = null, link = null } = {}) {
+  const head = `${dim(`${italic(word)}: ${sanitizeAnsi(label)}`)}`
+  const metaText = meta != null ? ` ${dim(`(${meta})`)}` : ''
+  const noteText = note ? `  ${dim(note)}` : ''
+  return `${head}${link ?? ''}${metaText}${noteText}`
+}
+
 export function createStreamRenderer({ markdown = false, stdout = process.stdout, smooth = false, smoothCharsPerTick = SMOOTH_CHARS_PER_TICK, smoothTickMs = SMOOTH_TICK_MS } = {}) {
   const md = createMarkdownRenderer({
     getSources: () => render.sources,
@@ -149,17 +160,19 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
     if (msg.role === 'user') {
       stdout.write(`${you()}\n${markdown ? renderText(sanitizeAnsi(contentText(msg.content))) : sanitizeAnsi(contentText(msg.content))}\n\n`)
       for (const att of contentAttachments(msg.content)) {
-        stdout.write(`${dim(`${italic('attached')}: ${sanitizeAnsi(att.filename)}`)}\n`)
+        stdout.write(`${attachmentLine('attached', att.filename, { meta: att.kind })}\n`)
       }
     } else if (msg.role === 'assistant') {
+      // Same marker sequence as the live stream (writeSegment): one newline
+      // after the thinking label, one blank line before the answer label.
       if (msg.reasoning) {
-        stdout.write(`${thinking()}\n\n`)
+        stdout.write(`${thinking()}\n`)
         stdout.write(`${dim(sanitizeAnsi(msg.reasoning))}\n`)
         stdout.write(`\n${answer()}\n\n`)
       }
       stdout.write(`${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), msg.sources || []) : sanitizeAnsi(contentText(msg.content))}\n\n`)
       for (const att of contentAttachments(msg.content)) {
-        stdout.write(`${dim(`${italic('output')}: ${sanitizeAnsi(att.filename)}`)}\n`)
+        stdout.write(`${attachmentLine(att.kind, att.filename)}\n`)
       }
       if (msg.sources?.length) {
         printSources(msg.sources, stdout)

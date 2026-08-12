@@ -1,7 +1,9 @@
 import { sanitizeAnsi } from './hyperlink.js'
 
 // Rounds to `decimals` places and returns a plain string (no locale/sign
-// formatting): the shared money formatter for image prices and cost lines.
+// formatting): the money formatter for image prices and the image-generation
+// cost line. Session/turn costs use `formatCost` (src/constants.js) instead —
+// see the money-tier contract in MEMORY.md §Display consistency contract.
 export function formatUsd(value, decimals) {
   const factor = 10 ** decimals
   return String(Math.round(value * factor) / factor)

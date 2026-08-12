@@ -3,17 +3,18 @@ import { getProvider } from '../providers/index.js'
 import { cpsToCharsPerTick, SCRAPE_COST_USD, DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { scrapeMessage } from '../scrape.js'
 import { createNewSession, removeEmptySessionClaim } from '../sessions.js'
-import { createStreamRenderer, printSources } from '../ui/stream.js'
+import { createStreamRenderer } from '../ui/stream.js'
 import { sessionLabel } from '../ui/format.js'
 import { UsageTracker, budgetLine } from '../tracker.js'
 import { ChatState } from '../chat-state.js'
 import { CliError, formatError } from '../errors.js'
 import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { loadAttachments, buildContent, contentText } from '../attachments.js'
-import { resolveArtifacts, printArtifacts } from '../artifacts.js'
+import { resolveArtifacts, printArtifactsSummary } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
 import { createE2eeSession } from '../e2ee.js'
 import { runImageCommand } from './image-gen.js'
+import { connectedBanner, buildStatusBadges } from '../status-line.js'
 import { sanitizeAnsi } from '../ui/hyperlink.js'
 
 export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt, scraped = null }) {
@@ -116,7 +117,9 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
 
     if (ttyOut) {
       const label = sessionLabel(selection.endpointProviderName, selection.modelId)
-      console.log(`\nConnected to ${label}${zdr ? '  [zdr]' : ''}${e2ee ? '  [e2ee]' : ''}\n`)
+      // The same banner + badge set as the chat REPL (thinking/temp/web/zdr/e2ee).
+      const badges = buildStatusBadges({ reasoningEffort: selection.reasoningEffort, temperature, webSearch, webResults, zdr, e2ee })
+      console.log(connectedBanner(label, { badges }))
       const render = createStreamRenderer({ markdown: true, smooth: opts.smoothStreaming !== false && prefs.smoothStreaming !== false, smoothCharsPerTick: cpsToCharsPerTick(smoothSpeed) })
       result = await provider.chatCompletion({
         ...completionOpts,
@@ -151,18 +154,12 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     imageOutputSupported: selection.imageOutputSupported,
   })
 
-  if (producedResults.length > 0) {
-    printArtifacts(producedResults, ttyOut ? process.stdout : process.stderr)
-  }
-
-  if (ttyOut) {
-    if (result.sources?.length > 0) {
-      printSources(result.sources, process.stdout)
-    }
-    if (result.skippedChunks > 0) {
-      process.stdout.write(`${result.skippedChunks} malformed stream chunk${result.skippedChunks > 1 ? 's' : ''} skipped\n`)
-    }
-  }
+  // Artifact lines go to stderr when piped so stdout stays pure content;
+  // sources and the malformed-chunk notice are TTY-only (same styling as chat).
+  printArtifactsSummary(producedResults, result, ttyOut ? process.stdout : process.stderr, {
+    withSources: ttyOut,
+    withSkipped: ttyOut,
+  })
 
   if (result.content || result.parts?.length > 0) {
     const msg = { role: 'assistant', content: result.content }

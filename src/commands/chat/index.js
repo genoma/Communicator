@@ -6,6 +6,7 @@ import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmooth
 import { budgetStatusLine, budgetExhaustedMessage } from '../../tracker.js'
 import { sessionLabel } from '../../ui/format.js'
 import { dim } from '../../ui/style.js'
+import { attachmentLine } from '../../ui/stream.js'
 import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
 import { fetchModelPubKey } from '../../e2ee.js'
@@ -100,7 +101,7 @@ const handlers = {
     const { attachments, ignored } = await loadAttachments(splitPathArgs(ctx.args), gateOptions, {
       skipNonPaths: true,
       onError: (message) => console.error(`${message}\n`),
-      onAttached: (att) => console.log(`attached: ${att.filename} (${att.kind}, ${formatBytes(att.size)})\n`),
+      onAttached: (att) => console.log(`${attachmentLine('attached', att.filename, { meta: `${att.kind}, ${formatBytes(att.size)}` })}\n`),
     })
     ctx.state.pendingAttachments.push(...attachments)
     if (ignored.length) {

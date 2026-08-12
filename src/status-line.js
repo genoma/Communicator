@@ -20,3 +20,13 @@ export function buildStatusLine(state) {
   parts.push(state.smoothStreaming ? `[smooth: on (${formatSmoothSpeed(state.smoothSpeed)})]` : '[smooth: off]')
   return parts
 }
+
+// The one session greeting shared by chat, one-shot (TTY) and the image
+// session: leading blank line, `Connected to <label>`, optional status
+// badges, optional hint lines joined with "  |  ". Callers pass it to
+// console.log (the trailing newline is not included).
+export function connectedBanner(label, { badges = [], hints = [] } = {}) {
+  const badgeText = badges.length > 0 ? `  ${badges.join('  ')}` : ''
+  const hintText = hints.length > 0 ? `${hints.join('  |  ')}\n` : ''
+  return `\nConnected to ${label}${badgeText}\n${hintText}`
+}

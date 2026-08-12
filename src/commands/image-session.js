@@ -4,6 +4,7 @@ import { DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { getImageDefaults, mergeImageDefaults, clearImageDefault, savePreferences, savePrefsBestEffort, applyPreferenceUpdates } from '../config.js'
 import { findImageModel, selectImageEndpoint, selectModelAndEndpoint } from '../model-selection.js'
 import { sessionLabel } from '../ui/format.js'
+import { connectedBanner } from '../status-line.js'
 import { CliError, commandErrorLine } from '../errors.js'
 import { resolveAspectRatio, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
@@ -128,7 +129,10 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
 
   const sessionValues = {}
 
-  console.log(`Image session with ${imageModelId}. Describe an image to generate it; /help lists the available commands.\n`)
+  console.log(connectedBanner(sessionLabel(model.endpointProviderName, imageModelId), {
+    badges: ['[image]'],
+    hints: ['Describe an image to generate it; /help lists the available commands.'],
+  }))
 
   while (true) {
     const result = await read({ commands: imageSessionCommands(provider.meta.name, model) })

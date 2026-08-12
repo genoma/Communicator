@@ -11,6 +11,7 @@ import { CliError, formatError } from '../errors.js'
 import { readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { getImageDefaults, mergeImageDefaults, savePreferences, savePrefsBestEffort, applyPreferenceUpdates } from '../config.js'
 import { createLoader } from '../ui/loader.js'
+import { dim } from '../ui/style.js'
 import { resolveAspectRatio, resolveHeight, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants, resolveWidth } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizeLabel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
 import { formatUsd } from '../ui/format.js'
@@ -310,7 +311,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
 
 export function printImageOutcome({ savedPaths = [], blurred = false, costLine = null, sizing = null } = {}, stdout = process.stdout) {
   for (const path of savedPaths) {
-    stdout.write(`saved to ${path}\n`)
+    stdout.write(`${dim(`saved to ${path}`)}\n`)
   }
   if (sizing) stdout.write(`${sizing}\n`)
   if (costLine) stdout.write(`${costLine}\n`)

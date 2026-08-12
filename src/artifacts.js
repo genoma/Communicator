@@ -2,7 +2,7 @@ import { partLabel, partUrl } from './attachments.js'
 import { downloadRemotePart } from './attachment-store.js'
 import { dim } from './ui/style.js'
 import { hyperlink } from './ui/hyperlink.js'
-import { printSources } from './ui/stream.js'
+import { attachmentLine, printSources } from './ui/stream.js'
 
 // Models that advertise image output often emit the artifact as a markdown
 // image in plain text instead of a structured part. The conversion is gated on
@@ -69,21 +69,25 @@ export function printArtifacts(results, stdout = process.stdout) {
     if (!part) continue
     const word = part.type === 'image_url' ? 'image' : 'file'
     const url = partUrl(part)
-    const link = url && /^https?:/.test(url) ? ` ${hyperlink(url, url) || url}` : ''
-    const note = res.savedTo ? `saved to ${res.savedTo}` : res.error ? `download failed: ${res.error}` : ''
-    stdout.write(`${dim(`${word}: ${res.label || partLabel(part)}`)}${link}${note ? `  ${dim(note)}` : ''}\n`)
+    const link = url && /^https?:/.test(url) ? ` ${hyperlink(url, url) || url}` : null
+    const note = res.savedTo ? `saved to ${res.savedTo}` : res.error ? `download failed: ${res.error}` : null
+    stdout.write(`${attachmentLine(word, res.label || partLabel(part), { link, note })}\n`)
   }
 }
 
-export async function printPostStreamMetrics(apiResult, { sessionId, imageOutputSupported, stdout = process.stdout, requestFn }) {
-  const results = await resolveArtifacts(apiResult, { sessionId, imageOutputSupported, requestFn })
+// Shared post-stream printer for chat (turn-runner) and one-shot: artifact
+// lines, the sources list and the malformed-chunk notice, all with the same
+// styling. `withSources`/`withSkipped` let piped one-shot keep its
+// content-only stdout contract (artifact lines go to stderr instead).
+export function printArtifactsSummary(results, apiResult, stdout = process.stdout, { withSources = true, withSkipped = true } = {}) {
   if (results.length > 0) printArtifacts(results, stdout)
-
-  if (apiResult.sources?.length > 0) {
-    printSources(apiResult.sources, stdout)
-  }
-
-  if (apiResult.skippedChunks > 0) {
+  if (withSources && apiResult.sources?.length > 0) printSources(apiResult.sources, stdout)
+  if (withSkipped && apiResult.skippedChunks > 0) {
     stdout.write(`${dim(`${apiResult.skippedChunks} malformed stream chunk${apiResult.skippedChunks > 1 ? 's' : ''} skipped`)}\n`)
   }
+}
+
+export async function printPostStreamMetrics(apiResult, { sessionId, imageOutputSupported, stdout = process.stdout, requestFn, withSources = true, withSkipped = true }) {
+  const results = await resolveArtifacts(apiResult, { sessionId, imageOutputSupported, requestFn })
+  printArtifactsSummary(results, apiResult, stdout, { withSources, withSkipped })
 }

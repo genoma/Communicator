@@ -82,8 +82,8 @@ test('renderHistory prints attachment lines under parts-based user messages', (t
     },
   ], { markdown: false, stdout })
   assert.match(plain(), /Look at this/)
-  assert.match(plain(), /attached: image\.png/)
-  assert.match(plain(), /attached: report\.pdf/)
+  assert.match(plain(), /attached: image\.png \(image\)/)
+  assert.match(plain(), /attached: report\.pdf \(file\)/)
 })
 
 test('renderHistory prints output lines under parts-based assistant messages', (t) => {
@@ -102,8 +102,8 @@ test('renderHistory prints output lines under parts-based assistant messages', (
     },
   ], { markdown: false, stdout })
   assert.match(plain(), /Here you go/)
-  assert.match(plain(), /output: image\.png/)
-  assert.match(plain(), /output: report\.pdf/)
+  assert.match(plain(), /image: image\.png/)
+  assert.match(plain(), /file: report\.pdf/)
 })
 
 test('renderHistory prints no output lines for string-only assistant messages', () => {
@@ -114,7 +114,7 @@ test('renderHistory prints no output lines for string-only assistant messages', 
     { role: 'assistant', content: 'Answer here' },
   ], { markdown: false, stdout })
   assert.match(plain(), /Answer here/)
-  assert.doesNotMatch(plain(), /output:/)
+  assert.doesNotMatch(plain(), /(image|file):/)
 })
 
 test('renderHistory skips produced image tokens during streaming', () => {
