@@ -406,7 +406,7 @@ test('one-shot TTY output prints the banner, sources and the skipped-chunk warni
   const { oneShotCmd } = await import('../src/commands/one-shot.js')
   await oneShotCmd({ apiKey: 'test-key', opts: opts({ temperature: 1.1 }), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: 'Hello' })
 
-  assert.ok(logs.some((l) => l.includes('ProviderX / test/model-a  [temp: 1.1]')))
+  assert.ok(logs.some((l) => l.includes('ProviderX / test/model-a') && l.includes('[temp: 1.1]')))
   assert.ok(writes.some((w) => w.includes('Hello world')))
   assert.ok(writes.some((w) => w.includes('Sources (1)')))
   assert.ok(writes.some((w) => w.includes('1 malformed stream chunk skipped')))

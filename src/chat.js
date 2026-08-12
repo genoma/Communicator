@@ -1,7 +1,6 @@
 import { UsageTracker, contextSegment } from './tracker.js'
 import { cpsToCharsPerTick, SCRAPE_COST_USD, DEFAULT_SYSTEM_PROMPT, SESSIONS_DIR } from './constants.js'
-import { buildStatusBadges, connectedBanner } from './status-line.js'
-import { sessionLabel } from './ui/format.js'
+import { buildStatusLine, connectedBanner } from './status-line.js'
 import { chatCommands, budgetGuard, commandAcceptsArgs, visibleChatCommands } from './commands/chat/index.js'
 import { buildContent } from './attachments.js'
 import { readInput as defaultReadInput } from './input.js'
@@ -128,11 +127,10 @@ export async function runChatSession(ctx = {}, deps = {}) {
     sessionState.tracker.addScrapeCost(SCRAPE_COST_USD * state.scrapes, state.scrapes)
   }
 
-  const label = sessionLabel(endpointProviderName, model)
   const hintParts = []
   if (state.visionSupported !== false && !state.e2ee) hintParts.push('/attach <path> to queue files')
   hintParts.push('/quit to exit')
-  out(connectedBanner(label, { badges: buildStatusBadges(state), hints: hintParts }))
+  out(connectedBanner(buildStatusLine(state), { hints: hintParts }))
 
   if (initialMessages) {
     renderHistory(state.messages, { markdown: state.markdown, stdout })

@@ -129,8 +129,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
 
   const sessionValues = {}
 
-  console.log(connectedBanner(sessionLabel(model.endpointProviderName, imageModelId), {
-    badges: ['[image]'],
+  console.log(connectedBanner([sessionLabel(model.endpointProviderName, imageModelId), '[image]'], {
     hints: ['Describe an image to generate it; /help lists the available commands.'],
   }))
 

@@ -397,7 +397,7 @@ test('banner shows no badges for default temperature without reasoning or web se
 
   await runChatSession(baseCtx(provider, { reasoningEffort: null, temperature: 0.7, webSearch: false }), harness.deps)
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('banner shows reasoning and web badges when active', async (t) => {
@@ -410,7 +410,7 @@ test('banner shows reasoning and web badges when active', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [thinking: High]  [temp: 1.1]  [web: auto: 3]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.1]  [web: auto: 3]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('banner shows the zdr badge when active', async (t) => {
@@ -423,7 +423,7 @@ test('banner shows the zdr badge when active', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [zdr]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [zdr]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('e2ee shows the badge, forces web search off, and flows to chatCompletion', async (t) => {
@@ -441,7 +441,7 @@ test('e2ee shows the badge, forces web search off, and flows to chatCompletion',
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [e2ee]\n/quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [e2ee]  [smooth: on (normal, ~2000 chars/s)]\n/quit to exit\n')
   assert.equal(calls.length, 1)
   assert.equal(calls[0].e2ee, true)
   assert.equal(calls[0].webSearch, 'off')
@@ -470,7 +470,7 @@ test('banner shows a bare web badge when results are not set', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [web: auto]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('banner shows the always badge', async (t) => {
@@ -483,7 +483,7 @@ test('banner shows the always badge', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [web: always]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [web: always]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('banner shows the always badge with a result count', async (t) => {
@@ -496,7 +496,7 @@ test('banner shows the always badge with a result count', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [web: always: 5]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [web: always: 5]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('status line updates after a config command and persists the pref', async (t) => {
@@ -507,7 +507,7 @@ test('status line updates after a config command and persists the pref', async (
   await runChatSession(baseCtx(provider), harness.deps)
 
   const statusLine = consoleSpy.allLogs().find((l) => l.startsWith('Current settings:'))
-  assert.equal(statusLine, 'Current settings: [thinking: High]  [temp: 0.5]  [smooth: on (normal, ~2000 chars/s)]\n')
+  assert.equal(statusLine, 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 0.5]  [smooth: on (normal, ~2000 chars/s)]\n')
   const saved = harness.prefsCalls.flat()
   assert.ok(saved.some((u) => u.modelId === 'org/model' && u.temperature === 0.5))
 })
@@ -520,7 +520,7 @@ test('/status prints the current settings in the live session', async (t) => {
   await runChatSession(baseCtx(provider), harness.deps)
 
   const statusLine = consoleSpy.allLogs().find((l) => l.startsWith('Current settings:'))
-  assert.equal(statusLine, 'Current settings: [thinking: High]  [temp: 1.1]  [smooth: on (normal, ~2000 chars/s)]\n')
+  assert.equal(statusLine, 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.1]  [smooth: on (normal, ~2000 chars/s)]\n')
 })
 
 test('startup hint includes /attach when vision capability is unknown', async (t) => {
@@ -530,7 +530,7 @@ test('startup hint includes /attach when vision capability is unknown', async (t
 
   await runChatSession(baseCtx(provider), harness.deps)
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [thinking: High]  [temp: 1.1]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.1]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('startup hint omits /attach when the model lacks vision', async (t) => {
@@ -540,7 +540,7 @@ test('startup hint omits /attach when the model lacks vision', async (t) => {
 
   await runChatSession(baseCtx(provider, { visionSupported: false }), harness.deps)
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [thinking: High]  [temp: 1.1]\n/quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.1]  [smooth: on (normal, ~2000 chars/s)]\n/quit to exit\n')
 })
 
 test('retry pops the assistant message and resends the same user message', async (t) => {

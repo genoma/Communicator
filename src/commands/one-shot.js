@@ -4,7 +4,6 @@ import { cpsToCharsPerTick, SCRAPE_COST_USD, DEFAULT_SYSTEM_PROMPT } from '../co
 import { scrapeMessage } from '../scrape.js'
 import { createNewSession, removeEmptySessionClaim } from '../sessions.js'
 import { createStreamRenderer } from '../ui/stream.js'
-import { sessionLabel } from '../ui/format.js'
 import { UsageTracker, budgetLine } from '../tracker.js'
 import { ChatState } from '../chat-state.js'
 import { CliError, formatError } from '../errors.js'
@@ -14,7 +13,7 @@ import { resolveArtifacts, printArtifactsSummary } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
 import { createE2eeSession } from '../e2ee.js'
 import { runImageCommand } from './image-gen.js'
-import { connectedBanner, buildStatusBadges } from '../status-line.js'
+import { connectedBanner, buildStatusLine } from '../status-line.js'
 import { sanitizeAnsi } from '../ui/hyperlink.js'
 
 export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt, scraped = null }) {
@@ -116,10 +115,24 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
     }
 
     if (ttyOut) {
-      const label = sessionLabel(selection.endpointProviderName, selection.modelId)
-      // The same banner + badge set as the chat REPL (thinking/temp/web/zdr/e2ee).
-      const badges = buildStatusBadges({ reasoningEffort: selection.reasoningEffort, temperature, webSearch, webResults, zdr, e2ee })
-      console.log(connectedBanner(label, { badges }))
+      // The same banner + snapshot line as the chat REPL (model, context,
+      // pricing, thinking/temp/web/zdr/e2ee, budget and smooth streaming).
+      const segments = buildStatusLine({
+        modelId: selection.modelId,
+        endpointProviderName: selection.endpointProviderName,
+        contextLength: selection.contextLength,
+        pricing: selection.pricing,
+        reasoningEffort: selection.reasoningEffort,
+        temperature,
+        webSearch,
+        webResults,
+        zdr,
+        e2ee,
+        budget,
+        smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
+        smoothSpeed,
+      })
+      console.log(connectedBanner(segments))
       const render = createStreamRenderer({ markdown: true, smooth: opts.smoothStreaming !== false && prefs.smoothStreaming !== false, smoothCharsPerTick: cpsToCharsPerTick(smoothSpeed) })
       result = await provider.chatCompletion({
         ...completionOpts,

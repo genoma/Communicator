@@ -32,21 +32,21 @@ function capture() {
   }
 }
 
-test('connectedBanner has one canonical layout for every badges/hints combination', () => {
+test('connectedBanner has one canonical layout for every segments/hints combination', () => {
   assert.equal(
-    connectedBanner('venice / org/model'),
+    connectedBanner(['venice / org/model']),
     '\nConnected to venice / org/model\n'
   )
   assert.equal(
-    connectedBanner('venice / org/model', { badges: ['[zdr]', '[e2ee]'] }),
+    connectedBanner(['venice / org/model', '[zdr]', '[e2ee]']),
     '\nConnected to venice / org/model  [zdr]  [e2ee]\n'
   )
   assert.equal(
-    connectedBanner('venice / org/model', { hints: ['/quit to exit'] }),
+    connectedBanner(['venice / org/model'], { hints: ['/quit to exit'] }),
     '\nConnected to venice / org/model\n/quit to exit\n'
   )
   assert.equal(
-    connectedBanner('venice / org/model', { badges: ['[image]'], hints: ['Describe an image to generate it.'] }),
+    connectedBanner(['venice / org/model', '[image]'], { hints: ['Describe an image to generate it.'] }),
     '\nConnected to venice / org/model  [image]\nDescribe an image to generate it.\n'
   )
 })
