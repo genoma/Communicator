@@ -254,6 +254,62 @@ export function insertChar(state, ch) {
     }
     onContentChanged(state);
 }
+/** Bulk-insert a whole bracketed-paste payload in one operation. The paste-end
+ * clearScreen re-renders the screen, so no per-character terminal writes happen
+ * here (per-char insertChar/insertNewline was O(n²) on large pastes). Limits
+ * mirror the per-character path: insertion truncates at maxLength and the line
+ * count never exceeds maxLines (chars past the limit still land on the last
+ * line, like the per-char flow). */
+export function insertPaste(state, text) {
+    const parts = text.split("\n");
+    let budget = state.maxLength != null ? state.maxLength - contentLength(state.lines) : null;
+    let limitStatus = null;
+    const take = (segment) => {
+        const cps = [...segment];
+        let count = cps.length;
+        if (budget != null && count > budget) {
+            count = budget;
+            limitStatus = `Maximum ${state.maxLength} characters`;
+        }
+        if (budget != null)
+            budget -= count;
+        const taken = cps.slice(0, count).join("");
+        return { taken, width: taken.length };
+    };
+    let row = state.row;
+    let col = state.col;
+    const first = take(parts[0]);
+    const base = state.lines[row];
+    state.lines[row] = base.slice(0, col) + first.taken + base.slice(col);
+    col += first.width;
+    for (let i = 1; i < parts.length; i++) {
+        if (state.maxLines == null || state.lines.length < state.maxLines) {
+            if (budget != null && budget <= 0) {
+                limitStatus = `Maximum ${state.maxLength} characters`;
+                break;
+            }
+            if (budget != null)
+                budget -= 1; // the newline separator
+            const line = state.lines[row];
+            state.lines[row] = line.slice(0, col);
+            row++;
+            state.lines.splice(row, 0, line.slice(col));
+            col = 0;
+        }
+        else {
+            limitStatus = `Maximum ${state.maxLines} lines`;
+        }
+        const segment = take(parts[i]);
+        const line = state.lines[row];
+        state.lines[row] = line.slice(0, col) + segment.taken + line.slice(col);
+        col += segment.width;
+    }
+    state.row = row;
+    state.col = col;
+    onContentChanged(state);
+    if (limitStatus)
+        setStatusWithVisualState(state, limitStatus, "red", "error");
+}
 /** Insert a newline at the current cursor position, splitting the current line */
 export function insertNewline(state) {
     if (!canInsertNewline(state))

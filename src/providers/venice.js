@@ -14,6 +14,18 @@ export const meta = {
   hasEndpoints: false,
 }
 
+// The text model catalog is stable within a process: TTL cache so repeated
+// model selection and /reasoning lookups do not re-download the full list.
+// (Same TTL as openrouter-meta's CACHE_TTL_MS; kept local — that module is
+// OpenRouter-specific.)
+const MODELS_CACHE_TTL_MS = 5 * 60 * 1000
+const modelsCache = { fetchedAt: 0, models: null }
+
+export function resetModelCaches() {
+  modelsCache.fetchedAt = 0
+  modelsCache.models = null
+}
+
 export const handleHttpError = makeHandleHttpError({ providerName: 'Venice', providerId: 'venice', apiKeyEnv: 'VENICE_API_KEY' })
 
 export function normalizePricing(raw) {
@@ -99,9 +111,12 @@ export async function scrapePage({ apiKey, url, signal }) {
 }
 
 export async function fetchModels(apiKey) {
+  if (modelsCache.models && Date.now() - modelsCache.fetchedAt < MODELS_CACHE_TTL_MS) {
+    return modelsCache.models
+  }
   const { data } = await fetchModelsByType(apiKey, 'text')
 
-  return (data || []).map((m) => {
+  const models = (data || []).map((m) => {
     const spec = m.model_spec || {}
     const caps = spec.capabilities || {}
     const pricing = normalizePricing(spec.pricing || null)
@@ -139,6 +154,9 @@ export async function fetchModels(apiKey) {
       maxCompletionTokens: spec.constraints?.max_tokens || null,
     }
   })
+  modelsCache.models = models
+  modelsCache.fetchedAt = Date.now()
+  return models
 }
 
 export async function fetchImageModels(apiKey) {

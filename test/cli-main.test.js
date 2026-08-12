@@ -4,6 +4,8 @@ import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runCli } from '../src/cli-main.js'
+import { resetModelCaches as resetOpenRouterModelCaches } from '../src/providers/openrouter.js'
+import { resetModelCaches as resetVeniceModelCaches } from '../src/providers/venice.js'
 
 class ExitSignal {
   constructor(code) {
@@ -94,6 +96,7 @@ function withVeniceApiKey(t, value = 'venice-test-key') {
 }
 
 function mockOpenRouterApi(t) {
+  resetOpenRouterModelCaches()
   const models = [{ id: 'test/model-a', name: 'Model A', context_length: 1000, description: 'd', reasoning: null }]
   const endpoints = [{
     provider_name: 'ProviderX',
@@ -112,6 +115,7 @@ function mockOpenRouterApi(t) {
 }
 
 function mockVeniceApi(t) {
+  resetVeniceModelCaches()
   const models = [{
     id: 'venice/model-x',
     model_spec: { name: 'Model X', capabilities: {}, constraints: { max_tokens: 1000 }, availableContextTokens: 1000, pricing: null, description: null },
@@ -433,6 +437,7 @@ test('--list-endpoints with an unknown id fails gracefully', async (t) => {
 })
 
 test('ApiError from exit-mode commands surfaces as a friendly message', async (t) => {
+  resetOpenRouterModelCaches()
   t.mock.method(globalThis, 'fetch', async () => new Response('nope', { status: 401 }))
   const { err } = await runAndExit(t, { listModels: true }, undefined, 1)
   assert.match(err[0], /Error: Invalid API key/)

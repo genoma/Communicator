@@ -20,6 +20,10 @@ mock.module('@inquirer/prompts', {
   },
 })
 
+// Loaded after the node:os mock so constants.js resolves the temp home.
+const { resetModelCaches: resetOpenRouterModelCaches } = await import('../src/providers/openrouter.js')
+const { resetModelCaches: resetVeniceModelCaches } = await import('../src/providers/venice.js')
+
 class ExitSignal {
   constructor(code) {
     this.code = code
@@ -45,6 +49,7 @@ function event(data) {
 }
 
 function mockOpenRouterStream(t, fetchCalls = []) {
+  resetOpenRouterModelCaches()
   const models = [{ id: 'test/model-a', name: 'Model A', context_length: 1000, description: 'd', reasoning: null }]
   const endpoints = [{
     provider_name: 'ProviderX',
@@ -419,6 +424,7 @@ const IMAGE_BYTES = Buffer.from('one-shot image')
 const IMAGE_B64 = IMAGE_BYTES.toString('base64')
 
 function mockVeniceImageFetch(t, fetchCalls = []) {
+  resetVeniceModelCaches()
   const bodies = []
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
     const u = String(url)
@@ -446,6 +452,7 @@ function mockVeniceImageFetch(t, fetchCalls = []) {
 }
 
 test('one-shot with a scraped page injects it as the first user message and persists the scrape count', async (t) => {
+  resetVeniceModelCaches()
   const models = [{ id: 'venice-model', model_spec: { name: 'V', capabilities: {}, constraints: {} } }]
   const stream = [
     event({ choices: [{ delta: { content: 'Summary' } }] }),

@@ -95,7 +95,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
   // here — the picker does not display it and the selected model's endpoint
   // fetch already carries the price.
   const [models, imageModels] = await Promise.all([
-    provider.fetchModels(apiKey),
+    provider.fetchModels(apiKey, { zdr: zdrActive }),
     (async () => {
       if (zdrActive || e2ee || typeof provider.fetchImageModels !== 'function') return null
       try {
@@ -209,8 +209,8 @@ export async function selectImageModelNonInteractive({ provider, apiKey, imageMo
 }
 
 export async function selectModelNonInteractive({ provider, apiKey, prefs, modelId, forcedEffort, zdr = false, e2ee = false }) {
-  const models = await provider.fetchModels(apiKey)
   const zdrActive = await zdrGate(provider, zdr)
+  const models = await provider.fetchModels(apiKey, { zdr: zdrActive })
   const modelData = models.find((m) => m.id === modelId)
   if (!modelData) {
     if (!zdrActive && !e2ee) {

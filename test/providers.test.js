@@ -5,6 +5,11 @@ import * as openrouter from '../src/providers/openrouter.js'
 import * as venice from '../src/providers/venice.js'
 import { getZdrIndex, getProviderPolicies, resetMetadataCaches } from '../src/providers/openrouter-meta.js'
 
+function resetModels() {
+  openrouter.resetModelCaches()
+  venice.resetModelCaches()
+}
+
 function jsonResponse(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
     status,
@@ -27,6 +32,7 @@ function sseEvent(data) {
 }
 
 test('openrouter fetchModels maps API models with pricing: null', async (t) => {
+  resetModels()
   t.mock.method(globalThis, 'fetch', async () => jsonResponse({
     data: [
       { id: 'org/model', name: 'Model', context_length: 1000, description: 'desc' },
@@ -43,6 +49,7 @@ test('openrouter fetchModels maps API models with pricing: null', async (t) => {
 })
 
 test('openrouter fetchModels normalizes reasoning metadata', async (t) => {
+  resetModels()
   t.mock.method(globalThis, 'fetch', async () => jsonResponse({
     data: [
       {
@@ -95,6 +102,7 @@ test('openrouter fetchModels normalizes reasoning metadata', async (t) => {
 })
 
 test('venice fetchModels normalizes pricing and hides raw fields', async (t) => {
+  resetModels()
   t.mock.method(globalThis, 'fetch', async () => jsonResponse({
     data: [
       {
@@ -123,6 +131,7 @@ test('venice fetchModels normalizes pricing and hides raw fields', async (t) => 
 })
 
 test('venice fetchModels works without an api key', async (t) => {
+  resetModels()
   let calledWith
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
     calledWith = opts
@@ -134,6 +143,7 @@ test('venice fetchModels works without an api key', async (t) => {
 })
 
 test('venice fetchEndpoints returns an empty list for an unknown model', async (t) => {
+  resetModels()
   t.mock.method(globalThis, 'fetch', async () => jsonResponse({
     data: [{ id: 'venice/known', name: 'Known' }],
   }))
@@ -143,6 +153,7 @@ test('venice fetchEndpoints returns an empty list for an unknown model', async (
 })
 
 test('openrouter 401 throws ApiError with friendly message, no retry', async (t) => {
+  resetModels()
   t.mock.method(globalThis, 'fetch', async () => new Response('nope', { status: 401 }))
 
   await assert.rejects(
@@ -156,6 +167,7 @@ test('openrouter 401 throws ApiError with friendly message, no retry', async (t)
 })
 
 test('openrouter 404 throws friendly model-not-found message, no retry', async (t) => {
+  resetModels()
   t.mock.method(globalThis, 'fetch', async () => jsonResponse({ error: { message: 'Not Found', code: 404 } }, 404))
 
   await assert.rejects(
@@ -170,6 +182,7 @@ test('openrouter 404 throws friendly model-not-found message, no retry', async (
 })
 
 test('venice 429 is retried twice then throws rate limited message', async (t) => {
+  resetModels()
   let calls = 0
   t.mock.method(globalThis, 'fetch', async () => {
     calls++
@@ -184,6 +197,7 @@ test('venice 429 is retried twice then throws rate limited message', async (t) =
 })
 
 test('network errors are retried with backoff before succeeding', async (t) => {
+  resetModels()
   let calls = 0
   t.mock.method(globalThis, 'fetch', async () => {
     calls++
@@ -197,6 +211,7 @@ test('network errors are retried with backoff before succeeding', async (t) => {
 })
 
 test('openrouter fetchModels captures aliasTarget for tilde aliases', async (t) => {
+  resetModels()
   t.mock.method(globalThis, 'fetch', async () => jsonResponse({
     data: [
       { id: '~org/model-latest', name: 'Model Latest', alias_target: { slug: 'org/model-0731' } },
@@ -210,6 +225,7 @@ test('openrouter fetchModels captures aliasTarget for tilde aliases', async (t) 
 })
 
 test('openrouter fetchModels captures architecture and supported parameters', async (t) => {
+  resetModels()
   t.mock.method(globalThis, 'fetch', async () => jsonResponse({
     data: [
       {
@@ -233,6 +249,7 @@ test('openrouter fetchModels captures architecture and supported parameters', as
 })
 
 test('venice fetchModels normalizes vision support', async (t) => {
+  resetModels()
   t.mock.method(globalThis, 'fetch', async () => jsonResponse({
     data: [
       { id: 'vision', model_spec: { capabilities: { supportsVision: true } } },
@@ -248,6 +265,7 @@ test('venice fetchModels normalizes vision support', async (t) => {
 })
 
 test('openrouter fetchEndpoints resolves tilde aliases to their target slug', async (t) => {
+  resetModels()
   resetMetadataCaches()
   const requested = []
   t.mock.method(globalThis, 'fetch', async (url) => {
@@ -268,6 +286,7 @@ test('openrouter fetchEndpoints resolves tilde aliases to their target slug', as
 })
 
 test('openrouter fetchEndpoints fetches models to resolve aliases when none are passed', async (t) => {
+  resetModels()
   resetMetadataCaches()
   const requested = []
   t.mock.method(globalThis, 'fetch', async (url) => {
@@ -298,6 +317,7 @@ test('openrouter fetchEndpoints fetches models to resolve aliases when none are 
 })
 
 test('openrouter fetchEndpoints maps endpoint pricing and parameters', async (t) => {
+  resetModels()
   resetMetadataCaches()
   t.mock.method(globalThis, 'fetch', async (url) => {
     if (url.includes('/endpoints/zdr')) {
@@ -770,6 +790,7 @@ test('isZdrIndexDegraded reflects index fetch success and failure', async (t) =>
 })
 
 test('openrouter fetchModels marks models that have zero-retention endpoints', async (t) => {
+  resetModels()
   resetMetadataCaches()
   t.mock.method(globalThis, 'fetch', async (url) => {
     if (url.includes('/endpoints/zdr')) {
@@ -785,7 +806,7 @@ test('openrouter fetchModels marks models that have zero-retention endpoints', a
     ] })
   })
 
-  const models = await openrouter.fetchModels('key')
+  const models = await openrouter.fetchModels('key', { zdr: true })
   assert.equal(models.find((m) => m.id === 'org/model').zdr, true)
   assert.equal(models.find((m) => m.id === 'plain/model').zdr, undefined)
   assert.equal(models.find((m) => m.id === '~org/alias').zdr, true)

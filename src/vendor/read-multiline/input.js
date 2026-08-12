@@ -1,4 +1,4 @@
-import { cycleSuggestion, deleteToLineEnd, deleteToLineStart, deleteWordBack, dismissSuggestions, handleBackspace, handleDelete, insertChar, insertNewline, redo, saveUndo, suggestMove, undo, } from "./editing.js";
+import { cycleSuggestion, deleteToLineEnd, deleteToLineStart, deleteWordBack, dismissSuggestions, handleBackspace, handleDelete, insertChar, insertNewline, insertPaste, redo, saveUndo, suggestMove, undo, } from "./editing.js";
 import { bufferEnd, bufferStart, historyNext, historyPrev, lineEnd, lineStart, moveDownOrHistory, moveLeft, moveRight, moveUpOrHistory, wordLeft, wordRight, } from "./navigation.js";
 import { clearScreen } from "./rendering.js";
 const PASTE_START = "\x1b[200~";
@@ -116,15 +116,9 @@ export function buildKeyMap(state, submit, cancel, handleEOF) {
 }
 // --- Paste handling ---
 function processPaste(state, text) {
-    const normalized = text.replace(/\r\n|\r/g, "\n");
-    for (const ch of normalized) {
-        if (ch === "\n") {
-            insertNewline(state);
-        }
-        else if (ch.charCodeAt(0) >= 32) {
-            insertChar(state, ch);
-        }
-    }
+    // Bulk insert: per-character insertChar was O(n²) on large pastes. Control
+    // chars other than newline are dropped, mirroring the per-char loop.
+    insertPaste(state, text.replace(/\r\n|\r/g, "\n").replace(/[\x00-\x09\x0b\x0c\x0e-\x1f]/g, ""));
 }
 /** Process an input sequence: handle paste markers, key map lookups, and character insertion */
 export function processInput(state, seq) {

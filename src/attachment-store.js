@@ -84,6 +84,13 @@ async function externalizeDataUrl(value, dir) {
 const dataUrlRefCache = new Map()
 
 export async function externalizeAttachments(messages, dir) {
+  // Fast path: nothing to externalize means the function would only clone
+  // and return an identical copy — skip the structuredClone (which otherwise
+  // deep-duplicates every multi-MB data URL on every session save).
+  const hasDataUrl = messages.some((m) => Array.isArray(m?.content) && m.content.some((part) =>
+    (part?.type === 'image_url' && typeof part.image_url?.url === 'string' && part.image_url.url.startsWith('data:')) ||
+    (part?.type === 'file' && typeof part.file?.file_data === 'string' && part.file.file_data.startsWith('data:'))))
+  if (!hasDataUrl) return messages
   const cloned = structuredClone(messages)
   for (const message of cloned) {
     const content = message?.content

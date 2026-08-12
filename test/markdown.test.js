@@ -527,3 +527,56 @@ test('incremental streaming matches the one-shot renderer on a long mixed docume
   const oneShot = plain(renderText(doc))
   assert.equal(streamed, oneShot + '\n')
 })
+
+test('streaming renderer stays linear on a long boundary-less paragraph', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  // 200 lines with no blank line: the tail-window cap keeps re-parses bounded
+  // while every line still streams as paragraph text.
+  for (let i = 0; i < 200; i++) {
+    renderer.write(`line ${i} of a giant paragraph\n`)
+  }
+  renderer.flush()
+  const text = plain(output())
+  assert.ok(text.includes('line 0 of a giant paragraph\n'))
+  assert.ok(text.includes('line 199 of a giant paragraph\n'))
+  assert.equal(text.split('\n').filter(Boolean).length, 200)
+})
+
+test('streaming renderer emits a large open fence without re-parsing per line', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  renderer.write('```\n')
+  for (let i = 0; i < 300; i++) {
+    renderer.write(`code line ${i}\n`)
+  }
+  renderer.write('```\n')
+  renderer.write('after the fence\n')
+  renderer.flush()
+  const out = output()
+  assert.match(out, /\x1b\[2mcode line 0\x1b\[22m/)
+  assert.match(out, /\x1b\[2mcode line 299\x1b\[22m/)
+  assert.match(out, /after the fence\n/)
+})
+
+test('streaming renderer keeps fence state when a shorter marker line does not close it', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  // `~~~` cannot close a ```` fence: the line is content, and the lines
+  // after it stay dimmed until the real closer arrives.
+  renderer.write('````\n')
+  renderer.write('content one\n')
+  renderer.write('~~~\n')
+  renderer.write('content two\n')
+  renderer.write('````\n')
+  renderer.write('done\n')
+  renderer.flush()
+  const out = output()
+  assert.match(out, /\x1b\[2mcontent one\x1b\[22m/)
+  assert.match(out, /\x1b\[2m~~~\x1b\[22m/)
+  assert.match(out, /\x1b\[2mcontent two\x1b\[22m/)
+  assert.match(out, /done\n/)
+})

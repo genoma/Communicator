@@ -19,11 +19,14 @@ const SGR = {
 }
 
 const LIST_MARKER = /^(\s*(?:[-*+]|\d+[.)])\s+)(.*)$/
-const CITATION = new RegExp(`^\\^${CITATION_GROUP}\\^`)
+// Sticky so the rule can match at state.pos without slicing the remaining
+// source per caret (the slice was O(n) per ^ character).
+const CITATION = new RegExp(`\\^${CITATION_GROUP}\\^`, 'y')
 
 md.inline.ruler.after('backticks', 'citation', (state, silent) => {
   if (state.src.charCodeAt(state.pos) !== 0x5e) return false
-  const m = CITATION.exec(state.src.slice(state.pos))
+  CITATION.lastIndex = state.pos
+  const m = CITATION.exec(state.src)
   if (!m) return false
   if (!silent) {
     const token = state.push('citation', '', 0)

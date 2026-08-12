@@ -3,20 +3,16 @@ import { getApiKey, loadPreferences, loadSystemPrompt, savePreferences } from '.
 import { getProvider } from './providers/index.js'
 import { ApiError, CliError, formatError } from './errors.js'
 import { err, debug } from './ui/io.js'
-import { listModelsCmd, listImageModelsCmd } from './commands/list-models.js'
-import { listEndpointsCmd } from './commands/list-endpoints.js'
-import { listSessionsCmd } from './commands/list-sessions.js'
-import { exportCmd } from './commands/export-cmd.js'
-import { oneShotCmd } from './commands/one-shot.js'
-import { imageGenCmd } from './commands/image-gen.js'
-import { deleteCmd } from './commands/delete-cmd.js'
-import { deleteAllSessionsCmd } from './commands/delete-all-cmd.js'
-import { configViewCmd } from './commands/config-view.js'
-import { configSetCmd } from './commands/config-set.js'
 import { resolveSmoothSpeed, resolveTemperatureFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
 import { isConfigSetter, isPureConfigSetter, hasConfigSetterFlags, validateCliFlags } from './cli-validation.js'
 import { scrapeContext } from './scrape.js'
+
+// Command modules are loaded lazily at their dispatch points: markdown-it and
+// the inquirer pickers live behind one-shot/image/list/export/delete/config
+// commands, and lazy imports keep that whole graph (roughly two thirds of a
+// cold start) out of exit-mode invocations like --version or --list-sessions.
+// chat-start (interactive chat) is the same pattern.
 
 // Fetches a page via the Venice web scraping API and normalizes it for
 // injection into the session context (validated http(s) URL, truncated to
@@ -81,6 +77,7 @@ async function main(opts, promptArg) {
   }
 
   if (opts.config === true) {
+    const { configViewCmd } = await import('./commands/config-view.js')
     await configViewCmd()
     process.exit(0)
   }
@@ -92,22 +89,26 @@ async function main(opts, promptArg) {
     if (typeof provider.fetchImageModels !== 'function') {
       throw new CliError(`Error: --list-image-models is not supported by provider ${providerType}.`)
     }
+    const { listImageModelsCmd } = await import('./commands/list-models.js')
     await listImageModelsCmd(provider, apiKeyOptional)
     process.exit(0)
   }
 
   if (opts.listModels) {
+    const { listModelsCmd } = await import('./commands/list-models.js')
     await listModelsCmd(provider, apiKeyOptional)
     process.exit(0)
   }
 
   if (opts.listEndpoints !== undefined) {
     const prefs = await loadPreferences(opts.config)
+    const { listEndpointsCmd } = await import('./commands/list-endpoints.js')
     await listEndpointsCmd(provider, apiKeyOptional, opts.listEndpoints, prefs)
     process.exit(0)
   }
 
   if (opts.listSessions) {
+    const { listSessionsCmd } = await import('./commands/list-sessions.js')
     await listSessionsCmd()
     process.exit(0)
   }
@@ -116,6 +117,7 @@ async function main(opts, promptArg) {
     const prefs = await loadPreferences(opts.config)
     const outputDir = opts.outputDir || prefs.outputDir || null
     const partialId = typeof opts.export === 'string' ? opts.export : null
+    const { exportCmd } = await import('./commands/export-cmd.js')
     await exportCmd(partialId, outputDir)
     if (opts.outputDir && opts.outputDir !== prefs.outputDir) {
       try {
@@ -129,11 +131,13 @@ async function main(opts, promptArg) {
 
   if (opts.delete !== undefined) {
     const partialId = typeof opts.delete === 'string' ? opts.delete : null
+    const { deleteCmd } = await import('./commands/delete-cmd.js')
     await deleteCmd(partialId)
     process.exit(0)
   }
 
   if (opts.deleteAllSessions !== undefined) {
+    const { deleteAllSessionsCmd } = await import('./commands/delete-all-cmd.js')
     await deleteAllSessionsCmd(opts.deleteAllSessions)
     process.exit(0)
   }
@@ -146,6 +150,7 @@ async function main(opts, promptArg) {
     const prefs = await loadPreferences(opts.config)
     const apiKey = opts.model !== undefined ? getApiKey(providerType) : ''
     try {
+      const { configSetCmd } = await import('./commands/config-set.js')
       await configSetCmd({ opts, prefs, providerType, apiKey })
     } catch (err) {
       if (err instanceof CliError) throw err
@@ -160,6 +165,7 @@ async function main(opts, promptArg) {
   if (!promptArg && !process.stdin.isTTY && opts.model === undefined && opts.resume === undefined && opts.image !== true && isPureConfigSetter(opts)) {
     const prefs = await loadPreferences(opts.config)
     try {
+      const { configSetCmd } = await import('./commands/config-set.js')
       await configSetCmd({ opts, prefs, providerType, apiKey: '' })
     } catch (err) {
       if (err instanceof CliError) throw err
@@ -174,6 +180,7 @@ async function main(opts, promptArg) {
     }
     const apiKey = getApiKey(providerType)
     const prefs = await loadPreferences(opts.config)
+    const { imageGenCmd } = await import('./commands/image-gen.js')
     await imageGenCmd({ apiKey, opts, prefs, providerType, prompt: promptArg })
     process.exit(0)
   }
@@ -203,13 +210,13 @@ async function main(opts, promptArg) {
   }
 
   if (promptArg || !process.stdin.isTTY) {
+    const { oneShotCmd } = await import('./commands/one-shot.js')
     await oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerType, prompt: promptArg, scraped })
     process.exit(0)
   }
 
   // chat-start pulls in the streaming renderer, markdown-it and the
-  // inquirer pickers; keep them out of the exit-mode and one-shot paths by
-  // loading it only for interactive chat.
+  // inquirer pickers; loaded only for interactive chat.
   const { chatStart } = await import('./commands/chat-start.js')
   await chatStart({ apiKey, opts, prefs, systemPrompt, providerType, scraped })
 }

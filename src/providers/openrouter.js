@@ -12,6 +12,7 @@ const CACHE_HEADER = 'x-openrouter-cache-status'
 // flows do not re-hit the API for the same data.
 const imageModelsCache = { fetchedAt: 0, models: null }
 const imageEndpointsCache = new Map()
+const modelsCache = { fetchedAt: 0, models: null }
 
 export const meta = {
   name: 'openrouter',
@@ -33,55 +34,65 @@ export async function isZdrIndexDegraded() {
   return (await getZdrIndex()).degraded === true
 }
 
-export async function fetchModels(apiKey) {
-  // The ZDR index is independent of the models response; fetching them
-  // concurrently saves one round trip of startup latency.
-  const [res, zdr] = await Promise.all([
-    fetchWithRetry(`${OPENROUTER_BASE}/models`, {
+export function resetModelCaches() {
+  modelsCache.fetchedAt = 0
+  modelsCache.models = null
+}
+
+export async function fetchModels(apiKey, { zdr = false } = {}) {
+  let models = modelsCache.models
+  if (!models || Date.now() - modelsCache.fetchedAt >= CACHE_TTL_MS) {
+    const res = await fetchWithRetry(`${OPENROUTER_BASE}/models`, {
       headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-    }, { errorResponse: handleHttpError }),
-    getZdrIndex(),
-  ])
+    }, { errorResponse: handleHttpError })
 
-  const { data } = await res.json()
-  return data.map((m) => {
-    const r = m.reasoning
-    const aliasTarget = m.alias_target?.slug || null
-    const inputModalities = m.architecture?.input_modalities || []
-    const outputModalities = m.architecture?.output_modalities || []
-    const supportedParams = Array.isArray(m.supported_parameters) ? m.supported_parameters : null
+    const { data } = await res.json()
+    models = data.map((m) => {
+      const r = m.reasoning
+      const aliasTarget = m.alias_target?.slug || null
+      const inputModalities = m.architecture?.input_modalities || []
+      const outputModalities = m.architecture?.output_modalities || []
+      const supportedParams = Array.isArray(m.supported_parameters) ? m.supported_parameters : null
 
-    let visionSupported
-    if (inputModalities.includes('image') || supportedParams?.includes('image_url')) {
-      visionSupported = true
-    } else if (inputModalities.length > 0 || supportedParams?.length > 0) {
-      visionSupported = false
-    }
+      let visionSupported
+      if (inputModalities.includes('image') || supportedParams?.includes('image_url')) {
+        visionSupported = true
+      } else if (inputModalities.length > 0 || supportedParams?.length > 0) {
+        visionSupported = false
+      }
 
-    return {
-      id: m.id,
-      name: m.name,
-      provider: m.id.split('/')[0],
-      aliasTarget,
-      contextLength: m.context_length,
-      description: m.description,
-      architecture: { input_modalities: inputModalities, output_modalities: outputModalities },
-      supportedParameters: supportedParams,
-      visionSupported,
-      zdr: zdr.modelIds.has(m.id) || (aliasTarget != null && zdr.modelIds.has(aliasTarget)) || undefined,
-      reasoning: r
-        ? {
-            supported: true,
-            supportsEffort: Array.isArray(r.supported_efforts) && r.supported_efforts.length > 0,
-            supported_efforts: Array.isArray(r.supported_efforts) && r.supported_efforts.length > 0 ? r.supported_efforts : null,
-            default_effort: r.default_effort || null,
-            mandatory: r.mandatory === true,
-            default_enabled: r.default_enabled !== false,
-          }
-        : null,
-      pricing: null,
-    }
-  })
+      return {
+        id: m.id,
+        name: m.name,
+        provider: m.id.split('/')[0],
+        aliasTarget,
+        contextLength: m.context_length,
+        description: m.description,
+        architecture: { input_modalities: inputModalities, output_modalities: outputModalities },
+        supportedParameters: supportedParams,
+        visionSupported,
+        reasoning: r
+          ? {
+              supported: true,
+              supportsEffort: Array.isArray(r.supported_efforts) && r.supported_efforts.length > 0,
+              supported_efforts: Array.isArray(r.supported_efforts) && r.supported_efforts.length > 0 ? r.supported_efforts : null,
+              default_effort: r.default_effort || null,
+              mandatory: r.mandatory === true,
+              default_enabled: r.default_enabled !== false,
+            }
+          : null,
+        pricing: null,
+      }
+    })
+    modelsCache.models = models
+    modelsCache.fetchedAt = Date.now()
+  }
+
+  // The ZDR index is only consulted when zero-retention filtering was
+  // requested; the plain listing never pays for the extra fetch.
+  if (!zdr) return models
+  const index = await getZdrIndex()
+  return models.map((m) => ({ ...m, zdr: index.modelIds.has(m.id) || (m.aliasTarget != null && index.modelIds.has(m.aliasTarget)) || undefined }))
 }
 
 function imageModelConstraints(m) {

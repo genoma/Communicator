@@ -129,11 +129,8 @@ async function writeSidecar(dir, index) {
 async function sidecarStale(dir, sidecarPath, jsonFiles) {
   try {
     const sidecarStat = await stat(sidecarPath)
-    for (const file of jsonFiles) {
-      const fileStat = await stat(join(dir, file))
-      if (fileStat.mtimeMs > sidecarStat.mtimeMs) return true
-    }
-    return false
+    const fileStats = await Promise.all(jsonFiles.map((file) => stat(join(dir, file))))
+    return fileStats.some((s) => s.mtimeMs > sidecarStat.mtimeMs)
   } catch {
     return true
   }
@@ -156,16 +153,15 @@ function toSessionItem(id, meta) {
 const byIdDesc = (a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
 
 async function parseSessionFiles(dir, jsonFiles) {
-  const sessions = []
-  for (const file of jsonFiles) {
+  const sessions = await Promise.all(jsonFiles.map(async (file) => {
     const id = basename(file, '.json')
 
     try {
       const parsed = JSON.parse(await readFile(join(dir, file), 'utf-8'))
       const msgCount = Array.isArray(parsed.messages) ? parsed.messages.length : 0
-      if (msgCount <= 1) continue
+      if (msgCount <= 1) return null
 
-      sessions.push(toSessionItem(id, {
+      return toSessionItem(id, {
         model: parsed.model,
         providerName: parsed.providerName,
         providerType: parsed.providerType,
@@ -174,12 +170,13 @@ async function parseSessionFiles(dir, jsonFiles) {
         messageCount: msgCount,
         preview: firstUserPreview(parsed.messages),
         title: parsed.title,
-      }))
+      })
     } catch {
       // skip corrupt session files
+      return null
     }
-  }
-  return sessions.sort(byIdDesc)
+  }))
+  return sessions.filter(Boolean).sort(byIdDesc)
 }
 
 export async function listSessions(dir) {
@@ -202,12 +199,16 @@ export async function listSessions(dir) {
   if (index && Object.keys(index).length > 0 && !(await sidecarStale(dir, sidecarPath, jsonFiles))) {
     // A session file deleted outside the app (or a stale sidecar key) leaves
     // a ghost entry: drop entries whose files no longer exist so the picker
-    // never offers a resume that fails.
+    // never offers a resume that fails. Ghosts are collected and dropped in
+    // one batched sidecar rewrite (a Set keeps the membership check O(1)).
+    const present = new Set(jsonFiles)
     const valid = []
+    const ghosts = []
     for (const [id, meta] of Object.entries(index)) {
-      if (jsonFiles.includes(`${id}.json`)) valid.push(toSessionItem(id, meta))
-      else await dropSidecarEntry(dir, id)
+      if (present.has(`${id}.json`)) valid.push(toSessionItem(id, meta))
+      else ghosts.push(id)
     }
+    if (ghosts.length > 0) await dropSidecarEntries(dir, ghosts)
     return valid.sort(byIdDesc)
   }
 
@@ -289,6 +290,22 @@ async function dropSidecarEntry(dir, id) {
       delete index[id]
       await writeSidecar(dir, index)
     }
+  } catch {
+    // sidecar failures are non-fatal
+  }
+}
+
+async function dropSidecarEntries(dir, ids) {
+  try {
+    const index = (await readSidecar(dir)) || {}
+    let changed = false
+    for (const id of ids) {
+      if (index[id]) {
+        delete index[id]
+        changed = true
+      }
+    }
+    if (changed) await writeSidecar(dir, index)
   } catch {
     // sidecar failures are non-fatal
   }

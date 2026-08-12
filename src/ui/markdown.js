@@ -10,6 +10,14 @@ const PARTIAL_FLUSH_MS = 200
 const BOUNDARY_RE = /^\s*$|^ {0,3}#{1,6}(?:\s|$)|^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/
 const FENCE_RE = /^ {0,3}(?:`{3,}|~{3,})/
 
+// Tail re-parse cap: a pathological stream with no blank line/heading break
+// for thousands of lines (one giant paragraph/list) must not re-parse the
+// whole text per line. Classification beyond the window is line-local, so
+// the cap is invisible; fences/tables suppress it (they need full context).
+const TAIL_WINDOW = 64
+
+const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 export function createMarkdownRenderer({ getSources = null, stdout = process.stdout, partialFlushMs = PARTIAL_FLUSH_MS } = {}) {
   const lines = []
   const emittedWidths = []
@@ -22,6 +30,18 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
   let timer = null
   let tableOpen = false
   let lastTable = null
+  // Incremental scan state for advanceParseFrom: every line is examined
+  // exactly once, so the boundary/fence window advances in O(1) amortized
+  // instead of re-scanning the whole document per line.
+  let scanIdx = 0
+  let scanFenceLines = 0
+  let scanLastFenceLine = -1
+  let scanLastOpenIndex = -1
+  let scanBoundaryFrom = 0
+  // Absolute line index of the opener of the fence the tail ends inside.
+  // While set, subsequent lines are emitted as fence content without
+  // re-parsing (dropped on a line that could close the fence).
+  let openFence = -1
   // Persistent parse env so link reference definitions accumulate across
   // tail parses instead of being lost when the head of the text is skipped.
   const parseEnv = { sources: [] }
@@ -67,32 +87,34 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
   // multi-paragraph stream linear. The window never advances past un-emitted
   // lines (deferred table rows) or past a fence whose content is unresolved.
   const advanceParseFrom = () => {
-    let from = 0
-    let fenceLines = 0
-    let lastFenceLine = -1
-    let lastOpenIndex = -1
-    for (let i = 0; i < lines.length; i++) {
+    for (let i = scanIdx; i < lines.length; i++) {
       const line = lines[i]
       if (FENCE_RE.test(line)) {
-        fenceLines++
-        if (fenceLines % 2 === 1) lastOpenIndex = i
-        lastFenceLine = i
+        scanFenceLines++
+        if (scanFenceLines % 2 === 1) scanLastOpenIndex = i
+        scanLastFenceLine = i
         continue
       }
-      if (BOUNDARY_RE.test(line)) from = i + 1
+      if (BOUNDARY_RE.test(line)) scanBoundaryFrom = i + 1
     }
+    scanIdx = lines.length
     // Fence content must be re-parsed together with its opening fence: while
     // the last fence is still open — or its closing line has not been emitted
     // yet — the window never advances past the opening fence.
-    if ((fenceLines % 2 === 1 || lastFenceLine >= emitted) && lastOpenIndex !== -1) {
-      from = Math.min(from, lastOpenIndex)
+    let from = scanBoundaryFrom
+    if ((scanFenceLines % 2 === 1 || scanLastFenceLine >= emitted) && scanLastOpenIndex !== -1) {
+      from = Math.min(from, scanLastOpenIndex)
     }
     parseFrom = Math.min(from, emitted)
   }
 
   // The buffer's classification depends on the completed lines before it, so
   // the tail (since the last boundary) is re-parsed on each partial restyle.
+  // Inside an open fence the classification is constant, so no parse runs.
   const partialContext = () => {
+    if (openFence !== -1 && !FENCE_RE.test(buffer)) {
+      return { e: env(), ctx: { type: 'fence', quote: false } }
+    }
     advanceParseFrom()
     const e = env()
     const tail = lines.slice(parseFrom)
@@ -158,9 +180,64 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
     // A held table re-emits its already-emitted header line, so the window
     // must still contain the table start while it is open.
     if (tableOpen && lastTable) parseFrom = Math.min(parseFrom, lastTable.start)
+
+    // Open-fence fast path: while the tail ends inside a fence, every new
+    // line is fence content — emit directly. A line that could close the
+    // fence falls through so markdown-it resolves it.
+    if (openFence !== -1) {
+      if (!FENCE_RE.test(lines[lines.length - 1])) {
+        const e = env()
+        const ctx = { type: 'fence', quote: false }
+        while (emitted < lines.length) {
+          emitLine(emitted, ctx, e)
+          emitted++
+        }
+        return
+      }
+      openFence = -1
+    }
+
+    // Cap the tail window for boundary-less stretches (giant paragraph/list).
+    // Suppressed while a fence has ever been open (fence content must parse
+    // with its opener) and on table-looking rows (an open table must parse
+    // whole).
+    if (openFence === -1 && scanLastOpenIndex === -1 && !lines[lines.length - 1].trimStart().startsWith('|')) {
+      parseFrom = Math.min(Math.max(parseFrom, lines.length - TAIL_WINDOW), emitted)
+    }
+
     const e = env()
     const tail = lines.slice(parseFrom)
     const tokens = md.parse(tail.join('\n'), e)
+
+    // The tail's last block may be a fence. A fence whose block ends at the
+    // tail length is either OPEN (content still streaming — enter the fast
+    // path) or just CLOSED on the final line (closer matches its markup).
+    // The closer on the last line also ends the token map at the tail
+    // length, so the two are told apart by that match (a lone opener line
+    // matching its own markup stays "open"). A verified close advances the
+    // scan boundary past the block, so subsequent parses start after it.
+    const lastToken = tokens[tokens.length - 1]
+    if (lastToken?.type === 'fence' && lastToken.map?.[1] === tail.length) {
+      const closerRe = new RegExp(`^ {0,3}${escapeRegExp(lastToken.markup)}+[ ]*$`)
+      const closed = lastToken.map[1] - lastToken.map[0] >= 2 && closerRe.test(tail[tail.length - 1])
+      if (!closed) {
+        openFence = parseFrom + lastToken.map[0]
+        const ctx = { type: 'fence', quote: false }
+        while (emitted < lines.length) {
+          emitLine(emitted, ctx, e)
+          emitted++
+        }
+        return
+      }
+      // markdown-it verified the close: resync the scan heuristic (marker-
+      // looking lines inside the fence throw its parity off) and advance the
+      // boundary past the block.
+      scanFenceLines = 0
+      scanLastOpenIndex = -1
+      scanLastFenceLine = -1
+      scanBoundaryFrom = Math.max(scanBoundaryFrom, parseFrom + lastToken.map[1])
+    }
+
     const ctxs = classifyContexts(tokens, tail.length)
     const tables = pendingTables(tokens, emitted - parseFrom)
     tableOpen = false
@@ -204,10 +281,13 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
   return {
     write(token) {
       buffer += token
-      let nl
-      while ((nl = buffer.indexOf('\n')) !== -1) {
-        lines.push(buffer.slice(0, nl))
-        buffer = buffer.slice(nl + 1)
+      // Newlines can only occur in the appended token (the drained buffer
+      // holds none), so one split handles all completed lines in O(chunk).
+      const newlineIdx = buffer.indexOf('\n', buffer.length - token.length)
+      if (newlineIdx !== -1) {
+        const parts = buffer.split('\n')
+        buffer = parts.pop()
+        lines.push(...parts)
       }
       if (lines.length > emitted) processBatch()
       if (!buffer) {
@@ -251,6 +331,12 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
       parseFrom = 0
       tableOpen = false
       lastTable = null
+      scanIdx = 0
+      scanFenceLines = 0
+      scanLastFenceLine = -1
+      scanLastOpenIndex = -1
+      scanBoundaryFrom = 0
+      openFence = -1
     },
   }
 }
