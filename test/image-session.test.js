@@ -1280,6 +1280,73 @@ test('/help lists /model', async (t) => {
   await startImageSession(baseOpts({ readInput: scriptedInput(['/help', '/quit']) }))
 
   assert.ok(logs.some((l) => l.includes('/model')))
+  assert.ok(logs.some((l) => l.includes('/status')))
+})
+
+test('the connect banner lists the saved provider defaults', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    prefs: { imageDefaults: { venice: { aspectRatio: '16:9', format: 'webp', resolution: '2K', quality: 'high', variants: 2 } } },
+    readInput: scriptedInput(['/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('\nConnected to venice-sd35  [image]  [aspect: 16:9]  [resolution: 2K]  [quality: high]  [format: webp]  [variants: 2]\n')))
+})
+
+test('/status prints the saved provider defaults', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    prefs: { imageDefaults: { venice: { aspectRatio: '16:9', format: 'webp', resolution: '2K', quality: 'high', variants: 2 } } },
+    readInput: scriptedInput(['/status', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Current settings: venice-sd35  [image]  [aspect: 16:9]  [resolution: 2K]  [quality: high]  [format: webp]  [variants: 2]')))
+})
+
+test('/status shows the session value winning over the saved default', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    prefs: { imageDefaults: { venice: { format: 'webp' } } },
+    readInput: scriptedInput(['/format png', '/status', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Current settings: venice-sd35  [image]  [format: png]')))
+})
+
+test('/status badges the seed and watermark state', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    prefs: { hideWatermark: true },
+    readInput: scriptedInput(['/seed 7', '/status', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Current settings: venice-sd35  [image]  [watermark: off]  [seed: 7]')))
+})
+
+test('/status on a model without sizing lists shows no sizing badges', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    provider: openRouterNoListsProvider,
+    imageModelId: 'openai/gpt-5-image',
+    readInput: scriptedInput(['/status', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Current settings: openai/gpt-5-image  [image]')))
 })
 
 test('/model with an image-model pick switches the session model and persists it', async (t) => {

@@ -4,7 +4,7 @@ import { DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { getImageDefaults, mergeImageDefaults, clearImageDefault, savePreferences, savePrefsBestEffort, applyPreferenceUpdates } from '../config.js'
 import { findImageModel, selectImageEndpoint, selectModelAndEndpoint } from '../model-selection.js'
 import { sessionLabel } from '../ui/format.js'
-import { connectedBanner } from '../status-line.js'
+import { connectedBanner, buildImageStatusLine } from '../status-line.js'
 import { CliError, commandErrorLine } from '../errors.js'
 import { resolveAspectRatio, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
@@ -16,7 +16,7 @@ function imageSessionCommands(providerName, model) {
   const c = model?.constraints
   const showAspect = Array.isArray(c?.aspectRatios) || isPixelModel(model)
   const showVariants = c?.maxN == null || c?.maxN > 1
-  const cmds = ['/help', '/model', '/quit']
+  const cmds = ['/help', '/status', '/model', '/quit']
   if (providerName === 'venice') cmds.push('/watermark')
   if (showAspect) cmds.push('/aspect')
   if (Array.isArray(c?.resolutions)) cmds.push('/resolution')
@@ -129,7 +129,9 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
 
   const sessionValues = {}
 
-  console.log(connectedBanner([sessionLabel(model.endpointProviderName, imageModelId), '[image]'], {
+  const statusSegments = () => buildImageStatusLine({ model, imageModelId, endpointProviderName: model.endpointProviderName, sessionValues, prefs, providerName: provider.meta.name })
+
+  console.log(connectedBanner(statusSegments(), {
     hints: ['Describe an image to generate it; /help lists the available commands.'],
   }))
 
@@ -155,6 +157,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       const showAspect = Array.isArray(c?.aspectRatios) || isPixelModel(model)
       const showVariants = c?.maxN == null || c?.maxN > 1
       console.log('/help            show this help')
+      console.log('/status          show the current settings snapshot')
       console.log('/model           switch image model, or pick a text model to continue in chat')
       console.log('/quit            leave the session')
       if (provider.meta.name === 'venice') console.log('/watermark       hide the Venice watermark on generated images (on|off)')
@@ -183,6 +186,11 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       continue
     }
 
+    if (input === '/status') {
+      console.log(`Current settings: ${statusSegments().join('  ')}\n`)
+      continue
+    }
+
     if (input === '/model') {
       await persist()
       let sel
@@ -205,7 +213,8 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         imageModelId = next.id
         await persist()
         await savePrefs(applyPreferenceUpdates(prefs, { lastImageModel: next.id }))
-        console.log(`Switched to ${sessionLabel(sel.endpointProviderName, sel.modelId)} [image]\n`)
+        console.log(`Switched to ${sessionLabel(sel.endpointProviderName, sel.modelId)} [image]`)
+        console.log(`Current settings: ${statusSegments().join('  ')}\n`)
         continue
       }
       // A text-model pick hands the session off to the normal chat REPL,
