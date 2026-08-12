@@ -510,6 +510,18 @@ test('--no-safe-mode alone opens the chat and persists the pref', async (t) => {
   assert.equal(saved.safeMode, false)
 })
 
+test('Ctrl+C at the picker in one-shot (prompt arg) aborts cleanly with Aborted.', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  )
+
+  const { out } = await runAndExit(t, { provider: 'openrouter' }, '.', 0)
+
+  assert.ok(out.join('\n').includes('Aborted.'))
+})
+
 test('--no-safe-mode with --resume persists the pref before the chat resumes', async (t) => {
   withTTY(t, true)
   withApiKey(t)

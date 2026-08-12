@@ -4,6 +4,7 @@ import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
 import { Readable } from 'node:stream'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { ExitPromptError } from '@inquirer/core'
 import { CliError } from '../src/errors.js'
 import { resetMetadataCaches } from '../src/providers/openrouter-meta.js'
 
@@ -11,6 +12,13 @@ const tempHome = await mkdtemp(join(tmpdir(), 'communicator-home-'))
 after(() => rm(tempHome, { recursive: true, force: true }))
 
 mock.module('node:os', { namedExports: { homedir: () => tempHome } })
+mock.module('@inquirer/prompts', {
+  namedExports: {
+    search: async () => { throw new ExitPromptError() },
+    select: async () => { throw new ExitPromptError() },
+    checkbox: async () => { throw new ExitPromptError() },
+  },
+})
 
 class ExitSignal {
   constructor(code) {
@@ -531,5 +539,22 @@ test('-m with an image model rejects --attach before any generation', async (t) 
   )
   assert.equal(bodies.length, 0)
   assert.ok(fetchCalls.every((u) => !u.includes('/image/generate')))
+})
+
+test('Ctrl+C at the picker in one-shot (TTY, no -m) propagates ExitPromptError', async (t) => {
+  mockOpenRouterStream(t)
+  withApiKey(t)
+  const originalTTY = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY')
+  Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true })
+  t.after(() => {
+    if (originalTTY) Object.defineProperty(process.stdin, 'isTTY', originalTTY)
+    else delete process.stdin.isTTY
+  })
+
+  const { oneShotCmd } = await import('../src/commands/one-shot.js')
+  await assert.rejects(
+    oneShotCmd({ apiKey: 'test-key', opts: opts({ model: undefined }), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: 'Hello' }),
+    (e) => e instanceof ExitPromptError
+  )
 })
 

@@ -1,3 +1,4 @@
+import { ExitPromptError } from '@inquirer/core'
 import { basename, join } from 'node:path'
 import { copyFile, mkdir } from 'node:fs/promises'
 import { getProvider } from '../providers/index.js'
@@ -391,7 +392,7 @@ export async function imageGenCmd({ apiKey, opts, prefs, providerType, prompt, s
     outcome = await runImageGeneration({ provider, apiKey, prompt: text, opts, prefs, sessionId, stdout })
   } catch (err) {
     await removeEmptySessionClaim(dir, sessionId)
-    if (err instanceof CliError) throw err
+    if (err instanceof CliError || err instanceof ExitPromptError) throw err
     throw new CliError(`Error: ${formatError(err)}`)
   }
 

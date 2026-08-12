@@ -5,6 +5,7 @@ import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Readable } from 'node:stream'
+import { ExitPromptError } from '@inquirer/core'
 import { CliError } from '../src/errors.js'
 
 const tempHome = await mkdtemp(join(tmpdir(), 'communicator-image-home-'))
@@ -15,9 +16,11 @@ mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 let searchCalls = []
 let selectCalls = []
 let selectAnswers = []
+let throwOnSearch = false
 mock.module('@inquirer/prompts', {
   namedExports: {
     search: async (opts) => {
+      if (throwOnSearch) throw new ExitPromptError()
       searchCalls.push(opts)
       return { id: 'flux-1-1', name: 'Flux 1.1' }
     },
@@ -248,6 +251,20 @@ test('--image without --image-model uses the picker on a TTY', async (t) => {
   assert.equal(exited, false)
   assert.equal(searchCalls.length, 1)
   assert.equal(searchCalls[0].message, 'Select an image model')
+})
+
+test('--image Ctrl+C at the picker propagates ExitPromptError', async (t) => {
+  mockVeniceFetch(t)
+  withApiKey(t)
+  setStdoutTTY(t, true)
+  setStdinTTY(t, true)
+  throwOnSearch = true
+  t.after(() => { throwOnSearch = false })
+
+  await assert.rejects(
+    runImageGen(t, { overrides: { imageModel: undefined } }),
+    (e) => e instanceof ExitPromptError
+  )
 })
 
 test('--image without --image-model and no TTY errors with the -m-style wording', async (t) => {

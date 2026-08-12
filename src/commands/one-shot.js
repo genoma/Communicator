@@ -1,3 +1,4 @@
+import { ExitPromptError } from '@inquirer/core'
 import { getProvider } from '../providers/index.js'
 import { cpsToCharsPerTick, SCRAPE_COST_USD, DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { scrapeMessage } from '../scrape.js'
@@ -46,7 +47,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
       allowInteractive: !stdinPiped,
     })
   } catch (err) {
-    if (err instanceof CliError) throw err
+    if (err instanceof CliError || err instanceof ExitPromptError) throw err
     fail(`Error: ${formatError(err)}`)
   }
   const { selection, temperature, webSearch, webResults } = context
@@ -62,7 +63,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, providerTy
       outcome = await runImageGeneration({ provider, apiKey, prompt: text, opts, prefs, sessionId, model: selection, stdout: process.stdout })
     } catch (err) {
       await removeEmptySessionClaim(dir, sessionId)
-      if (err instanceof CliError) throw err
+      if (err instanceof CliError || err instanceof ExitPromptError) throw err
       throw new CliError(`Error: ${formatError(err)}`)
     }
 
