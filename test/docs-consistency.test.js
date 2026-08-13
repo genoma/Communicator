@@ -8,7 +8,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const DOCS_DIR = join(ROOT, 'docs')
 
 async function readText(relPath) {
-  return readFile(join(ROOT, relPath), 'utf8')
+  const text = await readFile(join(ROOT, relPath), 'utf8')
+  return text.replace(/\r\n/g, '\n')
 }
 
 function sectionBetween(text, startMarker, endMarker) {
