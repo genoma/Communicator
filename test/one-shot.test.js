@@ -48,7 +48,7 @@ function event(data) {
   return `data: ${JSON.stringify(data)}\n\n`
 }
 
-function mockOpenRouterStream(t, fetchCalls = []) {
+function mockOpenRouterStream(t, fetchCalls = [], bodies = []) {
   resetOpenRouterModelCaches()
   const models = [{ id: 'test/model-a', name: 'Model A', context_length: 1000, description: 'd', reasoning: null }]
   const endpoints = [{
@@ -67,9 +67,12 @@ function mockOpenRouterStream(t, fetchCalls = []) {
     event({ choices: [{ delta: {}, usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }] }),
     'data: [DONE]\n\n',
   ]
-  t.mock.method(globalThis, 'fetch', async (url) => {
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
     fetchCalls.push(String(url))
-    if (String(url).includes('/chat/completions')) return sseResponse(stream)
+    if (String(url).includes('/chat/completions')) {
+      if (opts?.body) bodies.push(JSON.parse(opts.body))
+      return sseResponse(stream)
+    }
     if (String(url).includes('/endpoints')) return jsonResponse({ data: { endpoints } })
     return jsonResponse({ data: models })
   })
@@ -117,10 +120,10 @@ function mockExit(t) {
   return () => exitCode
 }
 
-async function runOneShot(t, { overrides = {}, prefs = {}, prompt = 'Hello' } = {}) {
+async function runOneShot(t, { overrides = {}, prefs = {}, prompt = 'Hello', systemPrompt = null, rpgFirstMessage = null } = {}) {
   const { oneShotCmd } = await import('../src/commands/one-shot.js')
   try {
-    await oneShotCmd({ apiKey: 'test-key', opts: opts(overrides), prefs, systemPrompt: null, providerType: 'openrouter', prompt })
+    await oneShotCmd({ apiKey: 'test-key', opts: opts(overrides), prefs, systemPrompt, rpgFirstMessage, providerType: 'openrouter', prompt })
     return { exited: false }
   } catch (e) {
     if (e instanceof CliError) return { exited: true, exitCode: e.exitCode, message: e.message }
@@ -167,6 +170,28 @@ test('one-shot success path writes plain output, the session file and persisted 
   assert.equal(prefs.lastProvider, 'ProviderX')
   assert.equal(prefs.temperature['test/model-a'], 0.7)
   assert.equal(prefs.budget, 5)
+})
+
+test('one-shot sends the RPG first message as the opening assistant turn', async (t) => {
+  const bodies = []
+  mockOpenRouterStream(t, [], bodies)
+  withApiKey(t)
+  const file = await tempConfig(t)
+  t.mock.method(process.stdout, 'write', () => true)
+  mockExit(t)
+
+  const { exited } = await runOneShot(t, {
+    overrides: { config: file },
+    systemPrompt: 'RPG system prompt',
+    rpgFirstMessage: 'The gate creaks open.',
+  })
+
+  assert.equal(exited, false)
+  assert.equal(bodies.length, 1)
+  assert.equal(bodies[0].messages[0].role, 'system')
+  assert.equal(bodies[0].messages[0].content, 'RPG system prompt')
+  assert.deepEqual(bodies[0].messages[1], { role: 'assistant', content: 'The gate creaks open.' })
+  assert.deepEqual(bodies[0].messages[2], { role: 'user', content: 'Hello' })
 })
 
 test('one-shot treats an invalid configured budget as unset', async (t) => {

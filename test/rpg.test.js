@@ -17,19 +17,21 @@ async function writeFilled(dir) {
   await writeFile(join(dir, 'user.md'), '# Alex\n\n## Description\nThe operator.\n')
   await writeFile(join(dir, 'prompt.md'), '## Tone\nNoir.\n\n## Rules\n- {{user}} decides; {{char}} reacts.\n')
   await writeFile(join(dir, 'scenario.md'), '## Current scene\nA rainy street at midnight.\n')
+  await writeFile(join(dir, 'first-message.md'), 'The rain had stopped by the time she arrived.\n')
 }
 
 test('loadRpgContext creates missing templates in a missing directory', async (t) => {
   const dir = join(await tempDir(t), 'campaign')
   const result = await loadRpgContext(dir)
   assert.equal(result.created, true)
-  assert.deepEqual(result.createdFiles, ['char.md', 'user.md', 'prompt.md', 'scenario.md'])
+  assert.deepEqual(result.createdFiles, ['char.md', 'user.md', 'prompt.md', 'scenario.md', 'first-message.md'])
 
   const files = await Promise.all([
     readFile(join(dir, 'char.md'), 'utf8'),
     readFile(join(dir, 'user.md'), 'utf8'),
     readFile(join(dir, 'prompt.md'), 'utf8'),
     readFile(join(dir, 'scenario.md'), 'utf8'),
+    readFile(join(dir, 'first-message.md'), 'utf8'),
   ])
   for (const file of files) {
     assert.match(file, /RPG_TEMPLATE/)
@@ -43,7 +45,7 @@ test('loadRpgContext only creates the missing files and never overwrites', async
   await writeFile(join(dir, 'user.md'), '# Alex\n\nKept as-is.\n')
   const result = await loadRpgContext(dir)
   assert.equal(result.created, true)
-  assert.deepEqual(result.createdFiles, ['char.md', 'prompt.md', 'scenario.md'])
+  assert.deepEqual(result.createdFiles, ['char.md', 'prompt.md', 'scenario.md', 'first-message.md'])
   assert.equal(await readFile(join(dir, 'user.md'), 'utf8'), '# Alex\n\nKept as-is.\n')
 })
 
@@ -60,7 +62,20 @@ test('loadRpgContext loads filled files into one system prompt', async (t) => {
   assert.match(result.systemPrompt, /## User: Alex/)
   assert.match(result.systemPrompt, /## Tone, world, and rules/)
   assert.match(result.systemPrompt, /## Scenario\n\n## Current scene\nA rainy street at midnight\./)
+  assert.equal(result.firstMessage, 'The rain had stopped by the time she arrived.')
+  assert.doesNotMatch(result.systemPrompt, /The rain had stopped/)
   assert.match(result.systemPrompt, /Alex decides; Zara reacts\./)
+})
+
+test('loadRpgContext rejects a first-message TODO placeholder', async (t) => {
+  const dir = await tempDir(t)
+  await writeFilled(dir)
+  await writeFile(join(dir, 'first-message.md'), 'RPG_FIRST_MESSAGE_TODO: Write the opening message from Zara here.\n')
+  await assert.rejects(loadRpgContext(dir), (err) => {
+    assert.ok(err instanceof CliError)
+    assert.match(err.message, /first-message\.md still contains the setup placeholder/)
+    return true
+  })
 })
 
 test('loadRpgContext strips Markdown comments before sending them', async (t) => {
@@ -83,7 +98,7 @@ test('loadRpgContext rejects template comments and placeholder names', async (t)
   })
 
   const fill = (file) => readFile(join(dir, file), 'utf8').then((text) => writeFile(join(dir, file), text.replace(/<!--[\s\S]*?-->/, '')))
-  await Promise.all(['char.md', 'user.md', 'prompt.md', 'scenario.md'].map(fill))
+  await Promise.all(['char.md', 'user.md', 'prompt.md', 'scenario.md', 'first-message.md'].map(fill))
 
   await assert.rejects(loadRpgContext(dir), (err) => {
     assert.ok(err instanceof CliError)
@@ -168,6 +183,6 @@ test('--rpg setup exits 0 without an API key', async (t) => {
 
   await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal && err.code === 0)
   assert.equal(exitCode, 0)
-  assert.ok(logs.some((line) => line.includes('created char.md, user.md, prompt.md, scenario.md')))
+  assert.ok(logs.some((line) => line.includes('created char.md, user.md, prompt.md, scenario.md, first-message.md')))
   assert.match(await readFile(join(dir, 'char.md'), 'utf8'), /RPG_TEMPLATE/)
 })

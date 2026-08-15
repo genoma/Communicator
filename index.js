@@ -35,7 +35,7 @@ program
   .option('--list-sessions', 'list saved sessions and exit')
   .option('--config [path]', 'path to preferences config file (bare flag prints the current config)')
   .option('--system-prompt <path>', 'path to a custom system prompt file')
-  .option('--rpg <dir>', 'enable RPG mode using char.md, user.md, prompt.md, and scenario.md from a directory')
+  .option('--rpg <dir>', 'enable RPG mode using char.md, user.md, prompt.md, scenario.md, and first-message.md from a directory')
   .option('--reasoning-effort <level>', 'reasoning effort: max, xhigh, high, medium, low, minimal, none')
   .option('--temperature <0-2>', 'temperature override (0 to 2)')
   .option('--budget <usd>', 'per-session budget cap in USD')

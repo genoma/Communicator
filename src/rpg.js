@@ -2,8 +2,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { CliError } from './errors.js'
 
-export const RPG_FILES = ['char.md', 'user.md', 'prompt.md', 'scenario.md']
+export const RPG_FILES = ['char.md', 'user.md', 'prompt.md', 'scenario.md', 'first-message.md']
 export const RPG_TEMPLATE_MARKER = 'RPG_TEMPLATE'
+export const RPG_FIRST_MESSAGE_PLACEHOLDER = 'RPG_FIRST_MESSAGE_TODO'
 
 const CARD_TEMPLATE = `<!-- RPG_TEMPLATE: delete this comment after filling in this file.
      Fill every section below (rename, remove, or add sections as needed). -->
@@ -44,11 +45,18 @@ const SCENARIO_TEMPLATE = `<!-- RPG_TEMPLATE: delete this comment after filling 
 ## Immediate situation
 `
 
+const FIRST_MESSAGE_TEMPLATE = `<!-- RPG_TEMPLATE: delete this comment after filling in this file.
+     Replace the line below with the opening message; you can write multiple paragraphs. -->
+
+RPG_FIRST_MESSAGE_TODO: Write the opening message from {{char}} here.
+`
+
 const TEMPLATES = {
   'char.md': CARD_TEMPLATE,
   'user.md': CARD_TEMPLATE,
   'prompt.md': PROMPT_TEMPLATE,
   'scenario.md': SCENARIO_TEMPLATE,
+  'first-message.md': FIRST_MESSAGE_TEMPLATE,
 }
 
 function fileError(file, message) {
@@ -131,7 +139,7 @@ async function ensureTemplates(dir) {
 }
 
 async function readRpgFiles(dir) {
-  const [charRaw, userRaw, promptRaw, scenarioRaw] = await Promise.all(
+  const [charRaw, userRaw, promptRaw, scenarioRaw, firstMessageRaw] = await Promise.all(
     RPG_FILES.map(async (file) => {
       try {
         return await readFile(join(dir, file), 'utf8')
@@ -144,7 +152,7 @@ async function readRpgFiles(dir) {
     })
   )
 
-  for (const [file, raw] of [['char.md', charRaw], ['user.md', userRaw], ['prompt.md', promptRaw], ['scenario.md', scenarioRaw]]) {
+  for (const [file, raw] of [['char.md', charRaw], ['user.md', userRaw], ['prompt.md', promptRaw], ['scenario.md', scenarioRaw], ['first-message.md', firstMessageRaw]]) {
     if (!raw.trim()) {
       throw fileError(file, 'is empty. Fill it in, then delete the setup comment at the top.')
     }
@@ -165,11 +173,16 @@ async function readRpgFiles(dir) {
   }
 
   const expand = (markdown) => stripMarkdownComments(expandRpgVariables(markdown, { charName, userName }))
+  const firstMessage = expand(firstMessageRaw)
+  if (firstMessage.toUpperCase().includes(RPG_FIRST_MESSAGE_PLACEHOLDER)) {
+    throw fileError('first-message.md', 'still contains the setup placeholder. Replace it with the opening message.')
+  }
   return {
     char: expand(charRaw),
     user: expand(userRaw),
     prompt: expand(promptRaw),
     scenario: expand(scenarioRaw),
+    firstMessage,
     charName,
     userName,
   }
