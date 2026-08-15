@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { CliError } from './errors.js'
 
-export const RPG_FILES = ['char.md', 'user.md', 'prompt.md']
+export const RPG_FILES = ['char.md', 'user.md', 'prompt.md', 'scenario.md']
 export const RPG_TEMPLATE_MARKER = 'RPG_TEMPLATE'
 
 const CARD_TEMPLATE = `<!-- RPG_TEMPLATE: delete this comment after filling in this file.
@@ -34,10 +34,21 @@ const PROMPT_TEMPLATE = `<!-- RPG_TEMPLATE: delete this comment after filling in
 -
 `
 
+const SCENARIO_TEMPLATE = `<!-- RPG_TEMPLATE: delete this comment after filling in this file.
+     Fill every section below (rename, remove, or add sections as needed). -->
+
+## Current scene
+
+## Time and place
+
+## Immediate situation
+`
+
 const TEMPLATES = {
   'char.md': CARD_TEMPLATE,
   'user.md': CARD_TEMPLATE,
   'prompt.md': PROMPT_TEMPLATE,
+  'scenario.md': SCENARIO_TEMPLATE,
 }
 
 function fileError(file, message) {
@@ -72,7 +83,7 @@ export function expandRpgVariables(markdown, { charName, userName }) {
     .replaceAll('{{user}}', userName)
 }
 
-export function buildRpgSystemPrompt({ char, user, prompt, charName, userName }) {
+export function buildRpgSystemPrompt({ char, user, prompt, scenario, charName, userName }) {
   const sections = [
     '# Roleplay mode — fixed for this conversation',
     `You are roleplaying as **${charName}**.`,
@@ -87,6 +98,9 @@ export function buildRpgSystemPrompt({ char, user, prompt, charName, userName })
     '---',
     `## User: ${userName}`,
     user,
+    '---',
+    '## Scenario',
+    scenario,
     '---',
     '## Every turn',
     `- The latest user message is ${userName}'s input.`,
@@ -117,7 +131,7 @@ async function ensureTemplates(dir) {
 }
 
 async function readRpgFiles(dir) {
-  const [charRaw, userRaw, promptRaw] = await Promise.all(
+  const [charRaw, userRaw, promptRaw, scenarioRaw] = await Promise.all(
     RPG_FILES.map(async (file) => {
       try {
         return await readFile(join(dir, file), 'utf8')
@@ -130,7 +144,7 @@ async function readRpgFiles(dir) {
     })
   )
 
-  for (const [file, raw] of [['char.md', charRaw], ['user.md', userRaw], ['prompt.md', promptRaw]]) {
+  for (const [file, raw] of [['char.md', charRaw], ['user.md', userRaw], ['prompt.md', promptRaw], ['scenario.md', scenarioRaw]]) {
     if (!raw.trim()) {
       throw fileError(file, 'is empty. Fill it in, then delete the setup comment at the top.')
     }
@@ -155,6 +169,7 @@ async function readRpgFiles(dir) {
     char: expand(charRaw),
     user: expand(userRaw),
     prompt: expand(promptRaw),
+    scenario: expand(scenarioRaw),
     charName,
     userName,
   }

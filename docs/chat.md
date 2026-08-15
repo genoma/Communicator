@@ -110,6 +110,7 @@ communicator --system-prompt /path/to/custom-prompt.md
 - `char.md` — who the model plays
 - `user.md` — who the human plays
 - `prompt.md` — tone, world, and rules
+- `scenario.md` — the current scene and starting situation
 
 ```bash
 communicator --rpg ~/rpg/cyberpunk-campaign
@@ -117,4 +118,4 @@ communicator --rpg ~/rpg/cyberpunk-campaign
 
 On first use the missing files are created as fill-in templates and the command exits so you can edit them. Delete the HTML comment at the top of each file once it is filled in, then rerun the same command.
 
-The files are combined into one fixed system message. `{{char}}` and `{{user}}` are replaced with the names from the first `# Name` heading in `char.md` and `user.md`; Markdown comments are removed before the prompt is sent. `--rpg` cannot be combined with `--system-prompt` or `--resume`, and is for text chat models only.
+The files are combined into one fixed system message; the scenario is placed after the character and user sections, just before the per-turn rules. `{{char}}` and `{{user}}` are replaced with the names from the first `# Name` heading in `char.md` and `user.md`; Markdown comments are removed before the prompt is sent. `--rpg` cannot be combined with `--system-prompt` or `--resume`, and is for text chat models only.
