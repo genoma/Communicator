@@ -9,6 +9,7 @@ import { createLoader } from './ui/loader.js'
 import { dim, sep } from './ui/style.js'
 import { out } from './ui/io.js'
 import { ensureSessionsDir, generateSessionId, persistSessionFile, buildSessionPayload, removeEmptySessionClaim } from './sessions.js'
+import { saveRpgHistory } from './rpg.js'
 import { savePreferences, applyPreferenceUpdates, savePrefsBestEffort } from './config.js'
 import { copyText } from './clipboard.js'
 import { ChatState } from './chat-state.js'
@@ -46,6 +47,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     smoothStreaming = true,
     smoothSpeed,
     scrapes = 0,
+    rpgDir = null,
     prefs = {},
     configPath = null,
   } = ctx
@@ -161,6 +163,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
     }
     try {
       await saveSessionFile(state.sessionId, buildSessionPayload(state.toFinalState(provider.meta.name)))
+      if (rpgDir) {
+        await saveRpgHistory(rpgDir, state.messages)
+      }
     } catch {
       // save failures are non-fatal
     }

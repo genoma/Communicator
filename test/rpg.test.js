@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CliError } from '../src/errors.js'
-import { buildRpgSystemPrompt, isPlaceholderName, loadRpgContext, parseRpgName } from '../src/rpg.js'
+import { buildRpgSystemPrompt, isPlaceholderName, loadRpgContext, loadRpgHistory, parseRpgName, saveRpgHistory } from '../src/rpg.js'
 
 async function tempDir(t) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
@@ -132,6 +132,62 @@ test('name helpers', () => {
   assert.equal(isPlaceholderName('Zara'), false)
 })
 
+test('saveRpgHistory stores non-system messages and loadRpgHistory returns them', async (t) => {
+  const dir = await tempDir(t)
+  const messages = [
+    { role: 'system', content: 'fixed system prompt' },
+    { role: 'assistant', content: 'The gate creaks open.' },
+    { role: 'user', content: 'I step through.' },
+    { role: 'assistant', content: 'Shadows shift.', usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } },
+  ]
+  await saveRpgHistory(dir, messages)
+
+  const raw = JSON.parse(await readFile(join(dir, 'history.json'), 'utf-8'))
+  assert.ok(raw.updatedAt)
+  assert.deepEqual(raw.messages, messages.slice(1))
+
+  const history = await loadRpgHistory(dir)
+  assert.deepEqual(history, messages.slice(1))
+})
+
+test('saveRpgHistory skips the write when only the system message is present', async (t) => {
+  const dir = await tempDir(t)
+  await writeFile(join(dir, 'history.json'), 'previous story\n')
+  await saveRpgHistory(dir, [{ role: 'system', content: 'prompt' }])
+  assert.equal(await readFile(join(dir, 'history.json'), 'utf-8'), 'previous story\n')
+})
+
+test('loadRpgHistory returns null when the history file is missing', async (t) => {
+  const dir = await tempDir(t)
+  assert.equal(await loadRpgHistory(dir), null)
+})
+
+test('loadRpgHistory returns null for an empty messages array', async (t) => {
+  const dir = await tempDir(t)
+  await writeFile(join(dir, 'history.json'), JSON.stringify({ updatedAt: new Date().toISOString(), messages: [] }))
+  assert.equal(await loadRpgHistory(dir), null)
+})
+
+test('loadRpgHistory warns and starts fresh on a corrupt history file', async (t) => {
+  const dir = await tempDir(t)
+  await writeFile(join(dir, 'history.json'), '{not json')
+  const warnings = []
+  t.mock.method(console, 'warn', (msg) => warnings.push(String(msg)))
+  assert.equal(await loadRpgHistory(dir), null)
+  assert.ok(warnings.some((w) => w.includes('history.json') && w.includes('corrupt')))
+})
+
+test('loadRpgContext returns the saved history alongside the rebuilt prompt', async (t) => {
+  const dir = await tempDir(t)
+  await writeFilled(dir)
+  await saveRpgHistory(dir, [{ role: 'assistant', content: 'The gate creaks open.' }])
+
+  const result = await loadRpgContext(dir)
+  assert.equal(result.created, false)
+  assert.deepEqual(result.history, [{ role: 'assistant', content: 'The gate creaks open.' }])
+  assert.doesNotMatch(JSON.stringify(result.history), /system/)
+})
+
 class ExitSignal extends Error {
   constructor(code) {
     super(`exit ${code}`)
@@ -185,4 +241,66 @@ test('--rpg setup exits 0 without an API key', async (t) => {
   assert.equal(exitCode, 0)
   assert.ok(logs.some((line) => line.includes('created char.md, user.md, prompt.md, scenario.md, first-message.md')))
   assert.match(await readFile(join(dir, 'char.md'), 'utf8'), /RPG_TEMPLATE/)
+})
+
+test('--rpg with a saved history announces the resumed conversation', async (t) => {
+  const dir = await tempDir(t)
+  await writeFilled(dir)
+  await saveRpgHistory(dir, [
+    { role: 'assistant', content: 'The gate creaks open.' },
+    { role: 'user', content: 'I step through.' },
+  ])
+
+  const logs = []
+  const errors = []
+  const previousKey = process.env.OPENROUTER_API_KEY
+  delete process.env.OPENROUTER_API_KEY
+  t.after(() => {
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY
+    else process.env.OPENROUTER_API_KEY = previousKey
+  })
+  t.mock.method(console, 'log', (msg) => logs.push(String(msg)))
+  t.mock.method(console, 'error', (msg) => errors.push(String(msg)))
+  let exitCode = null
+  t.mock.method(process, 'exit', (code) => {
+    exitCode = code
+    throw new ExitSignal(code)
+  })
+
+  const { runCli } = await import(`../src/cli-main.js?t=${Date.now()}`)
+  const opts = {
+    model: 'test/model',
+    provider: 'openrouter',
+    listModels: undefined,
+    listImageModels: undefined,
+    listEndpoints: undefined,
+    resume: undefined,
+    export: undefined,
+    outputDir: undefined,
+    listSessions: undefined,
+    config: undefined,
+    systemPrompt: undefined,
+    rpg: dir,
+    reasoningEffort: undefined,
+    temperature: undefined,
+    budget: undefined,
+    webSearch: undefined,
+    webResults: undefined,
+    smoothStreaming: true,
+    smoothSpeed: undefined,
+    zdr: undefined,
+    e2ee: undefined,
+    image: undefined,
+    imageModel: undefined,
+    safeMode: true,
+    watermark: true,
+    delete: undefined,
+    deleteAllSessions: undefined,
+    attach: [],
+  }
+
+  await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal)
+  assert.equal(exitCode, 1)
+  assert.ok(logs.some((line) => line.includes(`Resumed RPG conversation from ${dir}/history.json (2 messages).`)))
+  assert.ok(errors.some((line) => line.includes('OPENROUTER_API_KEY environment variable is not set.')))
 })

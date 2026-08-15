@@ -400,6 +400,48 @@ test('chatStart seeds the RPG first message as the opening assistant turn', asyn
   ])
 })
 
+test('chatStart seeds RPG history ahead of the greeting and passes the rpg dir for saving', async (t) => {
+  resumeResult = null
+  nonInteractiveSelection = {
+    modelId: 'test/model',
+    endpointProviderName: 'ProviderX',
+    reasoningEffort: 'medium',
+    webSearchSupported: true,
+    visionSupported: undefined,
+    fileSupported: true,
+    pricing: { prompt: 1e-6, completion: 2e-6 },
+    contextLength: 64000,
+    supportsReasoning: true,
+    modelReasoning: null,
+  }
+
+  const { chatStart: chatStartFresh } = await import(`../src/commands/chat-start.js?t=${Date.now()}`)
+  withApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(console, 'log', () => {})
+
+  await chatStartFresh({
+    apiKey: 'k',
+    opts: baseOpts({ model: 'test/model', config: configFile, rpg: '/tmp/some-story' }),
+    prefs: {},
+    systemPrompt: 'RPG system prompt',
+    rpgFirstMessage: 'Welcome to the keep, traveler.',
+    rpgHistory: [
+      { role: 'assistant', content: 'Welcome to the keep, traveler.' },
+      { role: 'user', content: 'I enter.' },
+    ],
+    providerType: 'openrouter',
+  })
+
+  const call = startChatCalls[startChatCalls.length - 1]
+  assert.deepEqual(call.opts.initialMessages, [
+    { role: 'system', content: 'RPG system prompt' },
+    { role: 'assistant', content: 'Welcome to the keep, traveler.' },
+    { role: 'user', content: 'I enter.' },
+  ])
+  assert.equal(call.opts.rpgDir, '/tmp/some-story')
+})
+
 test('chatStart routes a resumed venice image session into the image session', async (t) => {
   resumeResult = resumeSession({
     providerType: 'venice',

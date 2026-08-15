@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, writeFile, rm, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { ExitPromptError } from '@inquirer/core'
@@ -174,6 +174,50 @@ test('/new mid-session resets messages and the tracker and saves the prior sessi
   const costLine = consoleSpy.allLogs().find((l) => l.includes('Current session:'))
   assert.ok(costLine)
   assert.match(costLine, /0 request\(s\)/)
+})
+
+test('rpg history is written to the rpg dir on exit and excludes the system prompt', async (t) => {
+  mockConsole(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['hello', '/quit']) })
+
+  await runChatSession(baseCtx(provider, { rpgDir: dir, systemPrompt: 'RPG prompt' }), harness.deps)
+
+  const history = JSON.parse(await readFile(join(dir, 'history.json'), 'utf-8'))
+  assert.ok(history.updatedAt)
+  assert.deepEqual(history.messages.map((m) => m.role), ['user', 'assistant'])
+  assert.equal(history.messages[1].content, 'Hello!')
+})
+
+test('/new in rpg mode saves the prior story, and later saves overwrite with the new chapter', async (t) => {
+  mockConsole(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['first', '/new', 'second', '/quit']), newSessionId: async () => 'fresh-2' })
+
+  await runChatSession(baseCtx(provider, { rpgDir: dir }), harness.deps)
+
+  const history = JSON.parse(await readFile(join(dir, 'history.json'), 'utf-8'))
+  assert.deepEqual(history.messages.map((m) => m.content), ['second', 'Hello!'])
+})
+
+test('quitting an rpg session with no turns leaves an existing history file untouched', async (t) => {
+  mockConsole(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  await writeFile(join(dir, 'history.json'), 'previous story\n')
+
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/quit']) })
+
+  await runChatSession(baseCtx(provider, { rpgDir: dir }), harness.deps)
+
+  assert.equal(await readFile(join(dir, 'history.json'), 'utf-8'), 'previous story\n')
 })
 
 test('/quit returns the final state and saves exactly once', async (t) => {

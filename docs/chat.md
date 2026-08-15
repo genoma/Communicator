@@ -120,3 +120,9 @@ communicator --rpg ~/rpg/cyberpunk-campaign
 On first use the missing files are created as fill-in templates and the command exits so you can edit them. Delete the HTML comment at the top of each file once it is filled in, then rerun the same command. In interactive mode, `first-message.md` is rendered immediately after the model/provider selection banner, before the first input prompt. In one-shot mode it is included as the opening assistant message in the request but is not printed to piped stdout.
 
 The files are combined into one fixed system message; the scenario is placed after the character and user sections, just before the per-turn rules. `{{char}}` and `{{user}}` are replaced with the names from the first `# Name` heading in `char.md` and `user.md`; Markdown comments are removed before the prompt is sent. `--rpg` cannot be combined with `--system-prompt` or `--resume`, and is for text chat models only.
+
+### Saving and resuming the conversation
+
+The conversation is saved to `history.json` in the RPG directory — on `/quit`, `/new`, `/model`, Ctrl+C (including interrupted responses), and after one-shot runs. The file stores the conversation turns without the system prompt, so editing the story files later applies to the resumed conversation.
+
+Rerunning `--rpg <dir>` continues the story automatically: the saved turns are replayed before the first input prompt and sent with every request, with a `Resumed RPG conversation from <dir>/history.json (N messages).` notice. The greeting from `first-message.md` is only added when there is no history to resume. To start a new story, delete `history.json` (or run `/new`, which saves the current chapter and starts a fresh one — the previous chapter remains available in `~/.communicator/sessions/` via `--resume`/`--export`).

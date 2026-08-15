@@ -11,12 +11,13 @@ import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { loadAttachments, buildContent, contentText } from '../attachments.js'
 import { resolveArtifacts, printArtifactsSummary } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
+import { saveRpgHistory } from '../rpg.js'
 import { createE2eeSession } from '../e2ee.js'
 import { runImageCommand } from './image-gen.js'
 import { connectedBanner, buildStatusLine } from '../status-line.js'
 import { sanitizeAnsi } from '../ui/hyperlink.js'
 
-export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, providerType, prompt, scraped = null }) {
+export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgHistory = null, providerType, prompt, scraped = null }) {
   const provider = getProvider(providerType)
   const stdinPiped = !process.stdin.isTTY
 
@@ -70,7 +71,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   const { dir, sessionId, createdAt } = await createNewSession()
   const messages = [
     { role: 'system', content: systemPrompt || DEFAULT_SYSTEM_PROMPT },
-    ...(rpgFirstMessage ? [{ role: 'assistant', content: rpgFirstMessage }] : []),
+    ...(rpgHistory ? rpgHistory : rpgFirstMessage ? [{ role: 'assistant', content: rpgFirstMessage }] : []),
     ...(scraped ? [{ role: 'user', content: scrapeMessage(scraped.url, scraped.content) }] : []),
     { role: 'user', content: buildContent(text, attachments) },
   ]
@@ -218,4 +219,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   const finalState = state.toFinalState(provider.meta.name)
 
   await persistSession({ finalState, prefs, config: opts.config })
+  if (opts.rpg !== undefined) {
+    await saveRpgHistory(opts.rpg, messages)
+  }
 }

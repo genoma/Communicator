@@ -1,10 +1,12 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { CliError } from './errors.js'
+import { writeFileAtomic } from './fs-utils.js'
 
 export const RPG_FILES = ['char.md', 'user.md', 'prompt.md', 'scenario.md', 'first-message.md']
 export const RPG_TEMPLATE_MARKER = 'RPG_TEMPLATE'
 export const RPG_FIRST_MESSAGE_PLACEHOLDER = 'RPG_FIRST_MESSAGE_TODO'
+export const RPG_HISTORY_FILE = 'history.json'
 
 const CARD_TEMPLATE = `<!-- RPG_TEMPLATE: delete this comment after filling in this file.
      Fill every section below (rename, remove, or add sections as needed). -->
@@ -200,5 +202,40 @@ export async function loadRpgContext(dir) {
     dir,
     ...files,
     systemPrompt: buildRpgSystemPrompt(files),
+    history: await loadRpgHistory(dir),
+  }
+}
+
+// The conversation log lives in the RPG directory so the story continues on
+// the next --rpg run. The system prompt is deliberately not stored: it is
+// rebuilt from the current Markdown files on every launch, so edits to the
+// story files apply to resumed conversations too.
+export async function saveRpgHistory(dir, messages) {
+  const turns = messages.filter((m) => m.role !== 'system')
+  if (turns.length === 0) return
+  try {
+    await writeFileAtomic(join(dir, RPG_HISTORY_FILE), JSON.stringify({ updatedAt: new Date().toISOString(), messages: turns }, null, 2) + '\n')
+  } catch (err) {
+    console.error(`Warning: could not save RPG history: ${err.message}`)
+  }
+}
+
+export async function loadRpgHistory(dir) {
+  const filePath = join(dir, RPG_HISTORY_FILE)
+  let raw
+  try {
+    raw = await readFile(filePath, 'utf8')
+  } catch (err) {
+    if (err.code === 'ENOENT') return null
+    console.warn(`Warning: could not read RPG history ${filePath}: ${err.message}`)
+    return null
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || !Array.isArray(parsed.messages) || parsed.messages.length === 0) return null
+    return parsed.messages
+  } catch {
+    console.warn(`Warning: RPG history file is corrupt: ${filePath}; starting fresh.`)
+    return null
   }
 }

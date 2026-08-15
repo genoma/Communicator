@@ -85,6 +85,9 @@ async function main(opts, promptArg) {
       console.log('Fill in each file, delete the HTML comment at the top, then rerun with the same --rpg directory.')
       process.exit(0)
     }
+    if (rpgContext.history?.length > 0) {
+      console.log(`Resumed RPG conversation from ${rpgContext.dir}/history.json (${rpgContext.history.length} messages).`)
+    }
   }
 
   if (opts.config === true) {
@@ -204,6 +207,7 @@ async function main(opts, promptArg) {
   const prefs = await loadPreferences(opts.config)
   const systemPrompt = rpgContext?.systemPrompt ?? await loadSystemPrompt(opts.systemPrompt)
   const rpgFirstMessage = rpgContext?.firstMessage ?? null
+  const rpgHistory = rpgContext?.history ?? null
 
   const scraped = opts.scrape !== undefined
     ? await scrapeForSession({ provider, apiKey, url: opts.scrape })
@@ -223,12 +227,12 @@ async function main(opts, promptArg) {
 
   if (promptArg || !process.stdin.isTTY) {
     const { oneShotCmd } = await import('./commands/one-shot.js')
-    await oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, providerType, prompt: promptArg, scraped })
+    await oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgHistory, providerType, prompt: promptArg, scraped })
     process.exit(0)
   }
 
   // chat-start pulls in the streaming renderer, markdown-it and the
   // inquirer pickers; loaded only for interactive chat.
   const { chatStart } = await import('./commands/chat-start.js')
-  await chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, providerType, scraped })
+  await chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgHistory, providerType, scraped })
 }
