@@ -43,6 +43,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 ├── constants.js          — shared constants (paths, labels, temperature bounds, SSE markers) and formatCost
 ├── prompts.js            — interactive TUI pickers using @inquirer/prompts (model, provider, reasoning effort)
 ├── flags.js              — CLI flag resolvers (temperature, web search/results, reasoning, budget)
+├── rpg.js                — --rpg mode: template provisioning, Markdown loading, and system-prompt assembly
 ├── reasoning.js          — reasoning effort default resolution + web search capability check
 ├── image-sizing.js       — pixel sizing helpers for pixel-based Venice image models
 ├── chat-state.js         — ChatState: session state + pure transitions + final-state snapshot

@@ -7,6 +7,7 @@ import { resolveSmoothSpeed, resolveTemperatureFlag, resolveBudget, resolveWebRe
 import { resolveFlagOrExit, fail } from './cli-utils.js'
 import { isConfigSetter, isPureConfigSetter, hasConfigSetterFlags, validateCliFlags } from './cli-validation.js'
 import { scrapeContext } from './scrape.js'
+import { loadRpgContext } from './rpg.js'
 
 // Command modules are loaded lazily at their dispatch points: markdown-it and
 // the inquirer pickers live behind one-shot/image/list/export/delete/config
@@ -74,6 +75,16 @@ async function main(opts, promptArg) {
   const validationErrors = validateCliFlags(opts, { promptArg, isTTY: process.stdin.isTTY })
   if (validationErrors.length > 0) {
     throw new CliError(validationErrors[0])
+  }
+
+  let rpgContext = null
+  if (opts.rpg !== undefined) {
+    rpgContext = await loadRpgContext(opts.rpg)
+    if (rpgContext.created) {
+      console.log(`RPG mode setup: created ${rpgContext.createdFiles.join(', ')} in ${rpgContext.dir}`)
+      console.log('Fill in each file, delete the HTML comment at the top, then rerun with the same --rpg directory.')
+      process.exit(0)
+    }
   }
 
   if (opts.config === true) {
@@ -146,7 +157,7 @@ async function main(opts, promptArg) {
   // which persists the pref; combined with other config-setter flags it keeps
   // the save-and-exit config-set behavior.
   const onlySafeModeSetter = opts.safeMode === false && !hasConfigSetterFlags(opts)
-  if (isConfigSetter(opts) && !onlySafeModeSetter && !promptArg && process.stdin.isTTY && opts.resume === undefined && opts.image !== true) {
+  if (isConfigSetter(opts) && !onlySafeModeSetter && opts.rpg === undefined && !promptArg && process.stdin.isTTY && opts.resume === undefined && opts.image !== true) {
     const prefs = await loadPreferences(opts.config)
     const apiKey = opts.model !== undefined ? getApiKey(providerType) : ''
     try {
@@ -191,7 +202,7 @@ async function main(opts, promptArg) {
 
   const apiKey = getApiKey(providerType)
   const prefs = await loadPreferences(opts.config)
-  const systemPrompt = await loadSystemPrompt(opts.systemPrompt)
+  const systemPrompt = rpgContext?.systemPrompt ?? await loadSystemPrompt(opts.systemPrompt)
 
   const scraped = opts.scrape !== undefined
     ? await scrapeForSession({ provider, apiKey, url: opts.scrape })

@@ -45,6 +45,10 @@ export async function buildSessionContext({ provider, apiKey, opts, prefs, force
   const gateError = webSearchGate(webSearch, selection.webSearchSupported)
   if (gateError) throw new CliError(`Error: ${gateError}`)
 
+  if (opts.rpg !== undefined && selection.isImageModel === true) {
+    throw new CliError('Error: --rpg is for text chat models only; the selected model is an image model.')
+  }
+
   return {
     selection,
     temperature: forcedTemperature ?? prefs.temperature?.[selection.modelId] ?? DEFAULT_TEMPERATURE,

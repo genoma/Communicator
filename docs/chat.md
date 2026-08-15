@@ -102,3 +102,19 @@ communicator --system-prompt /path/to/custom-prompt.md
 - If the file is missing or empty, the default `"You are a helpful assistant."` prompt is used silently.
 - The file is read once at startup. Changes require restarting the chat.
 - Venice always sets `include_venice_system_prompt: false` since the app provides its own system prompt.
+
+## RPG mode
+
+`--rpg <dir>` builds the system prompt from three Markdown files in that directory:
+
+- `char.md` — who the model plays
+- `user.md` — who the human plays
+- `prompt.md` — tone, world, and rules
+
+```bash
+communicator --rpg ~/rpg/cyberpunk-campaign
+```
+
+On first use the missing files are created as fill-in templates and the command exits so you can edit them. Delete the HTML comment at the top of each file once it is filled in, then rerun the same command.
+
+The files are combined into one fixed system message. `{{char}}` and `{{user}}` are replaced with the names from the first `# Name` heading in `char.md` and `user.md`; Markdown comments are removed before the prompt is sent. `--rpg` cannot be combined with `--system-prompt` or `--resume`, and is for text chat models only.

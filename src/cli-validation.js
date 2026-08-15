@@ -1,6 +1,6 @@
 import { WEB_SEARCH_MODES } from './flags.js'
 
-const SESSION_FLAGS_LIST = '--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --attach, --scrape'
+const SESSION_FLAGS_LIST = '--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --rpg, --attach, --scrape'
 
 export function hasAttachments(opts) {
   return (opts.attach?.length ?? 0) > 0
@@ -24,6 +24,7 @@ export function isSessionOnly(opts) {
     opts.smoothSpeed !== undefined ||
     opts.smoothStreaming === false ||
     opts.systemPrompt !== undefined ||
+    opts.rpg !== undefined ||
     hasAttachments(opts) ||
     opts.scrape !== undefined
   )
@@ -77,6 +78,7 @@ function hasBareConfigOtherFlags(opts, promptArg) {
     opts.outputDir !== undefined ||
     opts.listSessions ||
     opts.systemPrompt !== undefined ||
+    opts.rpg !== undefined ||
     opts.reasoningEffort !== undefined ||
     opts.temperature !== undefined ||
     opts.budget !== undefined ||
@@ -136,6 +138,14 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
 
   if (opts.e2ee === true && opts.scrape !== undefined) {
     errors.push('Error: --e2ee cannot be combined with --scrape (E2EE does not support web scraping).')
+  }
+
+  if (opts.rpg !== undefined && opts.systemPrompt !== undefined) {
+    errors.push('Error: --rpg cannot be combined with --system-prompt.')
+  }
+
+  if (opts.rpg !== undefined && opts.resume !== undefined) {
+    errors.push('Error: --rpg cannot be combined with --resume (resumed sessions keep their saved system prompt).')
   }
 
   if (opts.scrape !== undefined && opts.provider !== 'venice') {
@@ -220,7 +230,7 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
   }
 
   if (opts.image && (opts.model !== undefined || opts.zdr === true || sessionOnlyFlags)) {
-    errors.push('Error: --image cannot be combined with chat session flags (--model, --attach, --system-prompt, --temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --zdr, --scrape).')
+    errors.push('Error: --image cannot be combined with chat session flags (--model, --attach, --system-prompt, --rpg, --temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --zdr, --scrape).')
   }
 
   if (opts.image && (opts.width !== undefined || opts.height !== undefined)) {
