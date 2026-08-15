@@ -105,7 +105,7 @@ communicator --system-prompt /path/to/custom-prompt.md
 
 ## RPG mode
 
-`--rpg <dir>` builds the system prompt from three Markdown files in that directory:
+`--rpg <dir>` builds the system prompt from five Markdown files in that directory:
 
 - `char.md` — who the model plays
 - `user.md` — who the human plays
@@ -126,3 +126,5 @@ The files are combined into one fixed system message; the scenario is placed aft
 The conversation is saved to `history.json` in the RPG directory — on `/quit`, `/new`, `/model`, Ctrl+C (including interrupted responses), and after one-shot runs. The file stores the conversation turns without the system prompt, so editing the story files later applies to the resumed conversation.
 
 Rerunning `--rpg <dir>` continues the story automatically: the saved turns are replayed before the first input prompt and sent with every request, with a `Resumed RPG conversation from <dir>/history.json (N messages).` notice. The greeting from `first-message.md` is only added when there is no history to resume. To start a new story, delete `history.json` (or run `/new`, which saves the current chapter and starts a fresh one — the previous chapter remains available in `~/.communicator/sessions/` via `--resume`/`--export`).
+
+Note that `history.json` stores messages unencrypted even under `--e2ee` (encryption only applies to messages sent to the API).

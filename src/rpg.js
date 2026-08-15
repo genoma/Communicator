@@ -74,11 +74,6 @@ export function parseRpgName(markdown, fallback) {
   return match?.[1].trim() || fallback
 }
 
-function headingName(markdown) {
-  const match = markdown.match(/^#\s+(.+?)\s*$/m)
-  return match?.[1].trim() || null
-}
-
 export function isPlaceholderName(name) {
   const normalized = name.trim()
   return (
@@ -89,8 +84,8 @@ export function isPlaceholderName(name) {
 
 export function expandRpgVariables(markdown, { charName, userName }) {
   return markdown
-    .replaceAll('{{char}}', charName)
-    .replaceAll('{{user}}', userName)
+    .replaceAll('{{char}}', () => charName)
+    .replaceAll('{{user}}', () => userName)
 }
 
 export function buildRpgSystemPrompt({ char, user, prompt, scenario, charName, userName }) {
@@ -130,7 +125,7 @@ async function ensureTemplates(dir) {
   const created = []
   for (const file of RPG_FILES) {
     try {
-      await writeFile(join(dir, file), TEMPLATES[file], { flag: 'wx' })
+      await writeFile(join(dir, file), TEMPLATES[file], { flag: 'wx', mode: 0o600 })
       created.push(file)
     } catch (err) {
       if (err.code === 'EEXIST') continue
@@ -163,8 +158,11 @@ async function readRpgFiles(dir) {
     }
   }
 
-  const charHeading = headingName(charRaw)
-  const userHeading = headingName(userRaw)
+  // Headings are read from the comment-stripped text so a commented-out
+  // heading (e.g. the template's "# Name" kept inside a note) can neither
+  // steal the name nor trigger a false placeholder error.
+  const charHeading = parseRpgName(stripMarkdownComments(charRaw), null)
+  const userHeading = parseRpgName(stripMarkdownComments(userRaw), null)
   const charName = charHeading || 'Character'
   const userName = userHeading || 'User'
   if (charHeading && isPlaceholderName(charHeading)) {
@@ -197,12 +195,14 @@ export async function loadRpgContext(dir) {
   }
 
   const files = await readRpgFiles(dir)
+  const saved = await loadRpgHistory(dir)
   return {
     created: false,
     dir,
     ...files,
     systemPrompt: buildRpgSystemPrompt(files),
-    history: await loadRpgHistory(dir),
+    history: saved?.messages ?? null,
+    historyUpdatedAt: saved?.updatedAt ?? null,
   }
 }
 
@@ -212,12 +212,24 @@ export async function loadRpgContext(dir) {
 // story files apply to resumed conversations too.
 export async function saveRpgHistory(dir, messages) {
   const turns = messages.filter((m) => m.role !== 'system')
-  if (turns.length === 0) return
+  // A session with no user turn yet (e.g. quitting right after the greeting)
+  // must not create or touch the file: nothing worth resuming, and a
+  // greeting-only log would freeze the opening message into the story.
+  if (!turns.some((m) => m.role === 'user')) return
   try {
     await writeFileAtomic(join(dir, RPG_HISTORY_FILE), JSON.stringify({ updatedAt: new Date().toISOString(), messages: turns }, null, 2) + '\n')
   } catch (err) {
     console.error(`Warning: could not save RPG history: ${err.message}`)
   }
+}
+
+function isValidHistoryMessage(m) {
+  return (
+    !!m &&
+    typeof m === 'object' &&
+    (m.role === 'user' || m.role === 'assistant') &&
+    (typeof m.content === 'string' || Array.isArray(m.content))
+  )
 }
 
 export async function loadRpgHistory(dir) {
@@ -233,7 +245,13 @@ export async function loadRpgHistory(dir) {
   try {
     const parsed = JSON.parse(raw)
     if (!parsed || !Array.isArray(parsed.messages) || parsed.messages.length === 0) return null
-    return parsed.messages
+    const messages = parsed.messages.filter(isValidHistoryMessage)
+    if (messages.length !== parsed.messages.length) {
+      console.warn(`Warning: RPG history ${filePath} contains ${parsed.messages.length - messages.length} malformed message(s); ignoring them.`)
+    }
+    if (messages.length === 0) return null
+    const updatedAt = typeof parsed.updatedAt === 'string' && Number.isFinite(Date.parse(parsed.updatedAt)) ? parsed.updatedAt : null
+    return { messages, updatedAt }
   } catch {
     console.warn(`Warning: RPG history file is corrupt: ${filePath}; starting fresh.`)
     return null

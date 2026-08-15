@@ -220,6 +220,26 @@ test('quitting an rpg session with no turns leaves an existing history file unto
   assert.equal(await readFile(join(dir, 'history.json'), 'utf-8'), 'previous story\n')
 })
 
+test('quitting an rpg session with only the greeting does not write history.json', async (t) => {
+  mockConsole(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/quit']) })
+
+  await runChatSession(baseCtx(provider, {
+    rpgDir: dir,
+    systemPrompt: 'RPG prompt',
+    initialMessages: [
+      { role: 'system', content: 'RPG prompt' },
+      { role: 'assistant', content: 'The greeting.' },
+    ],
+  }), harness.deps)
+
+  await assert.rejects(readFile(join(dir, 'history.json'), 'utf-8'), { code: 'ENOENT' })
+})
+
 test('/quit returns the final state and saves exactly once', async (t) => {
   mockConsole(t)
   const { provider } = fakeProvider()

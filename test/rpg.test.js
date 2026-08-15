@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CliError } from '../src/errors.js'
-import { buildRpgSystemPrompt, isPlaceholderName, loadRpgContext, loadRpgHistory, parseRpgName, saveRpgHistory } from '../src/rpg.js'
+import { buildRpgSystemPrompt, expandRpgVariables, isPlaceholderName, loadRpgContext, loadRpgHistory, parseRpgName, saveRpgHistory } from '../src/rpg.js'
 
 async function tempDir(t) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
@@ -107,6 +107,16 @@ test('loadRpgContext rejects template comments and placeholder names', async (t)
   })
 })
 
+test('a heading inside a Markdown comment does not steal the name', async (t) => {
+  const dir = await tempDir(t)
+  await writeFilled(dir)
+  await writeFile(join(dir, 'char.md'), '<!--\n# Name\nold draft notes\n-->\n\n# Zara\n\n## Personality\nSharp.\n')
+  const result = await loadRpgContext(dir)
+  assert.equal(result.charName, 'Zara')
+  assert.match(result.systemPrompt, /You are roleplaying as \*\*Zara\*\*\./)
+  assert.doesNotMatch(result.systemPrompt, /old draft notes/)
+})
+
 test('buildRpgSystemPrompt keeps identity instructions at both ends', () => {
   const systemPrompt = buildRpgSystemPrompt({
     char: 'Swordmaster.',
@@ -132,6 +142,10 @@ test('name helpers', () => {
   assert.equal(isPlaceholderName('Zara'), false)
 })
 
+test('expandRpgVariables keeps dollar sequences in names literal', () => {
+  assert.equal(expandRpgVariables('Hi {{char}}, meet {{user}}.', { charName: 'R2-$&-D2', userName: '$$Bill' }), 'Hi R2-$&-D2, meet $$Bill.')
+})
+
 test('saveRpgHistory stores non-system messages and loadRpgHistory returns them', async (t) => {
   const dir = await tempDir(t)
   const messages = [
@@ -147,7 +161,9 @@ test('saveRpgHistory stores non-system messages and loadRpgHistory returns them'
   assert.deepEqual(raw.messages, messages.slice(1))
 
   const history = await loadRpgHistory(dir)
-  assert.deepEqual(history, messages.slice(1))
+  assert.ok(history)
+  assert.equal(history.updatedAt, raw.updatedAt)
+  assert.deepEqual(history.messages, messages.slice(1))
 })
 
 test('saveRpgHistory skips the write when only the system message is present', async (t) => {
@@ -155,6 +171,15 @@ test('saveRpgHistory skips the write when only the system message is present', a
   await writeFile(join(dir, 'history.json'), 'previous story\n')
   await saveRpgHistory(dir, [{ role: 'system', content: 'prompt' }])
   assert.equal(await readFile(join(dir, 'history.json'), 'utf-8'), 'previous story\n')
+})
+
+test('saveRpgHistory skips the write when no user turn exists yet', async (t) => {
+  const dir = await tempDir(t)
+  await saveRpgHistory(dir, [
+    { role: 'system', content: 'prompt' },
+    { role: 'assistant', content: 'The greeting.' },
+  ])
+  await assert.rejects(readFile(join(dir, 'history.json'), 'utf-8'), { code: 'ENOENT' })
 })
 
 test('loadRpgHistory returns null when the history file is missing', async (t) => {
@@ -177,14 +202,62 @@ test('loadRpgHistory warns and starts fresh on a corrupt history file', async (t
   assert.ok(warnings.some((w) => w.includes('history.json') && w.includes('corrupt')))
 })
 
+test('loadRpgHistory drops malformed messages and warns about them', async (t) => {
+  const dir = await tempDir(t)
+  await writeFile(join(dir, 'history.json'), JSON.stringify({
+    updatedAt: '2026-08-15T10:00:00.000Z',
+    messages: [
+      { role: 'user', content: 'I step through.' },
+      { role: 'assistant', content: null },
+      { role: 'assistant' },
+      'not an object',
+      { role: 'user', content: 'Again.' },
+    ],
+  }))
+  const warnings = []
+  t.mock.method(console, 'warn', (msg) => warnings.push(String(msg)))
+
+  const history = await loadRpgHistory(dir)
+  assert.deepEqual(history, {
+    updatedAt: '2026-08-15T10:00:00.000Z',
+    messages: [
+      { role: 'user', content: 'I step through.' },
+      { role: 'user', content: 'Again.' },
+    ],
+  })
+  assert.ok(warnings.some((w) => w.includes('3 malformed message(s)')))
+})
+
+test('loadRpgHistory returns null when every message is malformed', async (t) => {
+  const dir = await tempDir(t)
+  await writeFile(join(dir, 'history.json'), JSON.stringify({ messages: [{ role: 'system', content: 'x' }] }))
+  t.mock.method(console, 'warn', () => {})
+  assert.equal(await loadRpgHistory(dir), null)
+})
+
+test('loadRpgHistory ignores a garbage updatedAt', async (t) => {
+  const dir = await tempDir(t)
+  await writeFile(join(dir, 'history.json'), JSON.stringify({ updatedAt: 'not a date', messages: [{ role: 'user', content: 'Hi.' }] }))
+  const history = await loadRpgHistory(dir)
+  assert.deepEqual(history.messages, [{ role: 'user', content: 'Hi.' }])
+  assert.equal(history.updatedAt, null)
+})
+
 test('loadRpgContext returns the saved history alongside the rebuilt prompt', async (t) => {
   const dir = await tempDir(t)
   await writeFilled(dir)
-  await saveRpgHistory(dir, [{ role: 'assistant', content: 'The gate creaks open.' }])
+  await saveRpgHistory(dir, [
+    { role: 'user', content: 'I step through.' },
+    { role: 'assistant', content: 'The gate creaks open.' },
+  ])
 
   const result = await loadRpgContext(dir)
   assert.equal(result.created, false)
-  assert.deepEqual(result.history, [{ role: 'assistant', content: 'The gate creaks open.' }])
+  assert.deepEqual(result.history, [
+    { role: 'user', content: 'I step through.' },
+    { role: 'assistant', content: 'The gate creaks open.' },
+  ])
+  assert.ok(result.historyUpdatedAt)
   assert.doesNotMatch(JSON.stringify(result.history), /system/)
 })
 
@@ -301,6 +374,6 @@ test('--rpg with a saved history announces the resumed conversation', async (t) 
 
   await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal)
   assert.equal(exitCode, 1)
-  assert.ok(logs.some((line) => line.includes(`Resumed RPG conversation from ${dir}/history.json (2 messages).`)))
+  assert.ok(errors.some((line) => line.includes(`Resumed RPG conversation from ${dir}/history.json (2 messages, saved `)))
   assert.ok(errors.some((line) => line.includes('OPENROUTER_API_KEY environment variable is not set.')))
 })

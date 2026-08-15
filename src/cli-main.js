@@ -80,13 +80,21 @@ async function main(opts, promptArg) {
   let rpgContext = null
   if (opts.rpg !== undefined) {
     rpgContext = await loadRpgContext(opts.rpg)
+    if (opts.e2ee === true) {
+      console.warn('Warning: --e2ee encrypts messages sent to the API, but RPG history.json stores them unencrypted.')
+    }
     if (rpgContext.created) {
       console.log(`RPG mode setup: created ${rpgContext.createdFiles.join(', ')} in ${rpgContext.dir}`)
       console.log('Fill in each file, delete the HTML comment at the top, then rerun with the same --rpg directory.')
       process.exit(0)
     }
     if (rpgContext.history?.length > 0) {
-      console.log(`Resumed RPG conversation from ${rpgContext.dir}/history.json (${rpgContext.history.length} messages).`)
+      // Piped stdout must stay pure content (one-shot): send the notice to
+      // stderr there, like the artifact lines do.
+      const saved = rpgContext.historyUpdatedAt ? `, saved ${new Date(rpgContext.historyUpdatedAt).toISOString().slice(0, 10)}` : ''
+      const notice = `Resumed RPG conversation from ${rpgContext.dir}/history.json (${rpgContext.history.length} messages${saved}).`
+      if (process.stdin.isTTY) console.log(notice)
+      else console.error(notice)
     }
   }
 
@@ -176,7 +184,7 @@ async function main(opts, promptArg) {
   // Pure config-setter flags have no session meaning, so piped stdin can
   // never be a prompt for them: run the config-set path without a TTY.
   // Excluded with -m, where piped stdin means one-shot.
-  if (!promptArg && !process.stdin.isTTY && opts.model === undefined && opts.resume === undefined && opts.image !== true && isPureConfigSetter(opts)) {
+  if (!promptArg && !process.stdin.isTTY && opts.model === undefined && opts.resume === undefined && opts.image !== true && opts.rpg === undefined && isPureConfigSetter(opts)) {
     const prefs = await loadPreferences(opts.config)
     try {
       const { configSetCmd } = await import('./commands/config-set.js')
