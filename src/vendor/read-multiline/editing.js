@@ -261,6 +261,7 @@ export function insertChar(state, ch) {
  * count never exceeds maxLines (chars past the limit still land on the last
  * line, like the per-char flow). */
 export function insertPaste(state, text) {
+    const prevContent = state.lines.join("\n");
     const parts = text.split("\n");
     let budget = state.maxLength != null ? state.maxLength - contentLength(state.lines) : null;
     let limitStatus = null;
@@ -306,6 +307,11 @@ export function insertPaste(state, text) {
     }
     state.row = row;
     state.col = col;
+    // A paste replaces the buffer without per-character terminal writes, so
+    // the terminal still shows the pre-paste content; the next full redraw
+    // must repaint forward from the current cursor instead of rewinding.
+    if (state.lines.join("\n") !== prevContent)
+        state.pendingPasteRepaint = true;
     onContentChanged(state);
     if (limitStatus)
         setStatusWithVisualState(state, limitStatus, "red", "error");

@@ -42,6 +42,28 @@ The upstream library has no suggestion/autocomplete support. A minimal patch add
 - `presets/` (clack, inquirer) and `types.js` removed, and `createPrompt` + the
   `presets` re-export stripped from `index.js` — the app only uses `readMultiline`.
 
+## Viewport guard
+
+All rewind-based redraws are gated by `editorBlockFits` (editor lines + status +
+footer vs `output.rows`) and the `pendingPasteRepaint` flag. A terminal clamps
+cursor-up at the top row, so rewinding an editor that is taller than the viewport
+— or one whose buffer was just replaced by a silent bracketed paste — would
+overwrite whatever was printed above the prompt (chat transcript, the RPG first
+message):
+
+- `rendering.js` — when the block does not fit or the terminal content is stale,
+  `fullRedraw`/`restoreSnapshot` repaint bottom-anchored via `repaintBelow` (no
+  rewind; the terminal scrolls the output above into the scrollback instead of
+  erasing it). `insertPaste` sets `pendingPasteRepaint` when the paste changed the
+  buffer without per-character writes; the paste-end `clearScreen` consumes it.
+- `index.js` — submit/cancel/EOF skip the in-place `renderStateChange`/`clearEditorArea`
+  redraws when the block does not fit (or the terminal is stale) and just drop
+  status/footer state.
+
+Known limitation (no internal windowing): moving the cursor far into a taller-than-
+viewport editor desyncs the on-screen position; typing at the tail of a long message
+is fully supported.
+
 Diff with upstream:
 
 ```

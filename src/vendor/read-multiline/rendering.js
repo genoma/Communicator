@@ -200,6 +200,22 @@ function clearBelowAndReturn(state) {
         w(state, `\x1b[${upCount}A`);
     w(state, `\x1b[${tCol(state, state.row, state.col)}G`);
 }
+/** Whether the whole editor block (input + status + footer) fits the terminal viewport */
+export function editorBlockFits(state) {
+    const terminalRows = state.output?.rows;
+    if (!Number.isInteger(terminalRows) || terminalRows <= 0)
+        return true;
+    const editorRows = lastVisualRow(state) + 1;
+    const statusRows = state.statusText ? 1 : 0;
+    const footerRows = state.footerText ? state.footerText.split("\n").length : 0;
+    return editorRows + statusRows + footerRows <= terminalRows;
+}
+/** Drop status/footer state without drawing (used when the in-place redraw is skipped) */
+export function resetStatusAndFooter(state) {
+    state.statusText = "";
+    state.statusColor = "";
+    state.footerText = "";
+}
 /** Clear the status line and reset status state */
 export function clearStatus(state) {
     if (!state.statusText)
@@ -378,34 +394,69 @@ export function redrawFrom(state, fromRow, targetRow, targetCol, options) {
     drawBelowEditor(state);
     flushBatch(state);
 }
+/** Draw the prompt header (inline or line-buffered) starting at the current cursor */
+function drawPromptHeader(state) {
+    if (state.promptHeaderHeight <= 0 && !state.inlinePrompt)
+        return;
+    if (state.inlinePrompt) {
+        w(state, state.promptHeader);
+    }
+    else {
+        const headerLines = state.promptHeader.split("\n");
+        for (let i = 0; i < headerLines.length; i++) {
+            if (i > 0)
+                w(state, "\n");
+            w(state, headerLines[i] + "\x1b[K");
+        }
+        w(state, "\n");
+    }
+}
+/**
+ * Repaint the editor bottom-anchored, without rewinding the cursor.
+ *
+ * Used when the terminal content is stale (a bracketed paste replaces the
+ * buffer without per-character writes) or the editor block is taller than the
+ * viewport: the cursor-up in an in-place redraw would clamp at the top row and
+ * overwrite whatever was printed above the editor (chat transcript, opening
+ * messages). Drawing forward from the current cursor instead lets the terminal
+ * scroll that content into the scrollback untouched.
+ */
+function repaintBelow(state) {
+    state.pendingPasteRepaint = false;
+    beginBatch(state);
+    w(state, "\x1b[J");
+    drawPromptHeader(state);
+    if (state.inlinePrompt) {
+        w(state, renderLine(state, 0) + "\x1b[K");
+    }
+    else {
+        w(state, state.styledLinePrefix + renderLine(state, 0) + "\x1b[K");
+    }
+    for (let i = 1; i < state.lines.length; i++) {
+        w(state, "\n" + state.styledLinePrefix + renderLine(state, i) + "\x1b[K");
+    }
+    drawBelowEditor(state);
+    flushBatch(state);
+}
 /**
  * Full redraw: rewind cursor, redraw prompt header and all input lines, restore cursor.
  * @param rewindHeaderHeight - header height to use for cursor rewind (may differ from current
  *   state.promptHeaderHeight when the visual state has just changed)
  */
 function fullRedraw(state, rewindHeaderHeight) {
+    if (state.pendingPasteRepaint || editorBlockFits(state) === false) {
+        repaintBelow(state);
+        return;
+    }
     beginBatch(state);
     const upCount = cursorVisualRow(state, state.row, state.col, rewindHeaderHeight ?? state.promptHeaderHeight);
     if (upCount > 0)
         w(state, `\x1b[${upCount}A`);
     w(state, "\r");
     // Draw prompt header if present
-    if (state.promptHeaderHeight > 0 || state.inlinePrompt) {
-        // In inline mode, draw header inline (no newline after)
-        // In non-inline mode, draw header and newline after
-        if (state.inlinePrompt) {
-            w(state, state.promptHeader);
-        }
-        else {
-            const headerLines = state.promptHeader.split("\n");
-            for (let i = 0; i < headerLines.length; i++) {
-                if (i > 0)
-                    w(state, "\n");
-                w(state, headerLines[i] + "\x1b[K");
-            }
-            w(state, "\n");
-        }
-    }
+    // In inline mode, draw header inline (no newline after)
+    // In non-inline mode, draw header and newline after
+    drawPromptHeader(state);
     // Draw all input lines with linePrefix
     // In inline mode, row 0 starts with the prompt header (no linePrefix)
     if (state.inlinePrompt) {
@@ -434,6 +485,17 @@ export function clearScreen(state) {
 }
 /** Restore editor state from a snapshot and redraw */
 export function restoreSnapshot(state, snap) {
+    // When the terminal content is stale (silent paste) or the editor no
+    // longer fits the viewport, the in-place rewind below would clamp at the
+    // top row and overwrite output printed above the editor.
+    if (state.pendingPasteRepaint || editorBlockFits(state) === false) {
+        state.lines.length = 0;
+        state.lines.push(...snap.lines);
+        state.row = snap.row;
+        state.col = snap.col;
+        repaintBelow(state);
+        return;
+    }
     beginBatch(state);
     const currentVisualRow = cursorVisualRow(state, state.row, state.col);
     const inputStartVisualRow = state.inlinePrompt ? 0 : state.promptHeaderHeight;

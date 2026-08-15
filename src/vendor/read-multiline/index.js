@@ -3,7 +3,7 @@ import { handleDelete } from "./editing.js";
 import { buildHelpFooter, detectKittyProtocol } from "./footer.js";
 import { appendPersistedHistory, loadHistory } from "./history.js";
 import { buildKeyMap, onData } from "./input.js";
-import { clearBelowEditor, clearScreen, cursorVisualRow, refreshSuggestions, renderLine, setFooter, setStatusWithVisualState, tCol, w, } from "./rendering.js";
+import { clearBelowEditor, clearScreen, cursorVisualRow, editorBlockFits, refreshSuggestions, renderLine, resetStatusAndFooter, setFooter, setStatusWithVisualState, tCol, w, } from "./rendering.js";
 import { applyStyle, buildPromptHeader, buildStyledLinePrefix, computeHeaderHeight, resolveStateful, } from "./style.js";
 /**
  * Read multi-line input from the terminal.
@@ -117,6 +117,7 @@ function readFromTTY(input, output, prompt, options) {
             validationActive: false,
             validateTimer: null,
             isPasting: false,
+            pendingPasteRepaint: false,
             escBuffer: "",
             escTimer: null,
             maxLines,
@@ -175,13 +176,18 @@ function readFromTTY(input, output, prompt, options) {
         const cancelRender = theme?.cancelRender ?? "clear";
         /** Erase all editor content (prompt header + input lines + status + footer) from the terminal */
         function clearEditorArea() {
+            // A terminal clamps cursor-up at the top row, so erasing an editor
+            // taller than the viewport (or one whose content was replaced by a
+            // silent paste) would wipe output printed above the prompt.
+            if (editorBlockFits(state) === false || state.pendingPasteRepaint) {
+                resetStatusAndFooter(state);
+                return;
+            }
             const upCount = cursorVisualRow(state, state.row, state.col);
             if (upCount > 0)
                 w(state, `\x1b[${upCount}A`);
             w(state, "\r\x1b[J");
-            state.statusText = "";
-            state.statusColor = "";
-            state.footerText = "";
+            resetStatusAndFooter(state);
             state.row = 0;
             state.col = 0;
         }
@@ -198,8 +204,11 @@ function readFromTTY(input, output, prompt, options) {
             if (submitRender === "clear") {
                 clearEditorArea();
             }
-            else {
+            else if (editorBlockFits(state) && !state.pendingPasteRepaint) {
                 renderStateChange(state, theme, "submitted", submitRender);
+            }
+            else {
+                resetStatusAndFooter(state);
             }
             cleanup();
             if (submitRender !== "clear") {
@@ -225,8 +234,11 @@ function readFromTTY(input, output, prompt, options) {
                 if (cancelRender === "clear") {
                     clearEditorArea();
                 }
-                else {
+                else if (editorBlockFits(state) && !state.pendingPasteRepaint) {
                     renderStateChange(state, theme, "cancelled", cancelRender);
+                }
+                else {
+                    resetStatusAndFooter(state);
                 }
                 cleanup();
                 if (cancelRender !== "clear") {
@@ -245,8 +257,11 @@ function readFromTTY(input, output, prompt, options) {
             if (cancelRender === "clear") {
                 clearEditorArea();
             }
-            else {
+            else if (editorBlockFits(state) && !state.pendingPasteRepaint) {
                 renderStateChange(state, theme, "cancelled", cancelRender);
+            }
+            else {
+                resetStatusAndFooter(state);
             }
             cleanup();
             if (cancelRender !== "clear") {
