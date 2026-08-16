@@ -90,6 +90,17 @@ test('--rpg rejects --system-prompt and --resume', () => {
   assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg' }), TTY), [])
 })
 
+test('--rpg rejects a flag-looking directory argument', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ rpg: '--debug' }), TTY),
+    ['Error: --rpg expects a directory argument (got "--debug").']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ rpg: '-d' }), TTY),
+    ['Error: --rpg expects a directory argument (got "-d").']
+  )
+})
+
 test('--debug requires --rpg', () => {
   assert.deepEqual(
     validateCliFlags(opts({ debug: true }), TTY),

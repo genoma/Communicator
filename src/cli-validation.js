@@ -144,6 +144,10 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --rpg cannot be combined with --system-prompt.')
   }
 
+  if (typeof opts.rpg === 'string' && opts.rpg.startsWith('-')) {
+    errors.push(`Error: --rpg expects a directory argument (got "${opts.rpg}").`)
+  }
+
   if (opts.debug === true && opts.rpg === undefined) {
     errors.push('Error: --debug requires --rpg.')
   }
