@@ -18,7 +18,7 @@ function imageSessionContext({ provider, apiKey, prefs, imageModelId, sessionId,
 async function createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, scraped = null }) {
   const { forcedEffort, forcedTemperature, forcedBudget, budget, forcedWebResults, smoothSpeed, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
-  if (opts.resume !== undefined) {
+  if (opts.resume !== undefined && opts.rpg === undefined) {
     const result = await resumeCmd(opts.resume)
     if (!result) process.exit(0)
 
@@ -145,6 +145,10 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     // the scrapes counter (chat.js seeds the tracker from it once).
     scrapes: scraped ? 1 : 0,
     rpgPostHistoryInstruction,
+    // Carried even when history is resumed so /new can restart the story
+    // from the opening message instead of a blank page. Only non-null when
+    // cli-main loaded an RPG context.
+    rpgFirstMessage: rpgFirstMessage ?? null,
     initialMessages: rpgHistory
       ? [
           { role: 'system', content: systemPrompt || DEFAULT_SYSTEM_PROMPT },
@@ -187,6 +191,7 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
     rpgDir: opts.rpg,
     rpgDebug: opts.debug === true,
     rpgPostHistoryInstruction: ctx.rpgPostHistoryInstruction ?? null,
+    rpgFirstMessage: ctx.rpgFirstMessage ?? null,
     prefs,
     configPath: opts.config,
   })

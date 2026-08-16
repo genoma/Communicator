@@ -78,15 +78,18 @@ test('--e2ee rejects web search flags', () => {
   }
 })
 
-test('--rpg rejects --system-prompt and --resume', () => {
+test('--rpg rejects --system-prompt and a session-id --resume', () => {
   assert.deepEqual(
     validateCliFlags(opts({ rpg: '/tmp/rpg', systemPrompt: '/tmp/system.md' }), TTY),
     ['Error: --rpg cannot be combined with --system-prompt.']
   )
   assert.deepEqual(
     validateCliFlags(opts({ rpg: '/tmp/rpg', resume: 'x' }), TTY),
-    ['Error: --rpg cannot be combined with --resume (resumed sessions keep their saved system prompt).']
+    ["Error: --rpg --resume does not take a session id (the story resumes from the RPG directory's history.json)."]
   )
+  assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg', resume: true }), TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg', resume: true }), NO_TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg', resume: true }), { ...TTY, ...PROMPT() }), [])
   assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg' }), TTY), [])
 })
 

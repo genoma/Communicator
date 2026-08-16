@@ -124,9 +124,12 @@ async function ensureTemplates(dir) {
   }
 
   const created = []
-  for (const file of RPG_FILES) {
+  for (const file of [...RPG_FILES, RPG_POST_HISTORY_FILE]) {
     try {
-      await writeFile(join(dir, file), TEMPLATES[file], { flag: 'wx', mode: 0o600 })
+      // The post-history instruction starts empty on purpose: it is optional
+      // and an empty file disables the feature, so there is no template to
+      // fill in or sentinel comment to delete.
+      await writeFile(join(dir, file), file === RPG_POST_HISTORY_FILE ? '' : TEMPLATES[file], { flag: 'wx', mode: 0o600 })
       created.push(file)
     } catch (err) {
       if (err.code === 'EEXIST') continue
@@ -189,9 +192,10 @@ async function readRpgFiles(dir) {
   }
 }
 
-// The post-history instruction is optional: unlike the five story files it is
-// never templated or validated, and a missing or empty file simply disables
-// the feature. It is deliberately NOT part of the system prompt — it is
+// The post-history instruction is optional: it is created empty during
+// provisioning but unlike the five story files it is never templated or
+// validated, and a missing or empty file simply disables the feature. It is
+// deliberately NOT part of the system prompt — it is
 // injected as a system message after the latest user message on every turn,
 // where models weight instructions highest and long histories cannot dilute
 // them (SillyTavern's "Post-History Instructions" pattern).
@@ -209,7 +213,9 @@ async function readRpgPostHistoryInstruction(dir, { charName, userName }) {
 
 export async function loadRpgContext(dir) {
   const created = await ensureTemplates(dir)
-  if (created.length > 0) {
+  // The optional post-history instruction may be created silently alongside
+  // the templates, but only a missing story file triggers the setup exit.
+  if (created.some((file) => RPG_FILES.includes(file))) {
     return { created: true, dir, createdFiles: created }
   }
 

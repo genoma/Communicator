@@ -7,7 +7,9 @@ export function hasAttachments(opts) {
 }
 
 export function isInteractiveFlag(opts) {
-  return opts.resume !== undefined || opts.export !== undefined || opts.delete !== undefined
+  // Bare --resume next to --rpg resumes the story from the RPG directory's
+  // history.json and needs no picker, so it is not an interactive flag.
+  return (opts.resume !== undefined && opts.rpg === undefined) || opts.export !== undefined || opts.delete !== undefined
 }
 
 export function isExitMode(opts) {
@@ -152,8 +154,8 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --debug requires --rpg.')
   }
 
-  if (opts.rpg !== undefined && opts.resume !== undefined) {
-    errors.push('Error: --rpg cannot be combined with --resume (resumed sessions keep their saved system prompt).')
+  if (opts.rpg !== undefined && opts.resume !== undefined && opts.resume !== true) {
+    errors.push("Error: --rpg --resume does not take a session id (the story resumes from the RPG directory's history.json).")
   }
 
   if (opts.scrape !== undefined && opts.provider !== 'venice') {
@@ -208,7 +210,7 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push(exclusionError('--model, --output-dir', '--delete'))
   }
 
-  if (opts.resume !== undefined && (opts.model !== undefined || opts.outputDir !== undefined || attachments || opts.scrape !== undefined)) {
+  if (opts.resume !== undefined && opts.rpg === undefined && (opts.model !== undefined || opts.outputDir !== undefined || attachments || opts.scrape !== undefined)) {
     errors.push('Error: --model, --output-dir, --attach and --scrape cannot be combined with --resume (resumed sessions keep their own model; --output-dir only applies to --export).')
   }
 

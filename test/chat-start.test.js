@@ -398,6 +398,7 @@ test('chatStart seeds the RPG first message as the opening assistant turn', asyn
     { role: 'system', content: 'RPG system prompt' },
     { role: 'assistant', content: 'Welcome to the keep, traveler.' },
   ])
+  assert.equal(call.opts.rpgFirstMessage, 'Welcome to the keep, traveler.')
 })
 
 test('chatStart seeds RPG history ahead of the greeting and passes the rpg dir for saving', async (t) => {
@@ -440,6 +441,7 @@ test('chatStart seeds RPG history ahead of the greeting and passes the rpg dir f
     { role: 'user', content: 'I enter.' },
   ])
   assert.equal(call.opts.rpgDir, '/tmp/some-story')
+  assert.equal(call.opts.rpgFirstMessage, 'Welcome to the keep, traveler.')
 })
 
 test('chatStart routes a resumed venice image session into the image session', async (t) => {

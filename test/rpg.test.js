@@ -24,7 +24,7 @@ test('loadRpgContext creates missing templates in a missing directory', async (t
   const dir = join(await tempDir(t), 'campaign')
   const result = await loadRpgContext(dir)
   assert.equal(result.created, true)
-  assert.deepEqual(result.createdFiles, ['char.md', 'user.md', 'prompt.md', 'scenario.md', 'first-message.md'])
+  assert.deepEqual(result.createdFiles, ['char.md', 'user.md', 'prompt.md', 'scenario.md', 'first-message.md', 'post-history-instruction.md'])
 
   const files = await Promise.all([
     readFile(join(dir, 'char.md'), 'utf8'),
@@ -38,7 +38,7 @@ test('loadRpgContext creates missing templates in a missing directory', async (t
     assert.match(file, /<!--/)
   }
   assert.equal(files[0], files[1])
-  await assert.rejects(readFile(join(dir, 'post-history-instruction.md'), 'utf8'))
+  assert.equal(await readFile(join(dir, 'post-history-instruction.md'), 'utf8'), '')
 })
 
 test('loadRpgContext only creates the missing files and never overwrites', async (t) => {
@@ -46,7 +46,7 @@ test('loadRpgContext only creates the missing files and never overwrites', async
   await writeFile(join(dir, 'user.md'), '# Alex\n\nKept as-is.\n')
   const result = await loadRpgContext(dir)
   assert.equal(result.created, true)
-  assert.deepEqual(result.createdFiles, ['char.md', 'prompt.md', 'scenario.md', 'first-message.md'])
+  assert.deepEqual(result.createdFiles, ['char.md', 'prompt.md', 'scenario.md', 'first-message.md', 'post-history-instruction.md'])
   assert.equal(await readFile(join(dir, 'user.md'), 'utf8'), '# Alex\n\nKept as-is.\n')
 })
 
@@ -364,11 +364,13 @@ test('--rpg setup exits 0 without an API key', async (t) => {
 
   await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal && err.code === 0)
   assert.equal(exitCode, 0)
-  assert.ok(logs.some((line) => line.includes('created char.md, user.md, prompt.md, scenario.md, first-message.md')))
+  assert.ok(logs.some((line) => line.includes('created char.md, user.md, prompt.md, scenario.md, first-message.md, post-history-instruction.md')))
+  assert.ok(logs.some((line) => line.includes('post-history-instruction.md starts empty and is optional')))
   assert.match(await readFile(join(dir, 'char.md'), 'utf8'), /RPG_TEMPLATE/)
+  assert.equal(await readFile(join(dir, 'post-history-instruction.md'), 'utf8'), '')
 })
 
-test('--rpg with a saved history announces the resumed conversation', async (t) => {
+test('--rpg --resume with a saved history announces the resumed conversation', async (t) => {
   const dir = await tempDir(t)
   await writeFilled(dir)
   await saveRpgHistory(dir, [
@@ -378,6 +380,7 @@ test('--rpg with a saved history announces the resumed conversation', async (t) 
 
   const logs = []
   const errors = []
+  const warnings = []
   const previousKey = process.env.OPENROUTER_API_KEY
   delete process.env.OPENROUTER_API_KEY
   t.after(() => {
@@ -386,6 +389,72 @@ test('--rpg with a saved history announces the resumed conversation', async (t) 
   })
   t.mock.method(console, 'log', (msg) => logs.push(String(msg)))
   t.mock.method(console, 'error', (msg) => errors.push(String(msg)))
+  t.mock.method(console, 'warn', (msg) => warnings.push(String(msg)))
+  let exitCode = null
+  t.mock.method(process, 'exit', (code) => {
+    exitCode = code
+    throw new ExitSignal(code)
+  })
+
+  const { runCli } = await import(`../src/cli-main.js?t=${Date.now()}`)
+  const opts = {
+    model: 'test/model',
+    provider: 'openrouter',
+    listModels: undefined,
+    listImageModels: undefined,
+    listEndpoints: undefined,
+    resume: true,
+    export: undefined,
+    outputDir: undefined,
+    listSessions: undefined,
+    config: undefined,
+    systemPrompt: undefined,
+    rpg: dir,
+    reasoningEffort: undefined,
+    temperature: undefined,
+    budget: undefined,
+    webSearch: undefined,
+    webResults: undefined,
+    smoothStreaming: true,
+    smoothSpeed: undefined,
+    zdr: undefined,
+    e2ee: undefined,
+    image: undefined,
+    imageModel: undefined,
+    safeMode: true,
+    watermark: true,
+    delete: undefined,
+    deleteAllSessions: undefined,
+    attach: [],
+  }
+
+  await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal)
+  assert.equal(exitCode, 1)
+  assert.ok(errors.some((line) => line.includes(`Resumed RPG conversation from ${dir}/history.json (2 messages, saved `)))
+  assert.ok(warnings.every((line) => !line.includes('starting a new story')))
+  assert.ok(errors.some((line) => line.includes('OPENROUTER_API_KEY environment variable is not set.')))
+})
+
+test('--rpg without --resume starts fresh and warns that the saved story will be replaced', async (t) => {
+  const dir = await tempDir(t)
+  await writeFilled(dir)
+  await saveRpgHistory(dir, [
+    { role: 'assistant', content: 'The gate creaks open.' },
+    { role: 'user', content: 'I step through.' },
+  ])
+
+  const logs = []
+  const errors = []
+  const warnings = []
+  const previousKey = process.env.OPENROUTER_API_KEY
+  delete process.env.OPENROUTER_API_KEY
+  t.after(() => {
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY
+    else process.env.OPENROUTER_API_KEY = previousKey
+  })
+  t.mock.method(console, 'log', (msg) => logs.push(String(msg)))
+  t.mock.method(console, 'error', (msg) => errors.push(String(msg)))
+  t.mock.method(console, 'warn', (msg) => warnings.push(String(msg)))
   let exitCode = null
   t.mock.method(process, 'exit', (code) => {
     exitCode = code
@@ -426,6 +495,8 @@ test('--rpg with a saved history announces the resumed conversation', async (t) 
 
   await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal)
   assert.equal(exitCode, 1)
-  assert.ok(errors.some((line) => line.includes(`Resumed RPG conversation from ${dir}/history.json (2 messages, saved `)))
+  assert.ok(logs.every((line) => !line.includes('Resumed RPG conversation')))
+  assert.ok(errors.every((line) => !line.includes('Resumed RPG conversation')))
+  assert.ok(warnings.some((line) => line.includes(`Warning: starting a new story — ${dir}/history.json (2 messages) will be replaced on save. Continue it with --rpg ${dir} --resume.`)))
   assert.ok(errors.some((line) => line.includes('OPENROUTER_API_KEY environment variable is not set.')))
 })

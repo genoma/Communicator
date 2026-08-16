@@ -50,6 +50,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     rpgDir = null,
     rpgDebug = false,
     rpgPostHistoryInstruction = null,
+    rpgFirstMessage = null,
     prefs = {},
     configPath = null,
   } = ctx
@@ -265,6 +266,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     apiKey,
     prefs,
     systemContent,
+    rpgFirstMessage,
     saveSession: saveCurrentSession,
     savePrefs,
     runTurn,

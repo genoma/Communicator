@@ -6,7 +6,7 @@ import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmooth
 import { budgetStatusLine, budgetExhaustedMessage } from '../../tracker.js'
 import { sessionLabel } from '../../ui/format.js'
 import { dim } from '../../ui/style.js'
-import { attachmentLine } from '../../ui/stream.js'
+import { attachmentLine, renderHistory } from '../../ui/stream.js'
 import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
 import { fetchModelPubKey } from '../../e2ee.js'
@@ -40,6 +40,12 @@ const handlers = {
     ctx.state.sessionId = await ctx.newSessionId()
     ctx.state.createdAt = new Date().toISOString()
     ctx.state.resetForNewSession(ctx.systemContent)
+    // In RPG mode a fresh chapter restarts the story from the opening
+    // message, not from a blank page; render it like the launch greeting.
+    if (ctx.rpgFirstMessage) {
+      ctx.state.appendAssistant({ role: 'assistant', content: ctx.rpgFirstMessage })
+      renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout: ctx.stdout })
+    }
     console.log('\nNew session started.\n')
     showStatus(ctx)
     return { reset: true }

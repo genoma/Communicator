@@ -229,18 +229,36 @@ test('rpg debug without turns writes no prompt-log.jsonl', async (t) => {
   await assert.rejects(readFile(join(dir, 'prompt-log.jsonl'), 'utf-8'), { code: 'ENOENT' })
 })
 
-test('/new in rpg mode saves the prior story, and later saves overwrite with the new chapter', async (t) => {
+test('/new in rpg mode saves the prior story, restarts with the first message, and later saves overwrite with the new chapter', async (t) => {
   mockConsole(t)
   const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
 
-  const { provider } = fakeProvider()
-  const harness = makeDeps({ readInput: scriptedInput(['first', '/new', 'second', '/quit']), newSessionId: async () => 'fresh-2' })
+  const { provider, calls } = fakeProvider()
+  const writes = []
+  const harness = makeDeps({
+    readInput: scriptedInput(['first', '/new', 'second', '/quit']),
+    newSessionId: async () => 'fresh-2',
+    stdout: { write: (chunk) => writes.push(String(chunk)) },
+  })
 
-  await runChatSession(baseCtx(provider, { rpgDir: dir }), harness.deps)
+  const finalState = await runChatSession(baseCtx(provider, {
+    rpgDir: dir,
+    rpgFirstMessage: 'The gate creaks open.',
+    systemPrompt: 'RPG prompt',
+  }), harness.deps)
+
+  // The turn right after /new carries the greeting back into context.
+  const postNew = calls.find((c) => c.messages.some((m) => m.content === 'second'))
+  assert.ok(postNew)
+  assert.deepEqual(postNew.messages.map((m) => m.role), ['system', 'assistant', 'user'])
+  assert.equal(postNew.messages[1].content, 'The gate creaks open.')
 
   const history = JSON.parse(await readFile(join(dir, 'history.json'), 'utf-8'))
-  assert.deepEqual(history.messages.map((m) => m.content), ['second', 'Hello!'])
+  assert.deepEqual(history.messages.map((m) => m.content), ['The gate creaks open.', 'second', 'Hello!'])
+
+  assert.deepEqual(finalState.messages.map((m) => m.content), ['RPG prompt', 'The gate creaks open.', 'second', 'Hello!'])
+  assert.ok(writes.join('').includes('The gate creaks open.'))
 })
 
 test('quitting an rpg session with no turns leaves an existing history file untouched', async (t) => {

@@ -86,16 +86,22 @@ async function main(opts, promptArg) {
     }
     if (rpgContext.created) {
       console.log(`RPG mode setup: created ${rpgContext.createdFiles.join(', ')} in ${rpgContext.dir}`)
-      console.log('Fill in each file, delete the HTML comment at the top, then rerun with the same --rpg directory.')
+      console.log('Fill in the story files, delete the HTML comment at the top of each, then rerun with the same --rpg directory. post-history-instruction.md starts empty and is optional — leave it empty to skip it.')
       process.exit(0)
     }
-    if (rpgContext.history?.length > 0) {
-      // Piped stdout must stay pure content (one-shot): send the notice to
-      // stderr there, like the artifact lines do.
-      const saved = rpgContext.historyUpdatedAt ? `, saved ${new Date(rpgContext.historyUpdatedAt).toISOString().slice(0, 10)}` : ''
-      const notice = `Resumed RPG conversation from ${rpgContext.dir}/history.json (${rpgContext.history.length} messages${saved}).`
-      if (process.stdin.isTTY) console.log(notice)
-      else console.error(notice)
+    // A bare --resume (no session id) is the only way to continue a story;
+    // without it the same directory starts a brand-new one.
+    if (opts.resume === true) {
+      if (rpgContext.history?.length > 0) {
+        // Piped stdout must stay pure content (one-shot): send the notice to
+        // stderr there, like the artifact lines do.
+        const saved = rpgContext.historyUpdatedAt ? `, saved ${new Date(rpgContext.historyUpdatedAt).toISOString().slice(0, 10)}` : ''
+        const notice = `Resumed RPG conversation from ${rpgContext.dir}/history.json (${rpgContext.history.length} messages${saved}).`
+        if (process.stdin.isTTY) console.log(notice)
+        else console.error(notice)
+      }
+    } else if (rpgContext.history?.length > 0) {
+      console.warn(`Warning: starting a new story — ${rpgContext.dir}/history.json (${rpgContext.history.length} messages) will be replaced on save. Continue it with --rpg ${rpgContext.dir} --resume.`)
     }
   }
 
@@ -216,7 +222,7 @@ async function main(opts, promptArg) {
   const prefs = await loadPreferences(opts.config)
   const systemPrompt = rpgContext?.systemPrompt ?? await loadSystemPrompt(opts.systemPrompt)
   const rpgFirstMessage = rpgContext?.firstMessage ?? null
-  const rpgHistory = rpgContext?.history ?? null
+  const rpgHistory = opts.rpg !== undefined && opts.resume === true ? (rpgContext?.history ?? null) : null
   const rpgPostHistoryInstruction = rpgContext?.postHistoryInstruction ?? null
 
   const scraped = opts.scrape !== undefined

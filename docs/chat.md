@@ -112,23 +112,25 @@ communicator --system-prompt /path/to/custom-prompt.md
 - `prompt.md` — tone, world, and rules
 - `scenario.md` — the current scene and starting situation
 - `first-message.md` — the character's opening message, shown when the chat starts and sent as the first assistant turn
-- `post-history-instruction.md` (optional, never created as a template) — instructions re-sent after the latest user message on every turn
+- `post-history-instruction.md` (optional; created empty, never templated) — instructions re-sent after the latest user message on every turn
 
 ```bash
 communicator --rpg ~/rpg/cyberpunk-campaign
 ```
 
-On first use the missing files are created as fill-in templates and the command exits so you can edit them. Delete the HTML comment at the top of each file once it is filled in, then rerun the same command. In interactive mode, `first-message.md` is rendered immediately after the model/provider selection banner, before the first input prompt. In one-shot mode it is included as the opening assistant message in the request but is not printed to piped stdout.
+On first use the missing files are created as fill-in templates and the command exits so you can edit them. Delete the HTML comment at the top of each story file once it is filled in, then rerun the same command. `post-history-instruction.md` starts empty (an empty file disables the feature), so there is nothing to do there unless you want the extra instructions. In interactive mode, `first-message.md` is rendered immediately after the model/provider selection banner, before the first input prompt. In one-shot mode it is included as the opening assistant message in the request but is not printed to piped stdout.
 
-The files are combined into one fixed system message; the scenario is placed after the character and user sections, just before the per-turn rules. `{{char}}` and `{{user}}` are replaced with the names from the first `# Name` heading in `char.md` and `user.md`; Markdown comments are removed before the prompt is sent. `--rpg` cannot be combined with `--system-prompt` or `--resume`, and is for text chat models only.
+The files are combined into one fixed system message; the scenario is placed after the character and user sections, just before the per-turn rules. `{{char}}` and `{{user}}` are replaced with the names from the first `# Name` heading in `char.md` and `user.md`; Markdown comments are removed before the prompt is sent. `--rpg` cannot be combined with `--system-prompt` or a session-id `--resume`, and is for text chat models only. A bare `-r`/`--resume` next to `--rpg` means "continue the story from `history.json`" — see below.
 
-If `post-history-instruction.md` exists in the directory, its contents (with Markdown comments stripped and `{{char}}`/`{{user}}` expanded) are sent as a separate system message after the latest user message on every turn. The file is optional — it is never created as a template, and a missing or empty file disables the feature. This is the SillyTavern "post-history instructions" pattern: late instructions get the model's strongest attention and are not diluted by a long conversation, so it is the place for rules the model tends to forget or skim over (never break character, always react to X, keep replies under N words, …). The instruction is added at request time and never saved into `history.json`.
+If `post-history-instruction.md` contains anything (Markdown comments stripped, `{{char}}`/`{{user}}` expanded), it is sent as a separate system message after the latest user message on every turn. The file is optional — a missing or empty file disables the feature. This is the SillyTavern "post-history instructions" pattern: late instructions get the model's strongest attention and are not diluted by a long conversation, so it is the place for rules the model tends to forget or skim over (never break character, always react to X, keep replies under N words, …). The instruction is added at request time and never saved into `history.json`.
 
 ### Saving and resuming the conversation
 
 The conversation is saved to `history.json` in the RPG directory — on `/quit`, `/new`, `/model`, Ctrl+C (including interrupted responses), and after one-shot runs. The file stores the conversation turns without the system prompt, so editing the story files later applies to the resumed conversation.
 
-Rerunning `--rpg <dir>` continues the story automatically: the saved turns are replayed before the first input prompt and sent with every request, with a `Resumed RPG conversation from <dir>/history.json (N messages).` notice. The greeting from `first-message.md` is only added when there is no history to resume. To start a new story, delete `history.json` (or run `/new`, which saves the current chapter and starts a fresh one — the previous chapter remains available in `~/.communicator/sessions/` via `--resume`/`--export`).
+A plain `--rpg <dir>` run always starts a **new** story: the greeting from `first-message.md` opens the chat, and once the new story has turns it replaces `history.json` (a warning is printed first if a saved story exists). Resuming is opt-in: `communicator --rpg <dir> --resume` (bare `--resume`, no session id) replays the saved turns before the first input prompt and prints a `Resumed RPG conversation from <dir>/history.json (N messages).` notice; if there is no saved history it simply starts a new story. The previous chapter remains available in `~/.communicator/sessions/` via `--resume <id>`/`--export` regardless.
+
+`/new` in RPG mode saves the current chapter and restarts the story **with the first message** — the opening greeting from `first-message.md` is rendered and seeded again instead of a blank page (in non-RPG chat `/new` still clears to an empty conversation as usual).
 
 ### Inspecting the prompt
 
