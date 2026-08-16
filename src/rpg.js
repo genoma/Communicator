@@ -11,7 +11,9 @@ export const RPG_HISTORY_FILE = 'history.json'
 export const RPG_PROMPT_LOG_FILE = 'prompt-log.jsonl'
 
 const CARD_TEMPLATE = `<!-- RPG_TEMPLATE: delete this comment after filling in this file.
-     Fill every section below (rename, remove, or add sections as needed). -->
+     Fill every section below (rename, remove, or add sections as needed).
+     The "# Name" heading must hold the actual name: it becomes the speaker
+     name in the transcript and the value that {{char}}/{{user}} stands for. -->
 
 # Name
 
@@ -167,14 +169,20 @@ async function readRpgFiles(dir) {
   // steal the name nor trigger a false placeholder error.
   const charHeading = parseRpgName(stripMarkdownComments(charRaw), null)
   const userHeading = parseRpgName(stripMarkdownComments(userRaw), null)
-  const charName = charHeading || 'Character'
-  const userName = userHeading || 'User'
-  if (charHeading && isPlaceholderName(charHeading)) {
+  if (!charHeading) {
+    throw fileError('char.md', 'has no "# <name>" heading. The first H1 is used as the character name (speaker marker and {{char}} value).')
+  }
+  if (!userHeading) {
+    throw fileError('user.md', 'has no "# <name>" heading. The first H1 is used as the user name (speaker marker and {{user}} value).')
+  }
+  if (isPlaceholderName(charHeading)) {
     throw fileError('char.md', `still has placeholder "# ${charHeading}". Replace it with the character's name.`)
   }
-  if (userHeading && isPlaceholderName(userHeading)) {
+  if (isPlaceholderName(userHeading)) {
     throw fileError('user.md', `still has placeholder "# ${userHeading}". Replace it with the user's name.`)
   }
+  const charName = charHeading
+  const userName = userHeading
 
   const expand = (markdown) => stripMarkdownComments(expandRpgVariables(markdown, { charName, userName }))
   const firstMessage = expand(firstMessageRaw)

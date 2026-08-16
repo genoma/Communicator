@@ -38,6 +38,7 @@ test('loadRpgContext creates missing templates in a missing directory', async (t
     assert.match(file, /<!--/)
   }
   assert.equal(files[0], files[1])
+  assert.match(files[0], /must hold the actual name/)
   assert.equal(await readFile(join(dir, 'post-history-instruction.md'), 'utf8'), '')
 })
 
@@ -122,6 +123,26 @@ test('loadRpgContext rejects template comments and placeholder names', async (t)
   await assert.rejects(loadRpgContext(dir), (err) => {
     assert.ok(err instanceof CliError)
     assert.match(err.message, /char\.md still has placeholder "# Name"/)
+    return true
+  })
+})
+
+test('loadRpgContext requires a real "# <name>" heading in char.md and user.md', async (t) => {
+  const dir = await tempDir(t)
+
+  await writeFilled(dir)
+  await writeFile(join(dir, 'char.md'), '## Personality\nNo name heading here.\n')
+  await assert.rejects(loadRpgContext(dir), (err) => {
+    assert.ok(err instanceof CliError)
+    assert.match(err.message, /char\.md has no "# <name>" heading/)
+    return true
+  })
+
+  await writeFilled(dir)
+  await writeFile(join(dir, 'user.md'), '## Description\nAlso nameless.\n')
+  await assert.rejects(loadRpgContext(dir), (err) => {
+    assert.ok(err instanceof CliError)
+    assert.match(err.message, /user\.md has no "# <name>" heading/)
     return true
   })
 })
