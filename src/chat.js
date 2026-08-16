@@ -49,6 +49,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     scrapes = 0,
     rpgDir = null,
     rpgDebug = false,
+    rpgPostHistoryInstruction = null,
     prefs = {},
     configPath = null,
   } = ctx
@@ -254,6 +255,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     exit,
     sessionState,
     onRequest,
+    postHistoryInstruction: rpgPostHistoryInstruction,
   })
   const runTurn = runner.runTurn
 

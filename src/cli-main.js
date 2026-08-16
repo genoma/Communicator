@@ -217,6 +217,7 @@ async function main(opts, promptArg) {
   const systemPrompt = rpgContext?.systemPrompt ?? await loadSystemPrompt(opts.systemPrompt)
   const rpgFirstMessage = rpgContext?.firstMessage ?? null
   const rpgHistory = rpgContext?.history ?? null
+  const rpgPostHistoryInstruction = rpgContext?.postHistoryInstruction ?? null
 
   const scraped = opts.scrape !== undefined
     ? await scrapeForSession({ provider, apiKey, url: opts.scrape })
@@ -236,12 +237,12 @@ async function main(opts, promptArg) {
 
   if (promptArg || !process.stdin.isTTY) {
     const { oneShotCmd } = await import('./commands/one-shot.js')
-    await oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgHistory, providerType, prompt: promptArg, scraped })
+    await oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, providerType, prompt: promptArg, scraped })
     process.exit(0)
   }
 
   // chat-start pulls in the streaming renderer, markdown-it and the
   // inquirer pickers; loaded only for interactive chat.
   const { chatStart } = await import('./commands/chat-start.js')
-  await chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgHistory, providerType, scraped })
+  await chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, providerType, scraped })
 }

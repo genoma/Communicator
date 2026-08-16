@@ -15,7 +15,7 @@ function imageSessionContext({ provider, apiKey, prefs, imageModelId, sessionId,
   return { imageModelId, provider, apiKey, prefs, sessionId, createdAt, initialMessages, configPath, imageProviderName, pricing }
 }
 
-async function createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage = null, rpgHistory = null, scraped = null }) {
+async function createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, scraped = null }) {
   const { forcedEffort, forcedTemperature, forcedBudget, budget, forcedWebResults, smoothSpeed, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
   if (opts.resume !== undefined) {
@@ -144,6 +144,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     // persists in the session like any other message; the flat cost rides on
     // the scrapes counter (chat.js seeds the tracker from it once).
     scrapes: scraped ? 1 : 0,
+    rpgPostHistoryInstruction,
     initialMessages: rpgHistory
       ? [
           { role: 'system', content: systemPrompt || DEFAULT_SYSTEM_PROMPT },
@@ -185,14 +186,15 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
     scrapes: ctx.scrapes,
     rpgDir: opts.rpg,
     rpgDebug: opts.debug === true,
+    rpgPostHistoryInstruction: ctx.rpgPostHistoryInstruction ?? null,
     prefs,
     configPath: opts.config,
   })
   await persistSession({ finalState, prefs, config: opts.config })
 }
 
-export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgHistory = null, providerType, scraped = null }) {
-  const ctx = await createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage, rpgHistory, scraped })
+export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, providerType, scraped = null }) {
+  const ctx = await createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, scraped })
   if (ctx.imageModelId) {
     const imageResult = await startImageSession({
       provider: ctx.provider,

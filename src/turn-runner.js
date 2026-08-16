@@ -17,7 +17,7 @@ export function createSessionState() {
   }
 }
 
-export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState, requestFn, onRequest = null }) {
+export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState, requestFn, onRequest = null, postHistoryInstruction = null }) {
   const apiResultMessage = (apiResult) => {
     const msg = { role: 'assistant', content: apiResult.content }
     if (apiResult.reasoning) {
@@ -64,7 +64,12 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       apiResult = await provider.chatCompletion({
         apiKey,
         model: state.modelId,
-        messages: state.messages,
+        // The post-history instruction is injected at request time (never
+        // stored in state.messages), so it stays out of the persisted
+        // history while reaching the model after the latest user message.
+        messages: postHistoryInstruction
+          ? [...state.messages, { role: 'system', content: postHistoryInstruction }]
+          : state.messages,
         onToken: (token, type) => {
           if (type === 'reasoning' || type === 'content') loader.stop({ done: true })
           if (type === 'reasoning') reasoningParts.push(token)

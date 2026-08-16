@@ -17,7 +17,7 @@ import { runImageCommand } from './image-gen.js'
 import { connectedBanner, buildStatusLine } from '../status-line.js'
 import { sanitizeAnsi } from '../ui/hyperlink.js'
 
-export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgHistory = null, providerType, prompt, scraped = null }) {
+export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, providerType, prompt, scraped = null }) {
   const provider = getProvider(providerType)
   const stdinPiped = !process.stdin.isTTY
 
@@ -74,6 +74,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     ...(rpgHistory ? rpgHistory : rpgFirstMessage ? [{ role: 'assistant', content: rpgFirstMessage }] : []),
     ...(scraped ? [{ role: 'user', content: scrapeMessage(scraped.url, scraped.content) }] : []),
     { role: 'user', content: buildContent(text, attachments) },
+    ...(rpgPostHistoryInstruction ? [{ role: 'system', content: rpgPostHistoryInstruction }] : []),
   ]
 
   // The scrape already happened (and was billed) before this command ran; add

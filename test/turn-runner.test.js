@@ -53,7 +53,7 @@ function makeDeps(overrides = {}) {
   return { deps, exitCodes, saves }
 }
 
-function runTurn(deps, state, opts) {
+function runTurn(deps, state, opts, runnerOpts = {}) {
   const runner = createTurnRunner({
     state,
     provider: deps.provider,
@@ -66,6 +66,7 @@ function runTurn(deps, state, opts) {
     interruptSave: deps.interruptSave,
     exit: deps.exit,
     sessionState: deps.sessionState ?? createSessionState(),
+    ...runnerOpts,
   })
   return runner.runTurn(opts)
 }
@@ -107,6 +108,51 @@ test('a successful turn streams tokens, records usage and appends the message', 
   assert.equal(sessionState.tracker.requests, 1)
   assert.equal(sessionState.tracker.promptTokens, 10)
   assert.equal(exitCodes.length, 0)
+})
+
+test('the post-history instruction is appended to the request messages without touching state', async (t) => {
+  mockConsole(t)
+  const render = () => {}
+  render.sources = []
+  render.flush = () => {}
+  const state = fakeState()
+  const beforeCount = state.messages.length
+  let sentMessages
+  const provider = {
+    async chatCompletion(opts) {
+      sentMessages = opts.messages
+      return { content: 'Hello', usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }
+    },
+  }
+  const { deps } = makeDeps({ render, provider })
+
+  await runTurn(deps, state, undefined, { postHistoryInstruction: 'Stay in character.' })
+
+  assert.equal(sentMessages.length, beforeCount + 1)
+  assert.deepEqual(sentMessages.slice(0, -1), state.messages.slice(0, beforeCount))
+  assert.deepEqual(sentMessages[sentMessages.length - 1], { role: 'system', content: 'Stay in character.' })
+  assert.equal(state.messages.length, beforeCount + 1)
+  assert.equal(state.messages.some((m) => m.content === 'Stay in character.'), false)
+})
+
+test('no post-history message is sent when the instruction is absent', async (t) => {
+  mockConsole(t)
+  const render = () => {}
+  render.sources = []
+  render.flush = () => {}
+  const state = fakeState()
+  let sentMessages
+  const provider = {
+    async chatCompletion(opts) {
+      sentMessages = opts.messages
+      return { content: 'Hello', usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }
+    },
+  }
+  const { deps } = makeDeps({ render, provider })
+
+  await runTurn(deps, state)
+
+  assert.deepEqual(sentMessages, state.messages)
 })
 
 test('printTurn receives the state context length for the CTX row', async (t) => {

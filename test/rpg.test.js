@@ -38,6 +38,7 @@ test('loadRpgContext creates missing templates in a missing directory', async (t
     assert.match(file, /<!--/)
   }
   assert.equal(files[0], files[1])
+  await assert.rejects(readFile(join(dir, 'post-history-instruction.md'), 'utf8'))
 })
 
 test('loadRpgContext only creates the missing files and never overwrites', async (t) => {
@@ -58,13 +59,31 @@ test('loadRpgContext loads filled files into one system prompt', async (t) => {
   assert.equal(result.userName, 'Alex')
   assert.match(result.systemPrompt, /You are roleplaying as \*\*Zara\*\*\./)
   assert.match(result.systemPrompt, /The user is roleplaying as \*\*Alex\*\*\./)
-  assert.match(result.systemPrompt, /## Character: Zara/)
-  assert.match(result.systemPrompt, /## User: Alex/)
+  assert.match(result.systemPrompt, /## Character\n\n# Zara\n\n## Personality\nSharp and warm\./)
+  assert.match(result.systemPrompt, /## User\n\n# Alex\n\n## Description\nThe operator\./)
   assert.match(result.systemPrompt, /## Tone, world, and rules/)
   assert.match(result.systemPrompt, /## Scenario\n\n## Current scene\nA rainy street at midnight\./)
   assert.equal(result.firstMessage, 'The rain had stopped by the time she arrived.')
   assert.doesNotMatch(result.systemPrompt, /The rain had stopped/)
   assert.match(result.systemPrompt, /Alex decides; Zara reacts\./)
+  assert.equal(result.postHistoryInstruction, null)
+})
+
+test('loadRpgContext loads the optional post-history instruction file', async (t) => {
+  const dir = await tempDir(t)
+  await writeFilled(dir)
+  await writeFile(join(dir, 'post-history-instruction.md'), '<!-- local note -->\nRemember: {{char}} never reveals the address.\n')
+  const result = await loadRpgContext(dir)
+  assert.equal(result.postHistoryInstruction, 'Remember: Zara never reveals the address.')
+  assert.doesNotMatch(result.systemPrompt, /never reveals the address/)
+})
+
+test('loadRpgContext ignores an empty post-history instruction file', async (t) => {
+  const dir = await tempDir(t)
+  await writeFilled(dir)
+  await writeFile(join(dir, 'post-history-instruction.md'), '\n\n')
+  const result = await loadRpgContext(dir)
+  assert.equal(result.postHistoryInstruction, null)
 })
 
 test('loadRpgContext rejects a first-message TODO placeholder', async (t) => {
@@ -129,7 +148,8 @@ test('buildRpgSystemPrompt keeps identity instructions at both ends', () => {
   assert.match(systemPrompt, /^# Roleplay mode/)
   assert.match(systemPrompt, /You are roleplaying as \*\*Kael\*\*\./)
   assert.match(systemPrompt, /## Scenario\n\nA border tavern at dusk\./)
-  assert.match(systemPrompt, /Every turn\n\n- The latest user message is Mira's input\./)
+  assert.match(systemPrompt, /Every turn\n\n- Reply as Kael, in character, under the rules above\./)
+  assert.doesNotMatch(systemPrompt, /latest user message/)
 })
 
 test('name helpers', () => {

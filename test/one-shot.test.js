@@ -120,10 +120,10 @@ function mockExit(t) {
   return () => exitCode
 }
 
-async function runOneShot(t, { overrides = {}, prefs = {}, prompt = 'Hello', systemPrompt = null, rpgFirstMessage = null, rpgHistory = null } = {}) {
+async function runOneShot(t, { overrides = {}, prefs = {}, prompt = 'Hello', systemPrompt = null, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null } = {}) {
   const { oneShotCmd } = await import('../src/commands/one-shot.js')
   try {
-    await oneShotCmd({ apiKey: 'test-key', opts: opts(overrides), prefs, systemPrompt, rpgFirstMessage, rpgHistory, providerType: 'openrouter', prompt })
+    await oneShotCmd({ apiKey: 'test-key', opts: opts(overrides), prefs, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, providerType: 'openrouter', prompt })
     return { exited: false }
   } catch (e) {
     if (e instanceof CliError) return { exited: true, exitCode: e.exitCode, message: e.message }
@@ -230,6 +230,55 @@ test('one-shot seeds the RPG history and appends the exchange to history.json', 
   ])
   assert.equal(history.messages[0].role, 'assistant')
   assert.equal(history.messages[4].role, 'assistant')
+})
+
+test('one-shot appends the RPG post-history instruction after the user message without persisting it', async (t) => {
+  const bodies = []
+  mockOpenRouterStream(t, [], bodies)
+  withApiKey(t)
+  const file = await tempConfig(t)
+  const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(rpgDir, { recursive: true, force: true }))
+  t.mock.method(process.stdout, 'write', () => true)
+  mockExit(t)
+
+  const { exited } = await runOneShot(t, {
+    overrides: { config: file, rpg: rpgDir },
+    systemPrompt: 'RPG system prompt',
+    rpgFirstMessage: 'The gate creaks open.',
+    rpgPostHistoryInstruction: 'Stay in character.',
+  })
+
+  assert.equal(exited, false)
+  assert.equal(bodies.length, 1)
+  assert.deepEqual(bodies[0].messages[3], { role: 'system', content: 'Stay in character.' })
+
+  const history = JSON.parse(await readFile(join(rpgDir, 'history.json'), 'utf-8'))
+  assert.deepEqual(history.messages.map((m) => m.content), [
+    'The gate creaks open.',
+    'Hello',
+    'Hello world',
+  ])
+})
+
+test('one-shot sends no post-history message when none is provided', async (t) => {
+  const bodies = []
+  mockOpenRouterStream(t, [], bodies)
+  withApiKey(t)
+  const file = await tempConfig(t)
+  t.mock.method(process.stdout, 'write', () => true)
+  mockExit(t)
+
+  const { exited } = await runOneShot(t, {
+    overrides: { config: file },
+    systemPrompt: 'RPG system prompt',
+    rpgFirstMessage: 'The gate creaks open.',
+  })
+
+  assert.equal(exited, false)
+  assert.equal(bodies.length, 1)
+  assert.equal(bodies[0].messages.length, 3)
+  assert.deepEqual(bodies[0].messages[2], { role: 'user', content: 'Hello' })
 })
 
 test('one-shot with --rpg --debug logs the request body to prompt-log.jsonl', async (t) => {

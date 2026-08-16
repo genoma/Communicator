@@ -4,6 +4,7 @@ import { CliError } from './errors.js'
 import { writeFileAtomic } from './fs-utils.js'
 
 export const RPG_FILES = ['char.md', 'user.md', 'prompt.md', 'scenario.md', 'first-message.md']
+export const RPG_POST_HISTORY_FILE = 'post-history-instruction.md'
 export const RPG_TEMPLATE_MARKER = 'RPG_TEMPLATE'
 export const RPG_FIRST_MESSAGE_PLACEHOLDER = 'RPG_FIRST_MESSAGE_TODO'
 export const RPG_HISTORY_FILE = 'history.json'
@@ -99,17 +100,16 @@ export function buildRpgSystemPrompt({ char, user, prompt, scenario, charName, u
     '## Tone, world, and rules',
     prompt,
     '---',
-    `## Character: ${charName}`,
+    '## Character',
     char,
     '---',
-    `## User: ${userName}`,
+    '## User',
     user,
     '---',
     '## Scenario',
     scenario,
     '---',
     '## Every turn',
-    `- The latest user message is ${userName}'s input.`,
     `- Reply as ${charName}, in character, under the rules above.`,
     '- Do not prefix replies with a character name.',
   ]
@@ -189,6 +189,24 @@ async function readRpgFiles(dir) {
   }
 }
 
+// The post-history instruction is optional: unlike the five story files it is
+// never templated or validated, and a missing or empty file simply disables
+// the feature. It is deliberately NOT part of the system prompt — it is
+// injected as a system message after the latest user message on every turn,
+// where models weight instructions highest and long histories cannot dilute
+// them (SillyTavern's "Post-History Instructions" pattern).
+async function readRpgPostHistoryInstruction(dir, { charName, userName }) {
+  let raw
+  try {
+    raw = await readFile(join(dir, RPG_POST_HISTORY_FILE), 'utf8')
+  } catch (err) {
+    if (err.code === 'ENOENT') return null
+    throw new CliError(`Error: could not read ${join(dir, RPG_POST_HISTORY_FILE)}: ${err.message}`)
+  }
+  const instruction = stripMarkdownComments(expandRpgVariables(raw, { charName, userName })).trim()
+  return instruction || null
+}
+
 export async function loadRpgContext(dir) {
   const created = await ensureTemplates(dir)
   if (created.length > 0) {
@@ -196,12 +214,16 @@ export async function loadRpgContext(dir) {
   }
 
   const files = await readRpgFiles(dir)
-  const saved = await loadRpgHistory(dir)
+  const [saved, postHistoryInstruction] = await Promise.all([
+    loadRpgHistory(dir),
+    readRpgPostHistoryInstruction(dir, files),
+  ])
   return {
     created: false,
     dir,
     ...files,
     systemPrompt: buildRpgSystemPrompt(files),
+    postHistoryInstruction,
     history: saved?.messages ?? null,
     historyUpdatedAt: saved?.updatedAt ?? null,
   }
