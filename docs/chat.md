@@ -127,4 +127,8 @@ The conversation is saved to `history.json` in the RPG directory — on `/quit`,
 
 Rerunning `--rpg <dir>` continues the story automatically: the saved turns are replayed before the first input prompt and sent with every request, with a `Resumed RPG conversation from <dir>/history.json (N messages).` notice. The greeting from `first-message.md` is only added when there is no history to resume. To start a new story, delete `history.json` (or run `/new`, which saves the current chapter and starts a fresh one — the previous chapter remains available in `~/.communicator/sessions/` via `--resume`/`--export`).
 
+### Inspecting the prompt
+
+`--rpg <dir> --debug` logs every request to `prompt-log.jsonl` in the RPG directory: one JSON object per turn, each holding a timestamp, the model, the provider, and the full `request` body exactly as sent (system prompt, history, user turn, temperature, web search tools, and any other provider parameters). A short `[debug] prompt logged: …` notice is printed to stderr after each turn. The file is created on the first request (never on a turnless launch), grows one line per turn, and stores the plaintext messages even with `--e2ee` — like `history.json`, it is a local, unencrypted artifact.
+
 Note that `history.json` stores messages unencrypted even under `--e2ee` (encryption only applies to messages sent to the API).

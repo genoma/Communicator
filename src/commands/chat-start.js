@@ -184,6 +184,7 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
     smoothSpeed: ctx.smoothSpeed,
     scrapes: ctx.scrapes,
     rpgDir: opts.rpg,
+    rpgDebug: opts.debug === true,
     prefs,
     configPath: opts.config,
   })

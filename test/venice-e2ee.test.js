@@ -81,6 +81,35 @@ test('chatCompletion with e2ee encrypts messages and sets the TEE headers', asyn
   assert.equal(body.stream, true)
 })
 
+test('onRequest sees the plaintext messages even under e2ee', async (t) => {
+  const client = createE2eeClient()
+  const modelKey = createECDH('secp256k1')
+  const modelPubKeyHex = modelKey.generateKeys('hex')
+  const e2eeContext = { clientKey: client.clientKey, clientPubKeyHex: client.clientPubKeyHex, modelPubKeyHex }
+  t.mock.method(globalThis, 'fetch', async () => {
+    return sseResponse([event({ choices: [{ delta: { content: serverEncrypt('ok', client.clientPubKeyHex) } }] }), 'data: [DONE]\n\n'])
+  })
+
+  const messages = [
+    { role: 'system', content: 'sys prompt' },
+    { role: 'user', content: 'hello' },
+  ]
+  const seen = []
+  await venice.chatCompletion({
+    apiKey: 'key',
+    model: 'e2ee-qwen3-5-122b-a10b',
+    messages,
+    onToken: () => {},
+    e2ee: true,
+    e2eeContext,
+    onRequest: (body) => seen.push(body),
+  })
+
+  assert.equal(seen.length, 1)
+  assert.deepEqual(seen[0].messages, messages)
+  assert.equal(seen[0].model, 'e2ee-qwen3-5-122b-a10b')
+})
+
 test('chatCompletion without e2ee sends plaintext and no TEE headers', async (t) => {
   const calls = []
   t.mock.method(globalThis, 'fetch', async (url, opts) => {

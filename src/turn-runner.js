@@ -17,7 +17,7 @@ export function createSessionState() {
   }
 }
 
-export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState, requestFn }) {
+export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState, requestFn, onRequest = null }) {
   const apiResultMessage = (apiResult) => {
     const msg = { role: 'assistant', content: apiResult.content }
     if (apiResult.reasoning) {
@@ -85,6 +85,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         e2ee: state.e2ee,
         e2eeContext: state.e2eeContext,
         signal: sessionState.streamController.signal,
+        onRequest,
       })
       loader.stop()
       await render.flush()

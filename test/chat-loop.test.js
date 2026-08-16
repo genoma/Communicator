@@ -26,6 +26,7 @@ function fakeProvider(overrides = {}) {
     meta: { name: 'openrouter' },
     async chatCompletion(opts) {
       calls.push({ ...opts, messages: opts.messages.slice() })
+      opts.onRequest?.({ model: opts.model, messages: opts.messages.slice(), stream: true, temperature: opts.temperature })
       return { content: 'Hello!', usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }
     },
     ...overrides,
@@ -190,6 +191,42 @@ test('rpg history is written to the rpg dir on exit and excludes the system prom
   assert.ok(history.updatedAt)
   assert.deepEqual(history.messages.map((m) => m.role), ['user', 'assistant'])
   assert.equal(history.messages[1].content, 'Hello!')
+})
+
+test('rpg debug logs the request body to prompt-log.jsonl for each turn', async (t) => {
+  mockConsole(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+
+  const { provider, calls } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['hello', 'again', '/quit']) })
+
+  await runChatSession(baseCtx(provider, { rpgDir: dir, rpgDebug: true }), harness.deps)
+  await tick()
+
+  const raw = await readFile(join(dir, 'prompt-log.jsonl'), 'utf-8')
+  const entries = raw.trim().split('\n').map((line) => JSON.parse(line))
+  assert.equal(entries.length, 2)
+  assert.equal(entries[0].model, 'org/model')
+  assert.equal(entries[0].provider, 'openrouter')
+  assert.deepEqual(entries[0].request.messages.map((m) => m.role), ['system', 'user'])
+  assert.equal(entries[0].request.messages[1].content, 'hello')
+  assert.deepEqual(entries[1].request.messages.map((m) => m.role), ['system', 'user', 'assistant', 'user'])
+  assert.equal(entries[1].request.messages[3].content, 'again')
+  assert.equal(calls.length, 2)
+})
+
+test('rpg debug without turns writes no prompt-log.jsonl', async (t) => {
+  mockConsole(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/quit']) })
+
+  await runChatSession(baseCtx(provider, { rpgDir: dir, rpgDebug: true }), harness.deps)
+
+  await assert.rejects(readFile(join(dir, 'prompt-log.jsonl'), 'utf-8'), { code: 'ENOENT' })
 })
 
 test('/new in rpg mode saves the prior story, and later saves overwrite with the new chapter', async (t) => {

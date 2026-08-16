@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { CliError } from './errors.js'
 import { writeFileAtomic } from './fs-utils.js'
@@ -7,6 +7,7 @@ export const RPG_FILES = ['char.md', 'user.md', 'prompt.md', 'scenario.md', 'fir
 export const RPG_TEMPLATE_MARKER = 'RPG_TEMPLATE'
 export const RPG_FIRST_MESSAGE_PLACEHOLDER = 'RPG_FIRST_MESSAGE_TODO'
 export const RPG_HISTORY_FILE = 'history.json'
+export const RPG_PROMPT_LOG_FILE = 'prompt-log.jsonl'
 
 const CARD_TEMPLATE = `<!-- RPG_TEMPLATE: delete this comment after filling in this file.
      Fill every section below (rename, remove, or add sections as needed). -->
@@ -220,6 +221,20 @@ export async function saveRpgHistory(dir, messages) {
     await writeFileAtomic(join(dir, RPG_HISTORY_FILE), JSON.stringify({ updatedAt: new Date().toISOString(), messages: turns }, null, 2) + '\n')
   } catch (err) {
     console.error(`Warning: could not save RPG history: ${err.message}`)
+  }
+}
+
+// The prompt log is a debug artifact: one JSON object per API request, with
+// the exact request body the provider built. Plain append (not atomic) is
+// deliberate — a single writer per run, and the file is meant to be tailed.
+// Failures warn without throwing, like saveRpgHistory.
+export async function logRpgPrompt(dir, entry) {
+  const line = JSON.stringify(entry) + '\n'
+  try {
+    await appendFile(join(dir, RPG_PROMPT_LOG_FILE), line, { mode: 0o600 })
+    console.error(`[debug] prompt logged: ${join(dir, RPG_PROMPT_LOG_FILE)} (${line.length} bytes)`)
+  } catch (err) {
+    console.warn(`Warning: could not log prompt to ${join(dir, RPG_PROMPT_LOG_FILE)}: ${err.message}`)
   }
 }
 

@@ -257,7 +257,7 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   }]
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, onSources, reasoningEffort, supportsReasoning, sessionId, temperature = DEFAULT_TEMPERATURE, webSearch, signal, e2ee = false, e2eeContext = null }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, onSources, reasoningEffort, supportsReasoning, sessionId, temperature = DEFAULT_TEMPERATURE, webSearch, signal, e2ee = false, e2eeContext = null, onRequest = null }) {
   const headers = {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
@@ -301,6 +301,11 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
   } else if (reasoningEffort === null && supportsReasoning !== false) {
     body.reasoning_effort = 'none'
   }
+
+  // The debug hook always sees the plaintext messages: under E2EE the body
+  // carries ciphertext, but the prompt log is a local artifact (same trust
+  // level as history.json) and must stay readable.
+  onRequest?.(e2ee ? { ...body, messages } : body)
 
   const res = await fetchWithRetry(`${VENICE_BASE}/chat/completions`, {
     method: 'POST',

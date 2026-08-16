@@ -305,7 +305,7 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   }))
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, onSources, provider, reasoningEffort, temperature = DEFAULT_TEMPERATURE, webSearch, webResults, zdr = false, signal }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, onSources, provider, reasoningEffort, temperature = DEFAULT_TEMPERATURE, webSearch, webResults, zdr = false, signal, onRequest = null }) {
   const body = {
     model,
     messages,
@@ -339,6 +339,8 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
   } else if (reasoningEffort === null) {
     body.reasoning = { enabled: false }
   }
+
+  onRequest?.(body)
 
   let res
   try {

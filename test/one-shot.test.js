@@ -232,6 +232,39 @@ test('one-shot seeds the RPG history and appends the exchange to history.json', 
   assert.equal(history.messages[4].role, 'assistant')
 })
 
+test('one-shot with --rpg --debug logs the request body to prompt-log.jsonl', async (t) => {
+  const bodies = []
+  mockOpenRouterStream(t, [], bodies)
+  withApiKey(t)
+  const file = await tempConfig(t)
+  const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(rpgDir, { recursive: true, force: true }))
+  t.mock.method(process.stdout, 'write', () => true)
+  const errors = []
+  t.mock.method(console, 'error', (msg) => errors.push(String(msg)))
+  mockExit(t)
+
+  const { exited } = await runOneShot(t, {
+    overrides: { config: file, rpg: rpgDir, debug: true },
+    systemPrompt: 'RPG system prompt',
+    rpgFirstMessage: 'The gate creaks open.',
+  })
+
+  assert.equal(exited, false)
+  assert.equal(bodies.length, 1)
+  assert.equal(bodies[0].messages[0].content, 'RPG system prompt')
+
+  const raw = await readFile(join(rpgDir, 'prompt-log.jsonl'), 'utf-8')
+  const lines = raw.trim().split('\n')
+  assert.equal(lines.length, 1)
+  const entry = JSON.parse(lines[0])
+  assert.ok(entry.timestamp)
+  assert.equal(entry.model, 'test/model-a')
+  assert.equal(entry.provider, 'openrouter')
+  assert.deepEqual(entry.request, bodies[0])
+  assert.ok(errors.some((line) => line.includes('prompt logged:') && line.includes('prompt-log.jsonl')))
+})
+
 test('one-shot treats an invalid configured budget as unset', async (t) => {
   const fetchCalls = []
   mockOpenRouterStream(t, fetchCalls)

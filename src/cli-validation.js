@@ -144,6 +144,10 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --rpg cannot be combined with --system-prompt.')
   }
 
+  if (opts.debug === true && opts.rpg === undefined) {
+    errors.push('Error: --debug requires --rpg.')
+  }
+
   if (opts.rpg !== undefined && opts.resume !== undefined) {
     errors.push('Error: --rpg cannot be combined with --resume (resumed sessions keep their saved system prompt).')
   }

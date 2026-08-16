@@ -90,6 +90,15 @@ test('--rpg rejects --system-prompt and --resume', () => {
   assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg' }), TTY), [])
 })
 
+test('--debug requires --rpg', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ debug: true }), TTY),
+    ['Error: --debug requires --rpg.']
+  )
+  assert.deepEqual(validateCliFlags(opts({ debug: true, rpg: '/tmp/rpg' }), TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg' }), TTY), [])
+})
+
 test('--e2ee rejects --attach', () => {
   assert.deepEqual(
     validateCliFlags(opts({ e2ee: true, provider: 'venice', attach: ['a.png'] }), { ...TTY, ...PROMPT() }),

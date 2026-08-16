@@ -11,7 +11,7 @@ import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { loadAttachments, buildContent, contentText } from '../attachments.js'
 import { resolveArtifacts, printArtifactsSummary } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
-import { saveRpgHistory } from '../rpg.js'
+import { saveRpgHistory, logRpgPrompt } from '../rpg.js'
 import { createE2eeSession } from '../e2ee.js'
 import { runImageCommand } from './image-gen.js'
 import { connectedBanner, buildStatusLine } from '../status-line.js'
@@ -114,6 +114,16 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
       e2ee,
       e2eeContext,
       signal: controller.signal,
+      onRequest: opts.rpg !== undefined && opts.debug === true
+        ? (body) => {
+            void logRpgPrompt(opts.rpg, {
+              timestamp: new Date().toISOString(),
+              model: body.model,
+              provider: provider.meta.name,
+              request: body,
+            })
+          }
+        : null,
     }
 
     if (ttyOut) {

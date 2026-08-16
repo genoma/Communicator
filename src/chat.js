@@ -9,7 +9,7 @@ import { createLoader } from './ui/loader.js'
 import { dim, sep } from './ui/style.js'
 import { out } from './ui/io.js'
 import { ensureSessionsDir, generateSessionId, persistSessionFile, buildSessionPayload, removeEmptySessionClaim } from './sessions.js'
-import { saveRpgHistory } from './rpg.js'
+import { saveRpgHistory, logRpgPrompt } from './rpg.js'
 import { savePreferences, applyPreferenceUpdates, savePrefsBestEffort } from './config.js'
 import { copyText } from './clipboard.js'
 import { ChatState } from './chat-state.js'
@@ -48,6 +48,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     smoothSpeed,
     scrapes = 0,
     rpgDir = null,
+    rpgDebug = false,
     prefs = {},
     configPath = null,
   } = ctx
@@ -229,6 +230,17 @@ export async function runChatSession(ctx = {}, deps = {}) {
     return state.toFinalState(provider.meta.name)
   }
 
+  const onRequest = rpgDir && rpgDebug
+    ? (body) => {
+        void logRpgPrompt(rpgDir, {
+          timestamp: new Date().toISOString(),
+          model: body.model,
+          provider: provider.meta.name,
+          request: body,
+        })
+      }
+    : null
+
   const runner = createTurnRunner({
     state,
     provider,
@@ -241,6 +253,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     interruptSave: bestEffortExitSave,
     exit,
     sessionState,
+    onRequest,
   })
   const runTurn = runner.runTurn
 

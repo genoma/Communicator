@@ -36,6 +36,7 @@ program
   .option('--config [path]', 'path to preferences config file (bare flag prints the current config)')
   .option('--system-prompt <path>', 'path to a custom system prompt file')
   .option('--rpg <dir>', 'enable RPG mode using char.md, user.md, prompt.md, scenario.md, and first-message.md from a directory')
+  .option('--debug', 'with --rpg: log the full prompt sent to the model to prompt-log.jsonl in the RPG directory')
   .option('--reasoning-effort <level>', 'reasoning effort: max, xhigh, high, medium, low, minimal, none')
   .option('--temperature <0-2>', 'temperature override (0 to 2)')
   .option('--budget <usd>', 'per-session budget cap in USD')

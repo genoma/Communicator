@@ -1,10 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CliError } from '../src/errors.js'
-import { buildRpgSystemPrompt, expandRpgVariables, isPlaceholderName, loadRpgContext, loadRpgHistory, parseRpgName, saveRpgHistory } from '../src/rpg.js'
+import { buildRpgSystemPrompt, expandRpgVariables, isPlaceholderName, loadRpgContext, loadRpgHistory, logRpgPrompt, parseRpgName, saveRpgHistory } from '../src/rpg.js'
 
 async function tempDir(t) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
@@ -241,6 +241,38 @@ test('loadRpgHistory ignores a garbage updatedAt', async (t) => {
   const history = await loadRpgHistory(dir)
   assert.deepEqual(history.messages, [{ role: 'user', content: 'Hi.' }])
   assert.equal(history.updatedAt, null)
+})
+
+test('logRpgPrompt appends one JSON entry per request with a stderr notice', async (t) => {
+  const dir = await tempDir(t)
+  const notices = []
+  t.mock.method(console, 'error', (msg) => notices.push(String(msg)))
+
+  await logRpgPrompt(dir, { timestamp: '2026-08-16T10:00:00.000Z', model: 'org/model', provider: 'openrouter', request: { model: 'org/model', messages: [{ role: 'system', content: 'prompt' }, { role: 'user', content: 'hi' }], stream: true } })
+  await logRpgPrompt(dir, { timestamp: '2026-08-16T10:01:00.000Z', model: 'org/model', provider: 'openrouter', request: { model: 'org/model', messages: [{ role: 'system', content: 'prompt' }, { role: 'user', content: 'again' }], stream: true } })
+
+  const raw = await readFile(join(dir, 'prompt-log.jsonl'), 'utf-8')
+  const lines = raw.trim().split('\n')
+  assert.equal(lines.length, 2)
+  const first = JSON.parse(lines[0])
+  assert.equal(first.model, 'org/model')
+  assert.equal(first.provider, 'openrouter')
+  assert.equal(first.request.messages[1].content, 'hi')
+  assert.equal(JSON.parse(lines[1]).request.messages[1].content, 'again')
+  assert.equal(notices.length, 2)
+  assert.ok(notices[0].includes('prompt logged:') && notices[0].includes('prompt-log.jsonl'))
+
+  assert.equal((await stat(join(dir, 'prompt-log.jsonl'))).mode & 0o777, 0o600)
+})
+
+test('logRpgPrompt warns without throwing when the write fails', async (t) => {
+  const dir = await tempDir(t)
+  const warnings = []
+  t.mock.method(console, 'warn', (msg) => warnings.push(String(msg)))
+  t.mock.method(console, 'error', () => {})
+
+  await logRpgPrompt(join(dir, 'missing'), { request: {} })
+  assert.ok(warnings.some((w) => w.includes('could not log prompt') && w.includes('prompt-log.jsonl')))
 })
 
 test('loadRpgContext returns the saved history alongside the rebuilt prompt', async (t) => {

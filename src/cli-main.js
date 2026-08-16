@@ -81,7 +81,8 @@ async function main(opts, promptArg) {
   if (opts.rpg !== undefined) {
     rpgContext = await loadRpgContext(opts.rpg)
     if (opts.e2ee === true) {
-      console.warn('Warning: --e2ee encrypts messages sent to the API, but RPG history.json stores them unencrypted.')
+      const localFiles = opts.debug === true ? 'history.json and prompt-log.jsonl' : 'history.json'
+      console.warn(`Warning: --e2ee encrypts messages sent to the API, but RPG ${localFiles} stores them unencrypted.`)
     }
     if (rpgContext.created) {
       console.log(`RPG mode setup: created ${rpgContext.createdFiles.join(', ')} in ${rpgContext.dir}`)

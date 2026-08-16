@@ -32,6 +32,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--config`            | `[path]` | Custom path for the preferences JSON file (default: `~/.communicator.json`). Bare flag prints the current config |
 |       | `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
 |       | `--rpg`              | `<dir>`  | Enable RPG mode using `char.md`, `user.md`, `prompt.md`, `scenario.md`, and `first-message.md` from a directory. Missing files are created as fill-in templates; edit them, delete the HTML comment at the top, and rerun. The conversation is saved to `history.json` in the directory and resumed automatically on the next run |
+|       | `--debug`            | —        | With `--rpg`: log the full prompt sent to the model to `prompt-log.jsonl` in the RPG directory (one JSON object per turn) |
 |       | `--image`             | —        | Generate an image with an image model and exit (both providers). See [docs/images.md](images.md) |
 |       | `--image-model`       | `<id>`   | Image model ID, skipping the interactive image model picker (required when piping input) |
 |       | `--image-format`      | `<fmt>`  | Image output format: `png`, `jpeg`, `webp` (default `webp` on Venice, `png` on OpenRouter; only sent when the model supports it). Bare use saves the per-provider default |
