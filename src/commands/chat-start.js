@@ -15,7 +15,7 @@ function imageSessionContext({ provider, apiKey, prefs, imageModelId, sessionId,
   return { imageModelId, provider, apiKey, prefs, sessionId, createdAt, initialMessages, configPath, imageProviderName, pricing }
 }
 
-async function createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, scraped = null }) {
+async function createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, scraped = null }) {
   const { forcedEffort, forcedTemperature, forcedBudget, budget, forcedWebResults, smoothSpeed, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
   if (opts.resume !== undefined && opts.rpg === undefined) {
@@ -145,6 +145,10 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     // the scrapes counter (chat.js seeds the tracker from it once).
     scrapes: scraped ? 1 : 0,
     rpgPostHistoryInstruction,
+    // Speaker markers for the RPG transcript (replay + live replies); names
+    // come from the char.md/user.md H1s. Only non-null for RPG runs.
+    rpgCharName: rpgCharName ?? null,
+    rpgUserName: rpgUserName ?? null,
     // Carried even when history is resumed so /new can restart the story
     // from the opening message instead of a blank page. Only non-null when
     // cli-main loaded an RPG context.
@@ -192,14 +196,16 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
     rpgDebug: opts.debug === true,
     rpgPostHistoryInstruction: ctx.rpgPostHistoryInstruction ?? null,
     rpgFirstMessage: ctx.rpgFirstMessage ?? null,
+    rpgCharName: ctx.rpgCharName ?? null,
+    rpgUserName: ctx.rpgUserName ?? null,
     prefs,
     configPath: opts.config,
   })
   await persistSession({ finalState, prefs, config: opts.config })
 }
 
-export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, providerType, scraped = null }) {
-  const ctx = await createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, scraped })
+export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, providerType, scraped = null }) {
+  const ctx = await createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage, rpgCharName, rpgUserName, rpgHistory, rpgPostHistoryInstruction, scraped })
   if (ctx.imageModelId) {
     const imageResult = await startImageSession({
       provider: ctx.provider,

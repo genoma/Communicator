@@ -44,7 +44,7 @@ const handlers = {
     // message, not from a blank page; render it like the launch greeting.
     if (ctx.rpgFirstMessage) {
       ctx.state.appendAssistant({ role: 'assistant', content: ctx.rpgFirstMessage })
-      renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout: ctx.stdout })
+      renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout: ctx.stdout, ...(ctx.rpgMarkers ?? {}) })
     }
     console.log('\nNew session started.\n')
     showStatus(ctx)

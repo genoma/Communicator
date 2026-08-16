@@ -15,7 +15,7 @@ export function attachmentLine(word, label, { meta = null, note = null, link = n
   return `${head}${link ?? ''}${metaText}${noteText}`
 }
 
-export function createStreamRenderer({ markdown = false, stdout = process.stdout, smooth = false, smoothCharsPerTick = SMOOTH_CHARS_PER_TICK, smoothTickMs = SMOOTH_TICK_MS } = {}) {
+export function createStreamRenderer({ markdown = false, stdout = process.stdout, smooth = false, smoothCharsPerTick = SMOOTH_CHARS_PER_TICK, smoothTickMs = SMOOTH_TICK_MS, assistantMarker = null } = {}) {
   const md = createMarkdownRenderer({
     getSources: () => render.sources,
     stdout,
@@ -25,6 +25,7 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   const queue = []
   let pumpTimer = null
   let drainWaiter = null
+  let messageStarted = false
 
   const writeSegment = (type, text) => {
     if (type === 'start_reasoning') {
@@ -35,6 +36,10 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
     } else if (type === 'end_reasoning') {
       stdout.write(`\n\n${answer()}\n\n`)
     } else if (type === 'content') {
+      if (!messageStarted) {
+        messageStarted = true
+        if (assistantMarker) stdout.write(`${assistantMarker}\n`)
+      }
       if (render.markdown) md.write(text)
       else stdout.write(text)
     }
@@ -94,6 +99,9 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   render.smoothCharsPerTick = smoothCharsPerTick
   render.smoothTickMs = smoothTickMs
   render.sources = []
+  render.resetMessage = () => {
+    messageStarted = false
+  }
   render.flush = ({ sync = false } = {}) => {
     if (sync) {
       if (pumpTimer !== null) {
@@ -149,7 +157,7 @@ export function printSources(sources, stdout = process.stdout) {
   })
 }
 
-export function renderHistory(messages, { markdown = false, stdout = process.stdout } = {}) {
+export function renderHistory(messages, { markdown = false, stdout = process.stdout, userMarker = null, assistantMarker = null } = {}) {
   if (!messages || messages.length <= 1) return
 
   const hasVisible = messages.some((m) => m.role !== 'system')
@@ -158,7 +166,7 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
   stdout.write('\n')
   for (const msg of messages) {
     if (msg.role === 'user') {
-      stdout.write(`${you()}\n${markdown ? renderText(sanitizeAnsi(contentText(msg.content))) : sanitizeAnsi(contentText(msg.content))}\n\n`)
+      stdout.write(`${userMarker ?? you()}\n${markdown ? renderText(sanitizeAnsi(contentText(msg.content))) : sanitizeAnsi(contentText(msg.content))}\n\n`)
       for (const att of contentAttachments(msg.content)) {
         stdout.write(`${attachmentLine('attached', att.filename, { meta: att.kind })}\n`)
       }
@@ -170,6 +178,7 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
         stdout.write(`${dim(sanitizeAnsi(msg.reasoning))}\n`)
         stdout.write(`\n${answer()}\n\n`)
       }
+      if (assistantMarker) stdout.write(`${assistantMarker}\n`)
       stdout.write(`${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), msg.sources || []) : sanitizeAnsi(contentText(msg.content))}\n\n`)
       for (const att of contentAttachments(msg.content)) {
         stdout.write(`${attachmentLine(att.kind, att.filename)}\n`)

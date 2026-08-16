@@ -35,6 +35,7 @@ function fakeState(overrides = {}) {
 function makeDeps(overrides = {}) {
   const render = () => {}
   render.sources = []
+  render.resetMessage = () => {}
   render.flush = () => {}
   const loader = { start() {}, stop() {} }
   const exitCodes = []
@@ -89,6 +90,7 @@ test('a successful turn streams tokens, records usage and appends the message', 
   mockConsole(t)
   const render = () => {}
   render.sources = []
+  render.resetMessage = () => {}
   render.flush = () => {}
   const state = fakeState()
   const sessionState = createSessionState()
@@ -114,6 +116,7 @@ test('the post-history instruction is appended to the request messages without t
   mockConsole(t)
   const render = () => {}
   render.sources = []
+  render.resetMessage = () => {}
   render.flush = () => {}
   const state = fakeState()
   const beforeCount = state.messages.length
@@ -139,6 +142,7 @@ test('no post-history message is sent when the instruction is absent', async (t)
   mockConsole(t)
   const render = () => {}
   render.sources = []
+  render.resetMessage = () => {}
   render.flush = () => {}
   const state = fakeState()
   let sentMessages
@@ -185,6 +189,7 @@ test('persists the provider sources on the appended assistant message', async (t
   ]
   const render = () => {}
   render.sources = []
+  render.resetMessage = () => {}
   render.flush = () => {}
   const state = fakeState()
   const provider = okProvider({
@@ -224,6 +229,7 @@ test('an interrupted stream salvages the sources collected so far', async (t) =>
     },
   })
   const render = () => {}
+  render.resetMessage = () => {}
   render.flush = () => {}
   const state = fakeState()
   const sessionState = createSessionState()
@@ -394,6 +400,7 @@ test('Ctrl+C during the post-stream flush saves the full response and exits 130'
   let flushResolve
   const render = () => {}
   render.sources = []
+  render.resetMessage = () => {}
   render.flush = () => new Promise((resolve) => { flushResolve = resolve })
   const state = fakeState()
   const sessionState = createSessionState()

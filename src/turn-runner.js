@@ -40,6 +40,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
     const reasoningParts = []
 
     render.sources = []
+    render.resetMessage()
     sessionState.streaming = true
     sessionState.streamController = new AbortController()
     sessionState.interrupted = false

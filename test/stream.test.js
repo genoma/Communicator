@@ -200,6 +200,29 @@ test('renderHistory leaves assistant messages without sources unchanged', () => 
   assert.doesNotMatch(plain(), /Sources/)
 })
 
+test('renderHistory substitutes named RPG speaker markers for user and assistant', (t) => {
+  enableAnsi(t)
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'You are helpful.' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: 'Answer here' },
+  ], { markdown: false, stdout, userMarker: '❯ Kael', assistantMarker: '❯ Zara' })
+  assert.equal(plain(), '\n❯ Kael\nquestion\n\n❯ Zara\nAnswer here\n\n')
+  assert.doesNotMatch(plain(), /❯ You/)
+})
+
+test('renderHistory keeps Thinking/Answer and puts the char marker before content', (t) => {
+  enableAnsi(t)
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'You are helpful.' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: 'Answer here', reasoning: 'thinking text' },
+  ], { markdown: false, stdout, userMarker: '❯ Kael', assistantMarker: '❯ Zara' })
+  assert.equal(plain(), '\n❯ Kael\nquestion\n\n❯ Thinking\nthinking text\n\n❯ Answer\n\n❯ Zara\nAnswer here\n\n')
+})
+
 test('smooth renderer writes nothing before the first tick and paces at the char cap', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const { stdout, plain } = capture()
@@ -286,6 +309,39 @@ test('smooth keeps reasoning markers ordered behind paced text', async (t) => {
   pump()
   pump()
   assert.equal(plain(), '❯ Thinking\nTHINKING\n\n❯ Answer\n\nHELLO')
+})
+
+test('stream renderer prints the assistant marker before the first content token of each message', (t) => {
+  enableAnsi(t)
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, assistantMarker: '❯ Zara' })
+  render('Hel', 'content')
+  render('lo', 'content')
+  assert.equal(plain(), '❯ Zara\nHello')
+  render.resetMessage()
+  render('!', 'content')
+  assert.equal(plain(), '❯ Zara\nHello❯ Zara\n!')
+})
+
+test('stream renderer puts the assistant marker after the Answer label when reasoning precedes content', (t) => {
+  enableAnsi(t)
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, assistantMarker: '❯ Zara' })
+  render('think', 'start_reasoning')
+  render('ing', 'reasoning')
+  render('', 'end_reasoning')
+  render('Hi', 'content')
+  assert.equal(plain(), '❯ Thinking\nthinking\n\n❯ Answer\n\n❯ Zara\nHi')
+})
+
+test('stream renderer prints no assistant marker for a reasoning-only message', (t) => {
+  enableAnsi(t)
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, assistantMarker: '❯ Zara' })
+  render('think', 'start_reasoning')
+  render('ing', 'reasoning')
+  render('', 'end_reasoning')
+  assert.doesNotMatch(plain(), /Zara/)
 })
 
 test('toggling render.smooth off mid-stream drains the residual on the next tick', async (t) => {

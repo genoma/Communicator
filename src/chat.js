@@ -6,7 +6,7 @@ import { buildContent } from './attachments.js'
 import { readInput as defaultReadInput } from './input.js'
 import { createStreamRenderer, renderHistory } from './ui/stream.js'
 import { createLoader } from './ui/loader.js'
-import { dim, sep } from './ui/style.js'
+import { dim, sep, you, char } from './ui/style.js'
 import { out } from './ui/io.js'
 import { ensureSessionsDir, generateSessionId, persistSessionFile, buildSessionPayload, removeEmptySessionClaim } from './sessions.js'
 import { saveRpgHistory, logRpgPrompt } from './rpg.js'
@@ -51,6 +51,8 @@ export async function runChatSession(ctx = {}, deps = {}) {
     rpgDebug = false,
     rpgPostHistoryInstruction = null,
     rpgFirstMessage = null,
+    rpgCharName = null,
+    rpgUserName = null,
     prefs = {},
     configPath = null,
   } = ctx
@@ -137,8 +139,13 @@ export async function runChatSession(ctx = {}, deps = {}) {
   hintParts.push('/quit to exit')
   out(connectedBanner(buildStatusLine(state), { hints: hintParts }))
 
+  const rpgMarkers = {
+    userMarker: rpgUserName ? you(rpgUserName) : null,
+    assistantMarker: rpgCharName ? char(rpgCharName) : null,
+  }
+
   if (initialMessages) {
-    renderHistory(state.messages, { markdown: state.markdown, stdout })
+    renderHistory(state.messages, { markdown: state.markdown, stdout, ...rpgMarkers })
   }
 
   if (initialMessages && sessionState.tracker.requests > 0) {
@@ -153,7 +160,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
 
   const tty = stdout.isTTY === true
 
-  const render = renderer({ markdown: state.markdown, stdout, smooth: tty && state.smoothStreaming, smoothCharsPerTick: cpsToCharsPerTick(state.smoothSpeed) })
+  const render = renderer({ markdown: state.markdown, stdout, smooth: tty && state.smoothStreaming, smoothCharsPerTick: cpsToCharsPerTick(state.smoothSpeed), assistantMarker: rpgMarkers.assistantMarker })
   const loader = createLoader({ stdout })
 
   const saveCurrentSession = async () => {
@@ -267,6 +274,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     prefs,
     systemContent,
     rpgFirstMessage,
+    rpgMarkers,
     saveSession: saveCurrentSession,
     savePrefs,
     runTurn,

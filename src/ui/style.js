@@ -9,8 +9,12 @@ export const yellow = (text) => styleText('yellow', text)
 export const red = (text) => styleText('red', text)
 export const cyan = (text) => styleText('cyan', text)
 
-export function you() {
-  return styleText(['bold', 'cyan'], '❯ You')
+export function you(name = 'You') {
+  return styleText(['bold', 'cyan'], `❯ ${name}`)
+}
+
+export function char(name) {
+  return styleText(['bold', 'green'], `❯ ${name}`)
 }
 
 export function thinking() {

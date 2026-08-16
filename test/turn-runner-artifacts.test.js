@@ -79,6 +79,7 @@ function fakeState(overrides = {}) {
 function makeDeps(overrides = {}) {
   const render = () => {}
   render.sources = []
+  render.resetMessage = () => {}
   render.flush = () => {}
   const loader = { start() {}, stop() {} }
   const exitCodes = []

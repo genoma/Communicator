@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { ExitPromptError } from '@inquirer/core'
 import { runChatSession } from '../src/chat.js'
+import { createStreamRenderer } from '../src/ui/stream.js'
 
 function scriptedInput(values) {
   const queue = [...values]
@@ -37,6 +38,7 @@ function fakeProvider(overrides = {}) {
 function fakeRenderer({ markdown }) {
   const render = () => {}
   render.markdown = markdown
+  render.resetMessage = () => {}
   render.flush = () => {}
   return render
 }
@@ -245,6 +247,8 @@ test('/new in rpg mode saves the prior story, restarts with the first message, a
   const finalState = await runChatSession(baseCtx(provider, {
     rpgDir: dir,
     rpgFirstMessage: 'The gate creaks open.',
+    rpgCharName: 'Zara',
+    rpgUserName: 'Kael',
     systemPrompt: 'RPG prompt',
   }), harness.deps)
 
@@ -258,7 +262,48 @@ test('/new in rpg mode saves the prior story, restarts with the first message, a
   assert.deepEqual(history.messages.map((m) => m.content), ['The gate creaks open.', 'second', 'Hello!'])
 
   assert.deepEqual(finalState.messages.map((m) => m.content), ['RPG prompt', 'The gate creaks open.', 'second', 'Hello!'])
-  assert.ok(writes.join('').includes('The gate creaks open.'))
+  const out = writes.join('')
+  assert.ok(out.includes('The gate creaks open.'))
+  // The launch replay and the /new re-render both speak under the char name.
+  assert.match(out, /❯ Zara\nThe gate creaks open\./)
+  assert.doesNotMatch(out, /❯ You/)
+})
+
+test('rpg live replies stream under the char marker and replay user turns under the user name', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const { provider } = fakeProvider({
+    async chatCompletion(opts) {
+      opts.onToken('Hel', 'content')
+      opts.onToken('lo!', 'content')
+      return { content: 'Hello!', usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }
+    },
+  })
+  const harness = makeDeps({
+    readInput: scriptedInput(['hello', '/quit']),
+    stdout: { write: (chunk) => writes.push(String(chunk)) },
+    renderer: (opts) => createStreamRenderer(opts),
+  })
+
+  await runChatSession(baseCtx(provider, {
+    rpgDir: null,
+    rpgCharName: 'Zara',
+    rpgUserName: 'Kael',
+    initialMessages: [
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'assistant', content: 'Welcome to the story.' },
+    ],
+  }), harness.deps)
+
+  // eslint-disable-next-line no-control-regex
+  const out = writes.join('').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\r/g, '')
+  assert.match(out, /❯ Zara\nWelcome to the story\./)
+  // The live stream puts the char marker right before the first token; the
+  // markdown renderer rewrites partial lines, so tolerate the duplicated
+  // first chunk after normalization.
+  assert.match(out, /❯ Zara\nHel/)
+  assert.ok(out.includes('Hello!'))
+  assert.doesNotMatch(out, /❯ You/)
 })
 
 test('quitting an rpg session with no turns leaves an existing history file untouched', async (t) => {

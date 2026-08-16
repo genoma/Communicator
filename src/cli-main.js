@@ -222,6 +222,8 @@ async function main(opts, promptArg) {
   const prefs = await loadPreferences(opts.config)
   const systemPrompt = rpgContext?.systemPrompt ?? await loadSystemPrompt(opts.systemPrompt)
   const rpgFirstMessage = rpgContext?.firstMessage ?? null
+  const rpgCharName = rpgContext?.charName ?? null
+  const rpgUserName = rpgContext?.userName ?? null
   const rpgHistory = opts.rpg !== undefined && opts.resume === true ? (rpgContext?.history ?? null) : null
   const rpgPostHistoryInstruction = rpgContext?.postHistoryInstruction ?? null
 
@@ -250,5 +252,5 @@ async function main(opts, promptArg) {
   // chat-start pulls in the streaming renderer, markdown-it and the
   // inquirer pickers; loaded only for interactive chat.
   const { chatStart } = await import('./commands/chat-start.js')
-  await chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, providerType, scraped })
+  await chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgCharName, rpgUserName, rpgHistory, rpgPostHistoryInstruction, providerType, scraped })
 }
