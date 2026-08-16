@@ -255,15 +255,23 @@ export async function saveRpgHistory(dir, messages) {
 // The prompt log is a debug artifact: one JSON object per API request, with
 // the exact request body the provider built. Plain append (not atomic) is
 // deliberate — a single writer per run, and the file is meant to be tailed.
-// Failures warn without throwing, like saveRpgHistory.
-export async function logRpgPrompt(dir, entry) {
+// A module-level promise chain serializes the appends so fast consecutive
+// turns can never land out of order. Failures warn without throwing, like
+// saveRpgHistory.
+let logChain = Promise.resolve()
+export function logRpgPrompt(dir, entry) {
   const line = JSON.stringify(entry) + '\n'
-  try {
-    await appendFile(join(dir, RPG_PROMPT_LOG_FILE), line, { mode: 0o600 })
-    console.error(`[debug] prompt logged: ${join(dir, RPG_PROMPT_LOG_FILE)} (${line.length} bytes)`)
-  } catch (err) {
-    console.warn(`Warning: could not log prompt to ${join(dir, RPG_PROMPT_LOG_FILE)}: ${err.message}`)
-  }
+  logChain = logChain
+    .catch(() => {})
+    .then(async () => {
+      try {
+        await appendFile(join(dir, RPG_PROMPT_LOG_FILE), line, { mode: 0o600 })
+        console.error(`[debug] prompt logged: ${join(dir, RPG_PROMPT_LOG_FILE)} (${line.length} bytes)`)
+      } catch (err) {
+        console.warn(`Warning: could not log prompt to ${join(dir, RPG_PROMPT_LOG_FILE)}: ${err.message}`)
+      }
+    })
+  return logChain
 }
 
 function isValidHistoryMessage(m) {
