@@ -7,6 +7,36 @@ import { mimeForExt, extForMime } from '../attachments.js'
 
 const CACHE_HEADER = 'x-openrouter-cache-status'
 
+// OpenRouter translates the top-level cache_control field into automatic
+// Anthropic prompt caching on these endpoint providers only (see OpenRouter
+// "Prompt Caching" docs); for any other provider it is not forwarded.
+const ANTHROPIC_AUTO_CACHE_PROVIDER = /anthropic|bedrock|vertex|azure|aws/i
+// Below this prompt size Anthropic does not cache at all, so the TTL choice
+// is moot; above it a 1h TTL amortizes repeated writes across human-paced
+// turns instead of rewriting the whole prefix whenever the 5m TTL lapses.
+const ANTHROPIC_CACHE_MIN_PROMPT_TOKENS = 1024
+
+function anthropicAutoCachingAvailable(model, provider) {
+  if (!model.replace(/^~/, '').startsWith('anthropic/')) return false
+  if (!provider) return true
+  return ANTHROPIC_AUTO_CACHE_PROVIDER.test(provider)
+}
+
+function estimatePromptTokens(messages) {
+  let chars = 0
+  for (const m of messages) {
+    if (typeof m.content === 'string') {
+      chars += m.content.length
+    } else if (Array.isArray(m.content)) {
+      for (const part of m.content) {
+        if (typeof part?.text === 'string') chars += part.text.length
+        else if (part?.type === 'image_url') chars += 85 * 4
+      }
+    }
+  }
+  return Math.ceil(chars / 4)
+}
+
 // Model/endpoint listings are stable within a process: cache them (same
 // pattern as openrouter-meta) so repeated selection, resume and listing
 // flows do not re-hit the API for the same data.
@@ -305,12 +335,23 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   }))
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, onSources, provider, reasoningEffort, temperature = DEFAULT_TEMPERATURE, webSearch, webResults, zdr = false, signal, onRequest = null }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, onSources, provider, reasoningEffort, temperature = DEFAULT_TEMPERATURE, webSearch, webResults, zdr = false, signal, onRequest = null, sessionId = null }) {
   const body = {
     model,
     messages,
     stream: true,
     temperature,
+  }
+
+  if (anthropicAutoCachingAvailable(model, provider)) {
+    body.cache_control = estimatePromptTokens(messages) >= ANTHROPIC_CACHE_MIN_PROMPT_TOKENS
+      ? { type: 'ephemeral', ttl: '1h' }
+      : { type: 'ephemeral' }
+  }
+  // Sticky routing is disabled by an explicit provider order, so the
+  // session_id routing key is only useful on unpinned requests.
+  if (sessionId && !provider) {
+    body.session_id = sessionId
   }
 
   if (provider) {

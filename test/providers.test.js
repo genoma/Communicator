@@ -396,6 +396,192 @@ test('openrouter cache HIT zeroes usage and marks cacheHit', async (t) => {
   assert.deepEqual(result.usage, { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cacheHit: true })
 })
 
+test('openrouter chatCompletion adds ephemeral cache_control for anthropic models without a pinned provider', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'anthropic/claude-sonnet-4.5',
+    messages: [{ role: 'user', content: 'hi' }],
+    onToken: () => {},
+  })
+
+  assert.deepEqual(sentBody.cache_control, { type: 'ephemeral' })
+})
+
+test('openrouter chatCompletion adds a 1h ttl cache_control for anthropic prompts at or above the caching minimum', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'anthropic/claude-sonnet-4.5',
+    messages: [{ role: 'system', content: 'x'.repeat(5000) }, { role: 'user', content: 'hi' }],
+    onToken: () => {},
+  })
+
+  assert.deepEqual(sentBody.cache_control, { type: 'ephemeral', ttl: '1h' })
+})
+
+test('openrouter chatCompletion counts array content parts toward the caching minimum', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'anthropic/claude-sonnet-4.5',
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: 'x'.repeat(2500) },
+        { type: 'text', text: 'y'.repeat(2500) },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,aa' } },
+      ],
+    }],
+    onToken: () => {},
+  })
+
+  assert.deepEqual(sentBody.cache_control, { type: 'ephemeral', ttl: '1h' })
+})
+
+test('openrouter chatCompletion adds cache_control for tilde anthropic aliases', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: '~anthropic/claude-sonnet-latest',
+    messages: [{ role: 'user', content: 'hi' }],
+    onToken: () => {},
+  })
+
+  assert.deepEqual(sentBody.cache_control, { type: 'ephemeral' })
+})
+
+test('openrouter chatCompletion keeps cache_control when the pinned provider supports automatic caching', async (t) => {
+  const sentBodies = []
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBodies.push(JSON.parse(opts.body))
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  for (const provider of ['Anthropic', 'Amazon Bedrock', 'Google Vertex AI', 'Microsoft Azure']) {
+    await openrouter.chatCompletion({
+      apiKey: 'key',
+      model: 'anthropic/claude-sonnet-4.5',
+      messages: [{ role: 'user', content: 'hi' }],
+      onToken: () => {},
+      provider,
+    })
+  }
+
+  assert.equal(sentBodies.length, 4)
+  for (const body of sentBodies) {
+    assert.deepEqual(body.cache_control, { type: 'ephemeral' })
+  }
+})
+
+test('openrouter chatCompletion omits cache_control when the pinned provider does not support automatic caching', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'anthropic/claude-sonnet-4.5',
+    messages: [{ role: 'user', content: 'hi' }],
+    onToken: () => {},
+    provider: 'Featherless',
+  })
+
+  assert.equal(sentBody.cache_control, undefined)
+})
+
+test('openrouter chatCompletion omits cache_control for non-anthropic models', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'openai/gpt-4o',
+    messages: [{ role: 'user', content: 'hi' }],
+    onToken: () => {},
+  })
+
+  assert.equal(sentBody.cache_control, undefined)
+})
+
+test('openrouter chatCompletion sends session_id only when unpinned', async (t) => {
+  const sentBodies = []
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBodies.push(JSON.parse(opts.body))
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'openai/gpt-4o',
+    messages: [{ role: 'user', content: 'hi' }],
+    onToken: () => {},
+    sessionId: '2026-01-01T00-00-00',
+  })
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'openai/gpt-4o',
+    messages: [{ role: 'user', content: 'hi' }],
+    onToken: () => {},
+    sessionId: '2026-01-01T00-00-00',
+    provider: 'OpenAI',
+  })
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'openai/gpt-4o',
+    messages: [{ role: 'user', content: 'hi' }],
+    onToken: () => {},
+  })
+
+  assert.equal(sentBodies[0].session_id, '2026-01-01T00-00-00')
+  assert.equal(sentBodies[1].session_id, undefined)
+  assert.equal(sentBodies[2].session_id, undefined)
+})
+
+test('openrouter chatCompletion sends cache_control and session_id together on unpinned anthropic requests', async (t) => {
+  let sentBody
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBody = JSON.parse(opts.body)
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'anthropic/claude-sonnet-4.5',
+    messages: [{ role: 'user', content: 'hi' }],
+    onToken: () => {},
+    sessionId: '2026-01-01T00-00-00',
+  })
+
+  assert.deepEqual(sentBody.cache_control, { type: 'ephemeral' })
+  assert.equal(sentBody.session_id, '2026-01-01T00-00-00')
+})
+
 test('chatCompletion maps null reasoningEffort to reasoning disabled body', async (t) => {
   let sentBody
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
@@ -720,7 +906,7 @@ test('both providers accept the full documented option set without throwing', as
   assert.equal(calls[1].provider, undefined)
 })
 
-test('openrouter ignores supportsReasoning and sessionId in the request body', async (t) => {
+test('openrouter ignores supportsReasoning and maps sessionId to session_id', async (t) => {
   let sentBody
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
     sentBody = JSON.parse(opts.body)
@@ -739,8 +925,9 @@ test('openrouter ignores supportsReasoning and sessionId in the request body', a
 
   assert.equal(sentBody.prompt_cache_key, undefined)
   assert.equal(sentBody.sessionId, undefined)
+  assert.equal(sentBody.session_id, '2026-01-01T00-00-00')
   assert.deepEqual(sentBody.reasoning, { effort: 'high', exclude: false })
-  assert.deepEqual(Object.keys(sentBody).sort(), ['messages', 'model', 'reasoning', 'stream', 'temperature'])
+  assert.deepEqual(Object.keys(sentBody).sort(), ['messages', 'model', 'reasoning', 'session_id', 'stream', 'temperature'])
 })
 
 test('venice maps sessionId to prompt_cache_key with the full option set', async (t) => {
