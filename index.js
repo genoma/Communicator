@@ -39,6 +39,7 @@ program
   .option('--debug', 'with --rpg: log the full prompt sent to the model to prompt-log.jsonl in the RPG directory')
   .option('--reasoning-effort <level>', 'reasoning effort: max, xhigh, high, medium, low, minimal, none')
   .option('--temperature <0-2>', 'temperature override (0 to 2)')
+  .option('--top-p <0-1>', 'top-p override (0 to 1)')
   .option('--budget <usd>', 'per-session budget cap in USD')
   .option('--web-search [mode]', 'web search mode: auto, always, on, off (bare flag = auto; per-model default persisted)')
   .option('--web-results <n>', 'number of web search results (OpenRouter only, default 10)')

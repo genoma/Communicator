@@ -20,6 +20,7 @@ function session(overrides = {}) {
     providerType: 'openrouter',
     reasoningEffort: 'high',
     temperature: 0.9,
+    topP: 0.8,
     budget: 5,
     webSearch: 'auto',
     webResults: 3,
@@ -47,6 +48,7 @@ test('resumeCmd maps the session payload with normalized values', async () => {
   assert.equal(result.providerType, 'openrouter')
   assert.equal(result.reasoningEffort, 'high')
   assert.equal(result.temperature, 0.9)
+  assert.equal(result.topP, 0.8)
   assert.equal(result.budget, 5)
   assert.equal(result.webSearch, 'auto')
   assert.equal(result.webResults, 3)
@@ -61,10 +63,11 @@ test('resumeCmd maps the session payload with normalized values', async () => {
 })
 
 test('resumeCmd defaults temperature and normalizes legacy values', async () => {
-  sessionData = session({ temperature: undefined, webSearch: true, contextLength: null, webResults: null })
+  sessionData = session({ temperature: undefined, topP: undefined, webSearch: true, contextLength: null, webResults: null })
   const result = await resumeCmd('2026')
 
   assert.equal(result.temperature, 0.7)
+  assert.equal(result.topP, 0.95)
   assert.equal(result.webSearch, 'auto')
   assert.equal(result.webResults, null)
   assert.equal(result.contextLength, null)

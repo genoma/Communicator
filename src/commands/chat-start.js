@@ -1,6 +1,6 @@
 import { getProvider } from '../providers/index.js'
 import { resolveWebSearchFlag, resolveBudget, resolveWebResultsFlag, resolvePrefOrNull } from '../flags.js'
-import { DEFAULT_TEMPERATURE, DEFAULT_SYSTEM_PROMPT } from '../constants.js'
+import { DEFAULT_TEMPERATURE, DEFAULT_TOP_P, DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { scrapeMessage } from '../scrape.js'
 import { CliError } from '../errors.js'
 import { startChat } from '../chat.js'
@@ -16,7 +16,7 @@ function imageSessionContext({ provider, apiKey, prefs, imageModelId, sessionId,
 }
 
 async function createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, scraped = null }) {
-  const { forcedEffort, forcedTemperature, forcedBudget, budget, forcedWebResults, smoothSpeed, zdr, e2ee } = resolveSessionFlags(opts, prefs)
+  const { forcedEffort, forcedTemperature, forcedTopP, forcedBudget, budget, forcedWebResults, smoothSpeed, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
   if (opts.resume !== undefined && opts.rpg === undefined) {
     const result = await resumeCmd(opts.resume)
@@ -61,6 +61,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
       endpointProviderName: result.providerName,
       reasoningEffort: forcedEffort !== undefined ? forcedEffort : resumedEffort,
       temperature: forcedTemperature ?? result.temperature ?? DEFAULT_TEMPERATURE,
+      topP: forcedTopP ?? result.topP ?? DEFAULT_TOP_P,
       budget: forcedBudget ?? resolvePrefOrNull(resolveBudget, result.budget) ?? null,
       webSearch: e2ee ? 'off' : resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: result.webSearch }),
       webResults: e2ee ? null : forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), result.webResults) ?? null,
@@ -87,13 +88,14 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
 
   const provider = getProvider(providerType)
 
-  const { selection, temperature, webSearch, webResults } = await buildSessionContext({
+  const { selection, temperature, topP, webSearch, webResults } = await buildSessionContext({
     provider,
     apiKey,
     opts,
     prefs,
     forcedEffort,
     forcedTemperature,
+    forcedTopP,
     forcedWebResults,
     zdr,
     e2ee,
@@ -121,6 +123,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     endpointProviderName: selection.endpointProviderName,
     reasoningEffort: selection.reasoningEffort,
     temperature,
+    topP,
     budget,
     webSearch,
     webResults,
@@ -173,6 +176,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
 // both the new-session path and the image-session /model handoff.
 async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
   const finalState = await startChat(ctx.apiKey, ctx.modelId, ctx.endpointProviderName, ctx.reasoningEffort, ctx.temperature, ctx.pricing, ctx.provider, {
+    topP: ctx.topP,
     systemPrompt,
     initialMessages: ctx.initialMessages,
     sessionId: ctx.sessionId,
@@ -231,6 +235,7 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMes
       endpointProviderName: selection.endpointProviderName,
       reasoningEffort: selection.reasoningEffort,
       temperature: prefs.temperature?.[selection.modelId] ?? DEFAULT_TEMPERATURE,
+      topP: prefs.topP?.[selection.modelId] ?? DEFAULT_TOP_P,
       pricing: selection.pricing,
       initialMessages: messages,
       sessionId,

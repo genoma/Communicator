@@ -86,6 +86,7 @@ function resumeSession(overrides = {}) {
     providerType: 'openrouter',
     reasoningEffort: 'low',
     temperature: 0.9,
+    topP: 0.8,
     budget: 5,
     webSearch: 'off',
     webResults: null,
@@ -161,6 +162,7 @@ test('chatStart resume branch restores the session context', async (t) => {
   assert.equal(call.endpointProviderName, 'ProviderX')
   assert.equal(call.reasoningEffort, 'low')
   assert.equal(call.temperature, 0.9)
+  assert.equal(call.opts.topP, 0.8)
   assert.equal(call.pricing.prompt, 0.000001)
   assert.equal(call.opts.budget, 5)
   assert.equal(call.opts.webSearch, 'off')
@@ -221,16 +223,17 @@ test('chatStart resume branch forwards the persisted scrape count for cost track
   assert.equal(startChatCalls[startChatCalls.length - 1].opts.scrapes, 0)
 })
 
-test('chatStart resume branch applies --temperature, --budget and --web-search overrides', async (t) => {
+test('chatStart resume branch applies --temperature, --top-p, --budget and --web-search overrides', async (t) => {
   resumeResult = resumeSession()
   withApiKey(t)
   const configFile = await tempConfig(t)
   t.mock.method(console, 'log', () => {})
 
-  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x', temperature: '0.5', budget: '2', webSearch: 'always', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'openrouter' })
+  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x', temperature: '0.5', topP: '0.6', budget: '2', webSearch: 'always', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'openrouter' })
 
   const call = startChatCalls[startChatCalls.length - 1]
   assert.equal(call.temperature, 0.5)
+  assert.equal(call.opts.topP, 0.6)
   assert.equal(call.opts.budget, 2)
   assert.equal(call.opts.webSearch, 'always')
 })

@@ -25,12 +25,13 @@ test('constructor keeps parity with the old state literal fields', () => {
   const s = makeState()
   assert.deepEqual(
     Object.keys(s).sort(),
-    ['budget', 'contextLength', 'createdAt', 'e2ee', 'e2eeContext', 'endpointProviderName', 'fileSupported', 'imageOutputSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'scrapes', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'visionSupported', 'webResults', 'webSearch', 'webSearchSupported', 'zdr']
+    ['budget', 'contextLength', 'createdAt', 'e2ee', 'e2eeContext', 'endpointProviderName', 'fileSupported', 'imageOutputSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'scrapes', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'topP', 'visionSupported', 'webResults', 'webSearch', 'webSearchSupported', 'zdr']
   )
   assert.equal(s.modelId, 'org/model')
   assert.equal(s.endpointProviderName, 'Provider')
   assert.equal(s.reasoningEffort, 'high')
   assert.equal(s.temperature, 1.1)
+  assert.equal(s.topP, 0.95)
   assert.equal(s.budget, 5)
   assert.deepEqual(s.pricing, { prompt: 0.000001, completion: 0.000002 })
   assert.equal(s.supportsReasoning, true)
@@ -85,6 +86,7 @@ test('toFinalState returns exactly the old finalState field list', () => {
     'sessionId',
     'supportsReasoning',
     'temperature',
+    'topP',
     'webResults',
     'webSearch',
     'webSearchSupported',
@@ -96,6 +98,7 @@ test('toFinalState returns exactly the old finalState field list', () => {
   assert.equal(state.endpointProviderName, 'Provider')
   assert.equal(state.reasoningEffort, 'high')
   assert.equal(state.temperature, 1.1)
+  assert.equal(state.topP, 0.95)
   assert.equal(state.budget, 5)
   assert.equal(state.webSearch, 'auto')
   assert.equal(state.webResults, 3)
@@ -121,6 +124,7 @@ test('resetForNewSession clears messages, budget, webResults and returns the res
 test('transitions mutate only their own fields', () => {
   const s = makeState()
   s.setTemperature(0.5)
+  s.setTopP(0.8)
   s.setBudget(2)
   s.setWebSearch(false)
   s.setWebResults(7)
@@ -130,6 +134,7 @@ test('transitions mutate only their own fields', () => {
   s.setSmoothSpeed('fast')
 
   assert.equal(s.temperature, 0.5)
+  assert.equal(s.topP, 0.8)
   assert.equal(s.budget, 2)
   assert.equal(s.webSearch, 'off')
   assert.equal(s.webResults, 7)
@@ -162,6 +167,7 @@ test('applyModelSelection switches model and reads per-model prefs', () => {
   }
   const prefs = {
     temperature: { 'other/model': 0.3 },
+    topP: { 'other/model': 0.6 },
     webSearch: { 'other/model': true },
   }
   s.applyModelSelection(sel, prefs)
@@ -174,6 +180,7 @@ test('applyModelSelection switches model and reads per-model prefs', () => {
   assert.equal(s.supportsReasoning, true)
   assert.deepEqual(s.modelReasoning, { supported: true, supportsEffort: true })
   assert.equal(s.temperature, 0.3)
+  assert.equal(s.topP, 0.6)
   assert.equal(s.webSearch, 'auto')
   assert.equal(s.webSearchSupported, true)
   assert.equal(s.visionSupported, true)
@@ -184,9 +191,10 @@ test('applyModelSelection falls back to default temperature and pref web search'
   const s = makeState()
   s.applyModelSelection(
     { modelId: 'm', endpointProviderName: 'P', pricing: null, reasoningEffort: null, supportsReasoning: false, modelReasoning: null, webSearchSupported: true },
-    { temperature: {}, webSearch: { m: true } }
+    { temperature: {}, topP: {}, webSearch: { m: true } }
   )
   assert.equal(s.temperature, 0.7)
+  assert.equal(s.topP, 0.95)
   assert.equal(s.webSearch, 'auto')
 })
 

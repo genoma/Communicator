@@ -1,12 +1,13 @@
-import { DEFAULT_TEMPERATURE, DEFAULT_SYSTEM_PROMPT } from './constants.js'
+import { DEFAULT_TEMPERATURE, DEFAULT_TOP_P, DEFAULT_SYSTEM_PROMPT } from './constants.js'
 import { normalizeSmoothSpeed, normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
-  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent, scrapes = 0 }) {
+  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, topP = DEFAULT_TOP_P, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent, scrapes = 0 }) {
     this.modelId = modelId
     this.endpointProviderName = endpointProviderName
     this.reasoningEffort = reasoningEffort
     this.temperature = temperature
+    this.topP = topP
     this.budget = budget
     this.pricing = pricing
     this.contextLength = contextLength
@@ -44,6 +45,7 @@ export class ChatState {
       endpointProviderName: this.endpointProviderName,
       reasoningEffort: this.reasoningEffort,
       temperature: this.temperature,
+      topP: this.topP,
       budget: this.budget,
       webSearch: this.webSearch,
       webResults: this.webResults,
@@ -68,6 +70,10 @@ export class ChatState {
 
   setTemperature(value) {
     this.temperature = value
+  }
+
+  setTopP(value) {
+    this.topP = value
   }
 
   setBudget(value) {
@@ -95,6 +101,7 @@ export class ChatState {
     this.supportsReasoning = sel.supportsReasoning
     this.modelReasoning = sel.modelReasoning
     this.temperature = prefs.temperature?.[sel.modelId] ?? DEFAULT_TEMPERATURE
+    this.topP = prefs.topP?.[sel.modelId] ?? DEFAULT_TOP_P
     this.webSearchSupported = sel.webSearchSupported
     this.webSearch = this.e2ee ? 'off' : (sel.webSearchSupported === false ? 'off' : normalizeWebSearchMode(prefs.webSearch?.[sel.modelId]))
     this.visionSupported = sel.visionSupported

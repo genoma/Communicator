@@ -1,12 +1,35 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolveTemperatureFlag, resolveWebResultsFlag, resolveWebSearchFlag, normalizeWebSearchMode, webSearchGate, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed, resolvePrefOrNull } from '../src/flags.js'
+import { resolveTemperatureFlag, resolveTopPFlag, resolveWebResultsFlag, resolveWebSearchFlag, normalizeWebSearchMode, webSearchGate, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed, resolvePrefOrNull } from '../src/flags.js'
 
 test('resolveTemperatureFlag parses string and number values', () => {
   assert.equal(resolveTemperatureFlag({ temperature: '0.5' }), 0.5)
   assert.equal(resolveTemperatureFlag({ temperature: '2' }), 2)
   assert.equal(resolveTemperatureFlag({ temperature: 0 }), 0)
   assert.equal(resolveTemperatureFlag({ temperature: '0' }), 0)
+})
+
+test('resolveTopPFlag parses string and number values', () => {
+  assert.equal(resolveTopPFlag({ topP: '0.95' }), 0.95)
+  assert.equal(resolveTopPFlag({ topP: '1' }), 1)
+  assert.equal(resolveTopPFlag({ topP: 0 }), 0)
+  assert.equal(resolveTopPFlag({ topP: '0' }), 0)
+})
+
+test('resolveTopPFlag returns undefined when unset', () => {
+  assert.equal(resolveTopPFlag({}), undefined)
+  assert.equal(resolveTopPFlag(), undefined)
+  assert.equal(resolveTopPFlag({ topP: undefined }), undefined)
+  assert.equal(resolveTopPFlag({ topP: null }), undefined)
+  assert.equal(resolveTopPFlag({ topP: '' }), undefined)
+})
+
+test('resolveTopPFlag rejects out-of-range and non-finite values', () => {
+  assert.throws(() => resolveTopPFlag({ topP: '1.5' }), /between 0 and 1/)
+  assert.throws(() => resolveTopPFlag({ topP: '-0.1' }), /between 0 and 1/)
+  assert.throws(() => resolveTopPFlag({ topP: 'abc' }), /between 0 and 1/)
+  assert.throws(() => resolveTopPFlag({ topP: NaN }), /between 0 and 1/)
+  assert.throws(() => resolveTopPFlag({ topP: Infinity }), /between 0 and 1/)
 })
 
 test('resolveTemperatureFlag returns undefined when unset', () => {

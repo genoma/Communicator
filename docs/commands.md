@@ -10,6 +10,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 | `-p`  | `--provider`          | `<name>` | Select the API backend: `openrouter` (default) or `venice`                           |
 |       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`. `none` disables reasoning. With `--model` alone, saves the per-model default |
 |       | `--temperature`       | `<0-2>`  | Temperature override for the session (default: per-model preference, then 0.7). With `--model` alone, saves the per-model default |
+|       | `--top-p`             | `<0-1>`  | Top-p (nucleus sampling) override for the session (default: per-model preference, then 0.95). With `--model` alone, saves the per-model default |
 |       | `--budget`            | `<usd>`  | Per-session budget cap in USD. Warns at 80% used, refuses turns at 100%. Bare use saves the default |
 |       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `on`, `off` (`on` = `auto`; bare flag = `auto`). Per-model default is persisted in preferences |
 |       | `--web-results`       | `<n>`    | Number of web search results, 1–100 (OpenRouter only, default 10). Implies `auto` mode. Bare use saves the default |
@@ -86,6 +87,7 @@ communicator -p venice --resume <image-session-id>                   # re-enter 
 communicator -m "openai/gpt-4o" "What is the capital of France?"     # positional prompt
 echo "Summarize this: ..." | communicator -m "openai/gpt-4o"          # piped stdin
 communicator -m "openai/gpt-4o" --temperature 0.2 "Write a haiku"     # with temperature
+communicator -m "openai/gpt-4o" --top-p 0.8 "Write a haiku"           # with top-p
 cat notes.md | communicator -m "openai/gpt-4o" --budget 0.5 "Fix typos:" # with budget cap
 communicator -m "openai/gpt-4o" --attach screenshot.png "What is the bug?"   # vision model + image
 communicator -p venice -m "qwen-3-7-max" --attach data.xlsx "Summarize this" # Venice office file
@@ -118,6 +120,7 @@ communicator --output-dir ~/Documents                                  # save th
 communicator --config                                                  # print the current config
 communicator -m "deepseek/deepseek-v4-flash"                           # validate a model, show its details, set it as default
 communicator -m "deepseek/deepseek-v4-flash" --temperature 0.5         # set per-model temperature default
+communicator -m "deepseek/deepseek-v4-flash" --top-p 0.95              # set per-model top-p default
 communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort high   # set per-model reasoning default
 communicator -m "deepseek/deepseek-v4-flash" --web-search always       # set per-model web search default
 communicator --budget 2                                                # set the default budget cap for sessions
@@ -137,6 +140,7 @@ communicator --no-watermark                                            # hide th
 | `/model`       | Save, then switch models mid-chat — re-picks reasoning effort and endpoint          |
 | `/reasoning`   | Re-run the reasoning effort picker for the current model                            |
 | `/temp`        | Set the session temperature (`/temp 0.4`), or show the current value with no args    |
+| `/top-p`       | Set the session top-p (`/top-p 0.8`), or show the current value with no args          |
 | `/budget`      | Show used/remaining budget, or set one with `/budget <usd>`                          |
 | `/web-search`  | Set the web search mode (`/web-search auto|always|off`; `on` = `auto`), show the current mode with no args |
 | `/web-results` | Set the web search result count (`/web-results <n>`, OpenRouter only), show it with no args |

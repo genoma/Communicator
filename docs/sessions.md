@@ -45,10 +45,10 @@ communicator --resume 2026-07-30T19-11-45
 ```
 
 When resuming, the original model, provider backend (OpenRouter or Venice),
-endpoint provider, reasoning effort, temperature, budget, and web search state
+endpoint provider, reasoning effort, temperature, top-p, budget, and web search state
 (mode + result count) are restored automatically. The conversation picks up
 right where you left off — all previous messages are preserved. Session flags
-override the stored values on resume (`--temperature`, `--budget`,
+override the stored values on resume (`--temperature`, `--top-p`, `--budget`,
 `--web-search`, `--web-results`, `--reasoning-effort`), while `-p` is silently
 ignored and `-m`, `--output-dir`, `--attach`, and `--scrape` are rejected with
 an error. An ambiguous prefix (matching more than one session) opens an
@@ -157,6 +157,7 @@ Each session is stored as a JSON file:
   "providerType": "openrouter",
   "reasoningEffort": "high",
   "temperature": 0.7,
+  "topP": 0.95,
   "budget": 0.5,
   "webSearch": "auto",
   "webResults": 5,
@@ -180,7 +181,7 @@ Each session is stored as a JSON file:
 - `providerName` is the endpoint provider (e.g., `"OpenAI"` for OpenRouter, `"venice"` for Venice)
 - `providerType` is the API backend (`"openrouter"` or `"venice"`). Older sessions without this field default to `"openrouter"` on resume
 - `reasoningEffort` is `"auto"` when the model reasons without effort control, `null` when reasoning is explicitly disabled, and a level string (`"low"`, `"medium"`, ...) otherwise. Older sessions without the field or with `null` restore as disabled
-- `temperature` is the resolved session temperature (0–2); `budget` is the per-session cap in USD (`null` when unset)
+- `temperature` is the resolved session temperature (0–2); `topP` is the resolved session top-p (0–1, default 0.95); `budget` is the per-session cap in USD (`null` when unset)
 - `pricing` is the endpoint's per-token USD rates (`null` when unknown); `contextLength` is the endpoint's advertised context window (`null` when undisclosed, e.g. some Venice models) — used by the CTX indicator on resume
 - `webSearch` is the web search mode (`"off"`, `"auto"`, or `"always"`); `webResults` is the OpenRouter result count (`null` when unset — the provider default of 10 applies) — both restored on resume
 - `scrapes` is the number of Venice web-scraped pages in the session (`0` when none); the flat $0.01 per page is added to the resumed session cost. The scraped page itself is a normal user message and persists like any other message
@@ -191,4 +192,4 @@ Each session is stored as a JSON file:
 - Assistant messages may carry `sources` (`[{ title, url }]`) when web search was used — restored on `--resume` (numbered list + clickable inline citations) and exported as a markdown `**Sources:**` list with `^n^` citations converted to `[n](url)` links; older sessions without the field render no sources and keep citations literal
 - `updatedAt` is bumped on every auto-save
 - Empty sessions (no user messages) are never saved
-- Older sessions without `temperature`/`budget`/`title` fall back to `0.7` / no cap / no title
+- Older sessions without `temperature`/`topP`/`budget`/`title` fall back to `0.7` / `0.95` / no cap / no title

@@ -98,7 +98,7 @@ export function clearImageDefault(prefs, providerName, key) {
   return { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [providerName]: defaults } }
 }
 
-export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageModel, lastProvider, reasoningEffort, temperature, webSearch, smoothStreaming, smoothSpeed, budget, webResults, outputDir, hideWatermark, safeMode, imageDefaults } = {}) {
+export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageModel, lastProvider, reasoningEffort, temperature, topP, webSearch, smoothStreaming, smoothSpeed, budget, webResults, outputDir, hideWatermark, safeMode, imageDefaults } = {}) {
   const merged = { ...prefs }
   if (lastModel !== undefined) merged.lastModel = lastModel
   if (lastImageModel !== undefined) merged.lastImageModel = lastImageModel
@@ -108,6 +108,9 @@ export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageMod
   }
   if (temperature !== undefined) {
     merged.temperature = { ...prefs.temperature, [modelId]: temperature }
+  }
+  if (topP !== undefined) {
+    merged.topP = { ...prefs.topP, [modelId]: topP }
   }
   if (webSearch !== undefined) {
     merged.webSearch = { ...prefs.webSearch, [modelId]: webSearch }

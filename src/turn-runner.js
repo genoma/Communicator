@@ -85,6 +85,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         supportsReasoning: state.supportsReasoning,
         sessionId: state.sessionId,
         temperature: state.temperature,
+        topP: state.topP,
         webSearch: state.webSearch,
         webResults: state.webResults,
         zdr: state.zdr,

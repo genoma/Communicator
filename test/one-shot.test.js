@@ -160,6 +160,7 @@ test('one-shot success path writes plain output, the session file and persisted 
   assert.equal(saved.providerName, 'ProviderX')
   assert.equal(saved.providerType, 'openrouter')
   assert.equal(saved.temperature, 0.7)
+  assert.equal(saved.topP, 0.95)
   assert.equal(saved.budget, 5)
   assert.equal(saved.webSearch, 'off')
   assert.equal(saved.messages.length, 3)
@@ -169,6 +170,7 @@ test('one-shot success path writes plain output, the session file and persisted 
   assert.equal(prefs.lastModel, 'test/model-a')
   assert.equal(prefs.lastProvider, 'ProviderX')
   assert.equal(prefs.temperature['test/model-a'], 0.7)
+  assert.equal(prefs.topP['test/model-a'], 0.95)
   assert.equal(prefs.budget, 5)
 })
 
@@ -549,9 +551,9 @@ test('one-shot TTY output prints the banner, sources and the skipped-chunk warni
   mockExit(t)
 
   const { oneShotCmd } = await import('../src/commands/one-shot.js')
-  await oneShotCmd({ apiKey: 'test-key', opts: opts({ temperature: 1.1 }), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: 'Hello' })
+  await oneShotCmd({ apiKey: 'test-key', opts: opts({ temperature: 1.1, topP: 0.7 }), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: 'Hello' })
 
-  assert.ok(logs.some((l) => l.includes('ProviderX / test/model-a') && l.includes('[temp: 1.1]')))
+  assert.ok(logs.some((l) => l.includes('ProviderX / test/model-a') && l.includes('[temp: 1.1]') && l.includes('[top-p: 0.7]')))
   assert.ok(writes.some((w) => w.includes('Hello world')))
   assert.ok(writes.some((w) => w.includes('Sources (1)')))
   assert.ok(writes.some((w) => w.includes('1 malformed stream chunk skipped')))

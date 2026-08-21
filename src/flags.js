@@ -1,4 +1,4 @@
-import { MAX_TEMPERATURE, MAX_WEB_SEARCH_RESULTS, SMOOTH_DEFAULT_SPEED, SMOOTH_SPEED_PRESETS, EFFORT_LABELS, IMAGE_FORMATS, IMAGE_RESOLUTIONS, IMAGE_QUALITIES, MAX_IMAGE_DIMENSION, MAX_SEED } from './constants.js'
+import { MAX_TEMPERATURE, MAX_TOP_P, MAX_WEB_SEARCH_RESULTS, SMOOTH_DEFAULT_SPEED, SMOOTH_SPEED_PRESETS, EFFORT_LABELS, IMAGE_FORMATS, IMAGE_RESOLUTIONS, IMAGE_QUALITIES, MAX_IMAGE_DIMENSION, MAX_SEED } from './constants.js'
 
 export const WEB_SEARCH_MODES = new Set(['auto', 'always', 'on', 'off'])
 
@@ -15,6 +15,7 @@ export function resolveFlagValues(opts) {
   return {
     reasoningEffort: opts.reasoningEffort !== undefined ? resolveReasoningFlag({ reasoningEffort: opts.reasoningEffort }) : undefined,
     temperature: opts.temperature !== undefined ? resolveTemperatureFlag({ temperature: opts.temperature }) : undefined,
+    topP: opts.topP !== undefined ? resolveTopPFlag({ topP: opts.topP }) : undefined,
     budget: opts.budget !== undefined ? resolveBudget(opts.budget) : undefined,
     webResults: opts.webResults !== undefined ? resolveWebResultsFlag({ webResults: opts.webResults }) : undefined,
     smoothSpeed: opts.smoothSpeed !== undefined ? resolveSmoothSpeed(opts.smoothSpeed) : undefined,
@@ -26,6 +27,15 @@ export function resolveTemperatureFlag({ temperature } = {}) {
   const num = Number(temperature)
   if (!Number.isFinite(num) || num < 0 || num > MAX_TEMPERATURE) {
     throw new Error(`Temperature must be a number between 0 and ${MAX_TEMPERATURE}.`)
+  }
+  return num
+}
+
+export function resolveTopPFlag({ topP } = {}) {
+  if (topP === undefined || topP === null || topP === '') return undefined
+  const num = Number(topP)
+  if (!Number.isFinite(num) || num < 0 || num > MAX_TOP_P) {
+    throw new Error(`Top-p must be a number between 0 and ${MAX_TOP_P}.`)
   }
   return num
 }

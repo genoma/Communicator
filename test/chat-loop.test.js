@@ -132,7 +132,7 @@ test('happy path runs a turn and saves the final session once', async (t) => {
   assert.equal(id, '2026-01-01T00-00-00')
   assert.deepEqual(
     Object.keys(payload).sort(),
-    ['budget', 'contextLength', 'createdAt', 'e2ee', 'isImageModel', 'messages', 'model', 'pricing', 'providerName', 'providerType', 'reasoningEffort', 'scrapes', 'supportsReasoning', 'temperature', 'title', 'updatedAt', 'webResults', 'webSearch', 'webSearchSupported']
+    ['budget', 'contextLength', 'createdAt', 'e2ee', 'isImageModel', 'messages', 'model', 'pricing', 'providerName', 'providerType', 'reasoningEffort', 'scrapes', 'supportsReasoning', 'temperature', 'title', 'topP', 'updatedAt', 'webResults', 'webSearch', 'webSearchSupported']
   )
   assert.equal(payload.model, 'org/model')
   assert.equal(payload.providerName, 'Provider')
@@ -404,6 +404,7 @@ test('idle SIGINT flushes preference updates before exiting', async (t) => {
     lastProvider: 'Provider',
     reasoningEffort: 'high',
     temperature: 1.1,
+    topP: 0.95,
     webSearch: 'off',
     webResults: null,
   })
@@ -514,7 +515,7 @@ test('unknown command is rejected with the exact message and the provider is not
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /status, /new, /model, /attach, /attachments, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
+    'Unknown command "/nope". Available: /quit, /status, /new, /model, /attach, /attachments, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
   )
 })
 
@@ -529,7 +530,7 @@ test('unknown command list omits /attach and /attachments when the model lacks v
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /status, /new, /model, /reasoning, /temp, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
+    'Unknown command "/nope". Available: /quit, /status, /new, /model, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /cost\n'
   )
 })
 

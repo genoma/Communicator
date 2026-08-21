@@ -1,5 +1,5 @@
 import { ensureSessionsDir, resolveSessionInteractive, loadSession } from '../sessions.js'
-import { DEFAULT_TEMPERATURE } from '../constants.js'
+import { DEFAULT_TEMPERATURE, DEFAULT_TOP_P } from '../constants.js'
 import { normalizeWebSearchMode } from '../flags.js'
 
 export async function resumeCmd(partialId) {
@@ -14,6 +14,7 @@ export async function resumeCmd(partialId) {
     providerType: sessionData.providerType || 'openrouter',
     reasoningEffort: sessionData.reasoningEffort,
     temperature: sessionData.temperature ?? DEFAULT_TEMPERATURE,
+    topP: sessionData.topP ?? DEFAULT_TOP_P,
     budget: sessionData.budget ?? null,
     webSearch: normalizeWebSearchMode(sessionData.webSearch),
     webResults: sessionData.webResults ?? null,

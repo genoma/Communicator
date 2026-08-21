@@ -2,7 +2,7 @@ import { parseSSEStream } from '../sse-parser.js'
 import { fetchWithRetry } from '../http.js'
 import { ApiError, makeHandleHttpError } from '../errors.js'
 import { formatPricePerM, formatImagePrice, imageUnitPrice } from '../ui/format.js'
-import { DEFAULT_TEMPERATURE, IMAGE_GEN_TIMEOUT_MS, VENICE_BASE } from '../constants.js'
+import { DEFAULT_TEMPERATURE, DEFAULT_TOP_P, IMAGE_GEN_TIMEOUT_MS, VENICE_BASE } from '../constants.js'
 import { mimeForExt, extForMime } from '../attachments.js'
 import { encryptMessages, decryptToken } from '../e2ee.js'
 
@@ -257,7 +257,7 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   }]
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, onSources, reasoningEffort, supportsReasoning, sessionId, temperature = DEFAULT_TEMPERATURE, webSearch, signal, e2ee = false, e2eeContext = null, onRequest = null }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, onSources, reasoningEffort, supportsReasoning, sessionId, temperature = DEFAULT_TEMPERATURE, topP = DEFAULT_TOP_P, webSearch, signal, e2ee = false, e2eeContext = null, onRequest = null }) {
   const headers = {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
@@ -276,6 +276,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
     stream: true,
     stream_options: { include_usage: true },
     temperature,
+    top_p: topP,
     venice_parameters: { include_venice_system_prompt: false },
   }
 

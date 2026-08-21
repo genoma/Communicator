@@ -1,7 +1,7 @@
 import { formatError, commandErrorLine } from '../../errors.js'
 import { selectModelAndEndpoint } from '../../model-selection.js'
 import { getEffortLabel, selectReasoningEffort } from '../../prompts.js'
-import { resolveTemperatureFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, webSearchGate } from '../../flags.js'
+import { resolveTemperatureFlag, resolveTopPFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, webSearchGate } from '../../flags.js'
 import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed, SCRAPE_COST_USD } from '../../constants.js'
 import { budgetStatusLine, budgetExhaustedMessage } from '../../tracker.js'
 import { sessionLabel } from '../../ui/format.js'
@@ -12,7 +12,7 @@ import { attachGateOptions } from '../../session-setup.js'
 import { fetchModelPubKey } from '../../e2ee.js'
 import { buildStatusLine } from '../../status-line.js'
 import { scrapeContext, scrapeMessage } from '../../scrape.js'
-const ARG_COMMANDS = new Set(['/temp', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments', '/scrape'])
+const ARG_COMMANDS = new Set(['/temp', '/top-p', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments', '/scrape'])
 
 export function showStatus(ctx) {
   console.log(`Current settings: ${buildStatusLine(ctx.state).join('  ')}\n`)
@@ -179,6 +179,25 @@ const handlers = {
     ctx.state.setTemperature(parsed)
     await ctx.savePrefs({ modelId: ctx.state.modelId, temperature: parsed })
     console.log(`Temperature set to ${parsed}\n`)
+    showStatus(ctx)
+  },
+
+  '/top-p': async (ctx) => {
+    const value = ctx.args
+    if (!value) {
+      console.log(`Current top-p: ${ctx.state.topP}\n`)
+      return
+    }
+    let parsed
+    try {
+      parsed = resolveTopPFlag({ topP: value })
+    } catch (err) {
+      console.error(`\nError: ${err.message}\n`)
+      return
+    }
+    ctx.state.setTopP(parsed)
+    await ctx.savePrefs({ modelId: ctx.state.modelId, topP: parsed })
+    console.log(`Top-p set to ${parsed}\n`)
     showStatus(ctx)
   },
 

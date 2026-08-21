@@ -8,10 +8,10 @@ import { formatModelPrice } from '../ui/format.js'
 import { CliError } from '../errors.js'
 import { DEFAULT_CONFIG_FILE, formatSmoothSpeed } from '../constants.js'
 
-const PER_MODEL_FLAGS = '--temperature, --reasoning-effort and --web-search'
+const PER_MODEL_FLAGS = '--temperature, --reasoning-effort, --web-search and --top-p'
 
 export function resolveConfigValues(opts) {
-  const { temperature, budget, webResults, smoothSpeed, reasoningEffort } = resolveFlagValues(opts)
+  const { temperature, topP, budget, webResults, smoothSpeed, reasoningEffort } = resolveFlagValues(opts)
   const webSearch = opts.webSearch !== undefined ? normalizeWebSearchMode(opts.webSearch) : undefined
   const smoothStreaming = opts.smoothStreaming === false ? false : undefined
   const hideWatermark = opts.watermark === false ? true : undefined
@@ -19,8 +19,8 @@ export function resolveConfigValues(opts) {
   const outputDir = opts.outputDir
   const aspectRatio = opts.aspectRatio !== undefined ? resolveAspectRatio(opts.aspectRatio) : undefined
   const imageFormat = opts.imageFormat !== undefined ? resolveImageFormat(opts.imageFormat) : undefined
-  const needsModel = temperature !== undefined || reasoningEffort !== undefined || webSearch !== undefined
-  return { temperature, budget, webResults, smoothSpeed, reasoningEffort, webSearch, smoothStreaming, hideWatermark, safeMode, outputDir, aspectRatio, imageFormat, needsModel }
+  const needsModel = temperature !== undefined || topP !== undefined || reasoningEffort !== undefined || webSearch !== undefined
+  return { temperature, topP, budget, webResults, smoothSpeed, reasoningEffort, webSearch, smoothStreaming, hideWatermark, safeMode, outputDir, aspectRatio, imageFormat, needsModel }
 }
 
 export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
@@ -57,6 +57,7 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
     lastModel: opts.model,
     lastProvider: opts.model !== undefined ? (endpoint?.providerName || provider.meta.name) : undefined,
     temperature: values.temperature,
+    topP: values.topP,
     reasoningEffort: values.reasoningEffort,
     webSearch: values.webSearch,
     smoothStreaming: values.smoothStreaming,
@@ -92,6 +93,7 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
   }
   if (values.outputDir !== undefined) console.log(`Export directory set to ${values.outputDir}`)
   if (values.temperature !== undefined) console.log(`Temperature set to ${values.temperature} for ${opts.model}`)
+  if (values.topP !== undefined) console.log(`Top-p set to ${values.topP} for ${opts.model}`)
   if (values.reasoningEffort !== undefined) console.log(`Reasoning effort set to ${getEffortLabel(values.reasoningEffort)} for ${opts.model}`)
   if (values.webSearch !== undefined) console.log(`Web search set to ${values.webSearch} for ${opts.model}`)
   if (values.budget !== undefined) console.log(`Budget set to $${values.budget}`)

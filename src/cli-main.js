@@ -3,7 +3,7 @@ import { getApiKey, loadPreferences, loadSystemPrompt, savePreferences } from '.
 import { getProvider } from './providers/index.js'
 import { ApiError, CliError, formatError } from './errors.js'
 import { err, debug } from './ui/io.js'
-import { resolveSmoothSpeed, resolveTemperatureFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag } from './flags.js'
+import { resolveSmoothSpeed, resolveTemperatureFlag, resolveTopPFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
 import { isConfigSetter, isPureConfigSetter, hasConfigSetterFlags, validateCliFlags } from './cli-validation.js'
 import { scrapeContext } from './scrape.js'
@@ -68,6 +68,7 @@ async function main(opts, promptArg) {
   // runs, non-TTY invocations). Every chat/config path re-resolves them.
   resolveFlagOrExit(resolveSmoothSpeed, opts.smoothSpeed)
   resolveFlagOrExit(resolveTemperatureFlag, { temperature: opts.temperature })
+  resolveFlagOrExit(resolveTopPFlag, { topP: opts.topP })
   resolveFlagOrExit(resolveBudget, opts.budget)
   resolveFlagOrExit(resolveWebResultsFlag, { webResults: opts.webResults })
   resolveFlagOrExit((value) => resolveReasoningFlag({ reasoningEffort: value }), opts.reasoningEffort)

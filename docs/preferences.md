@@ -13,6 +13,9 @@ The preferences file (`~/.communicator.json`, customizable with `--config`), per
   "temperature": {
     "openai/gpt-4o": 0.2
   },
+  "topP": {
+    "openai/gpt-4o": 0.8
+  },
   "webSearch": {
     "openai/gpt-4o": "auto"
   },
@@ -28,7 +31,7 @@ The preferences file (`~/.communicator.json`, customizable with `--config`), per
 
 - `lastModel` / `lastProvider` — become the defaults in the interactive pickers.
 - `lastImageModel` — becomes the default in the interactive image model picker.
-- `reasoningEffort` / `temperature` / `webSearch` — saved per model ID and restored automatically.
+- `reasoningEffort` / `temperature` / `topP` / `webSearch` — saved per model ID and restored automatically.
 - `smoothStreaming` / `smoothSpeed` — global defaults; the speed is stored as a chars-per-second number, e.g. `2000`.
 - `budget` / `webResults` — session defaults applied when no flag is given.
 - `hideWatermark` — global Venice image setting: when `true`, generated images are requested without the Venice watermark (Venice may ignore it for some content/models).

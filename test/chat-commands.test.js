@@ -297,6 +297,33 @@ test('/temp rejects invalid values without changing state', async (t) => {
   assert.deepEqual(prefsUpdates, [])
 })
 
+test('/top-p shows the current top-p without args', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx()
+  await chatCommands['/top-p'](ctx)
+  assert.equal(consoleSpy.log(0), 'Current top-p: 0.95\n')
+  assert.deepEqual(prefsUpdates, [])
+})
+
+test('/top-p sets a valid top-p, saves the pref and prints the status line', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx()
+  await chatCommands['/top-p']({ ...ctx, args: '0.6' })
+  assert.equal(ctx.state.topP, 0.6)
+  assert.deepEqual(prefsUpdates, [{ modelId: 'org/model', topP: 0.6 }])
+  assert.equal(consoleSpy.log(0), 'Top-p set to 0.6\n')
+  assert.match(consoleSpy.log(1), /\[top-p: 0.6\]/)
+})
+
+test('/top-p rejects invalid values without changing state', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx()
+  await chatCommands['/top-p']({ ...ctx, args: '1.5' })
+  assert.equal(consoleSpy.error(0), '\nError: Top-p must be a number between 0 and 1.\n')
+  assert.equal(ctx.state.topP, 0.95)
+  assert.deepEqual(prefsUpdates, [])
+})
+
 test('/budget sets a valid budget', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx } = makeCtx()
@@ -870,7 +897,7 @@ test('/model keeps compatible attachments on switch', async (t) => {
   assert.equal(consoleSpy.log(0), '\nSwitched to NewProvider / new/model\n')
 })
 
-test('CHAT_COMMANDS keeps the 17-command order', () => {
+test('CHAT_COMMANDS keeps the 18-command order', () => {
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/status',
@@ -880,6 +907,7 @@ test('CHAT_COMMANDS keeps the 17-command order', () => {
     '/attachments',
     '/reasoning',
     '/temp',
+    '/top-p',
     '/budget',
     '/web-search',
     '/web-results',

@@ -15,6 +15,10 @@ export const DEFAULT_TEMPERATURE = 0.7
 
 export const MAX_TEMPERATURE = 2
 
+export const DEFAULT_TOP_P = 0.95
+
+export const MAX_TOP_P = 1
+
 export const DEFAULT_WEB_SEARCH_RESULTS = 10
 
 export const MAX_WEB_SEARCH_RESULTS = 100

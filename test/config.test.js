@@ -10,27 +10,32 @@ test('applyPreferenceUpdates merges per-model maps by spread', () => {
   const prefs = {
     reasoningEffort: { 'model-a': 'high' },
     temperature: { 'model-a': 1.1 },
+    topP: { 'model-a': 0.8 },
     webSearch: { 'model-a': true },
   }
   const updated = applyPreferenceUpdates(prefs, {
     modelId: 'model-a',
     reasoningEffort: 'low',
     temperature: 0.5,
+    topP: 0.6,
     webSearch: false,
   })
 
   assert.deepEqual(updated.reasoningEffort, { 'model-a': 'low' })
   assert.deepEqual(updated.temperature, { 'model-a': 0.5 })
+  assert.deepEqual(updated.topP, { 'model-a': 0.6 })
   assert.deepEqual(updated.webSearch, { 'model-a': false })
 })
 
 test('applyPreferenceUpdates keeps other per-model entries untouched', () => {
   const prefs = {
     temperature: { 'model-a': 1.1, 'model-b': 0.2 },
+    topP: { 'model-a': 0.8, 'model-b': 0.4 },
   }
-  const updated = applyPreferenceUpdates(prefs, { modelId: 'model-b', temperature: 1.5 })
+  const updated = applyPreferenceUpdates(prefs, { modelId: 'model-b', temperature: 1.5, topP: 0.9 })
 
   assert.deepEqual(updated.temperature, { 'model-a': 1.1, 'model-b': 1.5 })
+  assert.deepEqual(updated.topP, { 'model-a': 0.8, 'model-b': 0.9 })
 })
 
 test('applyPreferenceUpdates sets lastModel and lastProvider', () => {

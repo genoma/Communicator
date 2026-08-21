@@ -1,6 +1,6 @@
 import { WEB_SEARCH_MODES } from './flags.js'
 
-const SESSION_FLAGS_LIST = '--temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --rpg, --attach, --scrape'
+const SESSION_FLAGS_LIST = '--temperature, --top-p, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --rpg, --attach, --scrape'
 
 export function hasAttachments(opts) {
   return (opts.attach?.length ?? 0) > 0
@@ -19,6 +19,7 @@ export function isExitMode(opts) {
 export function isSessionOnly(opts) {
   return (
     opts.temperature !== undefined ||
+    opts.topP !== undefined ||
     opts.budget !== undefined ||
     opts.reasoningEffort !== undefined ||
     opts.webSearch !== undefined ||
@@ -37,6 +38,7 @@ export function hasConfigSetterFlags(opts) {
     opts.model !== undefined ||
     opts.outputDir !== undefined ||
     opts.temperature !== undefined ||
+    opts.topP !== undefined ||
     opts.budget !== undefined ||
     opts.reasoningEffort !== undefined ||
     opts.webSearch !== undefined ||
@@ -83,6 +85,7 @@ function hasBareConfigOtherFlags(opts, promptArg) {
     opts.rpg !== undefined ||
     opts.reasoningEffort !== undefined ||
     opts.temperature !== undefined ||
+    opts.topP !== undefined ||
     opts.budget !== undefined ||
     opts.webSearch !== undefined ||
     opts.webResults !== undefined ||
@@ -240,7 +243,7 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
   }
 
   if (opts.image && (opts.model !== undefined || opts.zdr === true || sessionOnlyFlags)) {
-    errors.push('Error: --image cannot be combined with chat session flags (--model, --attach, --system-prompt, --rpg, --temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --zdr, --scrape).')
+    errors.push('Error: --image cannot be combined with chat session flags (--model, --attach, --system-prompt, --rpg, --temperature, --top-p, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --zdr, --scrape).')
   }
 
   if (opts.image && (opts.width !== undefined || opts.height !== undefined)) {

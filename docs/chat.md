@@ -23,7 +23,7 @@ cat notes.md | communicator -m "openai/gpt-4o" --system-prompt ~/reviewer.md
 - Without `-m`, the model pickers run first (they need a TTY), then the one-shot answer is sent.
 - Piped stdin is read up to a 10MB sanity limit. Piping input without `-m` is an error — pickers can't run without a TTY.
 - Output is TTY-aware: on a terminal you get the streaming response with reasoning labels and the usage/cost footer; when stdout is piped you get **only** the plain answer text (no banners, no usage) — ideal for scripting: `communicator -m ... "hi" | jq`.
-- The answer is saved as a regular session (title, temperature, budget, usage) and the model/temperature preferences are persisted, exactly like an interactive chat.
+- The answer is saved as a regular session (title, temperature, top-p, budget, usage) and the model/temperature/top-p preferences are persisted, exactly like an interactive chat.
 - Exit codes: `0` success, `1` API/validation error (message on stderr), `130` interrupted with `Ctrl+C`.
 - A prompt *argument* cannot be combined with `--resume`, `--export`, `--delete`, or `--list-*` flags (error + exit 1), and `--resume`/`--export`/`--delete` cannot be combined with `--list-*` flags either. Piped stdin has no such conflict: `--list-models`, `--list-sessions`, and `--list-endpoints <model>` work with piped stdin. The interactive pickers (`--resume`/`--export`/`--delete` in any form — even with a full session ID, and bare `--list-endpoints`) need a TTY.
 
@@ -59,13 +59,13 @@ The `Cache ⚡` line appears only when OpenRouter serves a cached response — o
 On connect, the banner and `/status` print the **same** snapshot line — model identity, context window, pricing, and every setting badge — so entering a model and checking status can never drift apart:
 
 ```
-Connected to OpenRouter / deepseek/deepseek-chat  [131,072 context]  [in $0.10 / out $0.20/M]  [thinking: High]  [temp: 0.3]  [web: auto: 5]  [budget: $2.000000]  [smooth: on (normal, ~2000 chars/s)]
+Connected to OpenRouter / deepseek/deepseek-chat  [131,072 context]  [in $0.10 / out $0.20/M]  [thinking: High]  [temp: 0.3]  [top-p: 0.8]  [web: auto: 5]  [budget: $2.000000]  [smooth: on (normal, ~2000 chars/s)]
 ```
 
 - The context and pricing segments appear only when known; the pricing format is `in $X.XX / out $Y.YY/M`.
-- Badges `[thinking: …]`, `[temp: …]`, `[zdr]`, `[e2ee]`, `[web: <mode>[: N]]` appear only when they deviate from the default; `[budget: …]` only when a cap is set; the smooth-streaming badge is always present.
+- Badges `[thinking: …]`, `[temp: …]`, `[top-p: …]`, `[zdr]`, `[e2ee]`, `[web: <mode>[: N]]` appear only when they deviate from the default; `[budget: …]` only when a cap is set; the smooth-streaming badge is always present.
 
-The same line is re-printed as `Current settings: …` after every mid-chat config change (`/temp`, `/reasoning`, `/web-search`, `/web-results`, `/smooth`, `/budget`, `/model`, `/new`) and by `/status` on demand. All values are persisted per model where applicable, so the next session's banner reflects what you last set.
+The same line is re-printed as `Current settings: …` after every mid-chat config change (`/temp`, `/top-p`, `/reasoning`, `/web-search`, `/web-results`, `/smooth`, `/budget`, `/model`, `/new`) and by `/status` on demand. All values are persisted per model where applicable, so the next session's banner reflects what you last set.
 
 ## Markdown rendering
 
@@ -136,6 +136,6 @@ RPG transcripts use named speaker markers: replayed user turns are shown under `
 
 ### Inspecting the prompt
 
-`--rpg <dir> --debug` logs every request to `prompt-log.jsonl` in the RPG directory: one JSON object per turn, each holding a timestamp, the model, the provider, and the full `request` body exactly as sent (system prompt, history, user turn, temperature, web search tools, and any other provider parameters). A short `[debug] prompt logged: …` notice is printed to stderr after each turn. The file is created on the first request (never on a turnless launch), grows one line per turn, and stores the plaintext messages even with `--e2ee` — like `history.json`, it is a local, unencrypted artifact.
+`--rpg <dir> --debug` logs every request to `prompt-log.jsonl` in the RPG directory: one JSON object per turn, each holding a timestamp, the model, the provider, and the full `request` body exactly as sent (system prompt, history, user turn, temperature, top_p, web search tools, and any other provider parameters). A short `[debug] prompt logged: …` notice is printed to stderr after each turn. The file is created on the first request (never on a turnless launch), grows one line per turn, and stores the plaintext messages even with `--e2ee` — like `history.json`, it is a local, unencrypted artifact.
 
 Note that `history.json` stores messages unencrypted even under `--e2ee` (encryption only applies to messages sent to the API).

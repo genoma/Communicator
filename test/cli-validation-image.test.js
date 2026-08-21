@@ -16,6 +16,7 @@ const BASE_OPTS = {
   systemPrompt: undefined,
   reasoningEffort: undefined,
   temperature: undefined,
+  topP: undefined,
   budget: undefined,
   webSearch: undefined,
   webResults: undefined,
@@ -44,7 +45,7 @@ const TTY = { isTTY: true }
 const NO_TTY = { isTTY: false }
 const PROMPT = (v = 'a red cat') => ({ promptArg: v })
 
-const SESSION_FLAGS_ERROR = 'Error: --image cannot be combined with chat session flags (--model, --attach, --system-prompt, --rpg, --temperature, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --zdr, --scrape).'
+const SESSION_FLAGS_ERROR = 'Error: --image cannot be combined with chat session flags (--model, --attach, --system-prompt, --rpg, --temperature, --top-p, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --zdr, --scrape).'
 const INTERACTIVE_ERROR = 'Error: --image cannot be combined with --resume, --export, --delete, or --list-* flags.'
 
 test('--image with a prompt validates cleanly on venice', () => {
@@ -76,6 +77,7 @@ test('--image rejects every chat session flag', () => {
     ['systemPrompt', '/path'],
     ['reasoningEffort', 'high'],
     ['temperature', 0.5],
+    ['topP', 0.5],
     ['budget', 5],
     ['webSearch', 'on'],
     ['webResults', 5],

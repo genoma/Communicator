@@ -16,7 +16,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 │   ├── export-cmd.js     — --export handler
 │   ├── delete-cmd.js     — --delete handler (confirm + remove session)
 │   ├── delete-all-cmd.js — --delete-all-sessions handler (wipe all sessions)
-│   ├── config-set.js     — standalone config setters (--model, --temperature, ... persist defaults)
+│   ├── config-set.js     — standalone config setters (--model, --temperature, --top-p, ... persist defaults)
 │   ├── config-view.js    — bare --config: print the current preferences
 │   ├── one-shot.js       — one-shot mode: prompt argument / stdin piping
 │   ├── resume.js         — --resume handler (load session, return params)
@@ -24,7 +24,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 │   ├── image-gen.js      — image generation command (--image flag, sizing validation, persistence)
 │   ├── image-session.js  — interactive image session REPL (sizing commands, /model handoff to chat)
 │   └── chat/
-│       └── index.js      — slash command registry (17 chatCommands) + budgetGuard
+│       └── index.js      — slash command registry (18 chatCommands) + budgetGuard
 ├── providers/
 │   ├── index.js          — factory: getProvider(name) → provider module; common chatCompletion contract
 │   ├── openrouter.js     — OpenRouter API client: models, endpoints, chat completions
@@ -40,9 +40,9 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 ├── attachment-store.js   — blob externalization/hydration, ref sentinels, artifact downloads
 ├── artifacts.js          — model-produced artifact handling (image/file output downloads and display)
 ├── config.js             — API key lookup (provider meta), preferences load/save (~/.communicator.json)
-├── constants.js          — shared constants (paths, labels, temperature bounds, SSE markers) and formatCost
+├── constants.js          — shared constants (paths, labels, temperature/top-p bounds, SSE markers) and formatCost
 ├── prompts.js            — interactive TUI pickers using @inquirer/prompts (model, provider, reasoning effort)
-├── flags.js              — CLI flag resolvers (temperature, web search/results, reasoning, budget)
+├── flags.js              — CLI flag resolvers (temperature, top-p, web search/results, reasoning, budget)
 ├── rpg.js                — --rpg mode: template provisioning, Markdown loading, and system-prompt assembly
 ├── reasoning.js          — reasoning effort default resolution + web search capability check
 ├── image-sizing.js       — pixel sizing helpers for pixel-based Venice image models
@@ -80,10 +80,10 @@ Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI arg
 
 The chat flow is built around four pieces:
 
-- **`ChatState` (`src/chat-state.js`)** — the mutable session state (model, reasoning effort, temperature, budget, web search, messages, …) with pure transitions (`setTemperature`, `applyModelSelection`, `toggleMarkdown`, …). `toFinalState()` produces the exact snapshot written to the session file; `resetForNewSession()` backs `/new`.
-- **Command registry (`src/commands/chat/index.js`)** — the 17 slash commands live in a data-driven map of `/name → async (ctx) => outcome`; `CHAT_COMMANDS` is derived from the registry keys so the suggestion list and the loop can never drift. Handlers never call `process.exit` — they return `{ exit }` / `{ reset }` signals that the loop translates into exit codes, which keeps every handler unit-testable (`test/chat-commands.test.js`).
+- **`ChatState` (`src/chat-state.js`)** — the mutable session state (model, reasoning effort, temperature, top-p, budget, web search, messages, …) with pure transitions (`setTemperature`, `setTopP`, `applyModelSelection`, `toggleMarkdown`, …). `toFinalState()` produces the exact snapshot written to the session file; `resetForNewSession()` backs `/new`.
+- **Command registry (`src/commands/chat/index.js`)** — the 18 slash commands live in a data-driven map of `/name → async (ctx) => outcome`; `CHAT_COMMANDS` is derived from the registry keys so the suggestion list and the loop can never drift. Handlers never call `process.exit` — they return `{ exit }` / `{ reset }` signals that the loop translates into exit codes, which keeps every handler unit-testable (`test/chat-commands.test.js`).
 - **`runChatSession(ctx, deps)` (`src/chat.js`)** — the chat loop is dependency-injected: `deps = { readInput, renderer, stdout, exit, saveSession, savePrefs, onSignal, newSessionId }`, each defaulting to the real implementation, so production behavior is unchanged while the whole loop is drivable with fakes (`test/chat-loop.test.js`). Signal handling (idle/streaming SIGINT, `beforeExit`, `uncaughtException`) is registered through `onSignal` (`src/signals.js`); per-turn orchestration — stream rendering, abort, interrupt salvage, usage tracking — lives in `src/turn-runner.js` on a shared `sessionState` object.
-- **`src/flags.js`** — CLI flag parsing helpers (`resolveTemperatureFlag`, `resolveWebResultsFlag`, `resolveWebSearchFlag`, `resolveReasoningFlag`, `resolveBudget`) shared by the chat loop, one-shot mode, and chat-start.
+- **`src/flags.js`** — CLI flag parsing helpers (`resolveTemperatureFlag`, `resolveTopPFlag`, `resolveWebResultsFlag`, `resolveWebSearchFlag`, `resolveReasoningFlag`, `resolveBudget`) shared by the chat loop, one-shot mode, and chat-start.
 
 `src/reasoning.js` holds the two model-capability helpers: `resolveEffortDefault` (forced flag → auto-reasoning → saved pref → model default, `'none'` normalized to `null`) and `isWebSearchSupported` (provider-wide or per-model capability).
 
@@ -95,13 +95,13 @@ Adding a new provider requires implementing the following exports:
 export const meta = { name, baseURL, apiKeyEnv, hasEndpoints }
 export async function fetchModels(apiKey) → [{id, name, provider, contextLength, description, reasoning, pricing, capabilities}]
 export async function fetchEndpoints(apiKey, modelId, allModels?) → [{name, providerName, tag, status, uptime30m, pricing, ...}]
-export async function chatCompletion({apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning, sessionId, temperature, webSearch, webResults, signal}) → {content, reasoning, usage}
+export async function chatCompletion({apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning, sessionId, temperature, topP, webSearch, webResults, signal}) → {content, reasoning, usage}
 export function normalizePricing(rawPricing) → {prompt, completion}
 export function handleHttpError(status, body) → throws ApiError
 ```
 
 - `pricing` is `{ prompt, completion }` USD per token (or `null`) — use `normalizePricing` and the helpers in `src/ui/format.js` for display
-- `chatCompletion` receives `signal` (AbortController) for SIGINT cancellation, `sessionId` for server-side prompt caching (OpenRouter currently ignores it; Venice maps it to `prompt_cache_key`), and `temperature` (default `0.7`, must be set in the request body). `webSearch` is a mode string (`'off' | 'auto' | 'always'`); `webResults` is the OpenRouter result count — providers may ignore options they do not support (see the contract doc in `src/providers/index.js`). It also receives `onSources(sources)` and returns `sources: [{ title, url }]` (empty when web search is off or the provider returned no citations)
+- `chatCompletion` receives `signal` (AbortController) for SIGINT cancellation, `sessionId` for server-side prompt caching (OpenRouter currently ignores it; Venice maps it to `prompt_cache_key`), `temperature` (default `0.7`, must be set in the request body) and `topP` (default `0.95`, must be set in the request body as `top_p`). `webSearch` is a mode string (`'off' | 'auto' | 'always'`); `webResults` is the OpenRouter result count — providers may ignore options they do not support (see the contract doc in `src/providers/index.js`). It also receives `onSources(sources)` and returns `sources: [{ title, url }]` (empty when web search is off or the provider returned no citations)
 - HTTP calls should go through `fetchWithRetry` from `src/http.js`; errors must be thrown as `ApiError`, never `process.exit`
 
 See `src/providers/openrouter.js` and `src/providers/venice.js` for reference implementations.

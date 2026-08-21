@@ -1,16 +1,17 @@
 import { resolveFlagValues, resolveWebSearchFlag, webSearchGate, resolvePrefOrNull, resolveBudget, resolveWebResultsFlag, normalizeSmoothSpeed } from './flags.js'
 import { CliError } from './errors.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from './model-selection.js'
-import { DEFAULT_TEMPERATURE } from './constants.js'
+import { DEFAULT_TEMPERATURE, DEFAULT_TOP_P } from './constants.js'
 import { persistSessionFile, buildSessionPayload } from './sessions.js'
 import { savePreferences, savePrefsBestEffort, applyPreferenceUpdates } from './config.js'
 
 export function resolveSessionFlags(opts, prefs) {
   try {
-    const { reasoningEffort: forcedEffort, temperature: forcedTemperature, budget: forcedBudget, webResults: forcedWebResults, smoothSpeed } = resolveFlagValues(opts)
+    const { reasoningEffort: forcedEffort, temperature: forcedTemperature, topP: forcedTopP, budget: forcedBudget, webResults: forcedWebResults, smoothSpeed } = resolveFlagValues(opts)
     return {
       forcedEffort,
       forcedTemperature,
+      forcedTopP,
       forcedBudget,
       budget: forcedBudget ?? resolvePrefOrNull(resolveBudget, prefs.budget) ?? null,
       forcedWebResults,
@@ -31,7 +32,7 @@ export function attachGateOptions(selection, providerMeta) {
   }
 }
 
-export async function buildSessionContext({ provider, apiKey, opts, prefs, forcedEffort, forcedTemperature, forcedWebResults, zdr, e2ee = false, allowInteractive = true }) {
+export async function buildSessionContext({ provider, apiKey, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedWebResults, zdr, e2ee = false, allowInteractive = true }) {
   let selection
   if (opts.model) {
     selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort, zdr, e2ee })
@@ -52,6 +53,7 @@ export async function buildSessionContext({ provider, apiKey, opts, prefs, force
   return {
     selection,
     temperature: forcedTemperature ?? prefs.temperature?.[selection.modelId] ?? DEFAULT_TEMPERATURE,
+    topP: forcedTopP ?? prefs.topP?.[selection.modelId] ?? DEFAULT_TOP_P,
     webSearch,
     webResults: e2ee ? null : forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), prefs.webResults) ?? null,
   }
@@ -69,6 +71,7 @@ export async function persistSession({ finalState, prefs, config }) {
     lastProvider: finalState.endpointProviderName,
     reasoningEffort: finalState.reasoningEffort,
     temperature: finalState.temperature,
+    topP: finalState.topP,
     webSearch: finalState.webSearch,
   }))
 }

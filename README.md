@@ -9,6 +9,7 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Provider selection** — compare pricing, uptime %, and routing tags before starting a chat. Single-provider models skip this step automatically, and Venice models go straight to chat
 - **Reasoning effort control** — per-model effort level persisted across sessions. OpenRouter uses its native reasoning format; Venice uses the standard OpenAI `reasoning_effort`
 - **Temperature control** — `--temperature <0-2>` flag, `/temp` command, per-model default persisted in preferences
+- **Top-p control** — `--top-p <0-1>` flag, `/top-p` command, per-model default persisted in preferences (default 0.95)
 - **Web search** — three modes per model (`off`, `auto` = model decides, `always` = force a search) via `--web-search`/`/web-search`, with a result-count knob on OpenRouter. See [docs/web-search.md](docs/web-search.md)
 - **Web scraping** — scrape a public page into the conversation as markdown context with `--scrape <url>` (one-shot + prompt, or bare to open a chat with the page) and `/scrape <url>` mid-chat; flat $0.01 per page, tracked in the session cost. Venice only. See [docs/web-scrape.md](docs/web-scrape.md)
 - **File & image attachments** — attach images, PDFs, office files, and text/code files with `/attach <path>...` (interactive) or `--attach <path>` (one-shot). See [docs/attachments.md](docs/attachments.md)
@@ -23,12 +24,12 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Streaming responses** — tokens appear as they arrive, with reasoning shown in gray under a `❯ Thinking` banner
 - **Smooth streaming** — interactive output is paced for a steady render rate (default on; disable with `--no-smooth-streaming` or `/smooth off`)
 - **Usage & cost tracking** — per-turn and cumulative token counts, a context-window (CTX) indicator, cache-hit detection, and dollar-cost breakdowns; check anytime with `/cost`
-- **Slash commands** — `/new`, `/model`, `/reasoning`, `/temp`, `/budget`, `/web-search`, `/attach`, `/retry`, `/copy`, `/markdown`, `/smooth`, `/cost`, `/quit`, and more (image sessions add sizing commands plus Venice-only `/watermark`). See [docs/commands.md#slash-commands](docs/commands.md#slash-commands)
+- **Slash commands** — `/new`, `/model`, `/reasoning`, `/temp`, `/top-p`, `/budget`, `/web-search`, `/attach`, `/retry`, `/copy`, `/markdown`, `/smooth`, `/cost`, `/quit`, and more (image sessions add sizing commands plus Venice-only `/watermark`). See [docs/commands.md#slash-commands](docs/commands.md#slash-commands)
 - **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/` with an auto-generated title, on quit, model switch, new session, or `Ctrl+C` — the last exchange is never lost
-- **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, reasoning effort, temperature, and budget
+- **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, reasoning effort, temperature, top-p, and budget
 - **Session deletion** — remove one or more saved sessions with `--delete` (multi-select checkbox with confirmation), or wipe everything with `--delete-all-sessions y` (default no)
 - **Markdown export** — export one or more saved sessions with `--export` (multi-select checkbox) into per-session folders (`session-{id}/`), with separate thinking sections, cost summary, and attachments materialized as linked files
-- **Session persistence** — last model, provider, and per-model reasoning effort and temperature are saved to `~/.communicator.json` and restored on next launch
+- **Session persistence** — last model, provider, and per-model reasoning effort, temperature and top-p are saved to `~/.communicator.json` and restored on next launch
 - **CLI flags to skip pickers** — `-m` skips *all* pickers for fully non-interactive use; `--reasoning-effort` skips only the reasoning picker
 - **Lightweight** — five runtime dependencies, pure Node.js ESM
 

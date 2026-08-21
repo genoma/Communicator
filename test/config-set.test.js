@@ -65,6 +65,7 @@ test('resolveConfigValues leaves unset values undefined', () => {
   const v = resolveConfigValues({})
   assert.deepEqual(v, {
     temperature: undefined,
+    topP: undefined,
     budget: undefined,
     webResults: undefined,
     smoothSpeed: undefined,
@@ -82,6 +83,7 @@ test('resolveConfigValues leaves unset values undefined', () => {
 
 test('resolveConfigValues throws on invalid values', () => {
   assert.throws(() => resolveConfigValues({ temperature: '3' }), /between 0 and 2/)
+  assert.throws(() => resolveConfigValues({ topP: '2' }), /between 0 and 1/)
   assert.throws(() => resolveConfigValues({ budget: 'nope' }), /positive number/)
   assert.throws(() => resolveConfigValues({ webResults: '0' }), /positive integer/)
   assert.throws(() => resolveConfigValues({ smoothSpeed: 'insane' }), /Smooth speed/)

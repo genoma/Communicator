@@ -1,5 +1,5 @@
 import { getEffortLabel } from './prompts.js'
-import { DEFAULT_TEMPERATURE, formatCost, formatSmoothSpeed } from './constants.js'
+import { DEFAULT_TEMPERATURE, DEFAULT_TOP_P, formatCost, formatSmoothSpeed } from './constants.js'
 import { formatModelPrice, sessionLabel } from './ui/format.js'
 import { getImageDefaults } from './config.js'
 import { isPixelModel } from './image-sizing.js'
@@ -8,6 +8,7 @@ export function buildStatusBadges(state) {
   const parts = []
   if (state.reasoningEffort != null) parts.push(`[thinking: ${getEffortLabel(state.reasoningEffort)}]`)
   if (state.temperature !== DEFAULT_TEMPERATURE) parts.push(`[temp: ${state.temperature}]`)
+  if (state.topP !== DEFAULT_TOP_P) parts.push(`[top-p: ${state.topP}]`)
   if (state.zdr) parts.push('[zdr]')
   if (state.e2ee) parts.push('[e2ee]')
   if (state.webSearch !== 'off') {
