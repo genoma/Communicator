@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { applyPreferenceUpdates, loadSystemPrompt, getApiKey, getImageDefaults, mergeImageDefaults, loadPreferences } from '../src/config.js'
+import { applyPreferenceUpdates, syncPreferenceUpdates, loadSystemPrompt, getApiKey, getImageDefaults, mergeImageDefaults, loadPreferences } from '../src/config.js'
 import { CliError } from '../src/errors.js'
 
 test('applyPreferenceUpdates merges per-model maps by spread', () => {
@@ -80,6 +80,25 @@ test('applyPreferenceUpdates does not mutate the input prefs', () => {
   const prefs = { temperature: { m: 0.5 } }
   applyPreferenceUpdates(prefs, { modelId: 'm', temperature: 1.0 })
   assert.deepEqual(prefs.temperature, { m: 0.5 })
+})
+
+test('syncPreferenceUpdates returns the merged object and keeps the input current', () => {
+  const prefs = { lastModel: 'm' }
+  const merged = syncPreferenceUpdates(prefs, { smoothStreaming: false, smoothSpeed: 500, budget: 2, webResults: 5 })
+
+  assert.deepEqual(merged, { lastModel: 'm', smoothStreaming: false, smoothSpeed: 500, budget: 2, webResults: 5 })
+  assert.equal(prefs.smoothStreaming, false)
+  assert.equal(prefs.smoothSpeed, 500)
+  assert.equal(prefs.budget, 2)
+  assert.equal(prefs.webResults, 5)
+})
+
+test('syncPreferenceUpdates still skips undefined fields', () => {
+  const prefs = { lastModel: 'm' }
+  const merged = syncPreferenceUpdates(prefs, { modelId: 'm', smoothStreaming: undefined })
+
+  assert.deepEqual(Object.keys(merged).sort(), ['lastModel'])
+  assert.deepEqual(Object.keys(prefs).sort(), ['lastModel'])
 })
 
 test('applyPreferenceUpdates merges the global smoothStreaming key', () => {

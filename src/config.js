@@ -74,6 +74,17 @@ export function savePrefsBestEffort(save, onError = (message) => console.warn(me
   }
 }
 
+// Applies a delta like applyPreferenceUpdates but ALSO keeps the shared prefs
+// object current (mutated in place) and returns the merged object. Every
+// writer then merges from the latest state instead of the launch snapshot, so
+// a mid-session change (/smooth, /budget, /web-results, image defaults) is
+// preserved by the end-of-session prefs save instead of being dropped.
+export function syncPreferenceUpdates(prefs, updates) {
+  const merged = applyPreferenceUpdates(prefs, updates)
+  Object.assign(prefs, merged)
+  return merged
+}
+
 export function getImageDefaults(prefs, providerName) {
   return prefs?.imageDefaults?.[providerName] || {}
 }

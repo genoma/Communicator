@@ -3,7 +3,7 @@ import { CliError } from './errors.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from './model-selection.js'
 import { DEFAULT_TEMPERATURE, DEFAULT_TOP_P } from './constants.js'
 import { persistSessionFile, buildSessionPayload } from './sessions.js'
-import { savePreferences, savePrefsBestEffort, applyPreferenceUpdates } from './config.js'
+import { savePreferences, savePrefsBestEffort, syncPreferenceUpdates } from './config.js'
 
 export function resolveSessionFlags(opts, prefs) {
   try {
@@ -65,7 +65,7 @@ export async function persistSession({ finalState, prefs, config }) {
   }
 
   // prefs save failures are non-fatal: the session already persisted
-  await savePrefsBestEffort((finalPrefs) => savePreferences(finalPrefs, config))(applyPreferenceUpdates(prefs, {
+  await savePrefsBestEffort((finalPrefs) => savePreferences(finalPrefs, config))(syncPreferenceUpdates(prefs, {
     modelId: finalState.modelId,
     lastModel: finalState.modelId,
     lastProvider: finalState.endpointProviderName,

@@ -10,7 +10,7 @@ import { dim, sep, you, char } from './ui/style.js'
 import { out } from './ui/io.js'
 import { ensureSessionsDir, generateSessionId, persistSessionFile, buildSessionPayload, removeEmptySessionClaim } from './sessions.js'
 import { saveRpgHistory, logRpgPrompt } from './rpg.js'
-import { savePreferences, applyPreferenceUpdates, savePrefsBestEffort } from './config.js'
+import { savePreferences, syncPreferenceUpdates, savePrefsBestEffort } from './config.js'
 import { copyText } from './clipboard.js'
 import { ChatState } from './chat-state.js'
 import { createE2eeSession } from './e2ee.js'
@@ -69,7 +69,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
   const saveSessionFile = deps.saveSession ?? persistSessionFile
 
   const savePrefsFile = deps.savePrefs ?? (async (updates) => {
-    await savePreferences(applyPreferenceUpdates(prefs, updates), configPath)
+    await savePreferences(syncPreferenceUpdates(prefs, updates), configPath)
   })
 
   const newSessionId = deps.newSessionId ?? (async () => {

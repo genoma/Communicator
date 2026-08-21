@@ -9,7 +9,7 @@ import { selectImageModel, selectSizingOption } from '../prompts.js'
 import { SESSIONS_DIR, DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { CliError, formatError } from '../errors.js'
 import { readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
-import { getImageDefaults, mergeImageDefaults, savePreferences, savePrefsBestEffort, applyPreferenceUpdates } from '../config.js'
+import { getImageDefaults, mergeImageDefaults, savePreferences, savePrefsBestEffort, syncPreferenceUpdates } from '../config.js'
 import { createLoader } from '../ui/loader.js'
 import { dim } from '../ui/style.js'
 import { resolveAspectRatio, resolveHeight, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants, resolveWidth } from '../flags.js'
@@ -338,7 +338,7 @@ export function buildImageSessionPayload({ messages, modelId, createdAt, provide
 
 export async function finalizeImageSession({ prefs, opts = {}, config, sessionId, messages, outcome, createdAt, providerName = 'venice', stdout = process.stdout }) {
   await persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: outcome.modelId, createdAt, providerName, endpointProviderName: outcome.endpointProviderName, pricing: outcome.pricing }))
-  const updated = applyPreferenceUpdates(prefs, {
+  const updated = syncPreferenceUpdates(prefs, {
     lastImageModel: outcome.modelId,
     outputDir: opts.outputDir,
     hideWatermark: opts.watermark === false ? true : undefined,

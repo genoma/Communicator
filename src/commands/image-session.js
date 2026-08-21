@@ -1,7 +1,7 @@
 import { readInput as readInputFromInput } from '../input.js'
 import { persistSessionFile } from '../sessions.js'
 import { DEFAULT_SYSTEM_PROMPT } from '../constants.js'
-import { getImageDefaults, mergeImageDefaults, clearImageDefault, savePreferences, savePrefsBestEffort, applyPreferenceUpdates } from '../config.js'
+import { getImageDefaults, mergeImageDefaults, clearImageDefault, savePreferences, savePrefsBestEffort, syncPreferenceUpdates } from '../config.js'
 import { findImageModel, selectImageEndpoint, selectModelAndEndpoint } from '../model-selection.js'
 import { sessionLabel } from '../ui/format.js'
 import { dim } from '../ui/style.js'
@@ -139,7 +139,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
   while (true) {
     const result = await read({ commands: imageSessionCommands(provider.meta.name, model) })
     if (result.cancelled) {
-      await savePrefs(applyPreferenceUpdates(prefs, { lastImageModel: imageModelId }))
+      await savePrefs(syncPreferenceUpdates(prefs, { lastImageModel: imageModelId }))
       await persist()
       return
     }
@@ -148,7 +148,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     if (!input) continue
 
     if (input === '/quit') {
-      await savePrefs(applyPreferenceUpdates(prefs, { lastImageModel: imageModelId }))
+      await savePrefs(syncPreferenceUpdates(prefs, { lastImageModel: imageModelId }))
       await persist()
       return
     }
@@ -213,7 +213,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         model = next
         imageModelId = next.id
         await persist()
-        await savePrefs(applyPreferenceUpdates(prefs, { lastImageModel: next.id }))
+        await savePrefs(syncPreferenceUpdates(prefs, { lastImageModel: next.id }))
         console.log(`Switched to ${sessionLabel(sel.endpointProviderName, sel.modelId)} [image]`)
         console.log(`${wrapStatusLine(dim('Current settings:'), statusSegments())}\n`)
         continue
@@ -232,7 +232,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         providerName: provider.meta.name,
         args: input.slice('/watermark'.length).trim(),
         prefs,
-        savePrefs: (updates) => savePrefs(applyPreferenceUpdates(prefs, updates)),
+        savePrefs: (updates) => savePrefs(syncPreferenceUpdates(prefs, updates)),
       })
       continue
     }
@@ -395,7 +395,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     messages.push({ role: 'user', content: input })
     messages.push(outcome.message)
     await persist()
-    const updated = applyPreferenceUpdates(prefs, { lastImageModel: outcome.modelId })
+    const updated = syncPreferenceUpdates(prefs, { lastImageModel: outcome.modelId })
     const withImageDefaults = outcome.prefsUpdates ? mergeImageDefaults(updated, provider.meta.name, outcome.prefsUpdates) : updated
     Object.assign(prefs, withImageDefaults)
     await savePrefs(withImageDefaults)
