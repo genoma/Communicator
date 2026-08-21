@@ -6,7 +6,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ExitPromptError } from '@inquirer/core'
 import { CliError } from '../src/errors.js'
+import { styleText } from 'node:util'
 import { resetMetadataCaches } from '../src/providers/openrouter-meta.js'
+
+const dim = (text) => styleText('dim', text)
 
 const tempHome = await mkdtemp(join(tmpdir(), 'communicator-home-'))
 after(() => rm(tempHome, { recursive: true, force: true }))
@@ -553,7 +556,10 @@ test('one-shot TTY output prints the banner, sources and the skipped-chunk warni
   const { oneShotCmd } = await import('../src/commands/one-shot.js')
   await oneShotCmd({ apiKey: 'test-key', opts: opts({ temperature: 1.1, topP: 0.7 }), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: 'Hello' })
 
-  assert.ok(logs.some((l) => l.includes('ProviderX / test/model-a') && l.includes('[temp: 1.1]') && l.includes('[top-p: 0.7]')))
+  const banner = logs.find((l) => l.includes('ProviderX / test/model-a'))
+  assert.ok(banner, 'banner line printed')
+  assert.ok(banner.includes(`${dim('[temp: ')}1.1${dim(']')}`), 'temp badge dim-keyed')
+  assert.ok(banner.includes(`${dim('[top-p: ')}0.7${dim(']')}`), 'top-p badge dim-keyed')
   assert.ok(writes.some((w) => w.includes('Hello world')))
   assert.ok(writes.some((w) => w.includes('Sources (1)')))
   assert.ok(writes.some((w) => w.includes('1 malformed stream chunk skipped')))
