@@ -302,7 +302,13 @@ test('logRpgPrompt appends one JSON entry per request with a stderr notice', asy
   assert.equal(JSON.parse(lines[1]).request.messages[1].content, 'again')
   assert.equal(notices.length, 2)
   assert.ok(notices[0].includes('prompt logged:') && notices[0].includes('prompt-log.jsonl'))
+})
 
+// Windows ignores the POSIX mode on open: stat always reports 0o666, so the
+// owner-only permission check only holds on POSIX platforms (see sessions.test.js).
+test('logRpgPrompt locks the prompt log to owner-only', { skip: process.platform === 'win32' }, async (t) => {
+  const dir = await tempDir(t)
+  await logRpgPrompt(dir, { timestamp: '2026-08-16T10:00:00.000Z', request: { messages: [{ role: 'user', content: 'hi' }] } })
   assert.equal((await stat(join(dir, 'prompt-log.jsonl'))).mode & 0o777, 0o600)
 })
 
