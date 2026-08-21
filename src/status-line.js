@@ -1,19 +1,26 @@
 import { getEffortLabel } from './prompts.js'
-import { DEFAULT_TEMPERATURE, DEFAULT_TOP_P, formatCost, formatSmoothSpeed } from './constants.js'
+import { DEFAULT_TEMPERATURE, formatCost, formatSmoothSpeed } from './constants.js'
 import { formatModelPrice, sessionLabel } from './ui/format.js'
+import { dim } from './ui/style.js'
 import { getImageDefaults } from './config.js'
 import { isPixelModel } from './image-sizing.js'
 
+// Badge keys and brackets are dimmed so values read as the headline; the
+// model label and the values themselves stay plain. styleText emits nothing
+// on non-TTY output, so pipes and tests see the exact plain string.
+const kv = (key, value) => `${dim(`[${key}: `)}${value}${dim(']')}`
+const tag = (text) => `${dim('[')}${text}${dim(']')}`
+
 export function buildStatusBadges(state) {
   const parts = []
-  if (state.reasoningEffort != null) parts.push(`[thinking: ${getEffortLabel(state.reasoningEffort)}]`)
-  if (state.temperature !== DEFAULT_TEMPERATURE) parts.push(`[temp: ${state.temperature}]`)
-  if (state.topP !== DEFAULT_TOP_P) parts.push(`[top-p: ${state.topP}]`)
-  if (state.zdr) parts.push('[zdr]')
-  if (state.e2ee) parts.push('[e2ee]')
+  if (state.reasoningEffort != null) parts.push(kv('thinking', getEffortLabel(state.reasoningEffort)))
+  if (state.temperature !== DEFAULT_TEMPERATURE) parts.push(kv('temp', state.temperature))
+  parts.push(kv('top-p', state.topP))
+  if (state.zdr) parts.push(tag('zdr'))
+  if (state.e2ee) parts.push(tag('e2ee'))
   if (state.webSearch !== 'off') {
     const results = state.webResults != null ? `: ${state.webResults}` : ''
-    parts.push(`[web: ${state.webSearch}${results}]`)
+    parts.push(kv('web', `${state.webSearch}${results}`))
   }
   return parts
 }
@@ -24,14 +31,14 @@ export function buildStatusBadges(state) {
 // never drift apart.
 export function buildStatusLine(state) {
   const parts = [sessionLabel(state.endpointProviderName, state.modelId)]
-  if (state.contextLength) parts.push(`[${state.contextLength.toLocaleString()} context]`)
+  if (state.contextLength) parts.push(tag(`${state.contextLength.toLocaleString()} context`))
   const pricing = state.pricing
   if (pricing?.prompt != null || pricing?.completion != null) {
-    parts.push(`[${formatModelPrice(pricing.prompt, pricing.completion)}]`)
+    parts.push(tag(formatModelPrice(pricing.prompt, pricing.completion)))
   }
   parts.push(...buildStatusBadges(state))
-  if (state.budget != null) parts.push(`[budget: ${formatCost(state.budget)}]`)
-  parts.push(state.smoothStreaming ? `[smooth: on (${formatSmoothSpeed(state.smoothSpeed)})]` : '[smooth: off]')
+  if (state.budget != null) parts.push(kv('budget', formatCost(state.budget)))
+  parts.push(kv('smooth', state.smoothStreaming ? `on (${formatSmoothSpeed(state.smoothSpeed)})` : 'off'))
   return parts
 }
 
@@ -76,5 +83,5 @@ export function buildImageStatusLine({ model, imageModelId, endpointProviderName
 // (the trailing newline is not included).
 export function connectedBanner(segments, { hints = [] } = {}) {
   const hintText = hints.length > 0 ? `${hints.join('  |  ')}\n` : ''
-  return `\nConnected to ${segments.join('  ')}\n${hintText}`
+  return `\n${dim('Connected to')} ${segments.join('  ')}\n${hintText}`
 }

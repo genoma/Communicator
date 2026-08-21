@@ -56,14 +56,14 @@ The `Cache ⚡` line appears only when OpenRouter serves a cached response — o
 
 ## Current settings line
 
-On connect, the banner and `/status` print the **same** snapshot line — model identity, context window, pricing, and every setting badge — so entering a model and checking status can never drift apart:
+On connect, the banner and `/status` print the **same** snapshot line — model identity, context window, pricing, and every setting badge — so entering a model and checking status can never drift apart. On a TTY the bracket labels (`[thinking:`, `[top-p:`, …) and the `Connected to` / `Current settings:` prefixes are dimmed so the values read as the headline; piped output is plain:
 
 ```
 Connected to OpenRouter / deepseek/deepseek-chat  [131,072 context]  [in $0.10 / out $0.20/M]  [thinking: High]  [temp: 0.3]  [top-p: 0.8]  [web: auto: 5]  [budget: $2.000000]  [smooth: on (normal, ~2000 chars/s)]
 ```
 
 - The context and pricing segments appear only when known; the pricing format is `in $X.XX / out $Y.YY/M`.
-- Badges `[thinking: …]`, `[temp: …]`, `[top-p: …]`, `[zdr]`, `[e2ee]`, `[web: <mode>[: N]]` appear only when they deviate from the default; `[budget: …]` only when a cap is set; the smooth-streaming badge is always present.
+- Badges `[thinking: …]`, `[temp: …]`, `[zdr]`, `[e2ee]`, `[web: <mode>[: N]]` appear only when they deviate from the default; `[top-p: …]` is always shown so the active sampling setting is visible on connect and in `/status`; `[budget: …]` only when a cap is set; the smooth-streaming badge is always present.
 
 The same line is re-printed as `Current settings: …` after every mid-chat config change (`/temp`, `/top-p`, `/reasoning`, `/web-search`, `/web-results`, `/smooth`, `/budget`, `/model`, `/new`) and by `/status` on demand. All values are persisted per model where applicable, so the next session's banner reflects what you last set.
 

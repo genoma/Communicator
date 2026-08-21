@@ -104,7 +104,7 @@ test('/new saves the session, requests a fresh id, resets state', async (t) => {
   assert.equal(ctx.state.webResults, null)
   assert.deepEqual(prefsUpdates, [])
   assert.equal(consoleSpy.log(0), '\nNew session started.\n')
-  assert.equal(consoleSpy.log(1), 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [smooth: on (normal, ~2000 chars/s)]\n')
+  assert.equal(consoleSpy.log(1), 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [top-p: 0.95]  [smooth: on (normal, ~2000 chars/s)]\n')
 })
 
 test('/model switches state and saves prefs', async (t) => {
@@ -1240,7 +1240,7 @@ test('/new prints the status line and drops the web results count', async (t) =>
   await chatCommands['/new'](ctx)
 
   assert.equal(ctx.state.webResults, null)
-  assert.equal(consoleSpy.log(1), 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n')
+  assert.equal(consoleSpy.log(1), 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [top-p: 0.95]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n')
 })
 
 test('/status prints the full settings snapshot', async (t) => {
@@ -1255,7 +1255,7 @@ test('/status prints the full settings snapshot', async (t) => {
 
   assert.equal(
     consoleSpy.log(0),
-    'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.1]  [web: auto: 3]  [budget: $5.000000]  [smooth: on (normal, ~2000 chars/s)]\n'
+    'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.1]  [top-p: 0.95]  [web: auto: 3]  [budget: $5.000000]  [smooth: on (normal, ~2000 chars/s)]\n'
   )
 })
 
@@ -1279,7 +1279,7 @@ test('/status reflects defaults without badges', async (t) => {
 
   await chatCommands['/status'](ctx)
 
-  assert.equal(consoleSpy.log(0), 'Current settings: Provider / org/model  [smooth: on (normal, ~2000 chars/s)]\n')
+  assert.equal(consoleSpy.log(0), 'Current settings: Provider / org/model  [top-p: 0.95]  [smooth: on (normal, ~2000 chars/s)]\n')
 })
 
 test('/temp prints the updated status line after setting', async (t) => {
@@ -1289,7 +1289,7 @@ test('/temp prints the updated status line after setting', async (t) => {
   await chatCommands['/temp']({ ...ctx, args: '1.3' })
 
   assert.equal(consoleSpy.log(0), 'Temperature set to 1.3\n')
-  assert.equal(consoleSpy.log(1), 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.3]  [smooth: on (normal, ~2000 chars/s)]\n')
+  assert.equal(consoleSpy.log(1), 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.3]  [top-p: 0.95]  [smooth: on (normal, ~2000 chars/s)]\n')
 })
 
 test('/web-search prints the updated status line after setting', async (t) => {
@@ -1300,9 +1300,9 @@ test('/web-search prints the updated status line after setting', async (t) => {
   await chatCommands['/web-results']({ ...ctx, args: '5' })
 
   assert.equal(consoleSpy.log(0), 'Web search set to auto.\n')
-  assert.equal(consoleSpy.log(1), 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n')
+  assert.equal(consoleSpy.log(1), 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [top-p: 0.95]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n')
   assert.equal(consoleSpy.log(2), 'Web search results set to 5.\n')
-  assert.equal(consoleSpy.log(3), 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [web: auto: 5]  [smooth: on (normal, ~2000 chars/s)]\n')
+  assert.equal(consoleSpy.log(3), 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [top-p: 0.95]  [web: auto: 5]  [smooth: on (normal, ~2000 chars/s)]\n')
 })
 
 test('/smooth off prints the updated status line', async (t) => {
@@ -1312,7 +1312,7 @@ test('/smooth off prints the updated status line', async (t) => {
   await chatCommands['/smooth']({ ...ctx, args: 'off' })
 
   assert.equal(consoleSpy.log(0), 'Smooth streaming disabled.\n')
-  assert.equal(consoleSpy.log(1), 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [smooth: off]\n')
+  assert.equal(consoleSpy.log(1), 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [top-p: 0.95]  [smooth: off]\n')
 })
 
 test('/budget prints the updated status line after setting', async (t) => {
@@ -1322,7 +1322,7 @@ test('/budget prints the updated status line after setting', async (t) => {
   await chatCommands['/budget']({ ...ctx, args: '2' })
 
   assert.equal(consoleSpy.log(0), 'Budget set to $2.000000 for this session.\n')
-  assert.equal(consoleSpy.log(1), 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [budget: $2.000000]  [smooth: on (normal, ~2000 chars/s)]\n')
+  assert.equal(consoleSpy.log(1), 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [top-p: 0.95]  [budget: $2.000000]  [smooth: on (normal, ~2000 chars/s)]\n')
 })
 
 test('/model prints the updated status line with the new model values', async (t) => {
@@ -1343,5 +1343,5 @@ test('/model prints the updated status line with the new model values', async (t
   await chatCommands['/model'](ctx)
 
   assert.equal(consoleSpy.log(0), '\nSwitched to NewProvider / new/model\n')
-  assert.equal(consoleSpy.log(1), 'Current settings: NewProvider / new/model  [thinking: Low]  [temp: 0.3]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n')
+  assert.equal(consoleSpy.log(1), 'Current settings: NewProvider / new/model  [thinking: Low]  [temp: 0.3]  [top-p: 0.95]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n')
 })
