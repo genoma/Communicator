@@ -103,8 +103,12 @@ export function encryptMessage(plaintext, modelPubKeyHex) {
   return Buffer.concat([ephemeralPub, nonce, ciphertext]).toString('hex')
 }
 
-// Encrypts all user and system messages in place; assistant messages are
-// already server ciphertext and must be sent back untouched.
+// Encrypts user and system messages in place. Assistant messages are the
+// model's own output: the client keeps them decrypted (the per-chunk
+// ciphertext is not persisted), so they are the only replayable form and are
+// sent back as-is. User and system role content is always encrypted; on a
+// resumed session only the historical assistant text is seen plaintext by
+// the host.
 export function encryptMessages(messages, modelPubKeyHex) {
   return messages.map((msg) => {
     if (msg.role !== 'user' && msg.role !== 'system') return msg
