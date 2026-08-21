@@ -1,4 +1,5 @@
 import { rename, rm, writeFile } from 'node:fs/promises'
+import { randomBytes } from 'node:crypto'
 import { basename, dirname, join } from 'node:path'
 
 // Writes a file atomically: the payload goes to a sibling temp file which is
@@ -6,7 +7,7 @@ import { basename, dirname, join } from 'node:path'
 // truncated file behind (rename is atomic on POSIX). The temp file is removed
 // again when the write itself fails.
 export async function writeFileAtomic(filePath, data, { mode = 0o600 } = {}) {
-  const tmpPath = join(dirname(filePath), `.${basename(filePath)}.tmp-${process.pid}`)
+  const tmpPath = join(dirname(filePath), `.${basename(filePath)}.tmp-${process.pid}-${randomBytes(4).toString('hex')}`)
   try {
     await writeFile(tmpPath, data, { encoding: 'utf-8', mode })
     await rename(tmpPath, filePath)
