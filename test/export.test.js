@@ -416,3 +416,19 @@ test('does not linkify non-http(s) source urls', () => {
   assert.match(md, /- evil/)
   assert.doesNotMatch(md, /\[evil\]/)
 })
+
+test('neutralizes non-http(s) markdown link destinations in message text', () => {
+  const md = formatMarkdown(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'click [me](javascript:alert(1))' },
+      { role: 'assistant', content: '[ok](https://example.com/a) [bad](data:text/html,evil) [off](vbscript:foo)' },
+    ],
+  }))
+  assert.doesNotMatch(md, /\(javascript:/)
+  assert.doesNotMatch(md, /\(data:/)
+  assert.doesNotMatch(md, /\(vbscript:/)
+  assert.match(md, /\[me\]/)
+  assert.match(md, /\[ok\]\(https:\/\/example\.com\/a\)/)
+  assert.match(md, /\[bad\] \[off\]/)
+})

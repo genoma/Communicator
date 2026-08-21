@@ -37,6 +37,17 @@ function safeLink(url) {
   return typeof url === 'string' && SAFE_LINK_RE.test(url) ? url : null
 }
 
+// Exported markdown keeps the model's own link syntax, but a clickable
+// destination that is not http(s) (javascript:, data:, ...) would run in
+// HTML-capable viewers. Such links degrade to their plain label text.
+const MARKDOWN_LINK_RE = /\[([^\]]*)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g
+
+function neutralizeLinkSchemes(text) {
+  return String(text ?? '').replace(MARKDOWN_LINK_RE, (match, label, dest) => {
+    return /^https?:\/\//i.test(dest) ? match : `[${label}]`
+  })
+}
+
 function attachmentParts(content) {
   if (!Array.isArray(content)) return []
   return content.filter((p) => p.type === 'image_url' || p.type === 'file')
@@ -127,7 +138,7 @@ export function formatMarkdown(sessionData, attachmentLink = null) {
   for (const msg of visibleMessages) {
     if (msg.role === 'user') {
       md += '## You\n\n'
-      md += `> ${escapeHtml(contentText(msg.content))}\n\n`
+      md += `> ${neutralizeLinkSchemes(escapeHtml(contentText(msg.content)))}\n\n`
       for (const part of attachmentParts(msg.content)) {
         const link = attachmentLink?.(part)
         md += link
@@ -141,7 +152,7 @@ export function formatMarkdown(sessionData, attachmentLink = null) {
         md += `${escapeHtml(msg.reasoning)}\n\n`
       }
       md += '### Answer\n\n'
-      md += `${citationLinks(escapeHtml(contentText(msg.content)), msg.sources)}\n\n`
+      md += `${citationLinks(neutralizeLinkSchemes(escapeHtml(contentText(msg.content))), msg.sources)}\n\n`
       for (const part of attachmentParts(msg.content)) {
         const kind = part.type === 'image_url' ? 'Image' : 'File'
         const label = escapeHtml(partLabel(part))
