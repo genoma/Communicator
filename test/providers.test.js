@@ -597,7 +597,7 @@ test('chatCompletion maps null reasoningEffort to reasoning disabled body', asyn
     reasoningEffort: null,
   })
 
-  assert.deepEqual(sentBody.reasoning, { enabled: false })
+  assert.deepEqual(sentBody.reasoning, { exclude: true })
 })
 
 test('chatCompletion sends temperature in the request body for openrouter', async (t) => {

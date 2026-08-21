@@ -379,7 +379,10 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
   if (reasoningEffort) {
     body.reasoning = { effort: reasoningEffort, exclude: false }
   } else if (reasoningEffort === null) {
-    body.reasoning = { enabled: false }
+    // OpenRouter's documented disable field is `exclude: true` (the legacy
+    // `include_reasoning: false` maps to it); any other unknown key is
+    // silently ignored, so `enabled: false` must not be used here.
+    body.reasoning = { exclude: true }
   }
 
   onRequest?.(body)
