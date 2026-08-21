@@ -4,7 +4,8 @@ import { DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { getImageDefaults, mergeImageDefaults, clearImageDefault, savePreferences, savePrefsBestEffort, applyPreferenceUpdates } from '../config.js'
 import { findImageModel, selectImageEndpoint, selectModelAndEndpoint } from '../model-selection.js'
 import { sessionLabel } from '../ui/format.js'
-import { connectedBanner, buildImageStatusLine } from '../status-line.js'
+import { dim } from '../ui/style.js'
+import { connectedBanner, buildImageStatusLine, wrapStatusLine } from '../status-line.js'
 import { CliError, commandErrorLine } from '../errors.js'
 import { resolveAspectRatio, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
@@ -187,7 +188,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     }
 
     if (input === '/status') {
-      console.log(`Current settings: ${statusSegments().join('  ')}\n`)
+      console.log(`${wrapStatusLine(dim('Current settings:'), statusSegments())}\n`)
       continue
     }
 
@@ -214,7 +215,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         await persist()
         await savePrefs(applyPreferenceUpdates(prefs, { lastImageModel: next.id }))
         console.log(`Switched to ${sessionLabel(sel.endpointProviderName, sel.modelId)} [image]`)
-        console.log(`Current settings: ${statusSegments().join('  ')}\n`)
+        console.log(`${wrapStatusLine(dim('Current settings:'), statusSegments())}\n`)
         continue
       }
       // A text-model pick hands the session off to the normal chat REPL,

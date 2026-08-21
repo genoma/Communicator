@@ -10,12 +10,12 @@ import { attachmentLine, renderHistory } from '../../ui/stream.js'
 import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
 import { fetchModelPubKey } from '../../e2ee.js'
-import { buildStatusLine } from '../../status-line.js'
+import { buildStatusLine, wrapStatusLine } from '../../status-line.js'
 import { scrapeContext, scrapeMessage } from '../../scrape.js'
 const ARG_COMMANDS = new Set(['/temp', '/top-p', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments', '/scrape'])
 
 export function showStatus(ctx) {
-  console.log(`${dim('Current settings:')} ${buildStatusLine(ctx.state).join('  ')}\n`)
+  console.log(`${wrapStatusLine(dim('Current settings:'), buildStatusLine(ctx.state))}\n`)
 }
 
 export function budgetGuard(ctx) {

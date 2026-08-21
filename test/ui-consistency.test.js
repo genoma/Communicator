@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { createStreamRenderer, renderHistory, printSources, attachmentLine } from '../src/ui/stream.js'
 import { printArtifacts, printArtifactsSummary } from '../src/artifacts.js'
 import { printImageOutcome } from '../src/commands/image-gen.js'
-import { connectedBanner } from '../src/status-line.js'
+import { connectedBanner, wrapStatusLine } from '../src/status-line.js'
 import { styleText } from 'node:util'
 
 const ANSI = /\x1b\[[0-9;]*m/g
@@ -48,6 +48,36 @@ test('connectedBanner has one canonical layout for every segments/hints combinat
   assert.equal(
     connectedBanner(['venice / org/model', '[image]'], { hints: ['Describe an image to generate it.'] }),
     '\nConnected to venice / org/model  [image]\nDescribe an image to generate it.\n'
+  )
+})
+
+test('wrapStatusLine keeps segments atomic and aligns continuation lines under the first segment', () => {
+  const segments = [
+    '[1,048,576 context]',
+    '[in $0.08 / out $0.18/M]',
+    '[temp: 1]',
+    '[top-p: 0.95]',
+    '[smooth: on (normal, ~2000 chars/s)]',
+  ]
+  assert.equal(
+    wrapStatusLine('Connected to', segments, 72),
+    'Connected to [1,048,576 context]  [in $0.08 / out $0.18/M]  [temp: 1]\n' +
+    '             [top-p: 0.95]  [smooth: on (normal, ~2000 chars/s)]'
+  )
+  // No usable width (pipes) keeps the canonical single line.
+  assert.equal(wrapStatusLine('Connected to', segments, 0), `Connected to ${segments.join('  ')}`)
+})
+
+test('connectedBanner wraps long segment lists at the given width', () => {
+  const banner = connectedBanner(
+    ['A/provider/model', '[1,048,576 context]', '[in $0.08 / out $0.18/M]', '[temp: 1]', '[top-p: 0.95]'],
+    { width: 60 }
+  )
+  assert.equal(
+    banner,
+    '\nConnected to A/provider/model  [1,048,576 context]\n' +
+    '             [in $0.08 / out $0.18/M]  [temp: 1]\n' +
+    '             [top-p: 0.95]\n'
   )
 })
 

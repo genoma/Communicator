@@ -1,7 +1,8 @@
 import { getEffortLabel } from './prompts.js'
-import { DEFAULT_TEMPERATURE, formatCost, formatSmoothSpeed } from './constants.js'
+import { formatCost, formatSmoothSpeed } from './constants.js'
 import { formatModelPrice, sessionLabel } from './ui/format.js'
 import { dim } from './ui/style.js'
+import { sanitizeAnsi } from './ui/hyperlink.js'
 import { getImageDefaults } from './config.js'
 import { isPixelModel } from './image-sizing.js'
 
@@ -11,10 +12,33 @@ import { isPixelModel } from './image-sizing.js'
 const kv = (key, value) => `${dim(`[${key}: `)}${value}${dim(']')}`
 const tag = (text) => `${dim('[')}${text}${dim(']')}`
 
+// Greedy wrap of a status line at the terminal width: segments are atomic (a
+// badge never splits mid-way) and continuation lines align under the first
+// segment. With no usable width (pipes, unknown columns) the line stays
+// unwrapped, so non-TTY output is byte-identical to the pre-wrap layout.
+export function wrapStatusLine(prefix, segments, width = process.stdout.columns ?? 0) {
+  if (!(width > 0)) return `${prefix} ${segments.join('  ')}`
+  const indent = ' '.repeat(sanitizeAnsi(prefix).length + 1)
+  const rows = []
+  let row = prefix
+  for (const segment of segments) {
+    const sep = row === prefix ? ' ' : '  '
+    const next = `${row}${sep}${segment}`
+    if (row === prefix || sanitizeAnsi(next).length <= width) {
+      row = next
+    } else {
+      rows.push(row)
+      row = `${indent}${segment}`
+    }
+  }
+  rows.push(row)
+  return rows.join('\n')
+}
+
 export function buildStatusBadges(state) {
   const parts = []
   if (state.reasoningEffort != null) parts.push(kv('thinking', getEffortLabel(state.reasoningEffort)))
-  if (state.temperature !== DEFAULT_TEMPERATURE) parts.push(kv('temp', state.temperature))
+  parts.push(kv('temp', state.temperature))
   parts.push(kv('top-p', state.topP))
   if (state.zdr) parts.push(tag('zdr'))
   if (state.e2ee) parts.push(tag('e2ee'))
@@ -52,36 +76,36 @@ export function buildImageStatusLine({ model, imageModelId, endpointProviderName
   const saved = getImageDefaults(prefs, providerName)
   const badges = []
   const current = (sessionKey, defaultKey) => sessionValues[sessionKey] ?? saved[defaultKey]
-  if (providerName === 'venice' && prefs?.hideWatermark === true) badges.push('[watermark: off]')
+  if (providerName === 'venice' && prefs?.hideWatermark === true) badges.push(kv('watermark', 'off'))
   if (Array.isArray(c?.aspectRatios) || isPixelModel(model)) {
     const value = current('aspectRatio', 'aspectRatio')
-    if (value) badges.push(`[aspect: ${value}]`)
+    if (value) badges.push(kv('aspect', value))
   }
   if (Array.isArray(c?.resolutions)) {
     const value = current('resolution', 'resolution')
-    if (value) badges.push(`[resolution: ${value}]`)
+    if (value) badges.push(kv('resolution', value))
   }
   if (Array.isArray(c?.qualities)) {
     const value = current('quality', 'quality')
-    if (value) badges.push(`[quality: ${value}]`)
+    if (value) badges.push(kv('quality', value))
   }
   if (Array.isArray(c?.formats)) {
     const value = current('imageFormat', 'format')
-    if (value) badges.push(`[format: ${value}]`)
+    if (value) badges.push(kv('format', value))
   }
   if (c?.maxN == null || c?.maxN > 1) {
     const value = current('variants', 'variants')
-    if (value != null) badges.push(`[variants: ${value}]`)
+    if (value != null) badges.push(kv('variants', value))
   }
-  if (sessionValues.seed !== undefined) badges.push(`[seed: ${sessionValues.seed}]`)
-  return [sessionLabel(endpointProviderName, imageModelId), '[image]', ...badges]
+  if (sessionValues.seed !== undefined) badges.push(kv('seed', sessionValues.seed))
+  return [sessionLabel(endpointProviderName, imageModelId), tag('image'), ...badges]
 }
 
 // The one session greeting shared by chat, one-shot (TTY) and the image
 // session: leading blank line, `Connected to <segments joined '  '>`,
 // optional hint lines joined with "  |  ". Callers pass it to console.log
 // (the trailing newline is not included).
-export function connectedBanner(segments, { hints = [] } = {}) {
+export function connectedBanner(segments, { hints = [], width } = {}) {
   const hintText = hints.length > 0 ? `${hints.join('  |  ')}\n` : ''
-  return `\n${dim('Connected to')} ${segments.join('  ')}\n${hintText}`
+  return `\n${wrapStatusLine(dim('Connected to'), segments, width)}\n${hintText}`
 }

@@ -555,14 +555,14 @@ test('autocomplete commands omit /attach and /attachments when the model lacks v
   }
 })
 
-test('banner shows no badges for default temperature without reasoning or web search', async (t) => {
+test('banner always shows the sampling badges with defaults, hides non-default-only flags', async (t) => {
   const consoleSpy = mockConsole(t)
   const { provider } = fakeProvider()
   const harness = makeDeps({ readInput: scriptedInput(['/quit']) })
 
   await runChatSession(baseCtx(provider, { reasoningEffort: null, temperature: 0.7, webSearch: false }), harness.deps)
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [top-p: 0.95]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: 0.95]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('banner shows reasoning and web badges when active', async (t) => {
@@ -588,7 +588,7 @@ test('banner shows the zdr badge when active', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [top-p: 0.95]  [zdr]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: 0.95]  [zdr]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('e2ee shows the badge, forces web search off, and flows to chatCompletion', async (t) => {
@@ -606,7 +606,7 @@ test('e2ee shows the badge, forces web search off, and flows to chatCompletion',
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [top-p: 0.95]  [e2ee]  [smooth: on (normal, ~2000 chars/s)]\n/quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: 0.95]  [e2ee]  [smooth: on (normal, ~2000 chars/s)]\n/quit to exit\n')
   assert.equal(calls.length, 1)
   assert.equal(calls[0].e2ee, true)
   assert.equal(calls[0].webSearch, 'off')
@@ -635,7 +635,7 @@ test('banner shows a bare web badge when results are not set', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [top-p: 0.95]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: 0.95]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('banner shows the always badge', async (t) => {
@@ -648,7 +648,7 @@ test('banner shows the always badge', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [top-p: 0.95]  [web: always]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: 0.95]  [web: always]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('banner shows the always badge with a result count', async (t) => {
@@ -661,7 +661,7 @@ test('banner shows the always badge with a result count', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [top-p: 0.95]  [web: always: 5]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: 0.95]  [web: always: 5]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('status line updates after a config command and persists the pref', async (t) => {
