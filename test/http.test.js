@@ -196,6 +196,39 @@ test('assertSafeUrl blocks deprecated IPv6 site-local addresses', async () => {
   assert.equal(await assertSafeUrl('https://[2600:1f18:2::42]/x'), null)
 })
 
+test('assertSafeUrl blocks benchmark, NAT64, 6to4, Teredo and mapped IPv4 ranges', async () => {
+  const blocked = [
+    'http://198.18.0.1/x',
+    'http://198.19.255.1/x',
+    'http://[64:ff9b::a00:1]/x',
+    'http://[64:ff9b:1::a00:1]/x',
+    'http://[2002:c0a8:0101::1]/x',
+    'http://[2001:0:102:1001::1]/x',
+    'http://[2001:0000:102:1001::1]/x',
+    'http://[2001::1]/x',
+    // The URL parser canonicalizes [::ffff:10.0.0.1] to [::ffff:a00:1].
+    'http://[::ffff:10.0.0.1]/x',
+    'http://[::ffff:a00:1]/x',
+    'http://[::ffff:127.0.0.1]/x',
+    'http://[::ffff:7f00:1]/x',
+  ]
+  for (const url of blocked) {
+    assert.equal(await assertSafeUrl(url), 'blocked URL (private or loopback address)', url)
+  }
+  const allowed = [
+    'http://192.18.1.1/x',
+    'http://192.19.1.1/x',
+    'http://[2001:1::1]/x',
+    'http://[2001:db8::1]/x',
+    'http://[2001:4860:4860::8888]/x',
+    'http://[::ffff:102:304]/x',
+    'http://[::ffff:808:808]/x',
+  ]
+  for (const url of allowed) {
+    assert.equal(await assertSafeUrl(url), null, url)
+  }
+})
+
 function nodeResponse({ status = 200, headers = {}, body = null }) {
   let stream
   if (body == null) stream = Readable.from([])

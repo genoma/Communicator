@@ -16,14 +16,38 @@ function isPrivateAddress(address) {
     if (a === 192 && b === 168) return true
     if (a === 169 && b === 254) return true
     if (a === 100 && b >= 64 && b <= 127) return true
-    if (a === 192 && (b === 0 || b === 18 || b === 19)) return true
+    // IANA special-purpose and TEST-NET-1 (192.0.0.0/24, 192.0.2.0/24).
+    if (a === 192 && b === 0) return true
+    // RFC 2544 benchmark range 198.18.0.0/15.
+    if (a === 198 && (b === 18 || b === 19)) return true
     if (a >= 224) return true
     return false
   }
   if (isIP(address) === 6) {
     const lower = address.toLowerCase().split('%')[0]
     if (lower === '::1' || lower === '::' || lower === '0:0:0:0:0:0:0:1') return true
-    if (lower.startsWith('::ffff:')) return isPrivateAddress(lower.slice(7))
+    if (lower.startsWith('::ffff:')) {
+      // URL parsing canonicalizes mapped IPv4 into hex (::ffff:a00:1), so
+      // the tail must be re-expanded to a dotted quad when it is not one.
+      const tail = lower.slice(7)
+      if (/^(\d{1,3}\.){3}\d{1,3}$/.test(tail)) return isPrivateAddress(tail)
+      const groups = tail.split(':')
+      if (groups.length === 2 && groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) {
+        const hex = groups.map((g) => g.padStart(4, '0')).join('')
+        const ip4 = [0, 2, 4, 6].map((i) => parseInt(hex.slice(i, i + 2), 16)).join('.')
+        return isPrivateAddress(ip4)
+      }
+      return false
+    }
+    // NAT64 (RFC 6052 well-known 64:ff9b::/96 and local-use 64:ff9b:1::/48),
+    // 6to4 (RFC 3056 2002::/16) and Teredo (RFC 4380 2001::/32) can
+    // embed private IPv4 targets and must not pass the guard.
+    if (lower.startsWith('64:ff9b') || lower.startsWith('2002')) return true
+    if (lower.startsWith('2001')) {
+      // 2001:0000::/32 is the Teredo range; 2001:1::/48 and later are public.
+      const group = lower.split(':')[1]
+      if (group === '0' || group === '0000' || group === '') return true
+    }
     if (lower.startsWith('fc') || lower.startsWith('fd')) return true
     if (lower.startsWith('fe8') || lower.startsWith('fe9') || lower.startsWith('fea') || lower.startsWith('feb')) return true
     if (lower.startsWith('fec') || lower.startsWith('fed') || lower.startsWith('fee') || lower.startsWith('fef')) return true
