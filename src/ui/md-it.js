@@ -39,14 +39,14 @@ md.inline.ruler.after('backticks', 'citation', (state, silent) => {
 
 const INLINE_RULES = {
   text: (t) => sanitizeAnsi(t.content),
-  code_inline: (t) => styleText('cyan', t.content),
+  code_inline: (t) => styleText('cyan', sanitizeAnsi(t.content)),
   em_open: () => SGR.italic[0],
   em_close: () => SGR.italic[1],
   strong_open: () => SGR.bold[0],
   strong_close: () => SGR.bold[1],
   s_open: () => SGR.strike[0],
   s_close: () => SGR.strike[1],
-  image: (t) => dim(t.content),
+  image: (t) => dim(sanitizeAnsi(t.content)),
   softbreak: () => '\n',
   hardbreak: () => '\n',
   html_inline: (t) => sanitizeAnsi(t.content),

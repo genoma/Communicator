@@ -291,6 +291,14 @@ test('renderText resolves citations inside table cells', (t) => {
   assert.match(out, /\x1b\[3m\x1b\]8;;https:\/\/one\.example\x1b\\\[1\]\x1b\]8;;\x1b\\\x1b\[23m/)
 })
 
+test('renderText strips ANSI escapes inside table-cell inline code and image alt', (t) => {
+  enableAnsi(t)
+  const out = renderText('code | alt\n-----|-----\n`\x1b[2Jx` | ![a\x1b[5mb](https://x.com/i)')
+  assert.doesNotMatch(out, /\x1b\[2J|\x1b\[3J|\x1b\[5m|\x1b\[0m/)
+  assert.ok(out.replace(ANSI, '').replace(OSC8, '').includes('x'))
+  assert.doesNotMatch(renderText('![a\x1b[5mb](https://x.com/i)'), /\x1b\[5m/)
+})
+
 test('renderText keeps setext underlines as plain text', (t) => {
   enableAnsi(t)
   const out = renderText('Title\n===')
@@ -354,6 +362,19 @@ test('streaming renderer hides the partial line while the table is open', (t) =>
   assert.equal(plain(output()), 'a | b\n')
   renderer.write('\n')
   assert.equal(plain(output()), 'a | b\n\x1b[1A\r\x1b[Ja  b\n---  ---\n1  2\n\n')
+})
+
+test('streaming renderer strips ANSI escapes inside emitted table cells', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  renderer.write('code | alt\n')
+  renderer.write('-----|-----\n')
+  renderer.write('`\x1b[2Jx` | ![\x1b[5ma](https://x.com/i)\n')
+  renderer.write('\n')
+  const out = output()
+  assert.doesNotMatch(out, /\x1b\[2J|\x1b\[5m/)
+  assert.ok(plain(out).includes('x'))
 })
 
 test('streaming renderer rewinds a wrapped table header by its display rows', () => {
