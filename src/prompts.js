@@ -2,7 +2,7 @@ import { search, select } from '@inquirer/prompts'
 import { Separator } from '@inquirer/core'
 import { EFFORT_LABELS } from './constants.js'
 import { formatModelPrice, formatImagePrice } from './ui/format.js'
-import { hyperlink } from './ui/hyperlink.js'
+import { hyperlink, sanitizeAnsi, sanitizeSingleLine } from './ui/hyperlink.js'
 import { bold, dim } from './ui/style.js'
 
 export const BACK_SENTINEL = Symbol('back')
@@ -24,9 +24,9 @@ export const pickerTheme = {
 
 export function orderModelChoices(models, lastModel) {
   const choices = models.map((m) => ({
-    name: `${m.name}  (${m.id})${m.visionSupported === true ? '  [vision]' : ''}`,
+    name: sanitizeSingleLine(`${m.name}  (${m.id})${m.visionSupported === true ? '  [vision]' : ''}`),
     value: { id: m.id, name: m.name },
-    description: m.description || `${m.contextLength?.toLocaleString() || '?'} context`,
+    description: sanitizeAnsi(m.description || `${m.contextLength?.toLocaleString() || '?'} context`),
   }))
 
   if (lastModel) {
@@ -67,9 +67,9 @@ export async function selectModel(models, lastModel, zdrOnly = false) {
 
 export function orderImageModelChoices(models, lastImageModel) {
   const choices = models.map((m) => ({
-    name: `${m.name}  (${m.id})  [image]${m.offline === true ? '  [offline]' : ''}`,
+    name: sanitizeSingleLine(`${m.name}  (${m.id})  [image]${m.offline === true ? '  [offline]' : ''}`),
     value: { id: m.id, name: m.name },
-    description: m.description || m.id,
+    description: sanitizeAnsi(m.description || m.id),
   }))
 
   if (lastImageModel) {
@@ -119,12 +119,12 @@ export function formatEndpointLabel(ep) {
   const priceText = formatModelPrice(ep.pricing?.prompt, ep.pricing?.completion)
   const uptime = ep.uptime30m != null ? `${ep.uptime30m.toFixed(0)}% uptime` : '?'
   const zdr = ep.zdr ? '  [zero retention]' : ''
-  return `${ep.providerName}  —  ${priceText}  ${uptime}${zdr}`
+  return `${sanitizeSingleLine(ep.providerName)}  —  ${priceText}  ${uptime}${zdr}`
 }
 
 export function formatEndpointDescription(ep) {
   const parts = []
-  if (ep.tag) parts.push(`tag: ${ep.tag}`)
+  if (ep.tag) parts.push(`tag: ${sanitizeSingleLine(ep.tag)}`)
   if (ep.privacyPolicyURL) {
     const link = hyperlink(ep.privacyPolicyURL, 'privacy policy')
     if (link) parts.push(link)
@@ -137,7 +137,7 @@ export async function selectProvider(endpoints, zdrOnly = false) {
     const ep = endpoints[0]
     const priceText = formatModelPrice(ep.pricing?.prompt, ep.pricing?.completion)
     const zdr = ep.zdr ? ' [zero retention]' : ''
-    console.log(`Only one provider available: ${ep.providerName}${zdr} (${priceText})`)
+    console.log(`Only one provider available: ${sanitizeSingleLine(ep.providerName)}${zdr} (${priceText})`)
     return ep
   }
 
@@ -158,20 +158,20 @@ export async function selectProvider(endpoints, zdrOnly = false) {
 }
 
 export function formatImageEndpointLabel(ep) {
-  return `${ep.providerName}  —  ${formatImagePrice(ep.pricing)}`
+  return `${sanitizeSingleLine(ep.providerName)}  —  ${formatImagePrice(ep.pricing)}`
 }
 
 export async function selectImageProvider(endpoints, { withBack = false } = {}) {
   if (endpoints.length === 1) {
     const ep = endpoints[0]
-    console.log(`Only one provider available: ${ep.providerName} (${formatImagePrice(ep.pricing)})`)
+    console.log(`Only one provider available: ${sanitizeSingleLine(ep.providerName)} (${formatImagePrice(ep.pricing)})`)
     return ep
   }
 
   const providerChoices = endpoints.map((ep) => ({
     name: formatImageEndpointLabel(ep),
     value: ep,
-    description: ep.tag ? `tag: ${ep.tag}` : undefined,
+    description: ep.tag ? `tag: ${sanitizeSingleLine(ep.tag)}` : undefined,
   }))
 
   return providerSearchPrompt(
@@ -207,7 +207,7 @@ const FULL_EFFORT_LIST = ['max', 'xhigh', 'high', 'medium', 'low', 'minimal', 'n
 
 export function getEffortLabel(effort) {
   if (effort == null) return EFFORT_LABELS.none
-  return EFFORT_LABELS[effort] || effort
+  return EFFORT_LABELS[effort] || sanitizeSingleLine(effort)
 }
 
 export async function selectReasoningEffort(reasoning, lastEffort, opts = {}) {

@@ -1,4 +1,5 @@
 import { formatModelPrice } from '../ui/format.js'
+import { sanitizeSingleLine } from '../ui/hyperlink.js'
 import { selectModel } from '../prompts.js'
 import { CliError } from '../errors.js'
 
@@ -35,9 +36,9 @@ async function printEndpoints(provider, apiKey, modelId) {
     const priceText = formatModelPrice(ep.pricing?.prompt, ep.pricing?.completion)
     const uptime = ep.uptime30m != null ? `${ep.uptime30m.toFixed(0)}%` : '?'
     const zdrCol = ep.zdr !== undefined ? ` | zdr ${ep.zdr ? 'yes' : 'no'}` : ''
-    const privacyCol = ep.privacyPolicyURL ? ` | privacy ${ep.privacyPolicyURL}` : ''
+    const privacyCol = ep.privacyPolicyURL ? ` | privacy ${sanitizeSingleLine(ep.privacyPolicyURL)}` : ''
     console.log(
-      `${ep.providerName.padEnd(20)} | ${priceText.padEnd(26)} | uptime ${uptime} | tag ${ep.tag}${zdrCol}${privacyCol}`
+      `${sanitizeSingleLine(ep.providerName).padEnd(20)} | ${priceText.padEnd(26)} | uptime ${uptime} | tag ${sanitizeSingleLine(ep.tag)}${zdrCol}${privacyCol}`
     )
   }
 }

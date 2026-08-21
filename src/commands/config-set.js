@@ -5,6 +5,7 @@ import { applyPreferenceUpdates, savePreferences } from '../config.js'
 import { resolveFlagValues, normalizeWebSearchMode, webSearchGate, resolveAspectRatio, resolveImageFormat } from '../flags.js'
 import { getEffortLabel } from '../prompts.js'
 import { formatModelPrice } from '../ui/format.js'
+import { sanitizeSingleLine } from '../ui/hyperlink.js'
 import { CliError } from '../errors.js'
 import { DEFAULT_CONFIG_FILE, formatSmoothSpeed } from '../constants.js'
 
@@ -80,7 +81,7 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
   await savePreferences(updated, opts.config)
 
   if (opts.model !== undefined) {
-    const label = endpoint ? `${opts.model} via ${endpoint.providerName}` : opts.model
+    const label = endpoint ? `${sanitizeSingleLine(opts.model)} via ${sanitizeSingleLine(endpoint.providerName)}` : sanitizeSingleLine(opts.model)
     console.log(`Model: ${label}`)
     if (modelData.contextLength) console.log(`Context: ${modelData.contextLength.toLocaleString()} tokens`)
     const price = endpoint?.pricing

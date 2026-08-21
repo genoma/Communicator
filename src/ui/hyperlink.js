@@ -14,9 +14,11 @@ export function sanitizeAnsi(text) {
 
 // Link labels/URLs must stay single-line: newlines are stripped here in
 // addition to the escape removal.
-function sanitize(text) {
+export function sanitizeSingleLine(text) {
   return sanitizeAnsi(text).replace(/[\n\r]/g, '')
 }
+
+const sanitize = sanitizeSingleLine
 
 // Same scheme policy as the markdown exporter: only http(s) URLs may become
 // clickable terminal links.

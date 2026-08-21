@@ -1,4 +1,4 @@
-import { sanitizeAnsi } from './hyperlink.js'
+import { sanitizeAnsi, sanitizeSingleLine } from './hyperlink.js'
 
 // Rounds to `decimals` places and returns a plain string (no locale/sign
 // formatting): the money formatter for image prices and the image-generation
@@ -80,11 +80,12 @@ export function formatSessionTime(value, { utc = false } = {}) {
 }
 
 export function formatSessionItem(s) {
-  const time = formatSessionTime(s.id)
-  const model = s.model.length > 35 ? s.model.slice(0, 32) + '...' : s.model
+  const time = sanitizeSingleLine(formatSessionTime(s.id))
+  const model = sanitizeSingleLine(s.model)
+  const modelText = model.length > 35 ? model.slice(0, 32) + '...' : model
   const count = `${s.messageCount} msg${s.messageCount !== 1 ? 's' : ''}`
-  const preview = s.title || s.preview || ''
+  const preview = sanitizeSingleLine(s.title || s.preview || '')
   const previewText = preview ? `"${preview}${preview.length >= 60 ? '...' : ''}"` : ''
-  const line = `${time}  ${model.padEnd(37)} ${count.padEnd(12)} ${previewText}`
-  return { time, model, count, preview, line }
+  const line = `${time}  ${modelText.padEnd(37)} ${count.padEnd(12)} ${previewText}`
+  return { time, model: modelText, count, preview, line }
 }

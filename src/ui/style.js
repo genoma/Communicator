@@ -1,5 +1,6 @@
 import { styleText } from 'node:util'
 import { THIN_SEP } from '../constants.js'
+import { sanitizeSingleLine } from './hyperlink.js'
 
 export const dim = (text) => styleText('dim', text)
 export const bold = (text) => styleText('bold', text)
@@ -10,11 +11,11 @@ export const red = (text) => styleText('red', text)
 export const cyan = (text) => styleText('cyan', text)
 
 export function you(name = 'You') {
-  return styleText(['bold', 'cyan'], `❯ ${name}`)
+  return styleText(['bold', 'cyan'], `❯ ${sanitizeSingleLine(name)}`)
 }
 
 export function char(name) {
-  return styleText(['bold', 'green'], `❯ ${name}`)
+  return styleText(['bold', 'green'], `❯ ${sanitizeSingleLine(name)}`)
 }
 
 export function thinking() {

@@ -72,6 +72,14 @@ test('orderModelChoices tags vision-capable models', () => {
   assert.equal(ordered[2].name, 'Plain  (plain)')
 })
 
+test('orderModelChoices strips ANSI escapes from names and descriptions', () => {
+  const ordered = orderModelChoices([{ id: 'evil', name: 'Evil \x1b[2Jmodel', description: 'desc \x1b[3J\ncontinued' }])
+  assert.doesNotMatch(ordered[0].name, /\x1b/)
+  assert.doesNotMatch(ordered[0].description, /\x1b/)
+  assert.ok(ordered[0].description.includes('desc \ncontinued'))
+  assert.equal(ordered[0].name.includes('Evil'), true)
+})
+
 test('filterModelChoices finds the last-used model after ordering', () => {
   const ordered = orderModelChoices(MODELS, 'last-model')
   assert.deepEqual(filterModelChoices(ordered, 'last').map((c) => c.value.id), ['last-model'])
@@ -107,6 +115,13 @@ test('formatEndpointDescription shows the tag and a privacy-policy hyperlink whe
   assert.equal(formatEndpointDescription({ ...ENDPOINT, privacyPolicyURL: 'https://example.com/privacy' }),
     '\x1b]8;;https://example.com/privacy\x1b\\privacy policy\x1b]8;;\x1b\\')
   assert.equal(formatEndpointDescription(ENDPOINT), undefined)
+})
+
+test('formatEndpointLabel and descriptions strip ANSI escapes from provider fields', () => {
+  assert.doesNotMatch(formatEndpointLabel({ ...ENDPOINT, providerName: 'Evil \x1b[2JProvider' }), /\x1b/)
+  const desc = formatEndpointDescription({ ...ENDPOINT, tag: 'evil \x1b[3Jtag' })
+  assert.doesNotMatch(desc, /\x1b/)
+  assert.ok(desc.startsWith('tag: evil tag'))
 })
 
 const EFFORT_REASONING = { supported: true, supportsEffort: true, supported_efforts: ['high', 'medium', 'low'], default_effort: 'medium' }
