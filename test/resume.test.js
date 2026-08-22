@@ -87,8 +87,24 @@ test('resumeCmd keeps missing capability fields at their safe defaults', async (
   assert.equal(result.supportsReasoning, true)
   assert.equal(result.reasoningMandatory, false)
   assert.equal(result.webSearchSupported, undefined)
+  assert.equal(result.visionSupported, undefined)
+  assert.equal(result.fileSupported, undefined)
+  assert.equal(result.imageOutputSupported, undefined)
   assert.equal(result.isImageModel, false)
   assert.equal(result.scrapes, 0)
+})
+
+test('resumeCmd restores persisted capability flags', async () => {
+  sessionData = session({
+    visionSupported: true,
+    fileSupported: false,
+    imageOutputSupported: true,
+  })
+  const result = await resumeCmd('2026')
+
+  assert.equal(result.visionSupported, true)
+  assert.equal(result.fileSupported, false)
+  assert.equal(result.imageOutputSupported, true)
 })
 
 test('resumeCmd restores the mandatory-reasoning flag from the session file', async () => {

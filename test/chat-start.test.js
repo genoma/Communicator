@@ -99,6 +99,9 @@ function resumeSession(overrides = {}) {
     ],
     sessionId: '2026-01-01T00-00-00',
     sessionCreatedAt: '2026-01-01T00:00:00.000Z',
+    visionSupported: true,
+    fileSupported: false,
+    imageOutputSupported: true,
     ...overrides,
   }
 }
@@ -168,6 +171,9 @@ test('chatStart resume branch restores the session context', async (t) => {
   assert.equal(call.opts.webSearch, 'off')
   assert.equal(call.opts.webResults, null)
   assert.equal(call.opts.contextLength, 128000)
+  assert.equal(call.opts.visionSupported, true)
+  assert.equal(call.opts.fileSupported, false)
+  assert.equal(call.opts.imageOutputSupported, true)
   assert.equal(call.opts.sessionId, '2026-01-01T00-00-00')
   assert.equal(call.opts.initialMessages.length, 3)
   assert.equal(call.opts.configPath, configFile)
