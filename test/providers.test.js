@@ -743,6 +743,26 @@ test('venice chatCompletion maps a disabled reasoning effort to none', async (t)
   assert.equal(sentBody.reasoning_effort, 'none')
 })
 
+test('venice chatCompletion never sends a disable for mandatory-reasoning models', async (t) => {
+  const sentBodies = []
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBodies.push(JSON.parse(opts.body))
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await venice.chatCompletion({
+    apiKey: 'key',
+    model: 'm',
+    messages: [],
+    onToken: () => {},
+    reasoningEffort: null,
+    reasoningMandatory: true,
+    supportsReasoning: true,
+  })
+
+  assert.ok(!('reasoning_effort' in sentBodies[0]))
+})
+
 test('openrouter chatCompletion adds the web_search server tool with default max_results and max_total_results in auto mode', async (t) => {
   let sentBody
   t.mock.method(globalThis, 'fetch', async (url, opts) => {

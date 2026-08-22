@@ -257,7 +257,7 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   }]
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, onSources, reasoningEffort, supportsReasoning, sessionId, temperature, topP, webSearch, signal, e2ee = false, e2eeContext = null, onRequest = null }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, onSources, reasoningEffort, reasoningMandatory = false, supportsReasoning, sessionId, temperature, topP, webSearch, signal, e2ee = false, e2eeContext = null, onRequest = null }) {
   const headers = {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
@@ -299,7 +299,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
 
   if (reasoningEffort && supportsReasoning !== false) {
     body.reasoning_effort = reasoningEffort
-  } else if (reasoningEffort === null && supportsReasoning !== false) {
+  } else if (reasoningEffort === null && supportsReasoning !== false && !reasoningMandatory) {
     body.reasoning_effort = 'none'
   }
 
