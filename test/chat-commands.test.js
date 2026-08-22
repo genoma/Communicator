@@ -558,6 +558,24 @@ test('/retry clears the terminal and redraws history without the old answer afte
   assert.doesNotMatch(output, /first answer/)
 })
 
+test('/retry redraws the transcript even when no replacement arrives', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  const harness = makeCtx({ stdout })
+  const { ctx } = harness
+  ctx.runTurn = async () => {}
+  ctx.state.appendUser('hello')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'first answer' })
+
+  await chatCommands['/retry'](ctx)
+
+  const output = writes.join('')
+  assert.ok(output.includes('\x1b[2J\x1b[3J\x1b[H'))
+  assert.match(output, /hello/)
+  assert.doesNotMatch(output, /first answer/)
+})
+
 test('/retry reruns directly when the last message is a user message', async (t) => {
   mockConsole(t)
   const harness = makeCtx(); const { ctx } = harness

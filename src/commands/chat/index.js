@@ -357,16 +357,11 @@ const handlers = {
     const last = ctx.state.messages[ctx.state.messages.length - 1]
     if (last?.role === 'assistant') {
       ctx.state.popLastMessage()
-      const beforeCount = ctx.state.messages.length
       await ctx.runTurn()
-      // Once the replacement has actually landed, refresh the view so the old
-      // answer disappears from the transcript (during the stream both answers
-      // are visible, giving the same old/new transition most web UIs show).
-      // Check the count rather than the last role: a retryable failure can pop
-      // the user message and leave an older assistant as the last message.
-      if (ctx.state.messages.length > beforeCount) {
-        redrawForRetry(ctx)
-      }
+      // Refresh the transcript after every retry attempt. On success this
+      // removes the old answer; on failure or an empty replacement it keeps
+      // the screen in sync with the state after the old answer was popped.
+      redrawForRetry(ctx)
     } else if (last?.role === 'user') {
       await ctx.runTurn()
     } else {
