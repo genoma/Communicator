@@ -147,7 +147,7 @@ communicator --no-watermark                                            # hide th
 | `/scrape`      | Scrape a web page into the conversation as context (`/scrape <url>`, Venice only, $0.01 per page). Type the message on the next line after the command |
 | `/attach`      | Queue files for the next message (`/attach <path>...`). No args = same as `/attachments` |
 | `/attachments` | List the queued attachments, or clear them with `/attachments clear` |
-| `/retry`       | Re-run the last user turn (regenerates the last answer)                             |
+| `/retry`       | Re-run the last user turn (regenerates the last answer and replaces it in the TTY transcript) |
 | `/copy`        | Copy the last assistant response to the clipboard                                   |
 | `/markdown`    | Toggle terminal markdown rendering (default on)                                     |
 | `/smooth`      | Show smooth streaming state and speed, or set them with `/smooth on|off|<level>|<cps>` (a speed value implies on) |

@@ -28,6 +28,19 @@ function attachmentGateOptions(ctx) {
   return attachGateOptions(ctx.state, ctx.provider.meta)
 }
 
+// On TTY retries, replace the previous answer visually instead of leaving it
+// in place while the new one streams below. Non-TTY output (pipes/tests) is
+// left untouched so the plain transcript stays mechanical.
+function redrawForRetry(ctx) {
+  if (ctx.stdout?.isTTY !== true) return
+  ctx.stdout.write('\x1b[2J\x1b[3J\x1b[H')
+  renderHistory(ctx.state.messages, {
+    markdown: ctx.state.markdown,
+    stdout: ctx.stdout,
+    ...(ctx.rpgMarkers ?? {}),
+  })
+}
+
 const handlers = {
   '/quit': async () => ({ exit: true }),
 
@@ -339,7 +352,16 @@ const handlers = {
     const last = ctx.state.messages[ctx.state.messages.length - 1]
     if (last?.role === 'assistant') {
       ctx.state.popLastMessage()
+      const beforeCount = ctx.state.messages.length
       await ctx.runTurn()
+      // Once the replacement has actually landed, refresh the view so the old
+      // answer disappears from the transcript (during the stream both answers
+      // are visible, giving the same old/new transition most web UIs show).
+      // Check the count rather than the last role: a retryable failure can pop
+      // the user message and leave an older assistant as the last message.
+      if (ctx.state.messages.length > beforeCount) {
+        redrawForRetry(ctx)
+      }
     } else if (last?.role === 'user') {
       await ctx.runTurn()
     } else {
