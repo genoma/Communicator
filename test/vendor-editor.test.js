@@ -152,6 +152,14 @@ test('paste repaint is bottom-anchored even when the editor fits the terminal', 
   assert.equal(writes.some((w) => w.includes('\r\x1b[J')), true)
 })
 
+test('paste repaint returns to the line start so the prompt prefix is not duplicated', async (t) => {
+  const { value, writes } = await runEditor(t, { rows: 10, chunks: [buildPaste(['cerametal'])], submit: true })
+  assert.equal(value, 'cerametal')
+  const repaint = writes.find((w) => w.startsWith('\x1b[?25l\x1b[J'))
+  assert.ok(repaint, 'expected the post-paste repaint')
+  assert.ok(repaint.startsWith('\x1b[?25l\x1b[J\r> '), 'paste repaint should redraw from the start of the line')
+})
+
 test('submit skips the in-place redraw when the editor is taller than the terminal', async (t) => {
   const chunks = []
   const lines = ['one', 'two', 'three', 'four', 'five', 'six']

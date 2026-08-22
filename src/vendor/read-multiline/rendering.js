@@ -425,7 +425,20 @@ function repaintBelow(state) {
     state.pendingPasteRepaint = false;
     beginBatch(state);
     w(state, "\x1b[J");
-    drawPromptHeader(state);
+    // Move to the start of the current line before repainting.  The terminal
+    // still contains the existing line prefix (and any text left of the old
+    // cursor), so starting at the cursor would re-emit the prefix and duplicate
+    // it.  A carriage return only moves horizontally, so it does not rewind
+    // above the editor and cannot clamp/erase the transcript above.
+    w(state, "\r");
+    // The prompt header lives above the input rows in non-inline mode.  This
+    // repaint is deliberately bottom-anchored and cannot move up to redraw it;
+    // the header is already on screen and should not be re-emitted at the
+    // cursor line (that would duplicate it).  In inline mode the header is on
+    // the same line as the input, so it must be redrawn with the content.
+    if (state.inlinePrompt) {
+        drawPromptHeader(state);
+    }
     if (state.inlinePrompt) {
         w(state, renderLine(state, 0) + "\x1b[K");
     }
