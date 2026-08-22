@@ -129,7 +129,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
   // whole session down with a raw fs error.
   const savePrefs = savePrefsBestEffort((updates) => savePreferences(updates, configPath))
 
-  const sessionValues = {}
+  let sessionValues = {}
 
   const statusSegments = () => buildImageStatusLine({ model, imageModelId, endpointProviderName: model.endpointProviderName, sessionValues, prefs, providerName: provider.meta.name })
 
@@ -217,6 +217,9 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         next.pricing = sel.pricing
         model = next
         imageModelId = next.id
+        // Sizing options are model-specific; do not carry them into a model
+        // that may have different constraints.
+        sessionValues = {}
         await persist()
         await savePrefs(syncPreferenceUpdates(prefs, { lastImageModel: next.id }))
         console.log(`Switched to ${sessionLabel(sel.endpointProviderName, sel.modelId)} [image]`)

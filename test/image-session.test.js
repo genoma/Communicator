@@ -1242,7 +1242,7 @@ test('/seed with a value outside the range errors', async (t) => {
   assert.ok(errors.some((e) => e.includes('Error: --seed must be an integer between -999999999 and 999999999.')))
 })
 
-test('/model swap keeps the session sizing values even when the new model does not support them', async (t) => {
+test('/model swap clears session sizing values when the model changes', async (t) => {
   genCalls.length = 0
   genOpts.length = 0
   genModels.length = 0
@@ -1257,7 +1257,7 @@ test('/model swap keeps the session sizing values even when the new model does n
     readInput: scriptedInput(['/resolution 2K', '/model', 'a cat', '/quit']),
   }))
 
-  assert.equal(genOpts[0].resolution, '2K')
+  assert.equal(genOpts[0].resolution, undefined)
   assert.deepEqual(genModels, ['z-image-turbo'])
 })
 
