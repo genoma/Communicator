@@ -623,7 +623,7 @@ test('chatCompletion sends temperature in the request body for openrouter', asyn
   })
 
   assert.equal(sentBodies[0].temperature, 1.3)
-  assert.equal(sentBodies[1].temperature, 0.7)
+  assert.ok(!('temperature' in sentBodies[1]))
   assert.equal(sentBodies[0].top_p, 0.8)
   assert.ok(!('top_p' in sentBodies[1]))
 })
@@ -651,7 +651,7 @@ test('chatCompletion sends temperature in the request body for venice', async (t
   })
 
   assert.equal(sentBodies[0].temperature, 0.2)
-  assert.equal(sentBodies[1].temperature, 0.7)
+  assert.ok(!('temperature' in sentBodies[1]))
   assert.equal(sentBodies[0].top_p, 0.6)
   assert.ok(!('top_p' in sentBodies[1]))
 })
@@ -933,7 +933,7 @@ test('openrouter ignores supportsReasoning and maps sessionId to session_id', as
   assert.equal(sentBody.sessionId, undefined)
   assert.equal(sentBody.session_id, '2026-01-01T00-00-00')
   assert.deepEqual(sentBody.reasoning, { effort: 'high', exclude: false })
-  assert.deepEqual(Object.keys(sentBody).sort(), ['messages', 'model', 'reasoning', 'session_id', 'stream', 'temperature'])
+  assert.deepEqual(Object.keys(sentBody).sort(), ['messages', 'model', 'reasoning', 'session_id', 'stream'])
 })
 
 test('venice maps sessionId to prompt_cache_key with the full option set', async (t) => {

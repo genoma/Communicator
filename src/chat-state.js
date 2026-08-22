@@ -1,4 +1,4 @@
-import { DEFAULT_TEMPERATURE, DEFAULT_SYSTEM_PROMPT } from './constants.js'
+import { DEFAULT_SYSTEM_PROMPT } from './constants.js'
 import { normalizeSmoothSpeed, normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
@@ -100,7 +100,7 @@ export class ChatState {
     this.reasoningEffort = sel.reasoningEffort
     this.supportsReasoning = sel.supportsReasoning
     this.modelReasoning = sel.modelReasoning
-    this.temperature = prefs.temperature?.[sel.modelId] ?? DEFAULT_TEMPERATURE
+    this.temperature = prefs.temperature?.[sel.modelId]
     this.topP = prefs.topP?.[sel.modelId]
     this.webSearchSupported = sel.webSearchSupported
     this.webSearch = this.e2ee ? 'off' : (sel.webSearchSupported === false ? 'off' : normalizeWebSearchMode(prefs.webSearch?.[sel.modelId]))

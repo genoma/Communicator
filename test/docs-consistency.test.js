@@ -211,7 +211,6 @@ test('key defaults and enum values are mentioned in the docs', async () => {
 
   const backtickList = (values) => '`' + values.join('`, `') + '`'
   const tokens = [
-    ['default temperature', String(constants.DEFAULT_TEMPERATURE)],
     ['max temperature', `0-${constants.MAX_TEMPERATURE}`],
     ['max top-p', `0-${constants.MAX_TOP_P}`],
     ['default web search results', `default ${constants.DEFAULT_WEB_SEARCH_RESULTS}`],

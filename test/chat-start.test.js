@@ -568,7 +568,7 @@ test('chatStart hands an image session /model text pick into startChat with the 
   assert.equal(call.model, 'openrouter/auto')
   assert.equal(call.endpointProviderName, 'OpenAI')
   assert.equal(call.reasoningEffort, null)
-  assert.equal(call.temperature, 0.7)
+  assert.equal(call.temperature, undefined)
   assert.equal(call.opts.sessionId, '2026-01-01T00-00-00')
   assert.equal(call.opts.createdAt, '2026-01-01T00:00:00.000Z')
   assert.equal(call.opts.initialMessages.length, 3)

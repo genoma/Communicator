@@ -1,5 +1,5 @@
 import { getEffortLabel } from './prompts.js'
-import { formatCost, formatSmoothSpeed, formatTopP } from './constants.js'
+import { formatCost, formatSmoothSpeed, formatSamplingValue } from './constants.js'
 import { formatModelPrice, sessionLabel } from './ui/format.js'
 import { dim } from './ui/style.js'
 import { sanitizeAnsi } from './ui/hyperlink.js'
@@ -38,8 +38,8 @@ export function wrapStatusLine(prefix, segments, width = process.stdout.columns 
 export function buildStatusBadges(state) {
   const parts = []
   if (state.reasoningEffort != null) parts.push(kv('thinking', getEffortLabel(state.reasoningEffort)))
-  parts.push(kv('temp', state.temperature))
-  parts.push(kv('top-p', formatTopP(state.topP)))
+  parts.push(kv('temp', formatSamplingValue(state.temperature)))
+  parts.push(kv('top-p', formatSamplingValue(state.topP)))
   if (state.zdr) parts.push(tag('zdr'))
   if (state.e2ee) parts.push(tag('e2ee'))
   if (state.webSearch !== 'off') {

@@ -187,13 +187,13 @@ test('applyModelSelection switches model and reads per-model prefs', () => {
   assert.equal(s.fileSupported, false)
 })
 
-test('applyModelSelection falls back to default temperature and pref web search', () => {
+test('applyModelSelection leaves temperature unset without a pref', () => {
   const s = makeState()
   s.applyModelSelection(
     { modelId: 'm', endpointProviderName: 'P', pricing: null, reasoningEffort: null, supportsReasoning: false, modelReasoning: null, webSearchSupported: true },
     { temperature: {}, topP: {}, webSearch: { m: true } }
   )
-  assert.equal(s.temperature, 0.7)
+  assert.equal(s.temperature, undefined)
   assert.equal(s.topP, undefined)
   assert.equal(s.webSearch, 'auto')
 })

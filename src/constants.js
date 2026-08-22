@@ -11,8 +11,6 @@ export const DEFAULT_CONFIG_FILE = join(homedir(), '.communicator.json')
 
 export const DEFAULT_SYSTEM_PROMPT_FILE = join(homedir(), '.communicator-system-prompt.md')
 
-export const DEFAULT_TEMPERATURE = 0.7
-
 export const MAX_TEMPERATURE = 2
 
 export const MAX_TOP_P = 1
@@ -52,9 +50,9 @@ export function formatSmoothSpeed(cps) {
   return `${cps} chars/s`
 }
 
-// Top-p is only sent when explicitly set: unset sessions omit it from the
-// request so the provider applies its own default.
-export function formatTopP(value) {
+// Sampling params are only sent when explicitly set: unset sessions omit them
+// from the request so the provider applies its own default.
+export function formatSamplingValue(value) {
   return value ?? 'default'
 }
 
