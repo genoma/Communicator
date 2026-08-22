@@ -58,12 +58,14 @@ export async function findImageModel(provider, apiKey, modelId) {
 
 function imageModelSelection(model, provider, endpoint = null) {
   return {
+    id: model.id,
     modelId: model.id,
     isImageModel: true,
     endpointProviderName: endpoint?.providerName || provider.meta.name,
     pricing: endpoint?.pricing || model.pricing || null,
     imageProvider: endpoint?.slug || endpoint?.providerName || null,
     contextLength: null,
+    constraints: model.constraints ?? null,
     reasoningEffort: null,
     supportsReasoning: false,
     modelReasoning: null,

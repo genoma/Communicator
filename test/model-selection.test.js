@@ -430,12 +430,14 @@ test('findImageModel finds an image model by id and null for unknown ids', async
 })
 
 test('non-interactive selection falls back to the image shape for image model ids', async () => {
+  const constraints = { aspectRatios: ['1:1', '16:9'], formats: ['png', 'webp'], widthHeightDivisor: null }
   const provider = fakeProvider({
     async fetchImageModels() {
-      return [{ id: 'venice-sd35', name: 'SD 3.5', pricing: { perImage: 0.02 } }]
+      return [{ id: 'venice-sd35', name: 'SD 3.5', pricing: { perImage: 0.02 }, constraints }]
     },
   })
   const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: {}, modelId: 'venice-sd35' })
+  assert.equal(sel.id, 'venice-sd35')
   assert.equal(sel.modelId, 'venice-sd35')
   assert.equal(sel.isImageModel, true)
   assert.equal(sel.endpointProviderName, 'venice')
@@ -447,6 +449,7 @@ test('non-interactive selection falls back to the image shape for image model id
   assert.equal(sel.fileSupported, false)
   assert.equal(sel.imageOutputSupported, undefined)
   assert.equal(sel.contextLength, null)
+  assert.deepEqual(sel.constraints, constraints)
   assert.deepEqual(sel.pricing, { perImage: 0.02 })
 })
 
