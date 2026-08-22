@@ -109,6 +109,18 @@ export function clearImageDefault(prefs, providerName, key) {
   return { ...prefs, imageDefaults: { ...(prefs.imageDefaults || {}), [providerName]: defaults } }
 }
 
+// Per-model pref update: null clears the persisted value for the model
+// (sampling params only — null is never a valid temperature/top-p), anything
+// else sets it. Returns the original map when nothing changes.
+function mergePerModelPref(map, modelId, value) {
+  const unchanged = value === null && !(map && modelId in map)
+  if (unchanged) return map
+  const next = { ...map }
+  if (value === null) delete next[modelId]
+  else next[modelId] = value
+  return next
+}
+
 export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageModel, lastProvider, reasoningEffort, temperature, topP, webSearch, smoothStreaming, smoothSpeed, budget, webResults, outputDir, hideWatermark, safeMode, imageDefaults } = {}) {
   const merged = { ...prefs }
   if (lastModel !== undefined) merged.lastModel = lastModel
@@ -118,10 +130,12 @@ export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageMod
     merged.reasoningEffort = { ...prefs.reasoningEffort, [modelId]: reasoningEffort }
   }
   if (temperature !== undefined) {
-    merged.temperature = { ...prefs.temperature, [modelId]: temperature }
+    const next = mergePerModelPref(prefs.temperature, modelId, temperature)
+    if (next !== prefs.temperature) merged.temperature = next
   }
   if (topP !== undefined) {
-    merged.topP = { ...prefs.topP, [modelId]: topP }
+    const next = mergePerModelPref(prefs.topP, modelId, topP)
+    if (next !== prefs.topP) merged.topP = next
   }
   if (webSearch !== undefined) {
     merged.webSearch = { ...prefs.webSearch, [modelId]: webSearch }

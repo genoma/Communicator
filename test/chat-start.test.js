@@ -238,6 +238,24 @@ test('chatStart resume branch applies --temperature, --top-p, --budget and --web
   assert.equal(call.opts.webSearch, 'always')
 })
 
+test('chatStart resume branch --temperature default / --top-p default override the session values and clear the persisted prefs', async (t) => {
+  resumeResult = resumeSession()
+  withApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(console, 'log', () => {})
+
+  const prefs = { temperature: { 'test/model': 0.9 }, topP: { 'test/model': 0.8 } }
+  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x', temperature: 'default', topP: 'default', config: configFile }), prefs, systemPrompt: null, providerType: 'openrouter' })
+
+  const call = startChatCalls[startChatCalls.length - 1]
+  assert.equal(call.temperature, undefined)
+  assert.equal(call.opts.topP, undefined)
+
+  const saved = JSON.parse(await readFile(configFile, 'utf-8'))
+  assert.deepEqual(saved.temperature, {})
+  assert.deepEqual(saved.topP, {})
+})
+
 test('chatStart resume skips the image catalog when the session marker says text', async (t) => {
   resumeResult = resumeSession({ isImageModel: false })
   findImageModelCalls = 0
@@ -365,6 +383,38 @@ test('chatStart non-resume branch builds the context from selection and prefs', 
   assert.equal(call.opts.contextLength, 64000)
   assert.match(call.opts.sessionId, /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/)
   assert.ok(call.opts.createdAt)
+})
+
+test('chatStart non-resume branch --temperature default / --top-p default use the provider default and clear the persisted prefs', async (t) => {
+  resumeResult = null
+  nonInteractiveSelection = {
+    modelId: 'test/model',
+    endpointProviderName: 'ProviderX',
+    reasoningEffort: 'medium',
+    webSearchSupported: true,
+    visionSupported: undefined,
+    fileSupported: true,
+    pricing: { prompt: 1e-6, completion: 2e-6 },
+    contextLength: 64000,
+    supportsReasoning: true,
+    modelReasoning: null,
+  }
+
+  const { chatStart: chatStartFresh } = await import(`../src/commands/chat-start.js?t=${Date.now()}`)
+  withApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(console, 'log', () => {})
+
+  const prefs = { temperature: { 'test/model': 1.2 }, topP: { 'test/model': 0.9 } }
+  await chatStartFresh({ apiKey: 'k', opts: baseOpts({ model: 'test/model', temperature: 'default', topP: 'default', config: configFile }), prefs, systemPrompt: null, providerType: 'openrouter' })
+
+  const call = startChatCalls[startChatCalls.length - 1]
+  assert.equal(call.temperature, undefined)
+  assert.equal(call.opts.topP, undefined)
+
+  const saved = JSON.parse(await readFile(configFile, 'utf-8'))
+  assert.deepEqual(saved.temperature, {})
+  assert.deepEqual(saved.topP, {})
 })
 
 test('chatStart seeds the RPG first message as the opening assistant turn', async (t) => {

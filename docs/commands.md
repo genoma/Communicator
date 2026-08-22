@@ -9,8 +9,8 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 | `-m`  | `--model`             | `<id>`   | Skip all pickers and use this model ID directly (non-interactive)                    |
 | `-p`  | `--provider`          | `<name>` | Select the API backend: `openrouter` (default) or `venice`                           |
 |       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`. `none` disables reasoning. With `--model` alone, saves the per-model default |
-|       | `--temperature`       | `<0-2>`  | Temperature override for the session (unset: per-model preference, else the provider's own default). With `--model` alone, saves the per-model default |
-|       | `--top-p`             | `<0-1>`  | Top-p (nucleus sampling) override for the session (unset: per-model preference, else the provider's own default). With `--model` alone, saves the per-model default |
+|       | `--temperature`       | `<0-2\|default>`  | Temperature override for the session (`default`: provider default, clears the persisted per-model value; unset: per-model preference, else the provider's own default). With `--model` alone, saves the per-model default |
+|       | `--top-p`             | `<0-1\|default>`  | Top-p (nucleus sampling) override for the session (`default`: provider default, clears the persisted per-model value; unset: per-model preference, else the provider's own default). With `--model` alone, saves the per-model default |
 |       | `--budget`            | `<usd>`  | Per-session budget cap in USD. Warns at 80% used, refuses turns at 100%. Bare use saves the default |
 |       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `on`, `off` (`on` = `auto`; bare flag = `auto`). Per-model default is persisted in preferences |
 |       | `--web-results`       | `<n>`    | Number of web search results, 1–100 (OpenRouter only, default 10). Implies `auto` mode. Bare use saves the default |
@@ -139,8 +139,8 @@ communicator --no-watermark                                            # hide th
 | `/new`         | Save the current session and start a fresh one (same model and reasoning effort)    |
 | `/model`       | Save, then switch models mid-chat — re-picks reasoning effort and endpoint          |
 | `/reasoning`   | Re-run the reasoning effort picker for the current model                            |
-| `/temp`        | Set the session temperature (`/temp 0.4`), or show the current value with no args    |
-| `/top-p`       | Set the session top-p (`/top-p 0.8`), or show the current value with no args          |
+| `/temp`        | Set the session temperature (`/temp 0.4`), show the current value with no args, or reset it to the provider default with `/temp default` |
+| `/top-p`       | Set the session top-p (`/top-p 0.8`), show the current value with no args, or reset it to the provider default with `/top-p default` |
 | `/budget`      | Show used/remaining budget, or set one with `/budget <usd>`                          |
 | `/web-search`  | Set the web search mode (`/web-search auto|always|off`; `on` = `auto`), show the current mode with no args |
 | `/web-results` | Set the web search result count (`/web-results <n>`, OpenRouter only), show it with no args |

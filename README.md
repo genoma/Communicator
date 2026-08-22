@@ -8,8 +8,8 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Interactive model picker** — searchable and filterable by name or model ID, with context-length display
 - **Provider selection** — compare pricing, uptime %, and routing tags before starting a chat. Single-provider models skip this step automatically, and Venice models go straight to chat
 - **Reasoning effort control** — per-model effort level persisted across sessions. OpenRouter uses its native reasoning format; Venice uses the standard OpenAI `reasoning_effort`
-- **Temperature control** — `--temperature <0-2>` flag, `/temp` command, per-model default persisted in preferences (omitted unless set, so the provider default applies)
-- **Top-p control** — `--top-p <0-1>` flag, `/top-p` command, per-model default persisted in preferences (omitted unless set, so the provider default applies)
+- **Temperature control** — `--temperature <0-2|default>` flag, `/temp` command (with `default` to reset), per-model default persisted in preferences (omitted unless set, so the provider default applies)
+- **Top-p control** — `--top-p <0-1|default>` flag, `/top-p` command (with `default` to reset), per-model default persisted in preferences (omitted unless set, so the provider default applies)
 - **Web search** — three modes per model (`off`, `auto` = model decides, `always` = force a search) via `--web-search`/`/web-search`, with a result-count knob on OpenRouter. See [docs/web-search.md](docs/web-search.md)
 - **Web scraping** — scrape a public page into the conversation as markdown context with `--scrape <url>` (one-shot + prompt, or bare to open a chat with the page) and `/scrape <url>` mid-chat; flat $0.01 per page, tracked in the session cost. Venice only. See [docs/web-scrape.md](docs/web-scrape.md)
 - **File & image attachments** — attach images, PDFs, office files, and text/code files with `/attach <path>...` (interactive) or `--attach <path>` (one-shot). See [docs/attachments.md](docs/attachments.md)

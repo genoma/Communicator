@@ -93,8 +93,8 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
     }
   }
   if (values.outputDir !== undefined) console.log(`Export directory set to ${values.outputDir}`)
-  if (values.temperature !== undefined) console.log(`Temperature set to ${values.temperature} for ${opts.model}`)
-  if (values.topP !== undefined) console.log(`Top-p set to ${values.topP} for ${opts.model}`)
+  if (values.temperature !== undefined) console.log(`Temperature set to ${values.temperature ?? 'default'} for ${opts.model}`)
+  if (values.topP !== undefined) console.log(`Top-p set to ${values.topP ?? 'default'} for ${opts.model}`)
   if (values.reasoningEffort !== undefined) console.log(`Reasoning effort set to ${getEffortLabel(values.reasoningEffort)} for ${opts.model}`)
   if (values.webSearch !== undefined) console.log(`Web search set to ${values.webSearch} for ${opts.model}`)
   if (values.budget !== undefined) console.log(`Budget set to $${values.budget}`)

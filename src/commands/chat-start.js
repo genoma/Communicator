@@ -6,7 +6,7 @@ import { CliError } from '../errors.js'
 import { startChat } from '../chat.js'
 import { createNewSession } from '../sessions.js'
 import { resumeCmd } from './resume.js'
-import { getApiKey } from '../config.js'
+import { getApiKey, syncPreferenceUpdates } from '../config.js'
 import { resolveSessionFlags, persistSession, buildSessionContext } from '../session-setup.js'
 import { findImageModel } from '../model-selection.js'
 import { startImageSession } from './image-session.js'
@@ -56,12 +56,19 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     }
 
     const resumedEffort = result.reasoningEffort === 'auto' ? undefined : (result.reasoningEffort ?? null)
+    // "default" flags: unset for this run and clear the persisted per-model value.
+    if (forcedTemperature === null) {
+      syncPreferenceUpdates(prefs, { modelId: result.modelId, temperature: null })
+    }
+    if (forcedTopP === null) {
+      syncPreferenceUpdates(prefs, { modelId: result.modelId, topP: null })
+    }
     return {
       modelId: result.modelId,
       endpointProviderName: result.providerName,
       reasoningEffort: forcedEffort !== undefined ? forcedEffort : resumedEffort,
-      temperature: forcedTemperature ?? result.temperature,
-      topP: forcedTopP ?? result.topP,
+      temperature: forcedTemperature === null ? undefined : (forcedTemperature ?? result.temperature),
+      topP: forcedTopP === null ? undefined : (forcedTopP ?? result.topP),
       budget: forcedBudget ?? resolvePrefOrNull(resolveBudget, result.budget) ?? null,
       webSearch: e2ee ? 'off' : resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: result.webSearch }),
       webResults: e2ee ? null : forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), result.webResults) ?? null,

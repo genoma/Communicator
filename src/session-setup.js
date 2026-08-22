@@ -32,6 +32,19 @@ export function attachGateOptions(selection, providerMeta) {
   }
 }
 
+// Resolves a sampling param (temperature/top-p): an explicit flag wins over
+// the persisted per-model pref; a null forced value (the "default" keyword)
+// clears the persisted pref and falls back to the provider default.
+export function samplingPrefValue(forced, persisted, prefs, section, modelId) {
+  if (forced === null) {
+    if (prefs[section]?.[modelId] !== undefined) {
+      syncPreferenceUpdates(prefs, { modelId, [section]: null })
+    }
+    return undefined
+  }
+  return forced ?? persisted
+}
+
 export async function buildSessionContext({ provider, apiKey, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedWebResults, zdr, e2ee = false, allowInteractive = true }) {
   let selection
   if (opts.model) {
@@ -52,8 +65,8 @@ export async function buildSessionContext({ provider, apiKey, opts, prefs, force
 
   return {
     selection,
-    temperature: forcedTemperature ?? prefs.temperature?.[selection.modelId],
-    topP: forcedTopP ?? prefs.topP?.[selection.modelId],
+    temperature: samplingPrefValue(forcedTemperature, prefs.temperature?.[selection.modelId], prefs, 'temperature', selection.modelId),
+    topP: samplingPrefValue(forcedTopP, prefs.topP?.[selection.modelId], prefs, 'topP', selection.modelId),
     webSearch,
     webResults: e2ee ? null : forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), prefs.webResults) ?? null,
   }

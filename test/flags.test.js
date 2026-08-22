@@ -24,6 +24,10 @@ test('resolveTopPFlag returns undefined when unset', () => {
   assert.equal(resolveTopPFlag({ topP: '' }), undefined)
 })
 
+test('resolveTopPFlag maps default to the provider-default sentinel', () => {
+  assert.equal(resolveTopPFlag({ topP: 'default' }), null)
+})
+
 test('resolveTopPFlag rejects out-of-range and non-finite values', () => {
   assert.throws(() => resolveTopPFlag({ topP: '1.5' }), /between 0 and 1/)
   assert.throws(() => resolveTopPFlag({ topP: '-0.1' }), /between 0 and 1/)
@@ -38,6 +42,10 @@ test('resolveTemperatureFlag returns undefined when unset', () => {
   assert.equal(resolveTemperatureFlag({ temperature: undefined }), undefined)
   assert.equal(resolveTemperatureFlag({ temperature: null }), undefined)
   assert.equal(resolveTemperatureFlag({ temperature: '' }), undefined)
+})
+
+test('resolveTemperatureFlag maps default to the provider-default sentinel', () => {
+  assert.equal(resolveTemperatureFlag({ temperature: 'default' }), null)
 })
 
 test('resolveTemperatureFlag rejects out-of-range and non-finite values', () => {

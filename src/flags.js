@@ -22,7 +22,11 @@ export function resolveFlagValues(opts) {
   }
 }
 
+// 'default' resolves to null: the sentinel meaning "use the provider default"
+// (omit the param) and clear the persisted per-model value. undefined means
+// "not specified" (prefs fallback applies).
 export function resolveTemperatureFlag({ temperature } = {}) {
+  if (temperature === 'default') return null
   if (temperature === undefined || temperature === null || temperature === '') return undefined
   const num = Number(temperature)
   if (!Number.isFinite(num) || num < 0 || num > MAX_TEMPERATURE) {
@@ -32,6 +36,7 @@ export function resolveTemperatureFlag({ temperature } = {}) {
 }
 
 export function resolveTopPFlag({ topP } = {}) {
+  if (topP === 'default') return null
   if (topP === undefined || topP === null || topP === '') return undefined
   const num = Number(topP)
   if (!Number.isFinite(num) || num < 0 || num > MAX_TOP_P) {

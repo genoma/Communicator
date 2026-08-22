@@ -288,6 +288,16 @@ test('/temp sets a valid temperature and saves the pref', async (t) => {
   assert.equal(consoleSpy.log(0), 'Temperature set to 1.3\n')
 })
 
+test('/temp default clears the value and the persisted pref', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx()
+  await chatCommands['/temp']({ ...ctx, args: 'default' })
+  assert.equal(ctx.state.temperature, undefined)
+  assert.deepEqual(prefsUpdates, [{ modelId: 'org/model', temperature: null }])
+  assert.equal(consoleSpy.log(0), 'Temperature set to default (provider default).\n')
+  assert.match(consoleSpy.log(1), /\[temp: default\]/)
+})
+
 test('/temp rejects invalid values without changing state', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx, prefsUpdates } = makeCtx()
@@ -313,6 +323,16 @@ test('/top-p sets a valid top-p, saves the pref and prints the status line', asy
   assert.deepEqual(prefsUpdates, [{ modelId: 'org/model', topP: 0.6 }])
   assert.equal(consoleSpy.log(0), 'Top-p set to 0.6\n')
   assert.match(consoleSpy.log(1), /\[top-p: 0.6\]/)
+})
+
+test('/top-p default clears the value and the persisted pref', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx()
+  await chatCommands['/top-p']({ ...ctx, args: 'default' })
+  assert.equal(ctx.state.topP, undefined)
+  assert.deepEqual(prefsUpdates, [{ modelId: 'org/model', topP: null }])
+  assert.equal(consoleSpy.log(0), 'Top-p set to default (provider default).\n')
+  assert.match(consoleSpy.log(1), /\[top-p: default\]/)
 })
 
 test('/top-p rejects invalid values without changing state', async (t) => {

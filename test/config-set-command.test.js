@@ -141,6 +141,24 @@ test('configSetCmd merges existing provider defaults instead of replacing them',
   assert.deepEqual(saveCalls[0].prefs.imageDefaults, { venice: { aspectRatio: '3:2', format: 'webp' } })
 })
 
+test('configSetCmd with --temperature default clears the pref and prints default', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  saveCalls.length = 0
+  fetchModelsImpl = async () => [
+    { id: 'org/m', name: 'M', contextLength: 1000, reasoning: { supported: true, supportsEffort: false } },
+  ]
+  fetchEndpointsImpl = async () => [
+    { providerName: 'ProviderX', pricing: { prompt: 1e-6, completion: 2e-6 }, supportedParameters: {} },
+  ]
+
+  await configSetCmd({ opts: opts({ model: 'org/m', temperature: 'default' }), prefs: { temperature: { 'org/m': 1.2 } }, providerType: 'openrouter', apiKey: 'k' })
+
+  assert.equal(saveCalls.length, 1)
+  assert.equal(saveCalls[0].prefs.temperature, null)
+  assert.ok(logs.some((l) => l.includes('Temperature set to default for org/m')))
+})
+
 test('configSetCmd without image flags adds no imageDefaults key', async () => {
   saveCalls.length = 0
 

@@ -38,6 +38,23 @@ test('applyPreferenceUpdates keeps other per-model entries untouched', () => {
   assert.deepEqual(updated.topP, { 'model-a': 0.8, 'model-b': 0.9 })
 })
 
+test('applyPreferenceUpdates with null clears the per-model sampling pref', () => {
+  const prefs = {
+    temperature: { 'model-a': 1.1, 'model-b': 0.2 },
+    topP: { 'model-a': 0.8, 'model-b': 0.4 },
+  }
+  const updated = applyPreferenceUpdates(prefs, { modelId: 'model-a', temperature: null, topP: null })
+
+  assert.deepEqual(updated.temperature, { 'model-b': 0.2 })
+  assert.deepEqual(updated.topP, { 'model-b': 0.4 })
+})
+
+test('applyPreferenceUpdates with null for an unset key leaves the map unchanged', () => {
+  const prefs = { temperature: { 'model-a': 1.1 } }
+  const updated = applyPreferenceUpdates(prefs, { modelId: 'model-b', temperature: null })
+  assert.deepEqual(updated.temperature, { 'model-a': 1.1 })
+})
+
 test('applyPreferenceUpdates sets lastModel and lastProvider', () => {
   const updated = applyPreferenceUpdates({}, {
     modelId: 'm',

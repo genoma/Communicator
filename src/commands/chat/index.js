@@ -169,6 +169,13 @@ const handlers = {
       console.log(`Current temperature: ${formatSamplingValue(ctx.state.temperature)}\n`)
       return
     }
+    if (value === 'default') {
+      ctx.state.setTemperature(undefined)
+      await ctx.savePrefs({ modelId: ctx.state.modelId, temperature: null })
+      console.log('Temperature set to default (provider default).\n')
+      showStatus(ctx)
+      return
+    }
     let parsed
     try {
       parsed = resolveTemperatureFlag({ temperature: value })
@@ -186,6 +193,13 @@ const handlers = {
     const value = ctx.args
     if (!value) {
       console.log(`Current top-p: ${formatSamplingValue(ctx.state.topP)}\n`)
+      return
+    }
+    if (value === 'default') {
+      ctx.state.setTopP(undefined)
+      await ctx.savePrefs({ modelId: ctx.state.modelId, topP: null })
+      console.log('Top-p set to default (provider default).\n')
+      showStatus(ctx)
       return
     }
     let parsed
