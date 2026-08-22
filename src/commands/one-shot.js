@@ -75,8 +75,12 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     ...(rpgHistory ? rpgHistory : rpgFirstMessage ? [{ role: 'assistant', content: rpgFirstMessage }] : []),
     ...(scraped ? [{ role: 'user', content: scrapeMessage(scraped.url, scraped.content) }] : []),
     { role: 'user', content: buildContent(text, attachments) },
-    ...(rpgPostHistoryInstruction ? [{ role: 'system', content: rpgPostHistoryInstruction }] : []),
   ]
+  // The post-history instruction is a request-only message: it is sent after
+  // the latest user turn but never persisted into the global session file.
+  const requestMessages = rpgPostHistoryInstruction
+    ? [...messages, { role: 'system', content: rpgPostHistoryInstruction }]
+    : messages
 
   // The scrape already happened (and was billed) before this command ran; add
   // its flat cost so the turn/budget lines below account for it.
@@ -104,7 +108,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     const completionOpts = {
       apiKey,
       model: selection.modelId,
-      messages,
+      messages: requestMessages,
       provider: selection.endpointProviderName,
       reasoningEffort: selection.reasoningEffort,
       reasoningMandatory: selection.modelReasoning?.mandatory === true,

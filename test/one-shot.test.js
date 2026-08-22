@@ -247,6 +247,14 @@ test('one-shot appends the RPG post-history instruction after the user message w
   t.mock.method(process.stdout, 'write', () => true)
   mockExit(t)
 
+  const sessionsDir = join(tempHome, '.communicator', 'sessions')
+  let before = new Set()
+  try {
+    before = new Set((await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.')))
+  } catch {
+    // No sessions exist yet; the new one below is the only file.
+  }
+
   const { exited } = await runOneShot(t, {
     overrides: { config: file, rpg: rpgDir },
     systemPrompt: 'RPG system prompt',
@@ -264,6 +272,13 @@ test('one-shot appends the RPG post-history instruction after the user message w
     'Hello',
     'Hello world',
   ])
+
+  const created = (await readdir(sessionsDir))
+    .filter((f) => f.endsWith('.json') && !f.startsWith('.') && !before.has(f))
+  assert.equal(created.length, 1)
+  const saved = JSON.parse(await readFile(join(sessionsDir, created[0]), 'utf-8'))
+  assert.deepEqual(saved.messages.map((m) => m.role), ['system', 'assistant', 'user', 'assistant'])
+  assert.ok(!saved.messages.some((m) => m.role === 'system' && m.content === 'Stay in character.'))
 })
 
 test('one-shot sends no post-history message when none is provided', async (t) => {
