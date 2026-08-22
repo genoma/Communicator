@@ -2,7 +2,7 @@ import { formatError, commandErrorLine } from '../../errors.js'
 import { selectModelAndEndpoint } from '../../model-selection.js'
 import { getEffortLabel, selectReasoningEffort } from '../../prompts.js'
 import { resolveTemperatureFlag, resolveTopPFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, webSearchGate } from '../../flags.js'
-import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed, SCRAPE_COST_USD } from '../../constants.js'
+import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed, formatTopP, SCRAPE_COST_USD } from '../../constants.js'
 import { budgetStatusLine, budgetExhaustedMessage } from '../../tracker.js'
 import { sessionLabel } from '../../ui/format.js'
 import { dim } from '../../ui/style.js'
@@ -185,7 +185,7 @@ const handlers = {
   '/top-p': async (ctx) => {
     const value = ctx.args
     if (!value) {
-      console.log(`Current top-p: ${ctx.state.topP}\n`)
+      console.log(`Current top-p: ${formatTopP(ctx.state.topP)}\n`)
       return
     }
     let parsed

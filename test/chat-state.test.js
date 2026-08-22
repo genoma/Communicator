@@ -31,7 +31,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   assert.equal(s.endpointProviderName, 'Provider')
   assert.equal(s.reasoningEffort, 'high')
   assert.equal(s.temperature, 1.1)
-  assert.equal(s.topP, 0.95)
+  assert.equal(s.topP, undefined)
   assert.equal(s.budget, 5)
   assert.deepEqual(s.pricing, { prompt: 0.000001, completion: 0.000002 })
   assert.equal(s.supportsReasoning, true)
@@ -98,7 +98,7 @@ test('toFinalState returns exactly the old finalState field list', () => {
   assert.equal(state.endpointProviderName, 'Provider')
   assert.equal(state.reasoningEffort, 'high')
   assert.equal(state.temperature, 1.1)
-  assert.equal(state.topP, 0.95)
+  assert.equal(state.topP, undefined)
   assert.equal(state.budget, 5)
   assert.equal(state.webSearch, 'auto')
   assert.equal(state.webResults, 3)
@@ -194,7 +194,7 @@ test('applyModelSelection falls back to default temperature and pref web search'
     { temperature: {}, topP: {}, webSearch: { m: true } }
   )
   assert.equal(s.temperature, 0.7)
-  assert.equal(s.topP, 0.95)
+  assert.equal(s.topP, undefined)
   assert.equal(s.webSearch, 'auto')
 })
 

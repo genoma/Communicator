@@ -1,7 +1,7 @@
 import { parseSSEStream } from '../sse-parser.js'
 import { fetchSafeBytes, fetchWithRetry } from '../http.js'
 import { ApiError, makeHandleHttpError } from '../errors.js'
-import { DEFAULT_TEMPERATURE, DEFAULT_TOP_P, DEFAULT_WEB_SEARCH_RESULTS, IMAGE_GEN_TIMEOUT_MS, MAX_IMAGE_ATTACHMENT_BYTES } from '../constants.js'
+import { DEFAULT_TEMPERATURE, DEFAULT_WEB_SEARCH_RESULTS, IMAGE_GEN_TIMEOUT_MS, MAX_IMAGE_ATTACHMENT_BYTES } from '../constants.js'
 import { getZdrIndex, getProviderPolicies, OPENROUTER_BASE, CACHE_TTL_MS } from './openrouter-meta.js'
 import { mimeForExt, extForMime } from '../attachments.js'
 
@@ -335,13 +335,13 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   }))
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, onSources, provider, reasoningEffort, temperature = DEFAULT_TEMPERATURE, topP = DEFAULT_TOP_P, webSearch, webResults, zdr = false, signal, onRequest = null, sessionId = null }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, onSources, provider, reasoningEffort, temperature = DEFAULT_TEMPERATURE, topP, webSearch, webResults, zdr = false, signal, onRequest = null, sessionId = null }) {
   const body = {
     model,
     messages,
     stream: true,
     temperature,
-    top_p: topP,
+    ...(topP !== undefined ? { top_p: topP } : {}),
   }
 
   if (anthropicAutoCachingAvailable(model, provider)) {

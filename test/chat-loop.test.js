@@ -404,7 +404,7 @@ test('idle SIGINT flushes preference updates before exiting', async (t) => {
     lastProvider: 'Provider',
     reasoningEffort: 'high',
     temperature: 1.1,
-    topP: 0.95,
+    topP: undefined,
     webSearch: 'off',
     webResults: null,
   })
@@ -562,7 +562,7 @@ test('banner always shows the sampling badges with defaults, hides non-default-o
 
   await runChatSession(baseCtx(provider, { reasoningEffort: null, temperature: 0.7, webSearch: false }), harness.deps)
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: 0.95]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: default]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('banner shows reasoning and web badges when active', async (t) => {
@@ -575,7 +575,7 @@ test('banner shows reasoning and web badges when active', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.1]  [top-p: 0.95]  [web: auto: 3]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.1]  [top-p: default]  [web: auto: 3]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('banner shows the zdr badge when active', async (t) => {
@@ -588,7 +588,7 @@ test('banner shows the zdr badge when active', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: 0.95]  [zdr]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: default]  [zdr]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('e2ee shows the badge, forces web search off, and flows to chatCompletion', async (t) => {
@@ -606,7 +606,7 @@ test('e2ee shows the badge, forces web search off, and flows to chatCompletion',
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: 0.95]  [e2ee]  [smooth: on (normal, ~2000 chars/s)]\n/quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: default]  [e2ee]  [smooth: on (normal, ~2000 chars/s)]\n/quit to exit\n')
   assert.equal(calls.length, 1)
   assert.equal(calls[0].e2ee, true)
   assert.equal(calls[0].webSearch, 'off')
@@ -635,7 +635,7 @@ test('banner shows a bare web badge when results are not set', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: 0.95]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: default]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('banner shows the always badge', async (t) => {
@@ -648,7 +648,7 @@ test('banner shows the always badge', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: 0.95]  [web: always]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: default]  [web: always]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('banner shows the always badge with a result count', async (t) => {
@@ -661,7 +661,7 @@ test('banner shows the always badge with a result count', async (t) => {
     harness.deps
   )
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: 0.95]  [web: always: 5]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: default]  [web: always: 5]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('status line updates after a config command and persists the pref', async (t) => {
@@ -672,7 +672,7 @@ test('status line updates after a config command and persists the pref', async (
   await runChatSession(baseCtx(provider), harness.deps)
 
   const statusLine = consoleSpy.allLogs().find((l) => l.startsWith('Current settings:'))
-  assert.equal(statusLine, 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 0.5]  [top-p: 0.95]  [smooth: on (normal, ~2000 chars/s)]\n')
+  assert.equal(statusLine, 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 0.5]  [top-p: default]  [smooth: on (normal, ~2000 chars/s)]\n')
   const saved = harness.prefsCalls.flat()
   assert.ok(saved.some((u) => u.modelId === 'org/model' && u.temperature === 0.5))
 })
@@ -685,7 +685,7 @@ test('/status prints the current settings in the live session', async (t) => {
   await runChatSession(baseCtx(provider), harness.deps)
 
   const statusLine = consoleSpy.allLogs().find((l) => l.startsWith('Current settings:'))
-  assert.equal(statusLine, 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.1]  [top-p: 0.95]  [smooth: on (normal, ~2000 chars/s)]\n')
+  assert.equal(statusLine, 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.1]  [top-p: default]  [smooth: on (normal, ~2000 chars/s)]\n')
 })
 
 test('startup hint includes /attach when vision capability is unknown', async (t) => {
@@ -695,7 +695,7 @@ test('startup hint includes /attach when vision capability is unknown', async (t
 
   await runChatSession(baseCtx(provider), harness.deps)
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.1]  [top-p: 0.95]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.1]  [top-p: default]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
 test('startup hint omits /attach when the model lacks vision', async (t) => {
@@ -705,7 +705,7 @@ test('startup hint omits /attach when the model lacks vision', async (t) => {
 
   await runChatSession(baseCtx(provider, { visionSupported: false }), harness.deps)
 
-  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.1]  [top-p: 0.95]  [smooth: on (normal, ~2000 chars/s)]\n/quit to exit\n')
+  assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 1.1]  [top-p: default]  [smooth: on (normal, ~2000 chars/s)]\n/quit to exit\n')
 })
 
 test('retry pops the assistant message and resends the same user message', async (t) => {

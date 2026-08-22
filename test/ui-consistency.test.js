@@ -56,13 +56,13 @@ test('wrapStatusLine keeps segments atomic and aligns continuation lines under t
     '[1,048,576 context]',
     '[in $0.08 / out $0.18/M]',
     '[temp: 1]',
-    '[top-p: 0.95]',
+    '[top-p: default]',
     '[smooth: on (normal, ~2000 chars/s)]',
   ]
   assert.equal(
     wrapStatusLine('Connected to', segments, 72),
     'Connected to [1,048,576 context]  [in $0.08 / out $0.18/M]  [temp: 1]\n' +
-    '             [top-p: 0.95]  [smooth: on (normal, ~2000 chars/s)]'
+    '             [top-p: default]  [smooth: on (normal, ~2000 chars/s)]'
   )
   // No usable width (pipes) keeps the canonical single line.
   assert.equal(wrapStatusLine('Connected to', segments, 0), `Connected to ${segments.join('  ')}`)
@@ -70,14 +70,14 @@ test('wrapStatusLine keeps segments atomic and aligns continuation lines under t
 
 test('connectedBanner wraps long segment lists at the given width', () => {
   const banner = connectedBanner(
-    ['A/provider/model', '[1,048,576 context]', '[in $0.08 / out $0.18/M]', '[temp: 1]', '[top-p: 0.95]'],
+    ['A/provider/model', '[1,048,576 context]', '[in $0.08 / out $0.18/M]', '[temp: 1]', '[top-p: default]'],
     { width: 60 }
   )
   assert.equal(
     banner,
     '\nConnected to A/provider/model  [1,048,576 context]\n' +
     '             [in $0.08 / out $0.18/M]  [temp: 1]\n' +
-    '             [top-p: 0.95]\n'
+    '             [top-p: default]\n'
   )
 })
 

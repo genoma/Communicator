@@ -63,7 +63,7 @@ Connected to OpenRouter / deepseek/deepseek-chat  [131,072 context]  [in $0.10 /
 ```
 
 - The context and pricing segments appear only when known; the pricing format is `in $X.XX / out $Y.YY/M`.
-- Badges `[thinking: …]`, `[zdr]`, `[e2ee]`, `[web: <mode>[: N]]` appear only when they deviate from the default; `[temp: …]` and `[top-p: …]` are always shown so the active sampling settings are visible on connect and in `/status`; `[budget: …]` only when a cap is set; the smooth-streaming badge is always present.
+- Badges `[thinking: …]`, `[zdr]`, `[e2ee]`, `[web: <mode>[: N]]` appear only when they deviate from the default; `[temp: …]` and `[top-p: …]` are always shown so the active sampling settings are visible on connect and in `/status` (`[top-p: default]` when unset — the parameter is then omitted from the request and the provider applies its own default); `[budget: …]` only when a cap is set; the smooth-streaming badge is always present.
 - On a narrow terminal the snapshot line wraps at the terminal width — badges are atomic (a badge never splits mid-way) and continuation lines align under the model label; piped output stays on one unwrapped line.
 
 The same line is re-printed as `Current settings: …` after every mid-chat config change (`/temp`, `/top-p`, `/reasoning`, `/web-search`, `/web-results`, `/smooth`, `/budget`, `/model`, `/new`) and by `/status` on demand. All values are persisted per model where applicable, so the next session's banner reflects what you last set.

@@ -1,6 +1,6 @@
 import { getProvider } from '../providers/index.js'
 import { resolveWebSearchFlag, resolveBudget, resolveWebResultsFlag, resolvePrefOrNull } from '../flags.js'
-import { DEFAULT_TEMPERATURE, DEFAULT_TOP_P, DEFAULT_SYSTEM_PROMPT } from '../constants.js'
+import { DEFAULT_TEMPERATURE, DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { scrapeMessage } from '../scrape.js'
 import { CliError } from '../errors.js'
 import { startChat } from '../chat.js'
@@ -61,7 +61,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
       endpointProviderName: result.providerName,
       reasoningEffort: forcedEffort !== undefined ? forcedEffort : resumedEffort,
       temperature: forcedTemperature ?? result.temperature ?? DEFAULT_TEMPERATURE,
-      topP: forcedTopP ?? result.topP ?? DEFAULT_TOP_P,
+      topP: forcedTopP ?? result.topP,
       budget: forcedBudget ?? resolvePrefOrNull(resolveBudget, result.budget) ?? null,
       webSearch: e2ee ? 'off' : resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: result.webSearch }),
       webResults: e2ee ? null : forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), result.webResults) ?? null,
@@ -235,7 +235,7 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMes
       endpointProviderName: selection.endpointProviderName,
       reasoningEffort: selection.reasoningEffort,
       temperature: prefs.temperature?.[selection.modelId] ?? DEFAULT_TEMPERATURE,
-      topP: prefs.topP?.[selection.modelId] ?? DEFAULT_TOP_P,
+      topP: prefs.topP?.[selection.modelId],
       pricing: selection.pricing,
       initialMessages: messages,
       sessionId,

@@ -62,12 +62,12 @@ test('resumeCmd maps the session payload with normalized values', async () => {
   assert.equal(result.initialMessages.length, 3)
 })
 
-test('resumeCmd defaults temperature and normalizes legacy values', async () => {
+test('resumeCmd defaults temperature, leaves topP unset and normalizes legacy values', async () => {
   sessionData = session({ temperature: undefined, topP: undefined, webSearch: true, contextLength: null, webResults: null })
   const result = await resumeCmd('2026')
 
   assert.equal(result.temperature, 0.7)
-  assert.equal(result.topP, 0.95)
+  assert.equal(result.topP, undefined)
   assert.equal(result.webSearch, 'auto')
   assert.equal(result.webResults, null)
   assert.equal(result.contextLength, null)

@@ -1,7 +1,7 @@
 import { resolveFlagValues, resolveWebSearchFlag, webSearchGate, resolvePrefOrNull, resolveBudget, resolveWebResultsFlag, normalizeSmoothSpeed } from './flags.js'
 import { CliError } from './errors.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from './model-selection.js'
-import { DEFAULT_TEMPERATURE, DEFAULT_TOP_P } from './constants.js'
+import { DEFAULT_TEMPERATURE } from './constants.js'
 import { persistSessionFile, buildSessionPayload } from './sessions.js'
 import { savePreferences, savePrefsBestEffort, syncPreferenceUpdates } from './config.js'
 
@@ -53,7 +53,7 @@ export async function buildSessionContext({ provider, apiKey, opts, prefs, force
   return {
     selection,
     temperature: forcedTemperature ?? prefs.temperature?.[selection.modelId] ?? DEFAULT_TEMPERATURE,
-    topP: forcedTopP ?? prefs.topP?.[selection.modelId] ?? DEFAULT_TOP_P,
+    topP: forcedTopP ?? prefs.topP?.[selection.modelId],
     webSearch,
     webResults: e2ee ? null : forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), prefs.webResults) ?? null,
   }

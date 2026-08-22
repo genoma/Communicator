@@ -10,7 +10,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 | `-p`  | `--provider`          | `<name>` | Select the API backend: `openrouter` (default) or `venice`                           |
 |       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`. `none` disables reasoning. With `--model` alone, saves the per-model default |
 |       | `--temperature`       | `<0-2>`  | Temperature override for the session (default: per-model preference, then 0.7). With `--model` alone, saves the per-model default |
-|       | `--top-p`             | `<0-1>`  | Top-p (nucleus sampling) override for the session (default: per-model preference, then 0.95). With `--model` alone, saves the per-model default |
+|       | `--top-p`             | `<0-1>`  | Top-p (nucleus sampling) override for the session (unset: per-model preference, else the provider's own default). With `--model` alone, saves the per-model default |
 |       | `--budget`            | `<usd>`  | Per-session budget cap in USD. Warns at 80% used, refuses turns at 100%. Bare use saves the default |
 |       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `on`, `off` (`on` = `auto`; bare flag = `auto`). Per-model default is persisted in preferences |
 |       | `--web-results`       | `<n>`    | Number of web search results, 1–100 (OpenRouter only, default 10). Implies `auto` mode. Bare use saves the default |

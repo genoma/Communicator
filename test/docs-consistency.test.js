@@ -213,7 +213,6 @@ test('key defaults and enum values are mentioned in the docs', async () => {
   const tokens = [
     ['default temperature', String(constants.DEFAULT_TEMPERATURE)],
     ['max temperature', `0-${constants.MAX_TEMPERATURE}`],
-    ['default top-p', String(constants.DEFAULT_TOP_P)],
     ['max top-p', `0-${constants.MAX_TOP_P}`],
     ['default web search results', `default ${constants.DEFAULT_WEB_SEARCH_RESULTS}`],
     ['max web search results', String(constants.MAX_WEB_SEARCH_RESULTS)],

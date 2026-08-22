@@ -1,5 +1,5 @@
 import { getEffortLabel } from './prompts.js'
-import { formatCost, formatSmoothSpeed } from './constants.js'
+import { formatCost, formatSmoothSpeed, formatTopP } from './constants.js'
 import { formatModelPrice, sessionLabel } from './ui/format.js'
 import { dim } from './ui/style.js'
 import { sanitizeAnsi } from './ui/hyperlink.js'
@@ -39,7 +39,7 @@ export function buildStatusBadges(state) {
   const parts = []
   if (state.reasoningEffort != null) parts.push(kv('thinking', getEffortLabel(state.reasoningEffort)))
   parts.push(kv('temp', state.temperature))
-  parts.push(kv('top-p', state.topP))
+  parts.push(kv('top-p', formatTopP(state.topP)))
   if (state.zdr) parts.push(tag('zdr'))
   if (state.e2ee) parts.push(tag('e2ee'))
   if (state.webSearch !== 'off') {

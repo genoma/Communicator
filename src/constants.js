@@ -15,8 +15,6 @@ export const DEFAULT_TEMPERATURE = 0.7
 
 export const MAX_TEMPERATURE = 2
 
-export const DEFAULT_TOP_P = 0.95
-
 export const MAX_TOP_P = 1
 
 export const DEFAULT_WEB_SEARCH_RESULTS = 10
@@ -52,6 +50,12 @@ export function formatSmoothSpeed(cps) {
   const preset = Object.entries(SMOOTH_SPEED_PRESETS).find(([, value]) => value === cps)
   if (preset) return `${preset[0]}, ~${preset[1]} chars/s`
   return `${cps} chars/s`
+}
+
+// Top-p is only sent when explicitly set: unset sessions omit it from the
+// request so the provider applies its own default.
+export function formatTopP(value) {
+  return value ?? 'default'
 }
 
 export const LOADER_GRACE_MS = 200

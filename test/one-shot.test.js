@@ -163,7 +163,7 @@ test('one-shot success path writes plain output, the session file and persisted 
   assert.equal(saved.providerName, 'ProviderX')
   assert.equal(saved.providerType, 'openrouter')
   assert.equal(saved.temperature, 0.7)
-  assert.equal(saved.topP, 0.95)
+  assert.equal(saved.topP, undefined)
   assert.equal(saved.budget, 5)
   assert.equal(saved.webSearch, 'off')
   assert.equal(saved.messages.length, 3)
@@ -173,7 +173,7 @@ test('one-shot success path writes plain output, the session file and persisted 
   assert.equal(prefs.lastModel, 'test/model-a')
   assert.equal(prefs.lastProvider, 'ProviderX')
   assert.equal(prefs.temperature['test/model-a'], 0.7)
-  assert.equal(prefs.topP['test/model-a'], 0.95)
+  assert.equal(prefs.topP?.['test/model-a'], undefined)
   assert.equal(prefs.budget, 5)
 })
 
