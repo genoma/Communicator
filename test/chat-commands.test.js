@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { ExitPromptError } from '@inquirer/core'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -181,6 +182,21 @@ test('/model reports selection failures without crashing', async (t) => {
   assert.equal(ctx.state.modelId, before.modelId)
   assert.equal(ctx.state.endpointProviderName, before.endpointProviderName)
   assert.equal(ctx.state.reasoningEffort, before.reasoningEffort)
+})
+
+test('/model reports picker cancellation as Aborted and keeps the current model', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({
+    selectModelAndEndpoint: async () => {
+      throw new ExitPromptError()
+    },
+  })
+  const before = ctx.state.modelId
+
+  await chatCommands['/model'](ctx)
+
+  assert.equal(consoleSpy.log(0), 'Aborted.')
+  assert.equal(ctx.state.modelId, before)
 })
 
 test('/model with no zero-retention models prints the error and never exits the process', async (t) => {

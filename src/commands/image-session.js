@@ -1,4 +1,5 @@
 import { readInput as readInputFromInput } from '../input.js'
+import { ExitPromptError } from '@inquirer/core'
 import { persistSessionFile } from '../sessions.js'
 import { DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { getImageDefaults, mergeImageDefaults, clearImageDefault, savePreferences, savePrefsBestEffort, syncPreferenceUpdates } from '../config.js'
@@ -198,6 +199,10 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       try {
         sel = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: undefined, zdr: false })
       } catch (err) {
+        if (err instanceof ExitPromptError) {
+          console.log('Aborted.')
+          continue
+        }
         console.error(commandErrorLine(err))
         continue
       }

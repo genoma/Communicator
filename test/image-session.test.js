@@ -1,5 +1,6 @@
 import { test, mock, after } from 'node:test'
 import assert from 'node:assert/strict'
+import { ExitPromptError } from '@inquirer/core'
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -1507,6 +1508,25 @@ test('/model picker errors are reported and the session continues', async (t) =>
   await startImageSession(baseOpts({ readInput: scriptedInput(['/model', 'a cat', '/quit']) }))
 
   assert.ok(errors.some((e) => e.includes('picker exploded.')))
+  assert.deepEqual(genCalls, ['a cat'])
+  assert.deepEqual(genModels, ['venice-sd35'])
+  modelSelectionError = null
+})
+
+test('/model picker cancellation is reported as Aborted and the session continues', async (t) => {
+  genCalls.length = 0
+  genModels.length = 0
+  printed.length = 0
+  const logs = []
+  const errors = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+  modelSelectionError = new ExitPromptError()
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/model', 'a cat', '/quit']) }))
+
+  assert.ok(logs.some((l) => l === 'Aborted.'))
+  assert.equal(errors.length, 0)
   assert.deepEqual(genCalls, ['a cat'])
   assert.deepEqual(genModels, ['venice-sd35'])
   modelSelectionError = null
