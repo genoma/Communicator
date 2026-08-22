@@ -55,6 +55,7 @@ test('resumeCmd maps the session payload with normalized values', async () => {
   assert.deepEqual(result.pricing, { prompt: 0.000001, completion: 0.000002 })
   assert.equal(result.contextLength, 128000)
   assert.equal(result.supportsReasoning, false)
+  assert.equal(result.reasoningMandatory, false)
   assert.equal(result.webSearchSupported, false)
   assert.equal(result.isImageModel, false)
   assert.equal(result.sessionId, '2026-01-01T00-00-00')
@@ -84,9 +85,16 @@ test('resumeCmd keeps missing capability fields at their safe defaults', async (
   const result = await resumeCmd('2026')
 
   assert.equal(result.supportsReasoning, true)
+  assert.equal(result.reasoningMandatory, false)
   assert.equal(result.webSearchSupported, undefined)
   assert.equal(result.isImageModel, false)
   assert.equal(result.scrapes, 0)
+})
+
+test('resumeCmd restores the mandatory-reasoning flag from the session file', async () => {
+  sessionData = session({ reasoningMandatory: true })
+  const result = await resumeCmd('2026')
+  assert.equal(result.reasoningMandatory, true)
 })
 
 test('resumeCmd restores the scraped page count for cost tracking', async () => {

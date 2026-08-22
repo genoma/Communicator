@@ -718,3 +718,28 @@ test('Ctrl+C at the picker in one-shot (TTY, no -m) propagates ExitPromptError',
   )
 })
 
+
+test('one-shot never sends a disable reasoning body for mandatory-reasoning models', async (t) => {
+  resetOpenRouterModelCaches()
+  const bodies = []
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    if (String(url).includes('/chat/completions')) {
+      if (opts?.body) bodies.push(JSON.parse(opts.body))
+      return sseResponse([event({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+    }
+    if (String(url).includes('/endpoints')) {
+      return jsonResponse({ data: [{ provider_name: 'ProviderX', tag: 't', status: 'available', pricing: { prompt: 1e-6, completion: 2e-6 }, context_length: 1000, supported_parameters: ['reasoning'] }] })
+    }
+    return jsonResponse({ data: [{ id: 'test/model-mandatory', name: 'Mandatory', context_length: 1000, description: 'd', reasoning: { supported: true, supported_efforts: ['high'], default_effort: 'high', mandatory: true } }] })
+  })
+  withApiKey(t)
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(process.stdout, 'write', () => {})
+
+  const { exited } = await runOneShot(t, { overrides: { model: 'test/model-mandatory', reasoningEffort: 'none' }, prompt: 'Hello' })
+
+  assert.equal(exited, false)
+  assert.ok(!('reasoning' in bodies[0]))
+  assert.ok(logs.some((l) => l.includes('reasoning is mandatory for test/model-mandatory')))
+})

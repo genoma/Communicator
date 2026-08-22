@@ -107,6 +107,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
       messages,
       provider: selection.endpointProviderName,
       reasoningEffort: selection.reasoningEffort,
+      reasoningMandatory: selection.modelReasoning?.mandatory === true,
       supportsReasoning: selection.supportsReasoning,
       sessionId,
       temperature,
@@ -229,6 +230,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     sessionId,
     createdAt,
     messages,
+    reasoningMandatory: selection.modelReasoning?.mandatory === true,
     scrapes: scraped ? 1 : 0,
   })
   const finalState = state.toFinalState(provider.meta.name)

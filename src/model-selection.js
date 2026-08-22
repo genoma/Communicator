@@ -165,6 +165,9 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
         }
       }
     }
+    if (effort === null && modelData?.reasoning?.mandatory === true) {
+      console.log(`Note: reasoning is mandatory for ${modelId}; it cannot be disabled.`)
+    }
 
     // Endpoint capabilities differ per provider: OpenRouter reports a raw
     // parameter array, Venice a capability object.
@@ -234,6 +237,10 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
   const reasoning = modelData?.reasoning || null
 
   const effort = resolveEffortDefault({ reasoning, forcedEffort, prefs, modelId })
+
+  if (effort === null && reasoning?.mandatory === true) {
+    console.log(`Note: reasoning is mandatory for ${modelId}; it cannot be disabled.`)
+  }
 
   const endpoints = await provider.fetchEndpoints(apiKey, modelId, models)
   const zdrEndpoints = zdrActive ? endpoints.filter((ep) => ep.zdr === true) : endpoints

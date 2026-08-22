@@ -85,7 +85,7 @@ export function generateTitle(messages) {
   return collapsed.length > 50 ? collapsed.slice(0, 50) + '...' : collapsed
 }
 
-export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, topP, budget, webSearch, webResults, pricing, contextLength, supportsReasoning, webSearchSupported, isImageModel = false, e2ee = false, scrapes = 0, createdAt }) {
+export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, topP, budget, webSearch, webResults, pricing, contextLength, supportsReasoning, reasoningMandatory = false, webSearchSupported, isImageModel = false, e2ee = false, scrapes = 0, createdAt }) {
   return {
     model: modelId,
     providerName: endpointProviderName,
@@ -99,6 +99,7 @@ export function buildSessionPayload({ messages, modelId, endpointProviderName, p
     pricing: pricing ?? null,
     contextLength: contextLength ?? null,
     supportsReasoning: supportsReasoning ?? null,
+    reasoningMandatory,
     webSearchSupported: webSearchSupported ?? null,
     isImageModel,
     e2ee,

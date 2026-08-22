@@ -385,6 +385,7 @@ test('buildSessionPayload returns the full save object shape', () => {
     'providerName',
     'providerType',
     'reasoningEffort',
+    'reasoningMandatory',
     'scrapes',
     'supportsReasoning',
     'temperature',
@@ -406,6 +407,7 @@ test('buildSessionPayload returns the full save object shape', () => {
   assert.deepEqual(payload.pricing, { prompt: 0.000001, completion: 0.000002 })
   assert.equal(payload.contextLength, 128000)
   assert.equal(payload.supportsReasoning, null)
+  assert.equal(payload.reasoningMandatory, false)
   assert.equal(payload.webSearchSupported, null)
   assert.equal(payload.isImageModel, false)
   assert.equal(payload.e2ee, false)

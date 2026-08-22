@@ -335,7 +335,7 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   }))
 }
 
-export async function chatCompletion({ apiKey, model, messages, onToken, onSources, provider, reasoningEffort, temperature, topP, webSearch, webResults, zdr = false, signal, onRequest = null, sessionId = null }) {
+export async function chatCompletion({ apiKey, model, messages, onToken, onSources, provider, reasoningEffort, reasoningMandatory = false, supportsReasoning, temperature, topP, webSearch, webResults, zdr = false, signal, onRequest = null, sessionId = null }) {
   const body = {
     model,
     messages,
@@ -378,11 +378,15 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
 
   if (reasoningEffort) {
     body.reasoning = { effort: reasoningEffort, exclude: false }
-  } else if (reasoningEffort === null) {
-    // OpenRouter's documented disable field is `exclude: true` (the legacy
-    // `include_reasoning: false` maps to it); any other unknown key is
-    // silently ignored, so `enabled: false` must not be used here.
-    body.reasoning = { exclude: true }
+  } else if (reasoningEffort === null && !reasoningMandatory && supportsReasoning !== false) {
+    // `effort: "none"` is OpenRouter's documented disable ("Disables
+    // reasoning entirely"). `exclude: true` only strips reasoning from the
+    // response while the model still thinks — the reason "disabled" requests
+    // used to take forever with no visible output — so it is never used as
+    // the disable signal. Mandatory-reasoning models reject `effort: "none"`
+    // with a 400, so for those (and endpoints without the reasoning param)
+    // the field is omitted entirely and the model keeps its default.
+    body.reasoning = { effort: 'none' }
   }
 
   onRequest?.(body)

@@ -582,7 +582,7 @@ test('openrouter chatCompletion sends cache_control and session_id together on u
   assert.equal(sentBody.session_id, '2026-01-01T00-00-00')
 })
 
-test('chatCompletion maps null reasoningEffort to reasoning disabled body', async (t) => {
+test('chatCompletion maps null reasoningEffort to the documented disable body', async (t) => {
   let sentBody
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
     sentBody = JSON.parse(opts.body)
@@ -597,7 +597,35 @@ test('chatCompletion maps null reasoningEffort to reasoning disabled body', asyn
     reasoningEffort: null,
   })
 
-  assert.deepEqual(sentBody.reasoning, { exclude: true })
+  assert.deepEqual(sentBody.reasoning, { effort: 'none' })
+})
+
+test('chatCompletion never sends a disable for mandatory-reasoning models', async (t) => {
+  const sentBodies = []
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    sentBodies.push(JSON.parse(opts.body))
+    return sseResponse([sseEvent({ choices: [{ delta: { content: 'ok' } }] }), 'data: [DONE]\n\n'])
+  })
+
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'org/model',
+    messages: [],
+    onToken: () => {},
+    reasoningEffort: null,
+    reasoningMandatory: true,
+  })
+  await openrouter.chatCompletion({
+    apiKey: 'key',
+    model: 'org/model',
+    messages: [],
+    onToken: () => {},
+    reasoningEffort: null,
+    supportsReasoning: false,
+  })
+
+  assert.ok(!('reasoning' in sentBodies[0]))
+  assert.ok(!('reasoning' in sentBodies[1]))
 })
 
 test('chatCompletion sends temperature in the request body for openrouter', async (t) => {

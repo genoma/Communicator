@@ -25,11 +25,12 @@ test('constructor keeps parity with the old state literal fields', () => {
   const s = makeState()
   assert.deepEqual(
     Object.keys(s).sort(),
-    ['budget', 'contextLength', 'createdAt', 'e2ee', 'e2eeContext', 'endpointProviderName', 'fileSupported', 'imageOutputSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'scrapes', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'topP', 'visionSupported', 'webResults', 'webSearch', 'webSearchSupported', 'zdr']
+    ['budget', 'contextLength', 'createdAt', 'e2ee', 'e2eeContext', 'endpointProviderName', 'fileSupported', 'imageOutputSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'reasoningMandatory', 'scrapes', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'topP', 'visionSupported', 'webResults', 'webSearch', 'webSearchSupported', 'zdr']
   )
   assert.equal(s.modelId, 'org/model')
   assert.equal(s.endpointProviderName, 'Provider')
   assert.equal(s.reasoningEffort, 'high')
+  assert.equal(s.reasoningMandatory, false)
   assert.equal(s.temperature, 1.1)
   assert.equal(s.topP, undefined)
   assert.equal(s.budget, 5)
@@ -82,6 +83,7 @@ test('toFinalState returns exactly the old finalState field list', () => {
     'pricing',
     'providerType',
     'reasoningEffort',
+    'reasoningMandatory',
     'scrapes',
     'sessionId',
     'supportsReasoning',
@@ -214,6 +216,29 @@ test('applyModelSelection gates web search off for unsupported models', () => {
     { temperature: {}, webSearch: { m: true } }
   )
   assert.equal(s.webSearch, 'off')
+})
+
+test('constructor derives reasoningMandatory from the explicit field or the model reasoning metadata', () => {
+  const explicit = makeState({ reasoningMandatory: true })
+  assert.equal(explicit.reasoningMandatory, true)
+  const derived = new ChatState({ modelId: 'm', modelReasoning: { mandatory: true } })
+  assert.equal(derived.reasoningMandatory, true)
+  const off = new ChatState({ modelId: 'm', modelReasoning: { mandatory: false } })
+  assert.equal(off.reasoningMandatory, false)
+})
+
+test('applyModelSelection re-derives reasoningMandatory from the selection metadata', () => {
+  const s = makeState({ reasoningMandatory: true })
+  s.applyModelSelection(
+    { modelId: 'm', endpointProviderName: 'P', pricing: null, reasoningEffort: null, supportsReasoning: false, modelReasoning: { mandatory: true }, webSearchSupported: true },
+    { temperature: {}, webSearch: {} }
+  )
+  assert.equal(s.reasoningMandatory, true)
+  s.applyModelSelection(
+    { modelId: 'm', endpointProviderName: 'P', pricing: null, reasoningEffort: null, supportsReasoning: false, modelReasoning: null, webSearchSupported: true },
+    { temperature: {}, webSearch: {} }
+  )
+  assert.equal(s.reasoningMandatory, false)
 })
 
 test('constructor defaults smoothSpeed to the normal preset and normalizes values', () => {

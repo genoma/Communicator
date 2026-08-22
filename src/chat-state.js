@@ -2,7 +2,7 @@ import { DEFAULT_SYSTEM_PROMPT } from './constants.js'
 import { normalizeSmoothSpeed, normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
-  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, topP, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, modelReasoning, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent, scrapes = 0 }) {
+  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, topP, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, modelReasoning, reasoningMandatory, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent, scrapes = 0 }) {
     this.modelId = modelId
     this.endpointProviderName = endpointProviderName
     this.reasoningEffort = reasoningEffort
@@ -28,6 +28,7 @@ export class ChatState {
     this.sessionId = sessionId
     this.createdAt = createdAt
     this.modelReasoning = modelReasoning
+    this.reasoningMandatory = reasoningMandatory === true || modelReasoning?.mandatory === true
     this.markdown = markdown
     this.smoothStreaming = smoothStreaming
     this.smoothSpeed = normalizeSmoothSpeed(smoothSpeed)
@@ -52,6 +53,7 @@ export class ChatState {
       pricing: this.pricing,
       contextLength: this.contextLength,
       supportsReasoning: this.supportsReasoning,
+      reasoningMandatory: this.reasoningMandatory,
       webSearchSupported: this.webSearchSupported,
       e2ee: this.e2ee,
       scrapes: this.scrapes,
@@ -100,6 +102,7 @@ export class ChatState {
     this.reasoningEffort = sel.reasoningEffort
     this.supportsReasoning = sel.supportsReasoning
     this.modelReasoning = sel.modelReasoning
+    this.reasoningMandatory = sel.modelReasoning?.mandatory === true
     this.temperature = prefs.temperature?.[sel.modelId]
     this.topP = prefs.topP?.[sel.modelId]
     this.webSearchSupported = sel.webSearchSupported

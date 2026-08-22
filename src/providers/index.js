@@ -7,7 +7,7 @@ import { CliError } from '../errors.js'
  * - meta: { name, apiKeyEnv, hasEndpoints, supportsWebSearchOnAll? }
  * - fetchModels(apiKey) -> model list
  * - fetchEndpoints(apiKey, modelId, allModels?) -> endpoint list
- * - chatCompletion({ apiKey, model, messages, onToken, onSources, provider, reasoningEffort, supportsReasoning, sessionId, temperature, topP, webSearch, webResults, signal }) where webSearch is a mode string 'off' | 'auto' | 'always' (auto = model decides, always = force search every request)
+ * - chatCompletion({ apiKey, model, messages, onToken, onSources, provider, reasoningEffort, reasoningMandatory, supportsReasoning, sessionId, temperature, topP, webSearch, webResults, signal }) where webSearch is a mode string 'off' | 'auto' | 'always' (auto = model decides, always = force search every request) and reasoningMandatory marks models whose reasoning cannot be disabled
  * - normalizePricing(raw) -> { prompt, completion }
  * - handleHttpError(status, body)
  */

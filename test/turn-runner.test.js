@@ -133,6 +133,27 @@ test('forwards the session top-p to chatCompletion', async (t) => {
   assert.equal(sentTopP, 0.6)
 })
 
+test('forwards the mandatory-reasoning flag to chatCompletion', async (t) => {
+  mockConsole(t)
+  const render = () => {}
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => {}
+  const state = fakeState({ reasoningMandatory: true })
+  let sentMandatory
+  const provider = {
+    async chatCompletion(opts) {
+      sentMandatory = opts.reasoningMandatory
+      return { content: 'Hello', usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }
+    },
+  }
+  const { deps } = makeDeps({ render, provider })
+
+  await runTurn(deps, state)
+
+  assert.equal(sentMandatory, true)
+})
+
 test('the post-history instruction is appended to the request messages without touching state', async (t) => {
   mockConsole(t)
   const render = () => {}
