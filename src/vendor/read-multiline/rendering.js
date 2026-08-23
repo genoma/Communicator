@@ -420,9 +420,28 @@ function drawPromptHeader(state) {
  * overwrite whatever was printed above the editor (chat transcript, opening
  * messages). Drawing forward from the current cursor instead lets the terminal
  * scroll that content into the scrollback untouched.
+ *
+ * When the whole block fits the viewport, the physical cursor still sits on
+ * the pre-paste row (the bulk insert wrote nothing): rewind just that far to
+ * the top of the block and redraw in place, so the stale pre-paste lines above
+ * the cursor are erased instead of being drawn below the new buffer (the ghost
+ * duplicate).
  */
 function repaintBelow(state) {
     state.pendingPasteRepaint = false;
+    // While the paste is still active any repaint (e.g. a limit-status redraw)
+    // is bottom-anchored and gives up the rewind anchor: the end-of-paste
+    // repaint can then only fall back to bottom-anchored too, never rewind
+    // from a cursor the anchor no longer matches.
+    if (state.isPasting) {
+        state.prePasteCursorRow = 0;
+    }
+    const rewind = state.prePasteCursorRow;
+    state.prePasteCursorRow = 0;
+    if (rewind > 0 && editorBlockFits(state)) {
+        redrawInPlace(state, rewind);
+        return;
+    }
     beginBatch(state);
     w(state, "\x1b[J");
     // Move to the start of the current line before repainting.  The terminal
@@ -452,17 +471,12 @@ function repaintBelow(state) {
     flushBatch(state);
 }
 /**
- * Full redraw: rewind cursor, redraw prompt header and all input lines, restore cursor.
- * @param rewindHeaderHeight - header height to use for cursor rewind (may differ from current
- *   state.promptHeaderHeight when the visual state has just changed)
+ * In-place redraw: rewind to the editor top, erase the block, redraw the
+ * prompt header and all input lines, then restore the cursor and the
+ * status/footer area.
  */
-function fullRedraw(state, rewindHeaderHeight) {
-    if (state.pendingPasteRepaint || editorBlockFits(state) === false) {
-        repaintBelow(state);
-        return;
-    }
+function redrawInPlace(state, upCount) {
     beginBatch(state);
-    const upCount = cursorVisualRow(state, state.row, state.col, rewindHeaderHeight ?? state.promptHeaderHeight);
     if (upCount > 0)
         w(state, `\x1b[${upCount}A`);
     w(state, "\r");
@@ -491,6 +505,18 @@ function fullRedraw(state, rewindHeaderHeight) {
     w(state, `\x1b[${tCol(state, state.row, state.col)}G`);
     drawBelowEditor(state);
     flushBatch(state);
+}
+/**
+ * Full redraw: rewind cursor, redraw prompt header and all input lines, restore cursor.
+ * @param rewindHeaderHeight - header height to use for cursor rewind (may differ from current
+ *   state.promptHeaderHeight when the visual state has just changed)
+ */
+function fullRedraw(state, rewindHeaderHeight) {
+    if (state.pendingPasteRepaint || editorBlockFits(state) === false) {
+        repaintBelow(state);
+        return;
+    }
+    redrawInPlace(state, cursorVisualRow(state, state.row, state.col, rewindHeaderHeight ?? state.promptHeaderHeight));
 }
 /** Clear screen and redraw all content with in-place rendering to reduce flicker */
 export function clearScreen(state) {

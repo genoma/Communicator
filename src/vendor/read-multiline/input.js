@@ -1,6 +1,6 @@
 import { cycleSuggestion, deleteToLineEnd, deleteToLineStart, deleteWordBack, dismissSuggestions, handleBackspace, handleDelete, insertChar, insertNewline, insertPaste, redo, saveUndo, suggestMove, undo, } from "./editing.js";
 import { bufferEnd, bufferStart, historyNext, historyPrev, lineEnd, lineStart, moveDownOrHistory, moveLeft, moveRight, moveUpOrHistory, wordLeft, wordRight, } from "./navigation.js";
-import { clearScreen } from "./rendering.js";
+import { cursorVisualRow, clearScreen } from "./rendering.js";
 const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";
 const ESC_TIMEOUT = 50; // ms — lone Escape / escape sequence split across reads
@@ -243,6 +243,11 @@ function consume(state, seq) {
         state.isPasting = true;
         if (state.historyArrowAttempt > 0)
             state.historyArrowAttempt = 0;
+        // The bulk insert writes nothing to the terminal, so the physical
+        // cursor stays where it was when the paste started. Record that visual
+        // row: the paste-end repaint rewinds it to redraw the whole block in
+        // place (safe only via repaintBelow's editorBlockFits gate).
+        state.prePasteCursorRow = cursorVisualRow(state, state.row, state.col);
         return consume(state, seq.slice(startIdx + PASTE_START.length));
     }
     return consumeKeys(state, seq);

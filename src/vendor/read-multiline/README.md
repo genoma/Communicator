@@ -54,8 +54,16 @@ message):
 - `rendering.js` — when the block does not fit or the terminal content is stale,
   `fullRedraw`/`restoreSnapshot` repaint bottom-anchored via `repaintBelow` (no
   rewind; the terminal scrolls the output above into the scrollback instead of
-  erasing it). `insertPaste` sets `pendingPasteRepaint` when the paste changed the
-  buffer without per-character writes; the paste-end `clearScreen` consumes it.
+  erasing it). The paste-end repaint is an exception: `consume` records the
+  pre-paste cursor row (`prePasteCursorRow`) because the bulk insert moves no
+  terminal cursor, and `repaintBelow` rewinds exactly that far and redraws the
+  whole block in place when it fits. Without the rewind, the stale lines above
+  the paste point stay on screen and the new buffer is drawn below them,
+  visually duplicating every line (the ghost-line bug).
+- `editing.js` — `insertPaste` sets `pendingPasteRepaint` when the paste
+  changed the buffer without per-character writes; the paste-end `clearScreen`
+  consumes it. `refreshSuggestions` is skipped while pasting so no footer write
+  can move the physical cursor before the paste-end repaint anchors on it.
 - `index.js` — submit/cancel/EOF skip the in-place `renderStateChange`/`clearEditorArea`
   redraws when the block does not fit (or the terminal is stale) and just drop
   status/footer state.

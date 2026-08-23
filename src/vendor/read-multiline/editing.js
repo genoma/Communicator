@@ -74,7 +74,7 @@ export function onContentChanged(state) {
     else {
         clearStatus(state);
     }
-    if (!state.validationActive) {
+    if (!state.validationActive && !state.isPasting) {
         refreshSuggestions(state);
     }
 }
@@ -309,9 +309,16 @@ export function insertPaste(state, text) {
     state.col = col;
     // A paste replaces the buffer without per-character terminal writes, so
     // the terminal still shows the pre-paste content; the next full redraw
-    // must repaint forward from the current cursor instead of rewinding.
-    if (state.lines.join("\n") !== prevContent)
+    // must repaint (repaintBelow rewinds to the pre-paste cursor row and
+    // redraws in place when the block fits, bottom-anchored otherwise).
+    if (state.lines.join("\n") !== prevContent) {
         state.pendingPasteRepaint = true;
+    }
+    else {
+        // Nothing changed: no repaint, so the rewind anchor must not survive
+        // into a later stale-content repaint.
+        state.prePasteCursorRow = 0;
+    }
     onContentChanged(state);
     if (limitStatus)
         setStatusWithVisualState(state, limitStatus, "red", "error");

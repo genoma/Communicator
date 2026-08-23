@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex */
 import { test, mock, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
@@ -286,6 +287,46 @@ test('paste repaint returns to the line start so the prompt prefix is not duplic
   const repaint = writes.find((w) => w.startsWith('\x1b[?25l\x1b[J'))
   assert.ok(repaint, 'expected the post-paste repaint')
   assert.ok(repaint.startsWith('\x1b[?25l\x1b[J\r> '), 'paste repaint should redraw from the start of the line')
+})
+
+test('paste after existing multiline input rewinds to the top and does not leave ghost duplicates', async (t) => {
+  const { value, writes } = await runEditor(t, {
+    rows: 12,
+    chunks: ['line 0', '\n', 'line 1', '\n', buildPaste(['line 2', 'line 3']), '\r'],
+  })
+  assert.equal(value, 'line 0\nline 1\nline 2\nline 3')
+  // The paste lands below existing content: the end-of-paste repaint rewinds
+  // by the pre-paste cursor row and redraws the full block in place. Without
+  // the rewind the stale lines above the cursor stay on screen and the new
+  // buffer is drawn below them, duplicating every line (the ghost duplicate).
+  const repaint = writes.find((w) => w.startsWith('\x1b[?25l\x1b[2A\r') && w.includes('line 2'))
+  assert.ok(repaint, 'expected the top-anchored post-paste repaint')
+  assert.ok(repaint.startsWith('\x1b[?25l\x1b[2A\r'), 'repaint should rewind to the editor top')
+  const plain = repaint.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
+  for (const line of ['line 0', 'line 1', 'line 2', 'line 3']) {
+    assert.equal(plain.split(line).length - 1, 1, `${line} should appear exactly once in the repaint`)
+  }
+})
+
+test('second paste after existing content does not replicate the previous section', async (t) => {
+  const { value, writes } = await runEditor(t, {
+    rows: 12,
+    chunks: ['one', '\n', buildPaste(['two']), '\x1b[200~three\x1b[201~', '\r'],
+  })
+  assert.equal(value, 'one\ntwothree')
+  const strip = (w) => w.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
+  // Each paste-end repaint prints the full current buffer exactly once (the
+  // ghost bug left the pre-paste lines on screen and printed them again).
+  const repaints = writes.filter((w) => w.startsWith('\x1b[?25l'))
+  const afterFirst = repaints.find((w) => w.includes('two'))
+  assert.ok(afterFirst, 'expected a repaint after the first paste')
+  assert.equal(strip(afterFirst).split('one').length - 1, 1)
+  assert.equal(strip(afterFirst).split('two').length - 1, 1)
+  const afterSecond = repaints.find((w) => w.includes('three'))
+  assert.ok(afterSecond, 'expected a repaint after the second paste')
+  assert.equal(strip(afterSecond).split('one').length - 1, 1)
+  assert.equal(strip(afterSecond).split('two').length - 1, 1)
+  assert.equal(strip(afterSecond).split('three').length - 1, 1)
 })
 
 test('submit skips the in-place redraw when the editor is taller than the terminal', async (t) => {

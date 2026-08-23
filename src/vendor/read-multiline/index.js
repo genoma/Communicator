@@ -118,6 +118,7 @@ function readFromTTY(input, output, prompt, options) {
             validateTimer: null,
             isPasting: false,
             pendingPasteRepaint: false,
+            prePasteCursorRow: 0,
             escBuffer: "",
             escTimer: null,
             maxLines,
