@@ -113,3 +113,11 @@ test('resolveSessionFlags lets an explicit CLI budget win over an invalid pref',
   const opts = { budget: '3', temperature: undefined, reasoningEffort: undefined, webResults: undefined, smoothSpeed: undefined, zdr: false }
   assert.equal(resolveSessionFlags(opts, { budget: 0 }).budget, 3)
 })
+
+test('resolveSessionFlags enables compact thinking from flag or preference', async () => {
+  const { resolveSessionFlags } = await import('../src/session-setup.js')
+  const opts = { budget: undefined, temperature: undefined, reasoningEffort: undefined, webResults: undefined, smoothSpeed: undefined, zdr: false }
+  assert.equal(resolveSessionFlags({ ...opts, compactThinking: true }, {}).compactThinking, true)
+  assert.equal(resolveSessionFlags(opts, { compactThinking: true }).compactThinking, true)
+  assert.equal(resolveSessionFlags(opts, {}).compactThinking, false)
+})

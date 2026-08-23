@@ -16,7 +16,7 @@ function imageSessionContext({ provider, apiKey, prefs, imageModelId, sessionId,
 }
 
 async function createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, scraped = null }) {
-  const { forcedEffort, forcedTemperature, forcedTopP, forcedBudget, budget, forcedWebResults, smoothSpeed, zdr, e2ee } = resolveSessionFlags(opts, prefs)
+  const { forcedEffort, forcedTemperature, forcedTopP, forcedBudget, budget, forcedWebResults, smoothSpeed, compactThinking, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
   if (opts.resume !== undefined && opts.rpg === undefined) {
     const result = await resumeCmd(opts.resume)
@@ -76,6 +76,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
       e2ee,
       smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
       smoothSpeed,
+      compactThinking,
       pricing: result.pricing,
       contextLength: result.contextLength,
       supportsReasoning: result.supportsReasoning,
@@ -142,6 +143,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     e2ee,
     smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
     smoothSpeed,
+    compactThinking,
     webSearchSupported: selection.webSearchSupported,
     visionSupported: selection.visionSupported,
     fileSupported: selection.fileSupported,
@@ -208,6 +210,7 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
     imageOutputSupported: ctx.imageOutputSupported,
     smoothStreaming: ctx.smoothStreaming,
     smoothSpeed: ctx.smoothSpeed,
+    compactThinking: ctx.compactThinking,
     scrapes: ctx.scrapes,
     rpgDir: opts.rpg,
     rpgDebug: opts.debug === true,

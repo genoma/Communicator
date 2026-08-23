@@ -411,3 +411,90 @@ test('renderHistory strips ANSI escape sequences from replayed text', (t) => {
   assert.match(plain(), /answer/)
   assert.doesNotMatch(plain(), /\x1b/) 
 })
+
+test('compact renderer hides reasoning and emits the checkpoint with the final count', () => {
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true })
+  render('', 'start_reasoning')
+  render('thinking text', 'reasoning')
+  render('', 'end_reasoning')
+  render('Answer here', 'content')
+  assert.equal(plain(), '\r✓ Thinking · 13\x1b[K\n\n❯ Answer\n\nAnswer here')
+})
+
+test('compact renderer puts the assistant marker after the Answer label', () => {
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true, assistantMarker: '❯ Zara' })
+  render('', 'start_reasoning')
+  render('thinking text', 'reasoning')
+  render('', 'end_reasoning')
+  render('Hi', 'content')
+  assert.equal(plain(), '\r✓ Thinking · 13\x1b[K\n\n❯ Answer\n\n❯ Zara\nHi')
+})
+
+test('compact renderer keeps content paced while the checkpoint is immediate', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true, smooth: true, smoothCharsPerTick: 10, smoothTickMs: 20 })
+  render('', 'start_reasoning')
+  render('thinking text', 'reasoning')
+  render('', 'end_reasoning')
+  render('HELLO', 'content')
+  assert.equal(plain(), '\r✓ Thinking · 13\x1b[K\n\n❯ Answer\n\n')
+  t.mock.timers.tick(20)
+  assert.equal(plain(), '\r✓ Thinking · 13\x1b[K\n\n❯ Answer\n\nHELLO')
+  t.mock.timers.tick(1000)
+  assert.equal(plain(), '\r✓ Thinking · 13\x1b[K\n\n❯ Answer\n\nHELLO')
+})
+
+test('compact renderer paints the live count on each meter tick', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { stdout, text } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true })
+  render('', 'start_reasoning')
+  render('x'.repeat(1234), 'reasoning')
+  t.mock.timers.tick(200)
+  assert.equal(text(), '\rThinking · 1.2k ⠋\x1b[K')
+  render('y'.repeat(56), 'reasoning')
+  t.mock.timers.tick(150)
+  assert.equal(text(), '\rThinking · 1.2k ⠋\x1b[K\rThinking · 1.3k ⠙\x1b[K')
+  render('', 'end_reasoning')
+  assert.equal(text(), '\rThinking · 1.2k ⠋\x1b[K\rThinking · 1.3k ⠙\x1b[K\r✓ Thinking · 1.3k\x1b[K\n\n❯ Answer\n\n')
+})
+
+test('compact renderer flush clears a live meter line (interrupt path)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { stdout, text } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true })
+  render('', 'start_reasoning')
+  render('long thinking', 'reasoning')
+  t.mock.timers.tick(200)
+  assert.equal(text(), '\rThinking · 13 ⠋\x1b[K')
+  render.flush({ sync: true })
+  assert.equal(text(), '\rThinking · 13 ⠋\x1b[K\r\x1b[K')
+})
+
+test('compact renderer toggling off between turns restores the thinking text', () => {
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true })
+  render('', 'start_reasoning')
+  render('hidden', 'reasoning')
+  render('', 'end_reasoning')
+  render.resetMessage()
+  render.compactThinking = false
+  render('', 'start_reasoning')
+  render('now visible', 'reasoning')
+  render('', 'end_reasoning')
+  render('done', 'content')
+  assert.equal(plain(), '\r✓ Thinking · 6\x1b[K\n\n❯ Answer\n\n❯ Thinking\nnow visible\n\n❯ Answer\n\ndone')
+})
+
+test('renderHistory compact replays the checkpoint derived from stored reasoning', () => {
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: 'answer', reasoning: 'thinking text' },
+  ], { markdown: false, stdout, compactThinking: true })
+  assert.equal(plain(), '\n❯ You\nquestion\n\n✓ Thinking · 13\n\n❯ Answer\n\nanswer\n\n')
+})

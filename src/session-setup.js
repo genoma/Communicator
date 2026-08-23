@@ -16,6 +16,7 @@ export function resolveSessionFlags(opts, prefs) {
       budget: forcedBudget ?? resolvePrefOrNull(resolveBudget, prefs.budget) ?? null,
       forcedWebResults,
       smoothSpeed: smoothSpeed ?? normalizeSmoothSpeed(prefs.smoothSpeed),
+      compactThinking: opts.compactThinking === true || prefs.compactThinking === true,
       zdr: opts.zdr === true,
       e2ee: opts.e2ee === true,
     }

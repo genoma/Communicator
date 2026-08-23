@@ -15,13 +15,14 @@ export function resolveConfigValues(opts) {
   const { temperature, topP, budget, webResults, smoothSpeed, reasoningEffort } = resolveFlagValues(opts)
   const webSearch = opts.webSearch !== undefined ? normalizeWebSearchMode(opts.webSearch) : undefined
   const smoothStreaming = opts.smoothStreaming === false ? false : undefined
+  const compactThinking = opts.compactThinking === true ? true : undefined
   const hideWatermark = opts.watermark === false ? true : undefined
   const safeMode = opts.safeMode === false ? false : undefined
   const outputDir = opts.outputDir
   const aspectRatio = opts.aspectRatio !== undefined ? resolveAspectRatio(opts.aspectRatio) : undefined
   const imageFormat = opts.imageFormat !== undefined ? resolveImageFormat(opts.imageFormat) : undefined
   const needsModel = temperature !== undefined || topP !== undefined || reasoningEffort !== undefined || webSearch !== undefined
-  return { temperature, topP, budget, webResults, smoothSpeed, reasoningEffort, webSearch, smoothStreaming, hideWatermark, safeMode, outputDir, aspectRatio, imageFormat, needsModel }
+  return { temperature, topP, budget, webResults, smoothSpeed, reasoningEffort, webSearch, smoothStreaming, compactThinking, hideWatermark, safeMode, outputDir, aspectRatio, imageFormat, needsModel }
 }
 
 export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
@@ -63,6 +64,7 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
     webSearch: values.webSearch,
     smoothStreaming: values.smoothStreaming,
     smoothSpeed: values.smoothSpeed,
+    compactThinking: values.compactThinking,
     budget: values.budget,
     webResults: values.webResults,
     outputDir: values.outputDir,
@@ -101,6 +103,7 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
   if (values.webResults !== undefined) console.log(`Web search results set to ${values.webResults} (OpenRouter only)`)
   if (values.smoothSpeed !== undefined) console.log(`Smooth speed set to ${formatSmoothSpeed(values.smoothSpeed)}`)
   if (values.smoothStreaming === false) console.log('Smooth streaming disabled')
+  if (values.compactThinking === true) console.log('Compact thinking enabled')
   if (values.hideWatermark === true) console.log('Venice watermark disabled')
   if (values.safeMode === false) console.log('Venice safe mode disabled')
   if (values.aspectRatio !== undefined) console.log(`Aspect ratio set to ${values.aspectRatio} (${providerType} image defaults)`)

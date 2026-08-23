@@ -63,7 +63,7 @@ Connected to OpenRouter / deepseek/deepseek-chat  [131,072 context]  [in $0.10 /
 ```
 
 - The context and pricing segments appear only when known; the pricing format is `in $X.XX / out $Y.YY/M`.
-- Badges `[thinking: …]`, `[zdr]`, `[e2ee]`, `[web: <mode>[: N]]` appear only when they deviate from the default; `[temp: …]` and `[top-p: …]` are always shown so the active sampling settings are visible on connect and in `/status` (`[temp: default]` / `[top-p: default]` when unset — the parameter is then omitted from the request and the provider applies its own default); `[budget: …]` only when a cap is set; the smooth-streaming badge is always present.
+- Badges `[thinking: …]`, `[zdr]`, `[e2ee]`, `[web: <mode>[: N]]`, `[compact-thinking]` appear only when they deviate from the default; `[temp: …]` and `[top-p: …]` are always shown so the active sampling settings are visible on connect and in `/status` (`[temp: default]` / `[top-p: default]` when unset — the parameter is then omitted from the request and the provider applies its own default); `[budget: …]` only when a cap is set; the smooth-streaming badge is always present.
 - On a narrow terminal the snapshot line wraps at the terminal width — badges are atomic (a badge never splits mid-way) and continuation lines align under the model label; piped output stays on one unwrapped line.
 
 The same line is re-printed as `Current settings: …` after every mid-chat config change (`/temp`, `/top-p`, `/reasoning`, `/web-search`, `/web-results`, `/smooth`, `/budget`, `/model`, `/new`) and by `/status` on demand. All values are persisted per model where applicable, so the next session's banner reflects what you last set.
@@ -81,6 +81,12 @@ In interactive (TTY) sessions, streaming is paced by default: tokens are buffere
 The pace is a global speed setting, persisted in preferences under `smoothSpeed` (shared by every session, like `smoothStreaming`). Set it at launch with `--smooth-speed <level|cps>` (`slow` ≈ 500 chars/s, `normal` ≈ 2000 chars/s, `fast` ≈ 8000 chars/s, or any positive chars-per-second value) or mid-chat with `/smooth slow|normal|fast|<cps>`, which also enables smooth streaming. Speed changes apply live: the very next tick of an in-flight stream uses the new pace. The speed is inert when smooth streaming is off or output is piped.
 
 While the model is working, a dim indicator appears on the response line roughly 200 ms after you send the message — `Waiting for response` with a braille spinner (or `Searching the web` when web search is forced with `always`, since that mode is guaranteed to search). The indicator is erased the moment the first token arrives, and it never shows for instant replies.
+
+## Compact thinking
+
+By default the model's reasoning streams after the `❯ Thinking` banner, dimmed, until `❯ Answer` starts. With compact thinking the reasoning text is not printed: the response line instead shows a live meter — `Thinking · 1.2k` with a braille spinner — whose count is the number of reasoning characters received so far. When thinking ends the line resolves to a green `✓ Thinking · 1.2k` checkpoint and the answer streams normally. The full reasoning text is still saved with the session and included in `--export` markdown; only the terminal display (and history replay on `--resume`, which replays the checkpoint) hides it.
+
+Enable/disable with `/compact-thinking on|off` mid-chat (`/compact-thinking` shows the current state), persist the default with `--compact-thinking` (bare use saves it, like `--no-smooth-streaming`), and the `compactThinking` preference key. Compact thinking is a TTY display mode: piped output is unaffected. The `[compact-thinking]` badge appears on the banner and `/status` when it is on.
 
 ## Budget caps
 

@@ -100,6 +100,28 @@ test('live streaming and history replay emit the same reasoning marker block', (
   assert.match(history.plain(), /❯ Thinking\nthinking text\n\n❯ Answer\n\nanswer/)
 })
 
+test('compact live streaming and history replay emit the same checkpoint block', () => {
+  const live = capture()
+  const liveRender = createStreamRenderer({ stdout: live.stdout, markdown: false, compactThinking: true })
+  liveRender('', 'start_reasoning')
+  liveRender('thinking text', 'reasoning')
+  liveRender('', 'end_reasoning')
+  liveRender('answer', 'content')
+  const checkpointBlock = '✓ Thinking · 13\n\n❯ Answer\n\nanswer'
+  // The meter redraws one line with \r + erase sequences; normalized, the
+  // live transcript and the history replay carry the identical block.
+  const norm = (s) => s.replace(/\r/g, '').replace(/\x1b\[K/g, '')
+  assert.equal(norm(live.text()), checkpointBlock)
+
+  const history = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: 'answer', reasoning: 'thinking text' },
+  ], { markdown: false, stdout: history.stdout, compactThinking: true })
+  assert.ok(history.text().includes(checkpointBlock), 'history replay must include the same checkpoint block')
+})
+
 test('attachmentLine styles the word, label, meta and note with one dim note', (t) => {
   enableAnsi(t)
   const line = attachmentLine('attached', 'photo.png', { meta: 'image, 7 B', note: 'saved to /tmp/photo.png' })

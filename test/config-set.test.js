@@ -72,6 +72,7 @@ test('resolveConfigValues leaves unset values undefined', () => {
     reasoningEffort: undefined,
     webSearch: undefined,
     smoothStreaming: undefined,
+    compactThinking: undefined,
     hideWatermark: undefined,
     safeMode: undefined,
     outputDir: undefined,
@@ -79,6 +80,11 @@ test('resolveConfigValues leaves unset values undefined', () => {
     imageFormat: undefined,
     needsModel: false,
   })
+})
+
+test('resolveConfigValues maps --compact-thinking to true', () => {
+  assert.equal(resolveConfigValues({ compactThinking: true }).compactThinking, true)
+  assert.equal(resolveConfigValues({}).compactThinking, undefined)
 })
 
 test('resolveConfigValues throws on invalid values', () => {

@@ -20,6 +20,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--scrape`            | `<url>`  | Scrape a web page into the session as context, then answer the prompt (Venice only, $0.01 per page; bare use on a TTY opens a chat with the page in context). See [docs/web-scrape.md](web-scrape.md) |
 |       | `--no-smooth-streaming` | —      | Disable smooth streaming (default: on in interactive sessions). Bare use saves the default |
 |       | `--smooth-speed`      | `<level\|cps>` | Smooth streaming speed: `slow`, `normal`, `fast`, or chars per second (default: `normal` ≈ 2000). Bare use saves the default |
+|       | `--compact-thinking`  | —        | Show a `Thinking` meter instead of streaming the reasoning text (default: full text; TTY only). Bare use saves the default; `/compact-thinking` toggles mid-chat |
 | `-V`  | `--version`           | —        | Print the version and exit                                                           |
 | `-h`  | `--help`              | —        | Show the help menu and exit                                                          |
 |       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
@@ -127,6 +128,7 @@ communicator --budget 2                                                # set the
 communicator --web-results 5                                           # set the default result count (OpenRouter only)
 communicator --smooth-speed fast                                       # set the default smooth streaming speed
 communicator --no-smooth-streaming                                     # disable smooth streaming by default
+communicator --compact-thinking                                        # use the Thinking meter instead of reasoning text
 communicator --no-watermark                                            # hide the Venice watermark on generated images by default
 ```
 
@@ -151,6 +153,7 @@ communicator --no-watermark                                            # hide th
 | `/copy`        | Copy the last assistant response to the clipboard                                   |
 | `/markdown`    | Toggle terminal markdown rendering (default on)                                     |
 | `/smooth`      | Show smooth streaming state and speed, or set them with `/smooth on|off|<level>|<cps>` (a speed value implies on) |
+| `/compact-thinking` | Show whether the reasoning text streams or a `Thinking` meter replaces it, or set it with `/compact-thinking on|off` (persisted) |
 | `/cost`        | Print the running session cost/token totals and current reasoning effort            |
 | `Cmd+C` / `Ctrl+C` | During streaming: abort, save the partial response, and exit. At the prompt: cancel and exit |
 

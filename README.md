@@ -23,8 +23,9 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Terminal markdown rendering** — responses styled in the terminal (headers, bold/italic, code blocks, lists, quotes, links) with a `/markdown` toggle
 - **Streaming responses** — tokens appear as they arrive, with reasoning shown in gray under a `❯ Thinking` banner
 - **Smooth streaming** — interactive output is paced for a steady render rate (default on; disable with `--no-smooth-streaming` or `/smooth off`)
+- **Compact thinking** — replace the streamed reasoning text with a live `Thinking` meter (spinner + character count) on TTY; toggle anytime with `/compact-thinking` or persist with `--compact-thinking`. The reasoning stays in the session file and exports
 - **Usage & cost tracking** — per-turn and cumulative token counts, a context-window (CTX) indicator, cache-hit detection, and dollar-cost breakdowns; check anytime with `/cost`
-- **Slash commands** — `/new`, `/model`, `/reasoning`, `/temp`, `/top-p`, `/budget`, `/web-search`, `/attach`, `/retry`, `/copy`, `/markdown`, `/smooth`, `/cost`, `/quit`, and more (image sessions add sizing commands plus Venice-only `/watermark`). See [docs/commands.md#slash-commands](docs/commands.md#slash-commands)
+- **Slash commands** — `/new`, `/model`, `/reasoning`, `/temp`, `/top-p`, `/budget`, `/web-search`, `/attach`, `/retry`, `/copy`, `/markdown`, `/smooth`, `/compact-thinking`, `/cost`, `/quit`, and more (image sessions add sizing commands plus Venice-only `/watermark`). See [docs/commands.md#slash-commands](docs/commands.md#slash-commands)
 - **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/` with an auto-generated title, on quit, model switch, new session, or `Ctrl+C` — the last exchange is never lost
 - **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, reasoning effort, temperature, top-p, and budget
 - **Session deletion** — remove one or more saved sessions with `--delete` (multi-select checkbox with confirmation), or wipe everything with `--delete-all-sessions y` (default no)

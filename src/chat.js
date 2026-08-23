@@ -48,6 +48,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     imageOutputSupported = undefined,
     smoothStreaming = true,
     smoothSpeed,
+    compactThinking = false,
     scrapes = 0,
     rpgDir = null,
     rpgDebug = false,
@@ -110,6 +111,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     imageOutputSupported,
     smoothStreaming,
     smoothSpeed,
+    compactThinking,
     sessionId,
     createdAt,
     modelReasoning,
@@ -141,6 +143,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
   const hintParts = []
   if (state.visionSupported !== false && !state.e2ee) hintParts.push('/attach <path> to queue files')
   hintParts.push('/quit to exit')
+  const tty = stdout.isTTY === true
   out(connectedBanner(buildStatusLine(state), { hints: hintParts }))
 
   const rpgMarkers = {
@@ -149,7 +152,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
   }
 
   if (initialMessages) {
-    renderHistory(state.messages, { markdown: state.markdown, stdout, ...rpgMarkers })
+    renderHistory(state.messages, { markdown: state.markdown, stdout, compactThinking: tty && state.compactThinking, ...rpgMarkers })
   }
 
   if (initialMessages && sessionState.tracker.requests > 0) {
@@ -162,9 +165,14 @@ export async function runChatSession(ctx = {}, deps = {}) {
     console.log(`${dim('Previous session:')} ${summary}\n`)
   }
 
-  const tty = stdout.isTTY === true
-
-  const render = renderer({ markdown: state.markdown, stdout, smooth: tty && state.smoothStreaming, smoothCharsPerTick: cpsToCharsPerTick(state.smoothSpeed), assistantMarker: rpgMarkers.assistantMarker })
+  const render = renderer({
+    markdown: state.markdown,
+    stdout,
+    smooth: tty && state.smoothStreaming,
+    smoothCharsPerTick: cpsToCharsPerTick(state.smoothSpeed),
+    assistantMarker: rpgMarkers.assistantMarker,
+    compactThinking: tty && state.compactThinking,
+  })
   const loader = createLoader({ stdout })
 
   const saveCurrentSession = async () => {

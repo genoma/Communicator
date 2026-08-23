@@ -69,6 +69,14 @@ export function sessionLabel(endpointProviderName, modelId) {
   return sanitizeAnsi(name)
 }
 
+// Compact count for the thinking meter: 999 -> "999", 1234 -> "1.2k",
+// 999_999 -> "1M" (rounded scales, one decimal trimmed when exact).
+export function formatCompactCount(value) {
+  if (value < 1000) return String(value)
+  if (value < 999_500) return `${(value / 1000).toFixed(1).replace(/\.0$/, '')}k`
+  return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+}
+
 export function formatSessionTime(value, { utc = false } = {}) {
   if (!value) return 'Unknown'
   let time = String(value).replace('T', ' ')

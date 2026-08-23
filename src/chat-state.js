@@ -2,7 +2,7 @@ import { DEFAULT_SYSTEM_PROMPT } from './constants.js'
 import { normalizeSmoothSpeed, normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
-  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, topP, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, modelReasoning, reasoningMandatory, markdown = true, smoothStreaming = true, smoothSpeed, messages, systemContent, scrapes = 0 }) {
+  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, topP, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, modelReasoning, reasoningMandatory, markdown = true, smoothStreaming = true, smoothSpeed, compactThinking = false, messages, systemContent, scrapes = 0 }) {
     this.modelId = modelId
     this.endpointProviderName = endpointProviderName
     this.reasoningEffort = reasoningEffort
@@ -32,6 +32,7 @@ export class ChatState {
     this.markdown = markdown
     this.smoothStreaming = smoothStreaming
     this.smoothSpeed = normalizeSmoothSpeed(smoothSpeed)
+    this.compactThinking = compactThinking === true
     this.scrapes = scrapes
     this.systemContent = systemContent || DEFAULT_SYSTEM_PROMPT
     this.messages = messages || [{ role: 'system', content: this.systemContent }]
@@ -125,6 +126,10 @@ export class ChatState {
 
   setSmoothSpeed(value) {
     this.smoothSpeed = normalizeSmoothSpeed(value)
+  }
+
+  setCompactThinking(value) {
+    this.compactThinking = value === true
   }
 
   appendUser(content) {

@@ -793,6 +793,51 @@ test('/smooth with a numeric cps sets the speed and saves the raw value', async 
   assert.equal(consoleSpy.log(0), 'Smooth streaming enabled (1500 chars/s).\n')
 })
 
+test('/compact-thinking shows the status with no args', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  await chatCommands['/compact-thinking'](ctx)
+  assert.equal(consoleSpy.log(0), 'Compact thinking is off (the full reasoning text streams).\n')
+})
+
+test('/compact-thinking on updates state, renderer and saves the pref', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx()
+  const { ctx, prefsUpdates } = harness
+  ctx.render.compactThinking = false
+
+  await chatCommands['/compact-thinking']({ ...ctx, args: 'on' })
+
+  assert.equal(ctx.state.compactThinking, true)
+  assert.equal(ctx.render.compactThinking, true)
+  assert.deepEqual(prefsUpdates, [{ compactThinking: true }])
+  assert.equal(consoleSpy.log(0), 'Compact thinking enabled.\n')
+})
+
+test('/compact-thinking off reverts to the full reasoning text', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx()
+  const { ctx, prefsUpdates } = harness
+  ctx.state.setCompactThinking(true)
+  ctx.render.compactThinking = true
+
+  await chatCommands['/compact-thinking']({ ...ctx, args: 'off' })
+
+  assert.equal(ctx.state.compactThinking, false)
+  assert.equal(ctx.render.compactThinking, false)
+  assert.deepEqual(prefsUpdates, [{ compactThinking: false }])
+  assert.equal(consoleSpy.log(0), 'Compact thinking disabled.\n')
+})
+
+test('/compact-thinking rejects invalid values and leaves state unchanged', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  await chatCommands['/compact-thinking']({ ...ctx, args: 'maybe' })
+  assert.equal(consoleSpy.error(0), 'Error: /compact-thinking expects "on" or "off".\n')
+  assert.equal(ctx.state.compactThinking, false)
+  assert.equal(ctx.render.compactThinking, undefined)
+})
+
 test('budgetGuard blocks when cost meets the budget', () => {
   const { ctx } = makeCtx()
   ctx.state.setBudget(5)
@@ -1015,7 +1060,7 @@ test('/model keeps compatible attachments on switch', async (t) => {
   assert.equal(consoleSpy.log(0), '\nSwitched to NewProvider / new/model\n')
 })
 
-test('CHAT_COMMANDS keeps the 18-command order', () => {
+test('CHAT_COMMANDS keeps the 19-command order', () => {
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/status',
@@ -1034,6 +1079,7 @@ test('CHAT_COMMANDS keeps the 18-command order', () => {
     '/copy',
     '/markdown',
     '/smooth',
+    '/compact-thinking',
     '/cost',
   ])
 })

@@ -487,3 +487,35 @@ test('an interrupt with no streamed content saves nothing and still exits 130', 
   assert.deepEqual(saves, ['interrupt'])
   assert.equal(state.messages.length, 2)
 })
+
+test('compact thinking hands the loader to the meter without a checkmark', async (t) => {
+  mockConsole(t)
+  const calls = []
+  const loader = {
+    start() {},
+    stop(opts) { calls.push(opts ?? {}) },
+  }
+  const render = () => {}
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => {}
+  const state = fakeState({ compactThinking: true })
+  const provider = {
+    async chatCompletion(opts) {
+      opts.onToken(null, 'start_reasoning')
+      opts.onToken('thinking', 'reasoning')
+      opts.onToken(null, 'end_reasoning')
+      opts.onToken('Hello', 'content')
+      return { content: 'Hello', reasoning: 'thinking' }
+    },
+  }
+  const { deps } = makeDeps({ render, loader, provider, tty: true })
+
+  await runTurn(deps, state)
+
+  // start_reasoning clears the waiting line (no done), reasoning does not
+  // touch the loader anymore, content resolves it with the checkmark, and
+  // the post-turn stop is a no-op on the already-stopped waiting loader.
+  assert.deepEqual(calls, [{}, { done: true }, {}])
+  assert.equal(state.messages[2].reasoning, 'thinking')
+})

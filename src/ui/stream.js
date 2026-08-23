@@ -1,8 +1,10 @@
-import { dim, italic, you, thinking, answer } from './style.js'
+import { dim, italic, green, you, thinking, answer } from './style.js'
 import { createMarkdownRenderer, renderText } from './markdown.js'
 import { hyperlink, sanitizeAnsi } from './hyperlink.js'
 import { SMOOTH_CHARS_PER_TICK, SMOOTH_TICK_MS } from '../constants.js'
 import { contentText, contentAttachments } from '../attachments.js'
+import { createThinkingMeter } from './loader.js'
+import { formatCompactCount } from './format.js'
 
 // The one attachment/artifact line format shared by history replay, live
 // /attach confirmations, artifact reports and image outcomes: dim italic
@@ -15,12 +17,14 @@ export function attachmentLine(word, label, { meta = null, note = null, link = n
   return `${head}${link ?? ''}${metaText}${noteText}`
 }
 
-export function createStreamRenderer({ markdown = false, stdout = process.stdout, smooth = false, smoothCharsPerTick = SMOOTH_CHARS_PER_TICK, smoothTickMs = SMOOTH_TICK_MS, assistantMarker = null } = {}) {
+export function createStreamRenderer({ markdown = false, stdout = process.stdout, smooth = false, smoothCharsPerTick = SMOOTH_CHARS_PER_TICK, smoothTickMs = SMOOTH_TICK_MS, assistantMarker = null, compactThinking = false } = {}) {
   const md = createMarkdownRenderer({
     getSources: () => render.sources,
     stdout,
     partialFlushMs: smooth ? smoothTickMs : undefined,
   })
+
+  const meter = createThinkingMeter({ stdout })
 
   const queue = []
   let pumpTimer = null
@@ -42,6 +46,20 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
       }
       if (render.markdown) md.write(text)
       else stdout.write(text)
+    }
+  }
+
+  // Compact mode: reasoning body is never printed; the meter owns the line.
+  // The checkpoint line and the following Answer label keep the same spacing
+  // as the full mode (`✓ Thinking · N\n\n❯ Answer\n\n`).
+  const writeCompact = (type, text) => {
+    if (type === 'start_reasoning') {
+      meter.start()
+    } else if (type === 'reasoning') {
+      meter.update(text.length)
+    } else if (type === 'end_reasoning') {
+      meter.stop({ done: true })
+      stdout.write(`\n${answer()}\n\n`)
     }
   }
 
@@ -87,6 +105,12 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
     // the smooth pump can slice them) also covers sequences split across
     // pump chunks.
     const text = type === 'content' || type === 'reasoning' ? sanitizeAnsi(token) : token
+    // Compact reasoning bypasses the queue entirely: the meter updates live
+    // (and counts sanitized chars) while content keeps its pacing below.
+    if (render.compactThinking && (type === 'start_reasoning' || type === 'reasoning' || type === 'end_reasoning')) {
+      writeCompact(type, text)
+      return
+    }
     if (!render.smooth) {
       writeSegment(type, text)
       return
@@ -96,6 +120,7 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   }
   render.markdown = markdown
   render.smooth = smooth
+  render.compactThinking = compactThinking
   render.smoothCharsPerTick = smoothCharsPerTick
   render.smoothTickMs = smoothTickMs
   render.sources = []
@@ -103,6 +128,9 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
     messageStarted = false
   }
   render.flush = ({ sync = false } = {}) => {
+    // Never leave a live meter line behind (interrupts, errors, aborted
+    // streams): the checkpoint only comes from end_reasoning.
+    meter.stop()
     if (sync) {
       if (pumpTimer !== null) {
         clearTimeout(pumpTimer)
@@ -157,7 +185,7 @@ export function printSources(sources, stdout = process.stdout) {
   })
 }
 
-export function renderHistory(messages, { markdown = false, stdout = process.stdout, userMarker = null, assistantMarker = null } = {}) {
+export function renderHistory(messages, { markdown = false, stdout = process.stdout, userMarker = null, assistantMarker = null, compactThinking = false } = {}) {
   if (!messages || messages.length <= 1) return
 
   const hasVisible = messages.some((m) => m.role !== 'system')
@@ -173,10 +201,17 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
     } else if (msg.role === 'assistant') {
       // Same marker sequence as the live stream (writeSegment): one newline
       // after the thinking label, one blank line before the answer label.
+      // Compact mode replays the live checkpoint (`✓ Thinking · N`) with the
+      // count derived from the stored reasoning, never the body.
       if (msg.reasoning) {
-        stdout.write(`${thinking()}\n`)
-        stdout.write(`${dim(sanitizeAnsi(msg.reasoning))}\n`)
-        stdout.write(`\n${answer()}\n\n`)
+        if (compactThinking) {
+          const count = formatCompactCount(sanitizeAnsi(msg.reasoning).length)
+          stdout.write(`${green('✓')} Thinking · ${count}\n\n${answer()}\n\n`)
+        } else {
+          stdout.write(`${thinking()}\n`)
+          stdout.write(`${dim(sanitizeAnsi(msg.reasoning))}\n`)
+          stdout.write(`\n${answer()}\n\n`)
+        }
       }
       if (assistantMarker) stdout.write(`${assistantMarker}\n`)
       stdout.write(`${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), msg.sources || []) : sanitizeAnsi(contentText(msg.content))}\n\n`)

@@ -72,7 +72,16 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
           ? [...state.messages, { role: 'system', content: postHistoryInstruction }]
           : state.messages,
         onToken: (token, type) => {
-          if (type === 'reasoning' || type === 'content') loader.stop({ done: true })
+          // In compact mode the Thinking meter owns the line from
+          // start_reasoning on; the waiting loader hands over without its
+          // checkmark and the reasoning tokens never stop it again.
+          if (type === 'start_reasoning') {
+            if (state.compactThinking && tty) loader.stop()
+          } else if (type === 'reasoning') {
+            if (!(state.compactThinking && tty)) loader.stop({ done: true })
+          } else if (type === 'content') {
+            loader.stop({ done: true })
+          }
           if (type === 'reasoning') reasoningParts.push(token)
           else if (type === 'content') contentParts.push(token)
           render(token, type)

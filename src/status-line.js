@@ -46,6 +46,7 @@ export function buildStatusBadges(state) {
     const results = state.webResults != null ? `: ${state.webResults}` : ''
     parts.push(kv('web', `${state.webSearch}${results}`))
   }
+  if (state.compactThinking) parts.push(tag('compact-thinking'))
   return parts
 }
 

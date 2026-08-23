@@ -13,7 +13,7 @@ import { attachGateOptions } from '../../session-setup.js'
 import { fetchModelPubKey } from '../../e2ee.js'
 import { buildStatusLine, wrapStatusLine } from '../../status-line.js'
 import { scrapeContext, scrapeMessage } from '../../scrape.js'
-const ARG_COMMANDS = new Set(['/temp', '/top-p', '/budget', '/web-search', '/web-results', '/smooth', '/attach', '/attachments', '/scrape'])
+const ARG_COMMANDS = new Set(['/temp', '/top-p', '/budget', '/web-search', '/web-results', '/smooth', '/compact-thinking', '/attach', '/attachments', '/scrape'])
 
 export function showStatus(ctx) {
   console.log(`${wrapStatusLine(dim('Current settings:'), buildStatusLine(ctx.state))}\n`)
@@ -38,6 +38,7 @@ function redrawForRetry(ctx) {
   renderHistory(ctx.state.messages, {
     markdown: ctx.state.markdown,
     stdout: ctx.stdout,
+    compactThinking: ctx.state.compactThinking,
     ...(ctx.rpgMarkers ?? {}),
   })
 }
@@ -58,7 +59,7 @@ const handlers = {
     // message, not from a blank page; render it like the launch greeting.
     if (ctx.rpgFirstMessage) {
       ctx.state.appendAssistant({ role: 'assistant', content: ctx.rpgFirstMessage })
-      renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout: ctx.stdout, ...(ctx.rpgMarkers ?? {}) })
+      renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout: ctx.stdout, compactThinking: ctx.state.compactThinking, ...(ctx.rpgMarkers ?? {}) })
     }
     console.log('\nNew session started.\n')
     showStatus(ctx)
@@ -424,6 +425,25 @@ const handlers = {
     // /config-set), not the raw preset label.
     await ctx.savePrefs({ smoothStreaming: true, smoothSpeed: cps })
     console.log(`Smooth streaming enabled (${formatSmoothSpeed(cps)}).\n`)
+    showStatus(ctx)
+  },
+
+  '/compact-thinking': async (ctx) => {
+    const value = ctx.args
+    if (!value) {
+      const status = ctx.state.compactThinking ? 'on (a Thinking meter replaces the reasoning text)' : 'off (the full reasoning text streams)'
+      console.log(`Compact thinking is ${status}.\n`)
+      return
+    }
+    if (value !== 'on' && value !== 'off') {
+      console.error('Error: /compact-thinking expects "on" or "off".\n')
+      return
+    }
+    const next = value === 'on'
+    ctx.state.setCompactThinking(next)
+    ctx.render.compactThinking = next
+    await ctx.savePrefs({ compactThinking: next })
+    console.log(`Compact thinking ${next ? 'enabled' : 'disabled'}.\n`)
     showStatus(ctx)
   },
 

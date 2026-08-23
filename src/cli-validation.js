@@ -1,6 +1,6 @@
 import { WEB_SEARCH_MODES } from './flags.js'
 
-const SESSION_FLAGS_LIST = '--temperature, --top-p, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --system-prompt, --rpg, --attach, --scrape'
+const SESSION_FLAGS_LIST = '--temperature, --top-p, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --compact-thinking, --system-prompt, --rpg, --attach, --scrape'
 
 export function hasAttachments(opts) {
   return (opts.attach?.length ?? 0) > 0
@@ -26,6 +26,7 @@ export function isSessionOnly(opts) {
     opts.webResults !== undefined ||
     opts.smoothSpeed !== undefined ||
     opts.smoothStreaming === false ||
+    opts.compactThinking === true ||
     opts.systemPrompt !== undefined ||
     opts.rpg !== undefined ||
     hasAttachments(opts) ||
@@ -45,6 +46,7 @@ export function hasConfigSetterFlags(opts) {
     opts.webResults !== undefined ||
     opts.smoothSpeed !== undefined ||
     opts.smoothStreaming === false ||
+    opts.compactThinking === true ||
     opts.watermark === false ||
     opts.aspectRatio !== undefined ||
     opts.imageFormat !== undefined
@@ -91,6 +93,7 @@ function hasBareConfigOtherFlags(opts, promptArg) {
     opts.webResults !== undefined ||
     opts.smoothStreaming === false ||
     opts.smoothSpeed !== undefined ||
+    opts.compactThinking === true ||
     opts.watermark === false ||
     opts.safeMode === false ||
     opts.aspectRatio !== undefined ||
@@ -243,7 +246,7 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
   }
 
   if (opts.image && (opts.model !== undefined || opts.zdr === true || sessionOnlyFlags)) {
-    errors.push('Error: --image cannot be combined with chat session flags (--model, --attach, --system-prompt, --rpg, --temperature, --top-p, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --zdr, --scrape).')
+    errors.push('Error: --image cannot be combined with chat session flags (--model, --attach, --system-prompt, --rpg, --temperature, --top-p, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --compact-thinking, --zdr, --scrape).')
   }
 
   if (opts.image && (opts.width !== undefined || opts.height !== undefined)) {

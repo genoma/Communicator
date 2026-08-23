@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { ApiError, formatError } from '../src/errors.js'
 import { resolveReasoningFlag } from '../src/flags.js'
-import { formatModelPrice, formatPricePerM, formatSessionTime } from '../src/ui/format.js'
+import { formatModelPrice, formatPricePerM, formatSessionTime, formatCompactCount } from '../src/ui/format.js'
 import { normalizePricing as normalizeVenice } from '../src/providers/venice.js'
 
 test('ApiError carries status, provider, and retryable', () => {
@@ -68,4 +68,16 @@ test('formatSessionTime drops the trailing Z/offset before appending UTC', () =>
   assert.equal(formatSessionTime('2026-07-30T19-15-22.500Z', { utc: true }), '2026-07-30 19:15:22 UTC')
   assert.equal(formatSessionTime('2026-01-01T00:00:00Z'), '2026-01-01 00:00:00Z')
   assert.equal(formatSessionTime(null), 'Unknown')
+})
+
+test('formatCompactCount scales with one decimal and trims .0', () => {
+  assert.equal(formatCompactCount(0), '0')
+  assert.equal(formatCompactCount(999), '999')
+  assert.equal(formatCompactCount(1000), '1k')
+  assert.equal(formatCompactCount(1234), '1.2k')
+  assert.equal(formatCompactCount(12_345), '12.3k')
+  assert.equal(formatCompactCount(999_499), '999.5k')
+  assert.equal(formatCompactCount(999_999), '1M')
+  assert.equal(formatCompactCount(1_234_000), '1.2M')
+  assert.equal(formatCompactCount(2_300_000), '2.3M')
 })

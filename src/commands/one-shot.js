@@ -29,7 +29,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     throw new CliError(NO_PROMPT_MESSAGE)
   }
 
-  const { forcedEffort, forcedTemperature, forcedTopP, budget, forcedWebResults, smoothSpeed, zdr, e2ee } = resolveSessionFlags(opts, prefs)
+  const { forcedEffort, forcedTemperature, forcedTopP, budget, forcedWebResults, smoothSpeed, compactThinking, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
   const tracker = new UsageTracker()
 
@@ -152,9 +152,15 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
         budget,
         smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
         smoothSpeed,
+        compactThinking: compactThinking && ttyOut,
       })
       console.log(connectedBanner(segments))
-      const render = createStreamRenderer({ markdown: true, smooth: opts.smoothStreaming !== false && prefs.smoothStreaming !== false, smoothCharsPerTick: cpsToCharsPerTick(smoothSpeed) })
+      const render = createStreamRenderer({
+        markdown: true,
+        smooth: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
+        smoothCharsPerTick: cpsToCharsPerTick(smoothSpeed),
+        compactThinking: compactThinking && ttyOut,
+      })
       result = await provider.chatCompletion({
         ...completionOpts,
         onToken: render,

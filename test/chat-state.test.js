@@ -25,7 +25,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   const s = makeState()
   assert.deepEqual(
     Object.keys(s).sort(),
-    ['budget', 'contextLength', 'createdAt', 'e2ee', 'e2eeContext', 'endpointProviderName', 'fileSupported', 'imageOutputSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'reasoningMandatory', 'scrapes', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'topP', 'visionSupported', 'webResults', 'webSearch', 'webSearchSupported', 'zdr']
+    ['budget', 'compactThinking', 'contextLength', 'createdAt', 'e2ee', 'e2eeContext', 'endpointProviderName', 'fileSupported', 'imageOutputSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'reasoningMandatory', 'scrapes', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'topP', 'visionSupported', 'webResults', 'webSearch', 'webSearchSupported', 'zdr']
   )
   assert.equal(s.modelId, 'org/model')
   assert.equal(s.endpointProviderName, 'Provider')
@@ -47,6 +47,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   assert.deepEqual(s.modelReasoning, { supported: true })
   assert.equal(s.markdown, true)
   assert.equal(s.smoothStreaming, true)
+  assert.equal(s.compactThinking, false)
   assert.equal(s.smoothSpeed, 2000)
   assert.deepEqual(s.messages, [{ role: 'system', content: 'You are a helpful assistant.' }])
 })
