@@ -357,13 +357,20 @@ const handlers = {
     const last = ctx.state.messages[ctx.state.messages.length - 1]
     if (last?.role === 'assistant') {
       ctx.state.popLastMessage()
+      // Wipe the stale answer before starting the replacement so the old
+      // response is not left on screen while the new one streams.
+      redrawForRetry(ctx)
       await ctx.runTurn()
-      // Refresh the transcript after every retry attempt. On success this
-      // removes the old answer; on failure or an empty replacement it keeps
-      // the screen in sync with the state after the old answer was popped.
+      // Refresh again after the attempt: on success this renders the new
+      // answer; on failure or an empty replacement it keeps the screen in
+      // sync with the state after the old answer was removed.
       redrawForRetry(ctx)
     } else if (last?.role === 'user') {
+      // A failed attempt can leave partial output on screen without a saved
+      // assistant message. Clear that stale view before re-running the turn.
+      redrawForRetry(ctx)
       await ctx.runTurn()
+      redrawForRetry(ctx)
     } else {
       console.log('Nothing to retry yet.\n')
     }

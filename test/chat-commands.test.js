@@ -558,6 +558,49 @@ test('/retry clears the terminal and redraws history without the old answer afte
   assert.doesNotMatch(output, /first answer/)
 })
 
+test('/retry wipes the old answer before the replacement starts', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  const harness = makeCtx({ stdout })
+  const { ctx } = harness
+  let beforeRun = ''
+  ctx.runTurn = async () => {
+    beforeRun = writes.join('')
+    ctx.state.appendAssistant({ role: 'assistant', content: 'second answer' })
+  }
+  ctx.state.appendUser('hello')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'first answer' })
+
+  await chatCommands['/retry'](ctx)
+
+  assert.ok(beforeRun.includes('\x1b[2J\x1b[3J\x1b[H'))
+  assert.match(beforeRun, /hello/)
+  assert.doesNotMatch(beforeRun, /first answer/)
+
+  const output = writes.join('')
+  assert.match(output, /second answer/)
+})
+
+test('/retry clears stale failed output when the last message is a user message', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  const harness = makeCtx({ stdout })
+  const { ctx } = harness
+  ctx.runTurn = async () => {
+    ctx.state.appendAssistant({ role: 'assistant', content: 'new answer' })
+  }
+  ctx.state.appendUser('hello')
+
+  await chatCommands['/retry'](ctx)
+
+  const output = writes.join('')
+  assert.ok(output.includes('\x1b[2J\x1b[3J\x1b[H'))
+  assert.match(output, /hello/)
+  assert.match(output, /new answer/)
+})
+
 test('/retry redraws the transcript even when no replacement arrives', async (t) => {
   mockConsole(t)
   const writes = []
