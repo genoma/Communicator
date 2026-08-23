@@ -187,3 +187,39 @@ test('thinking meter start resets the count and keeps accumulating updates', asy
     `\r${green('✓')} Thinking · 1k\x1b[K\n`,
   ])
 })
+
+test('thinking meter restarts cleanly after a checkpointed turn (retry path)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { write(chunk) { chunks.push(String(chunk)); return true } }
+  const meter = createThinkingMeter({ stdout, graceMs: 200, tickMs: 150 })
+  meter.start()
+  meter.update(500)
+  meter.stop({ done: true })
+  assert.deepEqual(chunks, [`\r${green('✓')} Thinking · 500\x1b[K\n`])
+  t.mock.timers.tick(1000)
+  assert.deepEqual(chunks, [`\r${green('✓')} Thinking · 500\x1b[K\n`])
+
+  meter.start()
+  t.mock.timers.tick(199)
+  assert.deepEqual(chunks, [`\r${green('✓')} Thinking · 500\x1b[K\n`])
+  meter.update(1200)
+  t.mock.timers.tick(1)
+  assert.deepEqual(chunks, [
+    `\r${green('✓')} Thinking · 500\x1b[K\n`,
+    `\r${dim('Thinking · 1.2k')} ${frameAt(0)}\x1b[K`,
+  ])
+  t.mock.timers.tick(150)
+  assert.deepEqual(chunks, [
+    `\r${green('✓')} Thinking · 500\x1b[K\n`,
+    `\r${dim('Thinking · 1.2k')} ${frameAt(0)}\x1b[K`,
+    `\r${dim('Thinking · 1.2k')} ${frameAt(1)}\x1b[K`,
+  ])
+  meter.stop({ done: true })
+  assert.deepEqual(chunks, [
+    `\r${green('✓')} Thinking · 500\x1b[K\n`,
+    `\r${dim('Thinking · 1.2k')} ${frameAt(0)}\x1b[K`,
+    `\r${dim('Thinking · 1.2k')} ${frameAt(1)}\x1b[K`,
+    `\r${green('✓')} Thinking · 1.2k\x1b[K\n`,
+  ])
+})

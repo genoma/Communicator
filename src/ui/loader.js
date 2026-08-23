@@ -131,6 +131,7 @@ export function createThinkingMeter({ stdout = process.stdout, graceMs = LOADER_
       stopTimers()
       if (done) {
         stdout.write(`\r${green('✓')} ${label} · ${formatCompactCount(count)}\x1b[K\n`)
+        shown = false
         return
       }
       if (shown) stdout.write('\r\x1b[K')
