@@ -121,6 +121,134 @@ function buildPaste(lines) {
   return `\x1b[200~${lines.join('\n')}\x1b[201~`
 }
 
+// Like runEditor, but exposes the pending promise so cancel/EOF and
+// timer-driven recovery cases can drive input before awaiting.
+function runEditorTuple(t, { rows, chunks }) {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  _resetKittyDetection(false)
+  const { output, writes } = fakeOutput(t, rows)
+  const stdin = fakeStdin()
+  const pending = readMultiline('', {
+    input: stdin,
+    output,
+    prefix: '',
+    linePrefix: '> ',
+    helpFooter: false,
+    maxLines: 50,
+    theme: { linePrefix: { pending: 'cyan', submitted: 'dim', cancelled: 'dim' }, submitRender: 'preserve' },
+  })
+  for (const chunk of chunks) stdin.emit('data', chunk)
+  return { pending, writes, stdin }
+}
+
+test('paste split in the middle of the start marker is reassembled', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['\x1b[2', '00~hello world\x1b[201~', '\r'] })
+  const [value] = await pending
+  assert.equal(value, 'hello world')
+})
+
+test('paste split in the middle of the end marker is reassembled', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['\x1b[200~hello world\x1b[2', '01~', '\r'] })
+  const [value] = await pending
+  assert.equal(value, 'hello world')
+})
+
+test('paste split at arbitrary byte boundaries is reassembled', async (t) => {
+  const payload = 'alpha beta gamma\ndelta epsilon\nzeta'
+  const bytes = `\x1b[200~${payload}\x1b[201~`
+  const chunks = []
+  for (let i = 0; i < bytes.length; i += 7) chunks.push(bytes.slice(i, i + 7))
+  const { pending } = runEditorTuple(t, { chunks: [...chunks, '\r'] })
+  const [value] = await pending
+  assert.equal(value, payload)
+})
+
+test('paste split at every byte boundary is reassembled', async (t) => {
+  const payload = 'one two three\nfour five six'
+  const bytes = `\x1b[200~${payload}\x1b[201~`
+  const chunks = []
+  for (let i = 0; i < bytes.length; i++) chunks.push(bytes[i])
+  const { pending } = runEditorTuple(t, { chunks: [...chunks, '\r'] })
+  const [value] = await pending
+  assert.equal(value, payload)
+})
+
+test('keys keep working after a split paste end marker', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['\x1b[200~hi\x1b[2', '01~', 'x', '\r'] })
+  const [value] = await pending
+  assert.equal(value, 'hix')
+})
+
+test('Ctrl+C cancels after a split paste end marker', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['\x1b[200~hi\x1b[2', '01~', '\x03'] })
+  const [, error] = await pending
+  assert.equal(error?.kind, 'cancel')
+})
+
+test('backspace works after a split paste end marker', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['\x1b[200~hello\x1b[2', '01~', '\x7f', '\r'] })
+  const [value] = await pending
+  assert.equal(value, 'hell')
+})
+
+test('paste with a lost end marker recovers when the stream goes quiet', async (t) => {
+  const { pending, stdin } = runEditorTuple(t, { chunks: ['\x1b[200~stuck text'] })
+  t.mock.timers.tick(1600)
+  stdin.emit('data', 'x')
+  stdin.emit('data', '\r')
+  const [value] = await pending
+  assert.equal(value, 'stuck textx')
+})
+
+test('kitty Ctrl+C cancels', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['\x1b[99;5u'] })
+  const [, error] = await pending
+  assert.equal(error?.kind, 'cancel')
+})
+
+test('kitty Ctrl+C mixed with typed text cancels with the partial input', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['abc\x1b[99;5u'] })
+  const [value, error] = await pending
+  assert.equal(error?.kind, 'cancel')
+  assert.equal(value, 'abc')
+})
+
+test('kitty Enter submits', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['\x1b[13u'] })
+  const [value] = await pending
+  assert.equal(value, '')
+})
+
+test('escape sequences split across chunks are reassembled', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['\x1b[1', ';5C', '\r'] })
+  const [value] = await pending
+  assert.equal(value, '')
+})
+
+test('Enter arriving in the same chunk as the paste end marker submits', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['\x1b[200~hi\x1b[201~\r'] })
+  const [value] = await pending
+  assert.equal(value, 'hi')
+})
+
+test('repeated pastes accumulate without corruption', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['\x1b[200~aaa\x1b[2', '01~', '\x1b[200~bbb\x1b[201~', '\r'] })
+  const [value] = await pending
+  assert.equal(value, 'aaabbb')
+})
+
+test('CRLF in pasted text is normalized', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['\x1b[200~a\r\nb\r\x1b[201~', '\r'] })
+  const [value] = await pending
+  assert.equal(value, 'a\nb\n')
+})
+
+test('paste into existing input keeps keys working after', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['one', '\x1b[200~two\x1b[2', '01~', 'three', '\r'] })
+  const [value] = await pending
+  assert.equal(value, 'onetwothree')
+})
+
 test('paste repaint does not rewind above the editor top when the block is taller than the terminal', async (t) => {
   const lines = ['line 0', 'line 1', 'line 2', 'line 3', 'line 4', 'line 5']
 

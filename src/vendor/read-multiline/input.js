@@ -3,7 +3,8 @@ import { bufferEnd, bufferStart, historyNext, historyPrev, lineEnd, lineStart, m
 import { clearScreen } from "./rendering.js";
 const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";
-const ESC_TIMEOUT = 50; // ms
+const ESC_TIMEOUT = 50; // ms — lone Escape / escape sequence split across reads
+const PASTE_TAIL_TIMEOUT = 1500; // ms — recovery if a paste-end marker never completes
 /** Build the key-to-action mapping based on options and callbacks */
 export function buildKeyMap(state, submit, cancel, handleEOF) {
     const keyMap = state.keyMap;
@@ -120,63 +121,58 @@ function processPaste(state, text) {
     // chars other than newline are dropped, mirroring the per-char loop.
     insertPaste(state, text.replace(/\r\n|\r/g, "\n").replace(/[\x00-\x09\x0b\x0c\x0e-\x1f]/g, ""));
 }
-/** Process an input sequence: handle paste markers, key map lookups, and character insertion */
-export function processInput(state, seq) {
-    // Paste start marker
-    const startIdx = seq.indexOf(PASTE_START);
-    if (startIdx !== -1) {
-        if (startIdx > 0)
-            processInput(state, seq.slice(0, startIdx));
-        saveUndo(state);
-        state.isPasting = true;
-        if (state.historyArrowAttempt > 0)
-            state.historyArrowAttempt = 0;
-        const after = seq.slice(startIdx + PASTE_START.length);
-        if (after)
-            processInput(state, after);
-        return;
+/**
+ * The longest suffix of seq that could still be a prefix of a paste marker.
+ * Returns "" when seq does not end inside a marker.
+ */
+function markerTail(seq, marker) {
+    const limit = Math.min(seq.length, marker.length - 1);
+    for (let i = limit; i > 0; i--) {
+        if (marker.startsWith(seq.slice(seq.length - i)))
+            return seq.slice(seq.length - i);
     }
-    // Paste end marker
-    const endIdx = seq.indexOf(PASTE_END);
-    if (endIdx !== -1) {
-        if (endIdx > 0)
-            processPaste(state, seq.slice(0, endIdx));
-        state.isPasting = false;
-        // Re-render once after paste to apply highlight/styledInput
-        clearScreen(state);
-        const after = seq.slice(endIdx + PASTE_END.length);
-        if (after)
-            processInput(state, after);
-        return;
-    }
-    // During paste, insert everything as text
-    if (state.isPasting) {
-        processPaste(state, seq);
-        return;
-    }
-    // Normal key processing
-    const handler = state.keyMap[seq];
-    if (handler) {
-        const prevAttempt = state.historyArrowAttempt;
-        handler();
-        // Reset double-press counter if the handler didn't touch it
-        if (state.historyArrowAttempt === prevAttempt && prevAttempt > 0) {
+    return "";
+}
+/**
+ * Consume non-paste input: bracketed-paste start markers, escape sequences and
+ * plain text. Returns the trailing incomplete escape/prefix ("" if none) that
+ * the caller must hold back until more data arrives.
+ */
+function consumeKeys(state, seq) {
+    let i = 0;
+    while (i < seq.length) {
+        const escIdx = seq.indexOf("\x1b", i);
+        if (escIdx === -1) {
+            insertRun(state, seq.slice(i));
+            return "";
+        }
+        if (escIdx > i)
+            insertRun(state, seq.slice(i, escIdx));
+        const len = escapeLength(seq, escIdx);
+        if (len === 0)
+            return seq.slice(escIdx);
+        const key = seq.slice(escIdx, escIdx + len);
+        const handler = state.keyMap[key];
+        if (handler) {
+            const prevAttempt = state.historyArrowAttempt;
+            handler();
+            // Reset double-press counter if the handler didn't touch it
+            if (state.historyArrowAttempt === prevAttempt && prevAttempt > 0) {
+                state.historyArrowAttempt = 0;
+            }
+        }
+        else if (state.historyArrowAttempt > 0) {
             state.historyArrowAttempt = 0;
         }
-        return;
+        i = escIdx + len;
     }
-    // Ignore unknown escape sequences
-    if (seq.startsWith("\x1b")) {
-        if (state.historyArrowAttempt > 0)
-            state.historyArrowAttempt = 0;
-        return;
-    }
-    // Regular characters. Control keys (Enter, Ctrl+C, Ctrl+D, backspace, ...)
-    // may arrive in the same chunk as typed text (fast typing, automated
-    // input): match each one against the keymap instead of dropping it.
+    return "";
+}
+/** Insert the printable characters of a run, dispatching control keys to the keymap */
+function insertRun(state, run) {
     if (state.historyArrowAttempt > 0)
         state.historyArrowAttempt = 0;
-    for (const ch of seq) {
+    for (const ch of run) {
         const handler = state.keyMap[ch];
         if (handler && (ch.charCodeAt(0) < 32 || ch === "\x7f")) {
             handler();
@@ -186,10 +182,72 @@ export function processInput(state, seq) {
         }
     }
 }
-function flushEscBuffer(state) {
-    state.escTimer = null;
-    const buf = state.escBuffer;
-    state.escBuffer = "";
+/**
+ * Length of the escape sequence starting at seq[start], or 0 when the sequence
+ * is incomplete and more bytes are expected. A control byte inside a CSI makes
+ * the escape malformed: the sequence ends there so the byte is reprocessed.
+ */
+function escapeLength(seq, start) {
+    const s = seq.slice(start);
+    if (s.length < 2)
+        return 0;
+    if (s[1] === "[") {
+        for (let k = 2; k < s.length; k++) {
+            const b = s.charCodeAt(k);
+            if (b >= 0x40 && b <= 0x7e)
+                return k + 1; // final byte
+            if (b >= 0x20 && b <= 0x3f)
+                continue; // parameter / intermediate byte
+            return k; // malformed: drop the escape, reprocess the byte
+        }
+        return 0; // CSI started, no final byte yet
+    }
+    return 2; // ESC + one byte (\x1bb, \x1bf, \x1b\r, ...)
+}
+/** Consume paste payload: everything between the start and end markers is literal text */
+function consumePaste(state, seq) {
+    const endIdx = seq.indexOf(PASTE_END);
+    if (endIdx !== -1) {
+        if (endIdx > 0)
+            processPaste(state, seq.slice(0, endIdx));
+        state.isPasting = false;
+        // Re-render once after paste to apply highlight/styledInput
+        clearScreen(state);
+        return consume(state, seq.slice(endIdx + PASTE_END.length));
+    }
+    // A trailing prefix of the end marker may complete in the next chunk;
+    // hold it back instead of corrupting the paste payload.
+    const tail = markerTail(seq, PASTE_END);
+    if (tail) {
+        if (seq.length > tail.length)
+            processPaste(state, seq.slice(0, seq.length - tail.length));
+        return tail;
+    }
+    processPaste(state, seq);
+    return "";
+}
+/**
+ * Process an input sequence: handle paste markers, key map lookups, and
+ * character insertion. Returns the trailing incomplete escape sequence to hold
+ * until more data arrives ("" when nothing is pending).
+ */
+function consume(state, seq) {
+    if (state.isPasting)
+        return consumePaste(state, seq);
+    const startIdx = seq.indexOf(PASTE_START);
+    if (startIdx !== -1) {
+        const leadTail = startIdx > 0 ? consumeKeys(state, seq.slice(0, startIdx)) : "";
+        if (leadTail)
+            return leadTail + seq.slice(startIdx);
+        saveUndo(state);
+        state.isPasting = true;
+        if (state.historyArrowAttempt > 0)
+            state.historyArrowAttempt = 0;
+        return consume(state, seq.slice(startIdx + PASTE_START.length));
+    }
+    return consumeKeys(state, seq);
+}
+function runHandler(state, buf) {
     const handler = state.keyMap[buf];
     if (handler) {
         const prevAttempt = state.historyArrowAttempt;
@@ -202,23 +260,51 @@ function flushEscBuffer(state) {
         state.historyArrowAttempt = 0;
     }
 }
-/** Handle raw data from the input stream, buffering ESC sequences as needed */
+function flushBuffer(state) {
+    state.escTimer = null;
+    if (state.isPasting) {
+        // No paste data for a while: the end marker never arrived (lost bytes).
+        // End the paste so typed keys work again instead of being swallowed.
+        state.escBuffer = "";
+        state.isPasting = false;
+        clearScreen(state);
+        return;
+    }
+    const buf = state.escBuffer;
+    state.escBuffer = "";
+    runHandler(state, buf);
+}
+/** Hold an incomplete escape sequence back, flushing after a timeout */
+function holdTail(state, tail) {
+    state.escBuffer = tail;
+    if (state.escTimer)
+        return;
+    state.escTimer = setTimeout(() => flushBuffer(state), state.isPasting ? PASTE_TAIL_TIMEOUT : ESC_TIMEOUT);
+}
+/** Handle raw data from the input stream, reassembling sequences split across chunks */
 export function onData(state, data) {
     const seq = data.toString();
+    if (state.escTimer) {
+        clearTimeout(state.escTimer);
+        state.escTimer = null;
+    }
     if (state.escBuffer) {
-        if (state.escTimer) {
-            clearTimeout(state.escTimer);
-            state.escTimer = null;
-        }
         const combined = state.escBuffer + seq;
         state.escBuffer = "";
-        processInput(state, combined);
+        const tail = consume(state, combined);
+        if (tail) {
+            holdTail(state, tail);
+            return;
+        }
+        if (state.isPasting)
+            holdTail(state, ""); // arm the paste watchdog (no tail to merge)
         return;
     }
-    if (seq === "\x1b") {
-        state.escBuffer = seq;
-        state.escTimer = setTimeout(() => flushEscBuffer(state), ESC_TIMEOUT);
+    const tail = consume(state, seq);
+    if (tail) {
+        holdTail(state, tail);
         return;
     }
-    processInput(state, seq);
+    if (state.isPasting)
+        holdTail(state, "");
 }

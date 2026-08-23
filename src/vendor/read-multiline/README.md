@@ -64,6 +64,29 @@ Known limitation (no internal windowing): moving the cursor far into a taller-th
 viewport editor desyncs the on-screen position; typing at the tail of a long message
 is fully supported.
 
+## Input reassembly
+
+Terminals deliver bracketed-paste markers and escape sequences as a byte stream:
+Ghostty and kitty may split `\x1b[200~`/`\x1b[201~` or any CSI sequence at an
+arbitrary chunk boundary. `input.js` previously only buffered a lone `\x1b`, so a
+split marker was dropped as an unknown escape and the matching fragment was
+inserted as visible text — worse, a split end marker left the editor stuck in
+paste mode with every key swallowed.
+
+- `consume`/`consumeKeys`/`consumePaste` parse incrementally and return the
+  trailing incomplete sequence to hold back until the next chunk completes it.
+- CSI sequences are scanned by their grammar (params 0x30–0x3F, intermediates
+  0x20–0x2F, final byte 0x40–0x7E); a control byte inside a CSI ends the escape
+  there so the byte is reprocessed (e.g. ESC then Enter).
+- A lone `\x1b` or incomplete tail is flushed after 50 ms — a real Escape press
+  still reaches the keymap, and split sequences from the same burst are merged
+  inside the 50 ms window.
+- While pasting, only the end marker is significant (a nested paste start marker
+  is literal content), and a trailing prefix of the end marker is held back.
+- Watchdog: if no paste data arrives for 1.5 s, the paste is force-ended and the
+  editor repaints, so a genuinely lost end marker can never leave the editor
+  swallowing keys.
+
 Diff with upstream:
 
 ```
