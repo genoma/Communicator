@@ -68,6 +68,23 @@ message):
   redraws when the block does not fit (or the terminal is stale) and just drop
   status/footer state.
 
+## Resize reflow
+
+iTerm2, Ghostty, xterm etc. reflow the whole screen on resize: soft-wrapped
+lines are re-laid-out around the new width and the physical cursor follows the
+reflow, so the screen position of the block is unknown to the editor. Any
+model-row rewind then lands on the wrong rows and duplicates the block (the
+same logical-vs-physical desync as the paste ghost).
+
+- The resize handler queries the cursor position (`\x1b[6n` DSR) and
+  `repaintFromReportedRow` anchors the redraw on the reported row with absolute
+  cursor positioning (`\x1b[row;colH`) — the row is the only reliable anchor
+  after a reflow.
+- `input.js` intercepts the DSR reply (`\x1b[r;cR`) instead of feeding it to
+  the keymap.
+- If no reply arrives within 400 ms (terminals that don't answer DSR), the
+  handler falls back to the generic bottom-anchored redraw.
+
 Known limitation (no internal windowing): moving the cursor far into a taller-than-
 viewport editor desyncs the on-screen position; typing at the tail of a long message
 is fully supported.

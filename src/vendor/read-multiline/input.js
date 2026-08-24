@@ -152,6 +152,15 @@ function consumeKeys(state, seq) {
         if (len === 0)
             return seq.slice(escIdx);
         const key = seq.slice(escIdx, escIdx + len);
+        const reported = /^\x1b\[(\d+);(\d+)R$/.exec(key);
+        if (reported) {
+            // DSR reply (\x1b[6n query from the resize handler): the physical
+            // cursor moved with the terminal reflow, so anchor the repaint on
+            // the reported row and consume the reply here.
+            state.dsrAnswer?.(Number(reported[1]));
+            i = escIdx + len;
+            continue;
+        }
         const handler = state.keyMap[key];
         if (handler) {
             const prevAttempt = state.historyArrowAttempt;

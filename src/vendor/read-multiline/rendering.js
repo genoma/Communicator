@@ -471,6 +471,54 @@ function repaintBelow(state) {
     flushBatch(state);
 }
 /**
+ * Repaint after a resize, anchored on the physical cursor row reported by the
+ * terminal (DSR reply to \x1b[6n).
+ *
+ * A resize reflows the terminal: every soft-wrapped line is re-laid-out around
+ * the new width and the physical cursor follows the text it was after, so no
+ * model row can be derived from the previous position — only the reported row
+ * is reliable.  The block top sits `cursorOffset` rows above the cursor
+ * (the cursor's own visual row inside the block), so moving up that far from
+ * the reported row lands exactly on the block top, where the block is then
+ * erased and redrawn.
+ */
+export function repaintFromReportedRow(state, reportedRow) {
+    if (!Number.isInteger(reportedRow) || reportedRow < 1) {
+        clearScreen(state);
+        return;
+    }
+    // Cursor's visual row within the (header + input) block.
+    const cursorOffset = cursorVisualRow(state, state.row, state.col);
+    const blockTop = reportedRow - 1 - cursorOffset;
+    if (blockTop < 0) {
+        // The block top scrolled off the viewport: the generic redraw is safer.
+        clearScreen(state);
+        return;
+    }
+    beginBatch(state);
+    // Absolute positioning: the terminal reflow may have left the physical
+    // cursor anywhere, so only the reported row is trustworthy.
+    w(state, `\x1b[${blockTop + 1};1H`);
+    w(state, "\x1b[J");
+    // Redraw the full block (header + input lines) in place.
+    drawPromptHeader(state);
+    if (state.inlinePrompt) {
+        w(state, renderLine(state, 0) + "\x1b[K");
+    }
+    else {
+        w(state, state.styledLinePrefix + renderLine(state, 0) + "\x1b[K");
+    }
+    for (let i = 1; i < state.lines.length; i++) {
+        w(state, "\n" + state.styledLinePrefix + renderLine(state, i) + "\x1b[K");
+    }
+    w(state, "\x1b[J");
+    // Restore the cursor to the model position, absolutely.
+    const targetVisualRow = cursorVisualRow(state, state.row, state.col);
+    w(state, `\x1b[${blockTop + targetVisualRow + 1};${tCol(state, state.row, state.col)}H`);
+    drawBelowEditor(state);
+    flushBatch(state);
+}
+/**
  * In-place redraw: rewind to the editor top, erase the block, redraw the
  * prompt header and all input lines, then restore the cursor and the
  * status/footer area.

@@ -3,7 +3,7 @@ import { handleDelete } from "./editing.js";
 import { buildHelpFooter, detectKittyProtocol } from "./footer.js";
 import { appendPersistedHistory, loadHistory } from "./history.js";
 import { buildKeyMap, onData } from "./input.js";
-import { clearBelowEditor, clearScreen, cursorVisualRow, editorBlockFits, refreshSuggestions, renderLine, resetStatusAndFooter, setFooter, setStatusWithVisualState, tCol, w, } from "./rendering.js";
+import { clearBelowEditor, clearScreen, cursorVisualRow, editorBlockFits, refreshSuggestions, renderLine, repaintFromReportedRow, resetStatusAndFooter, setFooter, setStatusWithVisualState, tCol, w, } from "./rendering.js";
 import { applyStyle, buildPromptHeader, buildStyledLinePrefix, computeHeaderHeight, resolveStateful, } from "./style.js";
 /**
  * Read multi-line input from the terminal.
@@ -119,6 +119,9 @@ function readFromTTY(input, output, prompt, options) {
             isPasting: false,
             pendingPasteRepaint: false,
             prePasteCursorRow: 0,
+            dsrRow: 0,
+            dsrTimer: null,
+            dsrAnswer: null,
             escBuffer: "",
             escTimer: null,
             maxLines,
@@ -137,6 +140,13 @@ function readFromTTY(input, output, prompt, options) {
             writeBuffer: "",
         };
         // --- Resize handling ---
+        // A resize reflows the terminal (iTerm2/Ghostty/osx etc. soft-wrap the
+        // whole screen around the new width), which moves the physical cursor.
+        // Rewinding by model rows from that unknown position lands the repaint
+        // on the wrong rows, leaving the stale lines above (ghost duplicates).
+        // Instead: query the cursor position (DSR \x1b[6n); when the reply
+        // arrives ([r;cR), repaint anchored on the reported row.  A 400 ms
+        // fallback repaints bottom-anchored if the reply never comes.
         let resizeHandler = null;
         const ttyOutput = output;
         if (typeof ttyOutput.on === "function" && "columns" in ttyOutput) {
@@ -144,10 +154,22 @@ function readFromTTY(input, output, prompt, options) {
                 if (state.rebuildFooter) {
                     state.footerText = state.rebuildFooter(ttyOutput.columns);
                 }
-                clearScreen(state);
-                if (state.suggest) {
-                    refreshSuggestions(state);
+                if (state.dsrTimer) {
+                    clearTimeout(state.dsrTimer);
                 }
+                state.dsrTimer = setTimeout(() => {
+                    state.dsrTimer = null;
+                    state.dsrAnswer = null;
+                    clearScreen(state);
+                }, 400);
+                state.dsrAnswer = (row) => {
+                    if (state.dsrTimer) {
+                        clearTimeout(state.dsrTimer);
+                        state.dsrTimer = null;
+                    }
+                    repaintFromReportedRow(state, row);
+                };
+                w(state, "\x1b[6n"); // DSR: report cursor position
             };
             ttyOutput.on("resize", resizeHandler);
         }
@@ -161,6 +183,10 @@ function readFromTTY(input, output, prompt, options) {
             if (state.validateTimer) {
                 clearTimeout(state.validateTimer);
                 state.validateTimer = null;
+            }
+            if (state.dsrTimer) {
+                clearTimeout(state.dsrTimer);
+                state.dsrTimer = null;
             }
             if (resizeHandler && typeof ttyOutput.removeListener === "function") {
                 ttyOutput.removeListener("resize", resizeHandler);

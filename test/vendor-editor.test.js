@@ -84,6 +84,7 @@ test('arrow-down restores the draft after recall', async (t) => {
 
 function fakeOutput(t, rows) {
   const writes = []
+  const listeners = {}
   const output = {
     columns: 80,
     rows,
@@ -92,10 +93,12 @@ function fakeOutput(t, rows) {
       writes.push(String(chunk))
       return true
     },
-    on: () => {},
+    on: (event, fn) => {
+      listeners[event] = fn
+    },
     removeListener: () => {},
   }
-  return { output, writes }
+  return { output, writes, listeners }
 }
 
 async function runEditor(t, { rows, chunks, submit }) {
@@ -127,7 +130,7 @@ function buildPaste(lines) {
 function runEditorTuple(t, { rows, chunks }) {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   _resetKittyDetection(false)
-  const { output, writes } = fakeOutput(t, rows)
+  const { output, writes, listeners } = fakeOutput(t, rows)
   const stdin = fakeStdin()
   const pending = readMultiline('', {
     input: stdin,
@@ -139,7 +142,7 @@ function runEditorTuple(t, { rows, chunks }) {
     theme: { linePrefix: { pending: 'cyan', submitted: 'dim', cancelled: 'dim' }, submitRender: 'preserve' },
   })
   for (const chunk of chunks) stdin.emit('data', chunk)
-  return { pending, writes, stdin }
+  return { pending, writes, stdin, listeners, output }
 }
 
 test('paste split in the middle of the start marker is reassembled', async (t) => {
@@ -327,6 +330,43 @@ test('second paste after existing content does not replicate the previous sectio
   assert.equal(strip(afterSecond).split('one').length - 1, 1)
   assert.equal(strip(afterSecond).split('two').length - 1, 1)
   assert.equal(strip(afterSecond).split('three').length - 1, 1)
+})
+
+test('resize queries DSR and repaints one copy after reflow', async (t) => {
+  const { pending, writes, listeners, output, stdin } = runEditorTuple(t, { rows: 24, chunks: ['test', '\n', 'second line'] })
+  writes.length = 0
+  output.columns = 60
+  output.rows = 18
+  listeners.resize()               // editor sends \x1b[6n
+  const query = writes.find((w) => w.includes('\x1b[6n'))
+  assert.ok(query, 'resize should query the cursor position')
+  // Terminal replies with the cursor's viewport row (reflow moves it).
+  writes.length = 0
+  stdin.emit('data', '\x1b[3;5R')
+  await t.mock.timers.tick(450)
+  const repaint = writes.join('')
+  const strip = (w) => w.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
+  const plain = strip(repaint)
+  assert.equal(plain.split('test').length - 1, 1, 'test should appear exactly once')
+  assert.equal(plain.split('second line').length - 1, 1, 'second line should appear exactly once')
+  stdin.emit('data', '\r')
+  const [value] = await pending
+  assert.equal(value, 'test\nsecond line')
+})
+
+test('resize with no DSR reply falls back within 400ms', async (t) => {
+  const { pending, writes, listeners, output, stdin } = runEditorTuple(t, { rows: 24, chunks: ['one line'] })
+  writes.length = 0
+  output.columns = 50
+  output.rows = 16
+  listeners.resize()
+  await t.mock.timers.tick(450)
+  const repaint = writes.join('')
+  const strip = (w) => w.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
+  assert.equal(strip(repaint).split('one line').length - 1, 1, 'fallback redraws once')
+  stdin.emit('data', '\r')
+  const [value] = await pending
+  assert.equal(value, 'one line')
 })
 
 test('submit skips the in-place redraw when the editor is taller than the terminal', async (t) => {
