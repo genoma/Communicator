@@ -17,7 +17,7 @@ export const MAX_TOP_P = 1
 
 export const DEFAULT_WEB_SEARCH_RESULTS = 10
 
-export const MAX_WEB_SEARCH_RESULTS = 100
+export const MAX_WEB_SEARCH_RESULTS = 20
 
 // Venice web scraping is billed per request regardless of content size.
 export const SCRAPE_COST_USD = 0.01

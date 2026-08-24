@@ -17,7 +17,7 @@ Set the mode with `--web-search <mode>` at launch or `/web-search <mode>` mid-ch
 - `auto` mode uses the `openrouter:web_search` server tool (beta): the model decides whether to search, with 0–N searches per request and results surfacing as `url_citation` citations. The result count caps the *total* number of sources per answer — OpenRouter limits each search call individually, so a total cap is set explicitly.
 - `always` mode uses the legacy `web` plugin, which works on *any* model (native engines for major providers, Exa fallback) and forces one search per request. The plugin is deprecated by OpenRouter but still functional; if it is removed, `always` requests will fail until this client is updated (no automatic fallback is implemented).
 - The result count defaults to 10 — the pricing sweet spot: the base $0.005/request covers up to 10 results, and each result beyond 10 costs $0.001 extra. Override it per session with `--web-results <n>` or `/web-results <n>` (the banner then shows `[web: auto: N]` / `[web: always: N]`).
-- `--web-results` implies `auto` mode for that invocation unless an explicit `--web-search <mode>` is given (e.g. `--web-search always --web-results 5` stays `always`); `/web-results` only sets the count, it does not change the mode. Validation accepts 1–100; larger values are rejected with an error (`--web-results must be at most 100.`).
+- `--web-results` implies `auto` mode for that invocation unless an explicit `--web-search <mode>` is given (e.g. `--web-search always --web-results 5` stays `always`); `/web-results` only sets the count, it does not change the mode. Validation accepts 1–20; larger values are rejected with an error (`--web-results must be at most 20.`).
 
 ## Venice
 

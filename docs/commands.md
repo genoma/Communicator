@@ -13,7 +13,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--top-p`             | `<0-1\|default>`  | Top-p (nucleus sampling) override for the session (`default`: provider default, clears the persisted per-model value; unset: per-model preference, else the provider's own default). With `--model` alone, saves the per-model default |
 |       | `--budget`            | `<usd>`  | Per-session budget cap in USD. Warns at 80% used, refuses turns at 100%. Bare use saves the default |
 |       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `on`, `off` (`on` = `auto`; bare flag = `auto`). Per-model default is persisted in preferences |
-|       | `--web-results`       | `<n>`    | Number of web search results, 1–100 (OpenRouter only, default 10). Implies `auto` mode. Bare use saves the default |
+|       | `--web-results`       | `<n>`    | Number of web search results, 1–20 (OpenRouter only, default 10). Implies `auto` mode. Bare use saves the default |
 |       | `--zdr`               | —        | Force zero-data-retention routing (OpenRouter only). Filters model/provider selection to ZDR-capable endpoints; errors at selection if a model has none |
 |       | `--e2ee`              | —        | Enable end-to-end encryption (Venice only, requires `--provider venice`). Filters model selection to E2EE-capable models; disables web search, attachments, and prompt caching; refuses to resume unencrypted sessions |
 |       | `--attach`            | `<path>` | Attach a file to the one-shot message (repeatable: images, pdf, xlsx/docx/pptx, txt, md, code, ...). Requires a prompt argument or piped stdin |
