@@ -333,9 +333,9 @@ test('docs/sessions.md list-sessions sample shows the session ID line', async ()
   assert.ok(sessionsDoc.includes('ID: 2026-07-30T19-15-22'), 'the sample output must include the ID: line')
 })
 
-test('MEMORY.md field counts match the payload shapes (local-only doc)', async () => {
+test('MEMORY.md field counts match the payload shapes', async () => {
   const memory = await readText('MEMORY.md').catch(() => null)
-  if (memory === null) return // MEMORY.md is gitignored; CI has no copy
+  if (memory === null) return // MEMORY.md is committed; this guard only covers very old checkouts
 
   const [{ ChatState }, sessionsModule] = await Promise.all([
     import('../src/chat-state.js'),

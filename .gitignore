@@ -64,10 +64,6 @@ Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 
-# --- AGENT ---
-MEMORY.md
-AGENTS.md
-
 # --- Node / OS ---
 lib-cov/
 coverage/
