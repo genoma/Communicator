@@ -213,6 +213,10 @@ function applyTransform(state, event, preEditLines, targetRow, targetCol) {
 // --- Editing operations ---
 /** Insert a character at the current cursor position */
 export function insertChar(state, ch) {
+    if (ch === "\u0085" || ch === "\u2028" || ch === "\u2029") {
+        insertNewline(state);
+        return;
+    }
     if (!canInsertChar(state, [...ch].length))
         return;
     if (!state.isPasting)
@@ -261,6 +265,7 @@ export function insertChar(state, ch) {
  * count never exceeds maxLines (chars past the limit still land on the last
  * line, like the per-char flow). */
 export function insertPaste(state, text) {
+    text = text.replace(/\r\n|\r|\u0085|\u2028|\u2029/g, "\n");
     const prevContent = state.lines.join("\n");
     const parts = text.split("\n");
     let budget = state.maxLength != null ? state.maxLength - contentLength(state.lines) : null;

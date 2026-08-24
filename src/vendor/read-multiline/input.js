@@ -119,7 +119,7 @@ export function buildKeyMap(state, submit, cancel, handleEOF) {
 function processPaste(state, text) {
     // Bulk insert: per-character insertChar was O(n²) on large pastes. Control
     // chars other than newline are dropped, mirroring the per-char loop.
-    insertPaste(state, text.replace(/\r\n|\r/g, "\n").replace(/[\x00-\x09\x0b\x0c\x0e-\x1f]/g, ""));
+    insertPaste(state, text.replace(/[\x00-\x09\x0b\x0c\x0e-\x1f]/g, ""));
 }
 /**
  * The longest suffix of seq that could still be a prefix of a paste marker.

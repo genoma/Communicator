@@ -125,6 +125,8 @@ paste mode with every key swallowed.
   inside the 50 ms window.
 - While pasting, only the end marker is significant (a nested paste start marker
   is literal content), and a trailing prefix of the end marker is held back.
+- Unicode line/paragraph separators (NEL U+0085, LS U+2028, PS U+2029) are normalized to newlines
+  during paste and character input so they do not render as phantom spaces and desync editing.
 - Watchdog: if no paste data arrives for 1.5 s, the paste is force-ended and the
   editor repaints, so a genuinely lost end marker can never leave the editor
   swallowing keys.

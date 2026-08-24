@@ -248,6 +248,18 @@ test('CRLF in pasted text is normalized', async (t) => {
   assert.equal(value, 'a\nb\n')
 })
 
+test('Unicode line separators in pasted text are normalized', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['\x1b[200~a\u0085b\u2028c\u2029d\x1b[201~', '\r'] })
+  const [value] = await pending
+  assert.equal(value, 'a\nb\nc\nd')
+})
+
+test('typed Unicode line separators are treated as newlines', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['a\u0085b\u2028c\u2029d', '\r'] })
+  const [value] = await pending
+  assert.equal(value, 'a\nb\nc\nd')
+})
+
 test('paste into existing input keeps keys working after', async (t) => {
   const { pending } = runEditorTuple(t, { chunks: ['one', '\x1b[200~two\x1b[2', '01~', 'three', '\r'] })
   const [value] = await pending
