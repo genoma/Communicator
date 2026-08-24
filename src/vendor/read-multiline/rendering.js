@@ -471,6 +471,46 @@ function repaintBelow(state) {
     flushBatch(state);
 }
 /**
+ * Resize repaint with a caller-supplied repaint hook.
+ *
+ * The hook (app-level) clears the screen and re-renders everything the editor
+ * does not own (chat transcript, banners) from the session state — that is the
+ * only reliable way to restore the reflowed area above. After the hook, the
+ * editor draws its block at the current cursor position, i.e. exactly the
+ * session-start placement.
+ */
+export function repaintAfterResizeRepaint(state, hook) {
+    beginBatch(state);
+    w(state, "\x1b[2J");
+    w(state, "\x1b[3J");
+    w(state, "\x1b[H");
+    flushBatch(state);
+    // Hook output and editor block are drawn without the batch (the hook may
+    // write much more than the block; batching keeps the cursor hidden only
+    // while the editor writes).
+    hook();
+    drawPromptHeader(state);
+    if (state.inlinePrompt) {
+        w(state, renderLine(state, 0) + "\x1b[K");
+    }
+    else {
+        w(state, state.styledLinePrefix + renderLine(state, 0) + "\x1b[K");
+    }
+    for (let i = 1; i < state.lines.length; i++) {
+        w(state, "\n" + state.styledLinePrefix + renderLine(state, i) + "\x1b[K");
+    }
+    w(state, "\x1b[J");
+    const endVisualRow = lastVisualRow(state);
+    const targetVisualRow = cursorVisualRow(state, state.row, state.col);
+    if (endVisualRow > targetVisualRow)
+        w(state, `\x1b[${endVisualRow - targetVisualRow}A`);
+    else if (endVisualRow < targetVisualRow)
+        w(state, `\x1b[${targetVisualRow - endVisualRow}B`);
+    w(state, `\x1b[${tCol(state, state.row, state.col)}G`);
+    drawBelowEditor(state);
+}
+
+/**
  * Repaint after a resize, anchored on the physical cursor row reported by the
  * terminal (DSR reply to \x1b[6n).
  *

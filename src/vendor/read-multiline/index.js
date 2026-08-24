@@ -3,7 +3,7 @@ import { handleDelete } from "./editing.js";
 import { buildHelpFooter, detectKittyProtocol } from "./footer.js";
 import { appendPersistedHistory, loadHistory } from "./history.js";
 import { buildKeyMap, onData } from "./input.js";
-import { clearBelowEditor, clearScreen, cursorVisualRow, editorBlockFits, refreshSuggestions, renderLine, repaintFromReportedRow, resetStatusAndFooter, setFooter, setStatusWithVisualState, tCol, w, } from "./rendering.js";
+import { clearBelowEditor, clearScreen, cursorVisualRow, editorBlockFits, refreshSuggestions, renderLine, repaintAfterResizeRepaint, repaintFromReportedRow, resetStatusAndFooter, setFooter, setStatusWithVisualState, tCol, w, } from "./rendering.js";
 import { applyStyle, buildPromptHeader, buildStyledLinePrefix, computeHeaderHeight, resolveStateful, } from "./style.js";
 /**
  * Read multi-line input from the terminal.
@@ -140,19 +140,25 @@ function readFromTTY(input, output, prompt, options) {
             writeBuffer: "",
         };
         // --- Resize handling ---
-        // A resize reflows the terminal (iTerm2/Ghostty/osx etc. soft-wrap the
-        // whole screen around the new width), which moves the physical cursor.
-        // Rewinding by model rows from that unknown position lands the repaint
-        // on the wrong rows, leaving the stale lines above (ghost duplicates).
-        // Instead: query the cursor position (DSR \x1b[6n); when the reply
-        // arrives ([r;cR), repaint anchored on the reported row.  A 400 ms
-        // fallback repaints bottom-anchored if the reply never comes.
+        // A resize reflows the terminal (iTerm2/Ghostty/xterm etc. soft-wrap
+        // the whole screen around the new width), so the block's position and
+        // the physical cursor are unknowable — rows rewrap, content above
+        // scrolls, stale copies can never be addressed reliably (the DSR
+        // query alone left duplicates). Full rebuild: the caller's
+        // onResizeRepaint hook clears the screen and re-renders the output
+        // above (chat transcript etc.), then the editor redraws its block at
+        // the current cursor position (session-start placement). Without the
+        // hook, a 400 ms DSR fallback keeps the old behavior.
         let resizeHandler = null;
         const ttyOutput = output;
         if (typeof ttyOutput.on === "function" && "columns" in ttyOutput) {
             resizeHandler = () => {
                 if (state.rebuildFooter) {
                     state.footerText = state.rebuildFooter(ttyOutput.columns);
+                }
+                if (typeof options.onResizeRepaint === "function") {
+                    repaintAfterResizeRepaint(state, options.onResizeRepaint);
+                    return;
                 }
                 if (state.dsrTimer) {
                     clearTimeout(state.dsrTimer);

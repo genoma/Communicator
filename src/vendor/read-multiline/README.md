@@ -72,18 +72,32 @@ message):
 
 iTerm2, Ghostty, xterm etc. reflow the whole screen on resize: soft-wrapped
 lines are re-laid-out around the new width and the physical cursor follows the
-reflow, so the screen position of the block is unknown to the editor. Any
-model-row rewind then lands on the wrong rows and duplicates the block (the
-same logical-vs-physical desync as the paste ghost).
+reflow, so the screen position of the block — and of anything above it — is
+unknown to the editor. Any model-row rewind then lands on the wrong rows and
+leaves the old block behind, duplicating it (the same logical-vs-physical
+desync as the paste ghost); the duplication is worse across a resize drag,
+where each step re-anchors on stale content and stale copies accumulate above
+the anchor.
 
-- The resize handler queries the cursor position (`\x1b[6n` DSR) and
-  `repaintFromReportedRow` anchors the redraw on the reported row with absolute
-  cursor positioning (`\x1b[row;colH`) — the row is the only reliable anchor
-  after a reflow.
-- `input.js` intercepts the DSR reply (`\x1b[r;cR`) instead of feeding it to
-  the keymap.
-- If no reply arrives within 400 ms (terminals that don't answer DSR), the
-  handler falls back to the generic bottom-anchored redraw.
+Preferred fix (used by the app): the caller passes an `onResizeRepaint` hook.
+
+- `rendering.js` `repaintAfterResizeRepaint` wipes the screen (`\x1b[2J\x1b[3J\x1b[H`
+  — also clearing scrollback, so no stale frame can survive a reflow storm),
+  runs the hook, and the editor then draws its block at the current cursor —
+  session-start placement, so a reflow can never desync it.
+- `index.js` — the resize handler prefers the hook when provided; it must be
+  given anytime the editor's output sits on top of other screen content (chat
+  transcript, banners) that only the app can rebuild.
+- `input.js`/`chat.js` — the app hook re-renders `renderHistory(messages)`
+  plus the banner after the editor wiped the screen.
+
+Fallback (no hook): the handler queries the cursor position (`\x1b[6n` DSR) and
+`repaintFromReportedRow` anchors the redraw on the reported row with absolute
+cursor positioning. `input.js` intercepts the DSR reply (`\x1b[r;cR`) instead
+of feeding it to the keymap. If no reply arrives within 400 ms, the fallback
+drops to the generic bottom-anchored redraw. All three only redraw the editor
+block, so they cannot repair content above the block after a reflow — hence
+the hook is the correct path for the chat app.
 
 Known limitation (no internal windowing): moving the cursor far into a taller-than-
 viewport editor desyncs the on-screen position; typing at the tail of a long message

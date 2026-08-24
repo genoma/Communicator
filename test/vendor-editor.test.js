@@ -127,7 +127,7 @@ function buildPaste(lines) {
 
 // Like runEditor, but exposes the pending promise so cancel/EOF and
 // timer-driven recovery cases can drive input before awaiting.
-function runEditorTuple(t, { rows, chunks }) {
+function runEditorTuple(t, { rows, chunks, onResizeRepaint } = {}) {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   _resetKittyDetection(false)
   const { output, writes, listeners } = fakeOutput(t, rows)
@@ -139,6 +139,7 @@ function runEditorTuple(t, { rows, chunks }) {
     linePrefix: '> ',
     helpFooter: false,
     maxLines: 50,
+    onResizeRepaint,
     theme: { linePrefix: { pending: 'cyan', submitted: 'dim', cancelled: 'dim' }, submitRender: 'preserve' },
   })
   for (const chunk of chunks) stdin.emit('data', chunk)
@@ -332,7 +333,32 @@ test('second paste after existing content does not replicate the previous sectio
   assert.equal(strip(afterSecond).split('three').length - 1, 1)
 })
 
-test('resize queries DSR and repaints one copy after reflow', async (t) => {
+test('resize with a repaint hook rebuilds the screen below the hook output', async (t) => {
+  const hookOutput = 'assistant line 0\nassistant line 1\nassistant line 2\n\n'
+  const { pending, writes, listeners, output, stdin } = runEditorTuple(t, {
+    rows: 24,
+    chunks: ['test', '\n', 'second line'],
+    onResizeRepaint: () => { writes.push(hookOutput) },
+  })
+  writes.length = 0
+  output.columns = 60
+  output.rows = 18
+  listeners.resize()
+  await t.mock.timers.tick(10)
+  const all = writes.join('')
+  // Screen is wiped (2J + 3J) and the block redrawn exactly once (plus the hook).
+  assert.ok(all.includes('\x1b[2J') && all.includes('\x1b[3J'), 'resize should wipe the screen')
+  const strip = (w) => w.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
+  const plain = strip(all)
+  assert.equal(plain.split('assistant line 1').length - 1, 1, 'hook output appears once')
+  assert.equal(plain.split('test').length - 1, 1, 'input line appears once')
+  assert.equal(plain.split('second line').length - 1, 1, 'second input line appears once')
+  stdin.emit('data', '\r')
+  const [value] = await pending
+  assert.equal(value, 'test\nsecond line')
+})
+
+test('resize queries DSR when no repaint hook is provided', async (t) => {
   const { pending, writes, listeners, output, stdin } = runEditorTuple(t, { rows: 24, chunks: ['test', '\n', 'second line'] })
   writes.length = 0
   output.columns = 60

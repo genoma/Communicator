@@ -5,7 +5,7 @@ import { DATA_DIR } from './constants.js'
 
 const HISTORY_PATH = join(DATA_DIR, 'history.json')
 
-export async function readInput({ commands } = {}) {
+export async function readInput({ commands, onResizeRepaint } = {}) {
   const input = process.stdin
   return new Promise((resolve) => {
     let settled = false
@@ -42,6 +42,7 @@ export async function readInput({ commands } = {}) {
       suggest: commands
         ? ({ value }) => matchCommands(value, commands)
         : undefined,
+      onResizeRepaint,
     }).then(
       ([value, error]) => {
         if (error) {

@@ -301,7 +301,19 @@ export async function runChatSession(ctx = {}, deps = {}) {
 
   while (true) {
     console.log(sep())
-    const result = await readInput({ commands: visibleChatCommands({ visionSupported: state.visionSupported, e2ee: state.e2ee, providerName: provider.meta.name }) })
+    const result = await readInput({
+      commands: visibleChatCommands({ visionSupported: state.visionSupported, e2ee: state.e2ee, providerName: provider.meta.name }),
+      // Resize reflow: the caller owns the transcript, so it must rebuild it.
+      // The editor clears the screen first, then the hook restores everything
+      // above the prompt (session-start layout), then the editor redraws its
+      // block at the current cursor position.
+      onResizeRepaint: () => {
+        out(connectedBanner(buildStatusLine(state), { hints: hintParts }))
+        if (state.messages.length > 1) {
+          renderHistory(state.messages, { markdown: state.markdown, stdout, compactThinking: tty && state.compactThinking, ...rpgMarkers })
+        }
+      },
+    })
 
     if (result.cancelled) {
       return exitCleanly()
