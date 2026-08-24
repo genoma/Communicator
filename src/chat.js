@@ -144,16 +144,22 @@ export async function runChatSession(ctx = {}, deps = {}) {
   if (state.visionSupported !== false && !state.e2ee) hintParts.push('/attach <path> to queue files')
   hintParts.push('/quit to exit')
   const tty = stdout.isTTY === true
-  out(connectedBanner(buildStatusLine(state), { hints: hintParts }))
 
   const rpgMarkers = {
     userMarker: rpgUserName ? you(rpgUserName) : null,
     assistantMarker: rpgCharName ? char(rpgCharName) : null,
   }
 
-  if (initialMessages) {
-    renderHistory(state.messages, { markdown: state.markdown, stdout, compactThinking: tty && state.compactThinking, ...rpgMarkers })
+  // The single source for the app-owned portion of the screen: the banner and
+  // the chat transcript above the prompt. The editor draws its own block after
+  // this is called, so this is also the resize repaint path.
+  const renderAboveEditor = () => {
+    out(connectedBanner(buildStatusLine(state), { hints: hintParts }))
+    if (state.messages.length > 1) {
+      renderHistory(state.messages, { markdown: state.markdown, stdout, compactThinking: tty && state.compactThinking, ...rpgMarkers })
+    }
   }
+  renderAboveEditor()
 
   if (initialMessages && sessionState.tracker.requests > 0) {
     let summary = sessionState.tracker.summary()
@@ -307,12 +313,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
       // The editor clears the screen first, then the hook restores everything
       // above the prompt (session-start layout), then the editor redraws its
       // block at the current cursor position.
-      onResizeRepaint: () => {
-        out(connectedBanner(buildStatusLine(state), { hints: hintParts }))
-        if (state.messages.length > 1) {
-          renderHistory(state.messages, { markdown: state.markdown, stdout, compactThinking: tty && state.compactThinking, ...rpgMarkers })
-        }
-      },
+      onResizeRepaint: renderAboveEditor,
     })
 
     if (result.cancelled) {

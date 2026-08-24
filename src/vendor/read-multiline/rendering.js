@@ -480,34 +480,42 @@ function repaintBelow(state) {
  * session-start placement.
  */
 export function repaintAfterResizeRepaint(state, hook) {
-    beginBatch(state);
-    w(state, "\x1b[2J");
-    w(state, "\x1b[3J");
-    w(state, "\x1b[H");
-    flushBatch(state);
-    // Hook output and editor block are drawn without the batch (the hook may
-    // write much more than the block; batching keeps the cursor hidden only
-    // while the editor writes).
-    hook();
-    drawPromptHeader(state);
-    if (state.inlinePrompt) {
-        w(state, renderLine(state, 0) + "\x1b[K");
+    // Synchronized output keeps the clear + full rebuild from appearing as a
+    // blank flash on terminals that support it (iTerm2, Ghostty, kitty, ...).
+    w(state, "\x1b[?2026h");
+    try {
+        beginBatch(state);
+        w(state, "\x1b[2J");
+        w(state, "\x1b[3J");
+        w(state, "\x1b[H");
+        flushBatch(state);
+        // Hook output and editor block are drawn without the batch (the hook may
+        // write much more than the block; batching keeps the cursor hidden only
+        // while the editor writes).
+        hook();
+        drawPromptHeader(state);
+        if (state.inlinePrompt) {
+            w(state, renderLine(state, 0) + "\x1b[K");
+        }
+        else {
+            w(state, state.styledLinePrefix + renderLine(state, 0) + "\x1b[K");
+        }
+        for (let i = 1; i < state.lines.length; i++) {
+            w(state, "\n" + state.styledLinePrefix + renderLine(state, i) + "\x1b[K");
+        }
+        w(state, "\x1b[J");
+        const endVisualRow = lastVisualRow(state);
+        const targetVisualRow = cursorVisualRow(state, state.row, state.col);
+        if (endVisualRow > targetVisualRow)
+            w(state, `\x1b[${endVisualRow - targetVisualRow}A`);
+        else if (endVisualRow < targetVisualRow)
+            w(state, `\x1b[${targetVisualRow - endVisualRow}B`);
+        w(state, `\x1b[${tCol(state, state.row, state.col)}G`);
+        drawBelowEditor(state);
     }
-    else {
-        w(state, state.styledLinePrefix + renderLine(state, 0) + "\x1b[K");
+    finally {
+        w(state, "\x1b[?2026l");
     }
-    for (let i = 1; i < state.lines.length; i++) {
-        w(state, "\n" + state.styledLinePrefix + renderLine(state, i) + "\x1b[K");
-    }
-    w(state, "\x1b[J");
-    const endVisualRow = lastVisualRow(state);
-    const targetVisualRow = cursorVisualRow(state, state.row, state.col);
-    if (endVisualRow > targetVisualRow)
-        w(state, `\x1b[${endVisualRow - targetVisualRow}A`);
-    else if (endVisualRow < targetVisualRow)
-        w(state, `\x1b[${targetVisualRow - endVisualRow}B`);
-    w(state, `\x1b[${tCol(state, state.row, state.col)}G`);
-    drawBelowEditor(state);
 }
 
 /**

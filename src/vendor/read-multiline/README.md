@@ -84,10 +84,13 @@ Preferred fix (used by the app): the caller passes an `onResizeRepaint` hook.
 - `rendering.js` `repaintAfterResizeRepaint` wipes the screen (`\x1b[2J\x1b[3J\x1b[H`
   — also clearing scrollback, so no stale frame can survive a reflow storm),
   runs the hook, and the editor then draws its block at the current cursor —
-  session-start placement, so a reflow can never desync it.
+  session-start placement, so a reflow can never desync it. The whole rebuild
+  is wrapped in synchronized output (`\x1b[?2026h`/`\x1b[?2026l`) so modern
+  terminals (iTerm2, Ghostty, kitty, etc.) do not flash a blank frame.
 - `index.js` — the resize handler prefers the hook when provided; it must be
   given anytime the editor's output sits on top of other screen content (chat
-  transcript, banners) that only the app can rebuild.
+  transcript, banners) that only the app can rebuild. Resize events are
+  debounced (80 ms) so a resize drag coalesces into one final full rebuild.
 - `input.js`/`chat.js` — the app hook re-renders `renderHistory(messages)`
   plus the banner after the editor wiped the screen.
 

@@ -5,6 +5,8 @@ import { appendPersistedHistory, loadHistory } from "./history.js";
 import { buildKeyMap, onData } from "./input.js";
 import { clearBelowEditor, clearScreen, cursorVisualRow, editorBlockFits, refreshSuggestions, renderLine, repaintAfterResizeRepaint, repaintFromReportedRow, resetStatusAndFooter, setFooter, setStatusWithVisualState, tCol, w, } from "./rendering.js";
 import { applyStyle, buildPromptHeader, buildStyledLinePrefix, computeHeaderHeight, resolveStateful, } from "./style.js";
+
+const RESIZE_DEBOUNCE_MS = 80;
 /**
  * Read multi-line input from the terminal.
  *
@@ -150,32 +152,41 @@ function readFromTTY(input, output, prompt, options) {
         // the current cursor position (session-start placement). Without the
         // hook, a 400 ms DSR fallback keeps the old behavior.
         let resizeHandler = null;
+        let resizeTimer = null;
         const ttyOutput = output;
         if (typeof ttyOutput.on === "function" && "columns" in ttyOutput) {
             resizeHandler = () => {
                 if (state.rebuildFooter) {
                     state.footerText = state.rebuildFooter(ttyOutput.columns);
                 }
-                if (typeof options.onResizeRepaint === "function") {
-                    repaintAfterResizeRepaint(state, options.onResizeRepaint);
-                    return;
+                // A resize drag can emit many events before the terminal settles.
+                // Debounce so the full rebuild runs once on the final size.
+                if (resizeTimer) {
+                    clearTimeout(resizeTimer);
                 }
-                if (state.dsrTimer) {
-                    clearTimeout(state.dsrTimer);
-                }
-                state.dsrTimer = setTimeout(() => {
-                    state.dsrTimer = null;
-                    state.dsrAnswer = null;
-                    clearScreen(state);
-                }, 400);
-                state.dsrAnswer = (row) => {
+                resizeTimer = setTimeout(() => {
+                    resizeTimer = null;
+                    if (typeof options.onResizeRepaint === "function") {
+                        repaintAfterResizeRepaint(state, options.onResizeRepaint);
+                        return;
+                    }
                     if (state.dsrTimer) {
                         clearTimeout(state.dsrTimer);
-                        state.dsrTimer = null;
                     }
-                    repaintFromReportedRow(state, row);
-                };
-                w(state, "\x1b[6n"); // DSR: report cursor position
+                    state.dsrTimer = setTimeout(() => {
+                        state.dsrTimer = null;
+                        state.dsrAnswer = null;
+                        clearScreen(state);
+                    }, 400);
+                    state.dsrAnswer = (row) => {
+                        if (state.dsrTimer) {
+                            clearTimeout(state.dsrTimer);
+                            state.dsrTimer = null;
+                        }
+                        repaintFromReportedRow(state, row);
+                    };
+                    w(state, "\x1b[6n"); // DSR: report cursor position
+                }, RESIZE_DEBOUNCE_MS);
             };
             ttyOutput.on("resize", resizeHandler);
         }
@@ -193,6 +204,10 @@ function readFromTTY(input, output, prompt, options) {
             if (state.dsrTimer) {
                 clearTimeout(state.dsrTimer);
                 state.dsrTimer = null;
+            }
+            if (resizeTimer) {
+                clearTimeout(resizeTimer);
+                resizeTimer = null;
             }
             if (resizeHandler && typeof ttyOutput.removeListener === "function") {
                 ttyOutput.removeListener("resize", resizeHandler);

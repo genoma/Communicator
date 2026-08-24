@@ -344,10 +344,11 @@ test('resize with a repaint hook rebuilds the screen below the hook output', asy
   output.columns = 60
   output.rows = 18
   listeners.resize()
-  await t.mock.timers.tick(10)
+  await t.mock.timers.tick(80)
   const all = writes.join('')
   // Screen is wiped (2J + 3J) and the block redrawn exactly once (plus the hook).
   assert.ok(all.includes('\x1b[2J') && all.includes('\x1b[3J'), 'resize should wipe the screen')
+  assert.ok(all.includes('\x1b[?2026h') && all.includes('\x1b[?2026l'), 'resize rebuild should use synchronized output')
   const strip = (w) => w.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
   const plain = strip(all)
   assert.equal(plain.split('assistant line 1').length - 1, 1, 'hook output appears once')
@@ -358,12 +359,36 @@ test('resize with a repaint hook rebuilds the screen below the hook output', asy
   assert.equal(value, 'test\nsecond line')
 })
 
+test('resize events are debounced to a single repaint', async (t) => {
+  const { pending, writes, listeners, output, stdin } = runEditorTuple(t, {
+    rows: 24,
+    chunks: ['one line'],
+    onResizeRepaint: () => { writes.push('frame') },
+  })
+  writes.length = 0
+  output.columns = 50
+  output.rows = 16
+  listeners.resize()
+  listeners.resize()
+  listeners.resize()
+  await t.mock.timers.tick(79)
+  assert.equal(writes.filter((w) => w === 'frame').length, 0, 'resize should not repaint before the debounce window')
+  await t.mock.timers.tick(1)
+  assert.equal(writes.filter((w) => w === 'frame').length, 1, 'resize should repaint once after the debounce window')
+  const all = writes.join('')
+  assert.equal(all.split('\x1b[?2026h').length - 1, 1, 'synchronized rebuild should start once')
+  stdin.emit('data', '\r')
+  const [value] = await pending
+  assert.equal(value, 'one line')
+})
+
 test('resize queries DSR when no repaint hook is provided', async (t) => {
   const { pending, writes, listeners, output, stdin } = runEditorTuple(t, { rows: 24, chunks: ['test', '\n', 'second line'] })
   writes.length = 0
   output.columns = 60
   output.rows = 18
-  listeners.resize()               // editor sends \x1b[6n
+  listeners.resize()               // editor sends \x1b[6n after debounce
+  await t.mock.timers.tick(80)
   const query = writes.find((w) => w.includes('\x1b[6n'))
   assert.ok(query, 'resize should query the cursor position')
   // Terminal replies with the cursor's viewport row (reflow moves it).
@@ -386,7 +411,8 @@ test('resize with no DSR reply falls back within 400ms', async (t) => {
   output.columns = 50
   output.rows = 16
   listeners.resize()
-  await t.mock.timers.tick(450)
+  await t.mock.timers.tick(80)
+  await t.mock.timers.tick(400)
   const repaint = writes.join('')
   const strip = (w) => w.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
   assert.equal(strip(repaint).split('one line').length - 1, 1, 'fallback redraws once')

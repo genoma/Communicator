@@ -591,6 +591,44 @@ test('banner shows the zdr badge when active', async (t) => {
   assert.equal(consoleSpy.logText(0), '\nConnected to Provider / org/model  [in $1.00 / out $2.00/M]  [temp: 0.7]  [top-p: default]  [zdr]  [smooth: on (normal, ~2000 chars/s)]\n/attach <path> to queue files  |  /quit to exit\n')
 })
 
+test('resize repaint hook rebuilds the app-owned frame above the editor', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const writes = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  let repaint
+  let release
+  const readInput = ({ onResizeRepaint } = {}) => {
+    repaint = onResizeRepaint
+    return new Promise((resolve) => { release = resolve })
+  }
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput, stdout })
+  const session = runChatSession(baseCtx(provider, {
+    initialMessages: [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'question' },
+      { role: 'assistant', content: 'answer text' },
+    ],
+  }), harness.deps)
+
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(typeof repaint, 'function', 'readInput should receive the resize repaint hook')
+
+  const logCountBefore = consoleSpy.allLogs().length
+  writes.length = 0
+  repaint()
+  const all = writes.join('')
+  assert.ok(all.includes('question'), 'resize repaint should include the user message')
+  assert.ok(all.includes('answer text'), 'resize repaint should include the assistant message')
+  assert.ok(
+    consoleSpy.allLogs().slice(logCountBefore).some((line) => line.includes('Connected to')),
+    'resize repaint should re-render the banner'
+  )
+
+  release({ cancelled: true })
+  await session
+})
+
 test('e2ee shows the badge, forces web search off, and flows to chatCompletion', async (t) => {
   const consoleSpy = mockConsole(t)
   t.mock.method(globalThis, 'fetch', async (url) => new Response(JSON.stringify({
