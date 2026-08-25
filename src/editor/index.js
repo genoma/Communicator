@@ -352,8 +352,8 @@ function readFromTTY(input, output, prompt, options) {
     }
     keyMap.set('\x03', cancel) // Ctrl+C
     keyMap.set('\x1b[99;5u', cancel) // kitty Ctrl+C
-    keyMap.set('\x04', handleEOF) // Ctrl+D
-    keyMap.set('\x1b[100;5u', handleEOF) // kitty Ctrl+D
+    // Ctrl+D deliberately unbound: EOF in shells vs forward-delete in
+    // emacs-style apps, and it would exit the chat (see MEMORY.md).
     keyMap.set('\x7f', withRepaint(handleBackspace))
     keyMap.set('\b', withRepaint(handleBackspace))
     keyMap.set('\x17', withRepaint(deleteWordBack)) // Ctrl+W
@@ -501,20 +501,6 @@ function readFromTTY(input, output, prompt, options) {
       }
       cleanup()
       resolve([model.lines.join('\n'), { kind: 'cancel', message: 'Input cancelled' }])
-    }
-
-    function handleEOF() {
-      if (!active) return
-      if (model.lines.join('\n').length === 0) {
-        if (!view.windowed && fitsOnScreen(computeGridFn())) {
-          repaintMode('erase')
-        }
-        cleanup()
-        resolve([model.lines.join('\n'), { kind: 'eof', message: 'EOF received on empty input' }])
-      } else {
-        handleDelete(model)
-        repaintMode('normal')
-      }
     }
 
     // --- Footer / help ---

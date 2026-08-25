@@ -437,21 +437,23 @@ test('Cancel returns the partial value and restores the screen', async (t) => {
   assert.ok(term.lines().slice(0, 1)[0] === '')
 })
 
-test('Ctrl+D on empty input is EOF; on content deletes the next character', async (t) => {
+test('Ctrl+D is unbound: it neither deletes nor ends the input', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const h1 = setup(t)
   press(h1.stdin, '\x04')
-  const [, e1] = await h1.editor
-  assert.equal(e1?.kind, 'eof')
+  assert.ok(h1.term.lines().some((l) => l === '❯ '), 'prompt stays on screen after Ctrl+D')
+  submit(h1.stdin)
+  const [v1] = await h1.editor
+  assert.equal(v1, '')
 
   const h2 = setup(t)
   type(h2.stdin, 'ab')
   press(h2.stdin, '\x01') // line start
   press(h2.stdin, '\x04')
-  assert.deepEqual(h2.term.lines().filter((l) => l !== ''), ['❯ b'])
+  assert.deepEqual(h2.term.lines().filter((l) => l !== ''), ['❯ ab'], 'Ctrl+D does not delete')
   submit(h2.stdin)
   const [v2] = await h2.editor
-  assert.equal(v2, 'b')
+  assert.equal(v2, 'ab')
 })
 
 // --- Paint kernel (unit) ---
