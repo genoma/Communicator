@@ -76,6 +76,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 │   ├── io.js             — output helpers (out/err) and debug logging (COMMUNICATOR_DEBUG=1)
 │   ├── markdown.js       — streaming terminal markdown renderer (in-place line redraw)
 │   ├── md-it.js          — markdown-it engine: ANSI token rendering, line classification, aligned tables
+│   ├── wrap.js           — word-aware folding of terminal lines (styled lines + streaming plain pieces)
 │   ├── hyperlink.js      — OSC 8 hyperlink escape helper
 │   ├── loader.js         — waiting indicator (braille spinner) for pending responses
 │   └── stream.js         — stream renderer + history replay

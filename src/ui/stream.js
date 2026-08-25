@@ -188,13 +188,14 @@ export function printSources(sources, stdout = process.stdout) {
 export function renderHistory(messages, { markdown = false, stdout = process.stdout, userMarker = null, assistantMarker = null, compactThinking = false } = {}) {
   if (!messages || messages.length <= 1) return
 
+  const cols = typeof stdout.columns === 'number' ? stdout.columns : null
   const hasVisible = messages.some((m) => m.role !== 'system')
   if (!hasVisible) return
 
   stdout.write('\n')
   for (const msg of messages) {
     if (msg.role === 'user') {
-      stdout.write(`${userMarker ?? you()}\n${markdown ? renderText(sanitizeAnsi(contentText(msg.content))) : sanitizeAnsi(contentText(msg.content))}\n\n`)
+      stdout.write(`${userMarker ?? you()}\n${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), [], cols) : sanitizeAnsi(contentText(msg.content))}\n\n`)
       for (const att of contentAttachments(msg.content)) {
         stdout.write(`${attachmentLine('attached', att.filename, { meta: att.kind })}\n`)
       }
@@ -214,7 +215,7 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
         }
       }
       if (assistantMarker) stdout.write(`${assistantMarker}\n`)
-      stdout.write(`${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), msg.sources || []) : sanitizeAnsi(contentText(msg.content))}\n\n`)
+      stdout.write(`${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), msg.sources || [], cols) : sanitizeAnsi(contentText(msg.content))}\n\n`)
       for (const att of contentAttachments(msg.content)) {
         stdout.write(`${attachmentLine(att.kind, att.filename)}\n`)
       }

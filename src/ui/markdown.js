@@ -1,7 +1,12 @@
 import { classifyContexts, md, pendingTables, renderTableTokens, renderText, styleLine, tableRegionEnd } from './md-it.js'
+import { wrapWords } from './wrap.js'
 import stringWidth from 'string-width'
 
 const PARTIAL_FLUSH_MS = 200
+
+// Blocks that must keep their exact layout: code and horizontal rules are
+// never re-flowed, the terminal's own soft-wrap handles the rare overflow.
+const NO_WRAP_TYPES = new Set(['fence', 'code', 'hr'])
 
 // Lines after which block classification is self-contained: paragraphs,
 // lists, blockquotes and tables resolve at the previous blank line, and ATX
@@ -20,13 +25,13 @@ const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 export function createMarkdownRenderer({ getSources = null, stdout = process.stdout, partialFlushMs = PARTIAL_FLUSH_MS } = {}) {
   const lines = []
-  const emittedWidths = []
+  const emittedRows = []
   let emitted = 0
   let parseFrom = 0
   let buffer = ''
   let displayed = ''
   let displayedStyled = ''
-  let displayedWidth = 0
+  let displayedRows = 0
   let timer = null
   let tableOpen = false
   let lastTable = null
@@ -68,17 +73,36 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
     return width % cols === 0 ? width / cols : Math.floor(width / cols) + 1
   }
 
-  // The cursor sits at the end of the displayed partial line; rewind it to the start.
+  // The cursor sits at the end of the displayed partial; rewind it to its start.
   const rewindToPartialStart = () => {
-    const rows = lineRows(displayedWidth)
-    if (rows > 1) stdout.write(`\x1b[${rows - 1}A`)
+    if (displayedRows > 1) stdout.write(`\x1b[${displayedRows - 1}A`)
     stdout.write('\r')
   }
 
   // The cursor sits one row below the displayed line (its trailing newline was
   // emitted); rewind it to the line start.
-  const rewindToLineStart = (width) => {
-    stdout.write(`\x1b[${lineRows(width)}A\r`)
+  const rewindToLineStart = (rows) => {
+    stdout.write(`\x1b[${rows}A\r`)
+  }
+
+  // Wrapping policy: prose blocks fold at word boundaries, fixed-layout blocks
+  // (fences, code, hr) are emitted raw so their lines keep their shape. Without
+  // a terminal width (pipes) nothing wraps and output stays byte-identical.
+  const colsFor = (ctx) => {
+    const cols = terminalCols()
+    if (cols == null || (ctx != null && NO_WRAP_TYPES.has(ctx.type))) return null
+    return cols
+  }
+
+  // Styled line → wrapped output: the segments joined by newlines and their
+  // display rows (each segment's rows via the deferred-width math, so lines
+  // that exactly fill a row or an over-wide atom are still counted right).
+  const wrapStyled = (styled, ctx) => {
+    const segments = wrapWords(styled, colsFor(ctx))
+    return {
+      text: segments.join('\n'),
+      rows: segments.reduce((n, segment) => n + lineRows(stringWidth(segment)), 0),
+    }
   }
 
   // Re-parsing the whole accumulated text on every line is O(n²) in the
@@ -127,14 +151,15 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
     if (tableOpen) return
     const { e, ctx } = partialContext()
     const styled = styleLine(buffer, ctx ?? { type: 'paragraph' }, e)
+    const wrapped = wrapStyled(styled, ctx)
     if (displayed) {
       rewindToPartialStart()
       stdout.write('\x1b[J')
     }
-    stdout.write(styled)
+    stdout.write(wrapped.text)
     displayed = buffer
-    displayedStyled = styled
-    displayedWidth = stringWidth(styled)
+    displayedStyled = wrapped.text
+    displayedRows = wrapped.rows
   }
 
   const clearDisplayed = () => {
@@ -144,7 +169,7 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
     }
     displayed = ''
     displayedStyled = ''
-    displayedWidth = 0
+    displayedRows = 0
   }
 
   const emitLine = (i, ctx, e) => {
@@ -154,12 +179,12 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
       // paragraphs (emit them raw), while link reference definitions
       // ([ref]: url) are consumed by markdown-it and must stay invisible.
       if (lines[i].trim() === '') stdout.write(`${lines[i]}\n`)
-      emittedWidths[i] = 0
+      emittedRows[i] = 1
       return
     }
-    const styled = styleLine(lines[i], ctx, e)
-    stdout.write(`${styled}\n`)
-    emittedWidths[i] = stringWidth(styled)
+    const wrapped = wrapStyled(styleLine(lines[i], ctx, e), ctx)
+    stdout.write(`${wrapped.text}\n`)
+    emittedRows[i] = wrapped.rows
   }
 
   // `start`/`end` are absolute line indices (rewind math); `relStart` is the
@@ -168,7 +193,7 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
   const emitTable = (start, end, tokens, e, relStart = start) => {
     const tableStr = renderTableTokens(tokens, e, relStart)
     if (emitted > start) {
-      rewindToLineStart(emittedWidths[start] ?? 0)
+      rewindToLineStart(emittedRows[start] ?? 1)
       stdout.write('\x1b[J')
     }
     stdout.write(`${tableStr}\n`)
@@ -269,12 +294,13 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
   const finalizePartial = () => {
     const { e, ctx } = partialContext()
     const styled = styleLine(buffer, ctx ?? { type: 'paragraph' }, e)
-    if (displayed !== buffer || styled !== displayedStyled) {
+    const wrapped = wrapStyled(styled, ctx)
+    if (displayed !== buffer || wrapped.text !== displayedStyled) {
       clearDisplayed()
-      stdout.write(styled)
+      stdout.write(wrapped.text)
       displayed = buffer
-      displayedStyled = styled
-      displayedWidth = stringWidth(styled)
+      displayedStyled = wrapped.text
+      displayedRows = wrapped.rows
     }
   }
 
@@ -294,7 +320,7 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
         clearTimer()
         displayed = ''
         displayedStyled = ''
-        displayedWidth = 0
+        displayedRows = 0
       } else if (!displayed) {
         redrawPartial()
       } else if (!timer) {
@@ -324,10 +350,10 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
       buffer = ''
       displayed = ''
       displayedStyled = ''
-      displayedWidth = 0
+      displayedRows = 0
       lines.length = 0
       emitted = 0
-      emittedWidths.length = 0
+      emittedRows.length = 0
       parseFrom = 0
       tableOpen = false
       lastTable = null

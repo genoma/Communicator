@@ -3,6 +3,7 @@ import { styleText } from 'node:util'
 import { THIN_SEP, CITATION_GROUP } from '../constants.js'
 import { bold, dim, italic } from './style.js'
 import { hyperlink, sanitizeAnsi } from './hyperlink.js'
+import { wrapWords } from './wrap.js'
 import stringWidth from 'string-width'
 
 export const md = new MarkdownIt({ html: false, linkify: true, breaks: false })
@@ -203,7 +204,15 @@ export function renderTableTokens(tokens, env, start) {
   return out.join('\n')
 }
 
-export function renderText(text, sources = []) {
+// Same wrap policy as the streaming renderer: prose blocks fold at word
+// boundaries; code, fences and separators keep their exact layout. Without a
+// terminal width nothing wraps (pipes keep byte-identical output).
+const wrapForCtx = (styled, ctx, cols) => {
+  if (!(cols > 0) || ctx == null || ctx.type === 'fence' || ctx.type === 'code' || ctx.type === 'hr') return styled
+  return wrapWords(styled, cols).join('\n')
+}
+
+export function renderText(text, sources = [], cols = null) {
   const raw = String(text ?? '')
   if (raw === '') return ''
   const lines = raw.split('\n')
@@ -224,7 +233,7 @@ export function renderText(text, sources = []) {
       i++
       continue
     }
-    out.push(styleLine(lines[i], ctx, env))
+    out.push(wrapForCtx(styleLine(lines[i], ctx, env), ctx, cols))
     i++
   }
   return out.join('\n')

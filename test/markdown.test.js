@@ -241,12 +241,13 @@ test('streaming renderer rewinds by the styled width, not the raw markup width',
   // The styled text still fits one row (raw is now 26): the rewind must stay put.
   renderer.write(' ff')
   t.mock.timers.tick(200)
-  assert.equal(plain(chunks.join('')), 'aa bold\r\x1b[Jaa bold bb cc dd ee\r\x1b[Jaa bold bb cc dd ee ff')
+  assert.equal(plain(chunks.join('')), 'aa bold\r\x1b[Jaa bold bb cc dd ee\r\x1b[Jaa bold bb cc dd ee\nff')
 
-  // Now the styled text crosses the boundary too: the rewind goes up one row.
+  // Now the styled text crosses the boundary too: the rewind goes up one row
+  // and the extra word moves to a folded row of its own.
   renderer.write(' gg')
   t.mock.timers.tick(200)
-  assert.equal(plain(chunks.join('')), 'aa bold\r\x1b[Jaa bold bb cc dd ee\r\x1b[Jaa bold bb cc dd ee ff\x1b[1A\r\x1b[Jaa bold bb cc dd ee ff gg')
+  assert.equal(plain(chunks.join('')), 'aa bold\r\x1b[Jaa bold bb cc dd ee\r\x1b[Jaa bold bb cc dd ee\nff\x1b[1A\r\x1b[Jaa bold bb cc dd ee\nff gg')
 })
 
 test('renderText renders aligned tables', (t) => {
@@ -600,4 +601,70 @@ test('streaming renderer keeps fence state when a shorter marker line does not c
   assert.match(out, /\x1b\[2m~~~\x1b\[22m/)
   assert.match(out, /\x1b\[2mcontent two\x1b\[22m/)
   assert.match(out, /done\n/)
+})
+
+test('streaming renderer folds long lines at word boundaries', () => {
+  const chunks = []
+  const stdout = { columns: 20, write: (chunk) => chunks.push(String(chunk)) }
+  const renderer = createMarkdownRenderer({ stdout })
+
+  renderer.write('aaa bbb ccc ddd eee fff\n')
+  renderer.flush()
+  assert.equal(plain(chunks.join('')), 'aaa bbb ccc ddd eee\nfff\n')
+})
+
+test('streaming renderer hard-cuts words longer than the width', () => {
+  const chunks = []
+  const stdout = { columns: 10, write: (chunk) => chunks.push(String(chunk)) }
+  const renderer = createMarkdownRenderer({ stdout })
+
+  renderer.write('abcdefghijklm ddd\n')
+  renderer.flush()
+  assert.equal(plain(chunks.join('')), 'abcdefghij\nklm ddd\n')
+
+  renderer.write('x'.repeat(25) + '\n')
+  renderer.flush()
+  assert.equal(plain(chunks.join('')), 'abcdefghij\nklm ddd\n' + 'x'.repeat(10) + '\n' + 'x'.repeat(10) + '\n' + 'x'.repeat(5) + '\n')
+})
+
+test('streaming renderer folds styled text without splitting ANSI sequences', () => {
+  const chunks = []
+  const stdout = { columns: 10, write: (chunk) => chunks.push(String(chunk)) }
+  const renderer = createMarkdownRenderer({ stdout })
+
+  renderer.write('**bold word** here\n')
+  renderer.flush()
+  const out = chunks.join('')
+  assert.equal(plain(out), 'bold word\nhere\n')
+  assert.match(out, /\x1b\[1mbold word\x1b\[22m\nhere/)
+})
+
+test('streaming renderer hard-cuts a long word across partial redraws', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { columns: 10, write: (chunk) => chunks.push(String(chunk)) }
+  const renderer = createMarkdownRenderer({ stdout })
+
+  renderer.write('abcdefghij')
+  t.mock.timers.tick(200)
+  renderer.write('klmno\n')
+  renderer.flush()
+  assert.equal(plain(chunks.join('')), 'abcdefghij\r\x1b[Jabcdefghij\nklmno\n')
+})
+
+test('streaming renderer keeps code fences unwrapped', () => {
+  const chunks = []
+  const stdout = { columns: 10, write: (chunk) => chunks.push(String(chunk)) }
+  const renderer = createMarkdownRenderer({ stdout })
+
+  renderer.write('```\n')
+  renderer.write('aaa bbb ccc ddd\n')
+  renderer.write('```\n')
+  renderer.flush()
+  assert.equal(plain(chunks.join('')), '```\naaa bbb ccc ddd\n```\n')
+})
+
+test('renderText wraps prose at the column limit and leaves code raw', () => {
+  assert.equal(renderText('aaa bbb ccc ddd eee', [], 10), 'aaa bbb\nccc ddd\neee')
+  assert.equal(renderText('```\naaa bbb ccc ddd eee fff\n```', [], 10), '```\naaa bbb ccc ddd eee fff\n```')
 })

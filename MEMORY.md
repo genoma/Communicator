@@ -23,7 +23,7 @@
 - `src/commands/one-shot.js` — non-interactive one-shot.
 - `src/commands/export-cmd.js`, `delete-cmd.js`, `delete-all-cmd.js` — CLI handlers.
 - `src/clipboard.js` — probe `pbcopy`/`clip`/`wl-copy`/`xclip`/`xsel`; testable platform override.
-- `src/ui/` — style, format, io, stream, markdown, md-it.
+- `src/ui/` — style, format, io, stream, markdown, md-it, wrap.
 - `src/config.js` — API key lookup, preferences persistence, `savePrefsBestEffort` (never throws), `applyPreferenceUpdates`/`syncPreferenceUpdates` (single merge helpers), `getImageDefaults`/`mergeImageDefaults`, corrupt-prefs quarantine.
 - `src/model-selection.js` — interactive/non-interactive selection; `capabilityFlags`; image selection helpers.
 - `src/providers/` — OpenRouter/Venice chatCompletion contract, image APIs, scrape.
@@ -110,6 +110,7 @@
 - ANSI hyperlinks via sanitized `hyperlink` (http(s) only), citations `^n^` only when sources exist.
 - Reasoning tokens never restyled; non-TTY emits no ANSI.
 - Export writes raw markdown outside the ANSI renderer.
+- Word-aware folding: on TTY the renderer folds styled lines at word boundaries at `stdout.columns` via `src/ui/wrap.js` (`wrapWords`) instead of relying on the terminal's mid-word soft-wrap. Escape runs are never split; OSC 8 hyperlinks fold only as whole atoms; words longer than the width are hard-cut at the exact width. Policy: prose (`paragraph`/`quote`/`list`/`list_item`/`heading`) wraps; `fence`/`code`/`hr` lines and tables stay raw (terminal soft-wraps the rare overflow). The rewind bookkeeping counts the renderer's own inserted folds (per-line emitted rows + partial rows) with the exact-fill rule (`width % cols === 0`), so redraws stay exact; a strip/segment exceeding the width (trailing spaces, over-wide link atoms) is row-counted by the same formula, never re-folded. Without a terminal width (pipes) nothing wraps and output stays byte-identical to pre-wrapping. `renderText` takes an optional 3rd `cols` arg (used by `renderHistory` replay); the fold point drops the space before the wrapped word, earlier spaces of a multi-space run are kept.
 
 ## Smooth streaming semantics
 
