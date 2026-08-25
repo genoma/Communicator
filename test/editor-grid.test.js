@@ -16,6 +16,10 @@ class Terminal {
     this.rows = rows
     this.replyDsr = replyDsr
     this.cursor = { r: 0, c: 0 }
+    // xterm-authentic: printing at the right margin sets the pending-wrap
+    // flag; the next printable char wraps to the next row. Cursor moves and
+    // CR/LF clear it.
+    this.wrapPending = false
     this.grid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => ''))
     this.out = {
       columns: cols,
@@ -40,9 +44,11 @@ class Terminal {
   plot(text) {
     let r = this.cursor.r
     let c = this.cursor.c
+    let wrap = this.wrapPending
     for (const ch of text) {
       if (ch === '\r') {
         c = 0
+        wrap = false
         continue
       }
       if (ch === '\n') {
@@ -51,22 +57,31 @@ class Terminal {
           this.scrollTop()
           r = this.rows - 1
         }
+        wrap = false
         continue
       }
       const w = ch.codePointAt(0) > 0x20000 ? 2 : 1
-      if (c + w > this.cols) {
+      if (wrap || c + w > this.cols) {
         r++
         if (r >= this.rows) {
           this.scrollTop()
           r = this.rows - 1
         }
         c = 0
+        wrap = false
       }
       this.grid[r][c] = ch
       if (w === 2 && c + 1 < this.cols) this.grid[r][c + 1] = ''
-      c += w
+      if (c + w >= this.cols) {
+        // Printed at (or past) the right margin: the cursor stays at the
+        // margin and the pending-wrap flag is set (xterm semantics).
+        wrap = true
+      } else {
+        c += w
+      }
     }
     this.cursor = { r, c }
+    this.wrapPending = wrap
   }
 
   write(data) {
@@ -97,17 +112,23 @@ class Terminal {
     const n = nums[0] > 0 ? nums[0] : 1
     if (op === 'A') {
       this.cursor.r = Math.max(0, this.cursor.r - n)
+      this.wrapPending = false
     } else if (op === 'B') {
       this.cursor.r = Math.min(this.rows - 1, this.cursor.r + n)
+      this.wrapPending = false
     } else if (op === 'C') {
-      this.cursor.c = Math.min(this.cols, this.cursor.c + n)
+      this.cursor.c = Math.min(this.cols - 1, this.cursor.c + n)
+      this.wrapPending = false
     } else if (op === 'D') {
       this.cursor.c = Math.max(0, this.cursor.c - n)
+      this.wrapPending = false
     } else if (op === 'G') {
-      this.cursor.c = Math.max(0, n - 1)
+      this.cursor.c = Math.max(0, Math.min(this.cols - 1, n - 1))
+      this.wrapPending = false
     } else if (op === 'H') {
-      this.cursor.r = Math.max(0, (nums[0] || 1) - 1)
-      this.cursor.c = Math.max(0, (nums[1] || 1) - 1)
+      this.cursor.r = Math.max(0, Math.min(this.rows - 1, (nums[0] || 1) - 1))
+      this.cursor.c = Math.max(0, Math.min(this.cols - 1, (nums[1] || 1) - 1))
+      this.wrapPending = false
     } else if (op === 'K') {
       const mode = nums[0] ?? 0
       if (mode === 0) {
@@ -219,6 +240,46 @@ test('text wider than the terminal wraps explicitly, no soft-wrap reliance', asy
   ])
   submit(stdin)
   await editor
+})
+
+test('typing exactly to the right margin then one more char keeps every letter', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, { cols: 20 })
+  // 18 chars: the input row fills the terminal exactly (2 prefix + 18 = 20).
+  type(stdin, 'abcdefghijklmnopqr')
+  assert.deepEqual(term.lines().filter((l) => l !== ''), ['❯ abcdefghijklmnopqr'])
+  // The editor positions the cursor at the margin (CHA clamps there in real
+  // terminals) and never leaves the pending-wrap flag set behind a paint.
+  assert.deepEqual(term.cursor, { r: 0, c: 19 })
+  assert.equal(term.wrapPending, false)
+  // One more char wraps onto a second row; nothing is eaten at the margin.
+  type(stdin, 'X')
+  assert.deepEqual(term.lines().filter((l) => l !== ''), [
+    '❯ abcdefghijklmnopqr',
+    '❯ X',
+  ])
+  type(stdin, 'YZ')
+  assert.deepEqual(term.lines().filter((l) => l !== ''), [
+    '❯ abcdefghijklmnopqr',
+    '❯ XYZ',
+  ])
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'abcdefghijklmnopqrXYZ')
+})
+
+test('backspace at the exact right margin removes the last letter cleanly', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, { cols: 20 })
+  type(stdin, 'abcdefghijklmnopqr')
+  press(stdin, '\x7f')
+  assert.deepEqual(term.lines().filter((l) => l !== ''), ['❯ abcdefghijklmnopq'])
+  assert.deepEqual(term.cursor, { r: 0, c: 19 })
+  press(stdin, '\x7f')
+  assert.deepEqual(term.lines().filter((l) => l !== ''), ['❯ abcdefghijklmnop'])
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'abcdefghijklmnop')
 })
 
 test('wide (CJK) characters never split at the wrap edge', async (t) => {
@@ -556,7 +617,15 @@ test('firstDiffRow finds the first changed row', () => {
 })
 
 test('rowBody joins rows with erase-to-EOL and newlines', () => {
-  assert.equal(rowBody(['x', 'y']), 'x\x1b[K\r\ny\x1b[K')
+  assert.equal(rowBody(['x', 'y'], 80), 'x\x1b[K\r\ny\x1b[K')
+})
+
+test('rowBody never erases after a row that fills the terminal exactly', () => {
+  // The cursor parks on the last cell after the last character of a full row;
+  // erase-to-EOL would clear that very cell (the row's last letter).
+  assert.equal(rowBody(['abcdef'], 6), 'abcdef')
+  assert.equal(rowBody(['abcdef', 'x'], 6), 'abcdef\r\nx\x1b[K')
+  assert.equal(rowBody(['abcdef', 'xyz'], 6), 'abcdef\r\nxyz\x1b[K')
 })
 
 test('wrapSegments never splits a wide char and fills limits exactly', () => {

@@ -4,6 +4,7 @@
 // math is replaced by grid-relative moves, so a repaint is correct whenever the
 // terminal shows the shadow — recoveries from reflow (resize) rerun the whole
 // grid through the rebuild/absolute paths instead.
+import { stringWidth } from './chars.js'
 
 function batchText(out, body) {
   return out.write('\x1b[?25l' + body + '\x1b[?25h')
@@ -18,11 +19,19 @@ export function firstDiffRow(shadowRows, targetRows) {
   return shadowRows.length === targetRows.length ? -1 : n
 }
 
-/** Row-by-row serialization (trailing erase per row) */
-export function rowBody(rows) {
+/**
+ * Row-by-row serialization (trailing erase per row). A row that fills the
+ * terminal exactly must NOT be followed by erase-to-EOL: the terminal parks the
+ * cursor on the last cell after writing it (right-margin wrap-pending), and
+ * erase-to-EOL includes the cursor cell — a trailing erase would eat the row's
+ * last letter.
+ */
+export function rowBody(rows, width) {
   let body = ''
   for (let i = 0; i < rows.length; i++) {
-    body += rows[i] + '\x1b[K'
+    const row = rows[i]
+    body += row
+    if (stringWidth(row) < width) body += '\x1b[K'
     if (i < rows.length - 1) body += '\r\n'
   }
   return body
@@ -51,7 +60,7 @@ export function paintSequential(out, grid, hook) {
     out.write('\x1b[H')
     hook()
   }
-  batchText(out, rewindCursor(rowBody(grid.rows) + '\x1b[J', grid))
+  batchText(out, rewindCursor('\x1b[J\r' + rowBody(grid.rows, grid.width), grid))
   if (sync) out.write('\x1b[?2026l')
 }
 
@@ -62,7 +71,7 @@ export function paintSequential(out, grid, hook) {
  * the viewport or after a silent bulk paste whose screen state is unknown.
  */
 export function paintForward(out, grid) {
-  batchText(out, rewindCursor('\x1b[J\r' + rowBody(grid.rows), grid))
+  batchText(out, rewindCursor('\x1b[J\r' + rowBody(grid.rows, grid.width), grid))
 }
 
 /**
@@ -85,8 +94,10 @@ export function paintDiff(out, shadow, grid) {
   if (dr < 0) body += `\x1b[${-dr}B`
   else if (dr > 0) body += `\x1b[${dr}A`
   body += '\r'
-  body += rowBody(grid.rows.slice(firstDiff))
+  // Erase-from-cursor first: it must never run after the last painted row,
+  // or it erases the last cell of a row that fills the terminal exactly.
   if (grid.rows.length < shadow.rows.length) body += '\x1b[J'
+  body += rowBody(grid.rows.slice(firstDiff), grid.width)
   batchText(out, rewindCursor(body, grid))
 }
 
@@ -96,8 +107,7 @@ export function paintDiff(out, shadow, grid) {
  */
 export function paintAbsolute(out, grid, blockTopRow) {
   let body = `\x1b[${blockTopRow + 1};1H\x1b[J`
-  body += rowBody(grid.rows)
-  body += '\x1b[J'
+  body += rowBody(grid.rows, grid.width)
   body += `\x1b[${blockTopRow + grid.cursor.r + 1};${grid.cursor.c + 1}H`
   batchText(out, body)
 }
@@ -111,7 +121,7 @@ export function paintRefresh(out, grid, rewindRow = grid.cursor.r) {
   let body = ''
   if (rewindRow > 0) body += `\x1b[${rewindRow}A`
   body += '\r\x1b[J'
-  body += rowBody(grid.rows)
+  body += rowBody(grid.rows, grid.width)
   batchText(out, rewindCursor(body, grid))
 }
 
@@ -123,7 +133,7 @@ export function paintSubmit(out, grid) {
   let body = ''
   if (grid.cursor.r > 0) body += `\x1b[${grid.cursor.r}A`
   body += '\r\x1b[J'
-  body += rowBody(grid.rows)
+  body += rowBody(grid.rows, grid.width)
   out.write(rewindCursor(body, grid))
 }
 

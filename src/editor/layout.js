@@ -111,5 +111,5 @@ export function computeGrid(ctx) {
   if (footerRows && footerRows.length > 0) {
     for (const line of footerRows) rows.push(line)
   }
-  return { rows, cursor: { r: cursorRow, c: cursorCol } }
+  return { rows, cursor: { r: cursorRow, c: cursorCol }, width }
 }
