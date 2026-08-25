@@ -35,6 +35,7 @@ import {
   updateSuggestionSession,
 } from './model.js'
 import {
+  applyStyle,
   buildPromptHeader,
   buildStyledLinePrefix,
   computeHeaderHeight,
@@ -131,6 +132,7 @@ function readFromTTY(input, output, prompt, options) {
       lastEditType: '',
       suggest,
       suggestSession: null,
+      dismissUntilEdit: false,
       isPasting: false,
     }
     if (initialValue) {
@@ -158,7 +160,32 @@ function readFromTTY(input, output, prompt, options) {
 
     let rebuildFooter = buildFooterRegular
 
+    // Suggestion list rows for the active suggestion session: the window is
+    // centred around the selected match, selected entry bold/cyan with a
+    // marker, plus a "… N more" trailer (matches the vendored layout).
+    const suggestionRows = (session) => {
+      const MAX_SUGGESTIONS = 8
+      const windowStart = Math.min(
+        Math.max(0, session.index - Math.floor(MAX_SUGGESTIONS / 2)),
+        Math.max(0, session.matches.length - MAX_SUGGESTIONS)
+      )
+      const shown = session.matches.slice(windowStart, windowStart + MAX_SUGGESTIONS)
+      const rows = shown.map((item, offset) => {
+        const isSelected = windowStart + offset === session.index
+        const marker = isSelected ? '› ' : '  '
+        const styled = isSelected ? applyStyle(item, ['bold', 'cyan']) : applyStyle(item, 'dim')
+        return marker + styled
+      })
+      if (session.matches.length > shown.length) {
+        rows.push(applyStyle(`… ${session.matches.length - shown.length} more`, 'dim'))
+      }
+      return rows
+    }
+
     const footerRows = () => {
+      if (model.suggestSession) {
+        return suggestionRows(model.suggestSession)
+      }
       const text = rebuildFooter(terminalWidth())
       return text === '' ? [] : text.split('\n')
     }

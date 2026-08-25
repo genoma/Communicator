@@ -410,6 +410,53 @@ test('history navigation recalls entries and restores the draft', async (t) => {
   assert.equal(value, 'draft text')
 })
 
+test('typing / shows the suggestion list in the footer window, Escape restores', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, {
+    options: { suggest: () => ['/quit', '/smooth', '/status'] },
+  })
+  type(stdin, '/')
+  let lines = term.lines().filter((l) => l !== '')
+  assert.deepEqual(lines.slice(1), ['› /quit', '  /smooth', '  /status'])
+
+  type(stdin, 's')
+  lines = term.lines().filter((l) => l !== '')
+  assert.deepEqual(lines.slice(1), ['› /smooth', '  /status'])
+
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, '/s')
+})
+
+test('Escape dismisses the list: prefix restored, footer hidden, session stays closed', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, {
+    options: { suggest: () => ['/quit', '/smooth', '/status'] },
+  })
+  type(stdin, '/m')
+  stdin.emit('data', '\x1b') // dismiss
+  await t.mock.timers.tick(50) // the lone-Escape flush
+  assert.deepEqual(
+    term.lines().filter((l) => l !== ''),
+    ['❯ /m'],
+    'prefix restored and the suggestion rows are gone'
+  )
+  // The session must not come back on the next repaint alone: an arrow (cursor
+  // move, no content change) keeps the list hidden...
+  press(stdin, '\x01') // Ctrl+A: cursor move only
+  assert.deepEqual(term.lines().filter((l) => l !== ''), ['❯ /m'])
+  // ...while the next content edit re-evaluates the prefix naturally.
+  type(stdin, 'o') // cursor sits at line start after Ctrl+A
+  assert.deepEqual(
+    term.lines().filter((l) => l !== ''),
+    ['❯ o/m'],
+    'non-matching continuation keeps the list hidden'
+  )
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'o/m')
+})
+
 test('command suggestions fill the line with Tab and dismiss with Escape', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const { stdin, editor } = setup(t, {

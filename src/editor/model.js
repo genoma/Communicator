@@ -33,6 +33,7 @@ export function createModel(options = {}) {
     lastEditType: '',
     suggest: options.suggest,
     suggestSession: null,
+    dismissUntilEdit: false,
     isPasting: false,
   }
   if (options.initialValue) {
@@ -111,6 +112,7 @@ export function resetStatus(model) {
 
 // --- Content change handling ---
 export function postEdit(model) {
+  model.dismissUntilEdit = false
   if (model.maxLength != null) {
     const len = contentLength(model.lines)
     if (len >= model.maxLength) {
@@ -129,6 +131,9 @@ export function postEdit(model) {
 // --- Suggestions ---
 /** Whether a suggestion session is active and consumable by navigation keys */
 export function updateSuggestionSession(model) {
+  // After Escape the session stays closed until the next content edit: the
+  // restored prefix would otherwise re-open it on the very next repaint.
+  if (model.dismissUntilEdit) return
   if (!model.suggest || model.lines.length !== 1) {
     model.suggestSession = null
     return
@@ -199,6 +204,7 @@ export function dismissSuggestions(model) {
   model.row = 0
   model.col = session.prefix.length
   model.suggestSession = null
+  model.dismissUntilEdit = true
 }
 
 /** Cycle the suggestion list (Tab / Shift+Tab): alias of suggestMove */
