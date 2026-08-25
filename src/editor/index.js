@@ -191,7 +191,7 @@ function readFromTTY(input, output, prompt, options) {
     }
 
     let grid = null
-    const computeGridFn = () => {
+    const computeGridFn = (opts = {}) => {
       updateSuggestionSession(model)
       grid = computeGrid({
         width: terminalWidth(),
@@ -201,10 +201,10 @@ function readFromTTY(input, output, prompt, options) {
         lines: model.lines,
         row: model.row,
         col: model.col,
-        statusText: model.statusText,
-        statusColor: model.statusColor,
+        statusText: opts.noFooter ? '' : model.statusText,
+        statusColor: opts.noFooter ? '' : model.statusColor,
         theme,
-        footerRows: footerRows(),
+        footerRows: opts.noFooter ? [] : footerRows(),
         inputStyle: themeInputStyle,
       })
       return grid
@@ -279,7 +279,7 @@ function readFromTTY(input, output, prompt, options) {
     }
 
     const repaintMode = (mode, param) => {
-      paint(computeGridFn(), mode, param)
+      paint(computeGridFn(mode === 'submit' ? { noFooter: true } : {}), mode, param)
     }
 
     // --- Resize handling ---

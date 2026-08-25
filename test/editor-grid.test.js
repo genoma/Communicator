@@ -457,6 +457,23 @@ test('Escape dismisses the list: prefix restored, footer hidden, session stays c
   assert.equal(value, 'o/m')
 })
 
+test('submit erases the suggestion list so picker output lands clean', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, {
+    options: { suggest: () => ['/quit', '/smooth', '/status'] },
+  })
+  type(stdin, '/s')
+  stdin.emit('data', '\t') // fills /smooth, list stays open (vendored parity)
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, '/smooth')
+  assert.deepEqual(
+    term.lines().filter((l) => l !== ''),
+    ['❯ /smooth'],
+    'only the submitted line remains; the list rows are erased'
+  )
+})
+
 test('command suggestions fill the line with Tab and dismiss with Escape', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const { stdin, editor } = setup(t, {
