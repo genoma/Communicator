@@ -162,3 +162,141 @@ export function wrapWords(styled, cols) {
   if (lineStart < len) segments.push(styled.slice(lineStart))
   return segments
 }
+
+/**
+ * Streaming word wrapper for plain (already escaped-stripped) text: pieces
+ * arrive through `write(text)` and are emitted immediately, except the current
+ * word which is held until its fit is known (a space/newline/overflow decides
+ * it). Lines fold at spaces so the terminal's own soft-wrap never cuts a word;
+ * words longer than the width are chunked at the exact width. Every text piece
+ * goes through `style` (raw when null); fold newlines stay unstyled. Without a
+ * positive `cols` everything is passed through unchanged, so piped output is
+ * byte-identical.
+ */
+export function createWordWrap({ stdout, cols, style = null }) {
+  const emit = (piece) => stdout.write(style ? style(piece) : piece)
+  const newline = () => stdout.write('\n')
+
+  // Longest prefix of `text` no wider than `width` (first code point always
+  // included, so a wider-than-width char still makes progress).
+  const sliceAtWidth = (text, width) => {
+    let end = 0
+    let w = 0
+    for (const ch of text) {
+      const cw = stringWidth(ch)
+      if (end > 0 && w + cw > width) break
+      w += cw
+      end += ch.length
+    }
+    return { text: text.slice(0, end), width: w }
+  }
+
+  let lineW = 0
+  let held = ''
+  let heldW = 0
+  let sepCount = 0
+  let overflow = false
+
+  const emitChunks = (text) => {
+    let rest = text
+    let first = true
+    while (rest !== '') {
+      const chunk = sliceAtWidth(rest, cols)
+      if (!first) newline()
+      emit(chunk.text)
+      lineW = chunk.width
+      rest = rest.slice(chunk.text.length)
+      first = false
+    }
+  }
+
+  const flushWord = () => {
+    if (overflow) {
+      held = ''
+      heldW = 0
+      sepCount = 0
+      return
+    }
+    if (held !== '' || sepCount > 0) {
+      if (lineW + sepCount + heldW <= cols) {
+        emit(`${' '.repeat(sepCount)}${held}`)
+        lineW += sepCount + heldW
+      } else {
+        if (lineW > 0) newline()
+        lineW = 0
+        if (held !== '') emitChunks(held)
+      }
+    }
+    held = ''
+    heldW = 0
+    sepCount = 0
+  }
+
+  const write = (text) => {
+    if (!(cols > 0)) {
+      if (text !== '') emit(text)
+      return
+    }
+    for (const ch of text) {
+      if (ch === '\n') {
+        flushWord()
+        newline()
+        lineW = 0
+        overflow = false
+        continue
+      }
+      if (ch === ' ') {
+        if (held !== '') flushWord()
+        overflow = false
+        sepCount += 1
+        continue
+      }
+      const w = stringWidth(ch)
+      if (overflow) {
+        if (lineW + w > cols) {
+          newline()
+          lineW = 0
+        }
+        emit(ch)
+        lineW += w
+        continue
+      }
+      if (held === '') {
+        if (lineW + sepCount + w > cols) {
+          if (lineW > 0) newline()
+          lineW = 0
+          sepCount = 0
+        }
+        held = ch
+        heldW = w
+        continue
+      }
+      if (lineW + sepCount + heldW + w > cols) {
+        // The word cannot fit on the line: fold it over and stream the rest.
+        if (lineW > 0) newline()
+        lineW = 0
+        sepCount = 0
+        emitChunks(held)
+        held = ''
+        heldW = 0
+        overflow = true
+        if (lineW + w > cols) {
+          newline()
+          lineW = 0
+        }
+        emit(ch)
+        lineW += w
+        continue
+      }
+      held += ch
+      heldW += w
+    }
+  }
+
+  const flush = () => {
+    flushWord()
+    overflow = false
+  }
+
+  return { write, flush }
+}

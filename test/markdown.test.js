@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createMarkdownRenderer, renderText } from '../src/ui/markdown.js'
-import { createStreamRenderer } from '../src/ui/stream.js'
+import { createStreamRenderer, renderHistory } from '../src/ui/stream.js'
 import { THIN_SEP } from '../src/constants.js'
 
 const ANSI = /\x1b\[[0-9;]*m/g
@@ -667,4 +667,38 @@ test('streaming renderer keeps code fences unwrapped', () => {
 test('renderText wraps prose at the column limit and leaves code raw', () => {
   assert.equal(renderText('aaa bbb ccc ddd eee', [], 10), 'aaa bbb\nccc ddd\neee')
   assert.equal(renderText('```\naaa bbb ccc ddd eee fff\n```', [], 10), '```\naaa bbb ccc ddd eee fff\n```')
+})
+
+test('reasoning stream folds word-aware at the terminal width', () => {
+  const chunks = []
+  const stdout = { columns: 20, write: (chunk) => chunks.push(String(chunk)) }
+  const render = createStreamRenderer({ stdout, markdown: false })
+
+  render('', 'start_reasoning')
+  render('short words that exceed the width limit totally', 'reasoning')
+  render('', 'end_reasoning')
+  const plain = chunks.join('').replace(ANSI, '')
+  assert.equal(plain, '❯ Thinking\nshort words that\nexceed the width\nlimit totally\n\n❯ Answer\n\n')
+})
+
+test('non-markdown content folds word-aware at the terminal width', () => {
+  const chunks = []
+  const stdout = { columns: 20, write: (chunk) => chunks.push(String(chunk)) }
+  const render = createStreamRenderer({ stdout, markdown: false })
+
+  render('answer words that also reach the width limit', 'content')
+  render.flush()
+  assert.equal(chunks.join('').replace(ANSI, ''), 'answer words that\nalso reach the width\nlimit')
+})
+
+test('history replay wraps reasoning and plain content at the terminal width', () => {
+  const chunks = []
+  const stdout = { columns: 20, write: (chunk) => chunks.push(String(chunk)) }
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'question text that also exceeds the row width' },
+    { role: 'assistant', content: 'short answer content that wraps too', reasoning: 'short words that exceed the width' },
+  ], { markdown: false, stdout })
+  const plain = chunks.join('').replace(ANSI, '')
+  assert.ok(plain.includes('short words that\nexceed the width'))
 })

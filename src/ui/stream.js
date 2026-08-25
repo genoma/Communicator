@@ -1,5 +1,6 @@
 import { dim, italic, green, you, thinking, answer } from './style.js'
 import { createMarkdownRenderer, renderText } from './markdown.js'
+import { createWordWrap, wrapWords } from './wrap.js'
 import { hyperlink, sanitizeAnsi } from './hyperlink.js'
 import { SMOOTH_CHARS_PER_TICK, SMOOTH_TICK_MS } from '../constants.js'
 import { contentText, contentAttachments } from '../attachments.js'
@@ -24,6 +25,10 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
     partialFlushMs: smooth ? smoothTickMs : undefined,
   })
 
+  const cols = typeof stdout.columns === 'number' ? stdout.columns : null
+  const reasoningWrap = createWordWrap({ stdout, cols, style: dim })
+  const contentWrap = createWordWrap({ stdout, cols })
+
   const meter = createThinkingMeter({ stdout })
 
   const queue = []
@@ -36,8 +41,9 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
       stdout.write(`${thinking()}\n`)
       stdout.write(text)
     } else if (type === 'reasoning') {
-      stdout.write(dim(text))
+      reasoningWrap.write(text)
     } else if (type === 'end_reasoning') {
+      reasoningWrap.flush()
       stdout.write(`\n\n${answer()}\n\n`)
     } else if (type === 'content') {
       if (!messageStarted) {
@@ -45,7 +51,7 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
         if (assistantMarker) stdout.write(`${assistantMarker}\n`)
       }
       if (render.markdown) md.write(text)
-      else stdout.write(text)
+      else contentWrap.write(text)
     }
   }
 
@@ -127,6 +133,12 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   render.resetMessage = () => {
     messageStarted = false
   }
+  const flushBodies = () => {
+    reasoningWrap.flush()
+    if (render.markdown) md.flush()
+    else contentWrap.flush()
+  }
+
   render.flush = ({ sync = false } = {}) => {
     // Never leave a live meter line behind (interrupts, errors, aborted
     // streams): the checkpoint only comes from end_reasoning.
@@ -140,11 +152,11 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
         const segment = queue.shift()
         writeSegment(segment.type, segment.text)
       }
-      if (render.markdown) md.flush()
+      flushBodies()
       return
     }
     if (queue.length === 0) {
-      if (render.markdown) md.flush()
+      flushBodies()
       return
     }
     if (drainWaiter) return drainWaiter.promise
@@ -153,7 +165,7 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
     drainWaiter = {
       promise,
       resolve: () => {
-        if (render.markdown) md.flush()
+        flushBodies()
         resolveDrain()
       },
     }
@@ -189,13 +201,14 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
   if (!messages || messages.length <= 1) return
 
   const cols = typeof stdout.columns === 'number' ? stdout.columns : null
+  const wrapPlain = (text) => text.split('\n').map((line) => wrapWords(line, cols).join('\n')).join('\n')
   const hasVisible = messages.some((m) => m.role !== 'system')
   if (!hasVisible) return
 
   stdout.write('\n')
   for (const msg of messages) {
     if (msg.role === 'user') {
-      stdout.write(`${userMarker ?? you()}\n${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), [], cols) : sanitizeAnsi(contentText(msg.content))}\n\n`)
+      stdout.write(`${userMarker ?? you()}\n${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), [], cols) : wrapPlain(sanitizeAnsi(contentText(msg.content)))}\n\n`)
       for (const att of contentAttachments(msg.content)) {
         stdout.write(`${attachmentLine('attached', att.filename, { meta: att.kind })}\n`)
       }
@@ -210,12 +223,12 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
           stdout.write(`${green('✓')} Thinking · ${count}\n\n${answer()}\n\n`)
         } else {
           stdout.write(`${thinking()}\n`)
-          stdout.write(`${dim(sanitizeAnsi(msg.reasoning))}\n`)
+          stdout.write(`${dim(wrapPlain(sanitizeAnsi(msg.reasoning)))}\n`)
           stdout.write(`\n${answer()}\n\n`)
         }
       }
       if (assistantMarker) stdout.write(`${assistantMarker}\n`)
-      stdout.write(`${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), msg.sources || [], cols) : sanitizeAnsi(contentText(msg.content))}\n\n`)
+      stdout.write(`${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), msg.sources || [], cols) : wrapPlain(sanitizeAnsi(contentText(msg.content)))}\n\n`)
       for (const att of contentAttachments(msg.content)) {
         stdout.write(`${attachmentLine(att.kind, att.filename)}\n`)
       }

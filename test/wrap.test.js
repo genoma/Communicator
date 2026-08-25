@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { wrapWords } from '../src/ui/wrap.js'
+import { createWordWrap, wrapWords } from '../src/ui/wrap.js'
 
 test('wrapWords passes through without a usable width', () => {
   assert.deepEqual(wrapWords('abc def', null), ['abc def'])
@@ -50,4 +50,39 @@ test('wrapWords drops only the space at the fold point', () => {
 
 test('wrapWords returns the empty input unchanged', () => {
   assert.deepEqual(wrapWords('', 10), [''])
+})
+
+const streamed = (text, cols, style = null) => {
+  const chunks = []
+  const wrap = createWordWrap({ stdout: { write: (c) => chunks.push(String(c)) }, cols, style })
+  wrap.write(text)
+  wrap.flush()
+  return chunks.join('')
+}
+
+test('createWordWrap folds at word boundaries', () => {
+  assert.equal(streamed('aaa bbb ccc ddd', 10), 'aaa bbb\nccc ddd')
+  assert.equal(streamed('aaa bbb\nccc', 10), 'aaa bbb\nccc')
+})
+
+test('createWordWrap chunks overlong words at the exact width', () => {
+  assert.equal(streamed('a'.repeat(25) + ' y', 10), `${'a'.repeat(10)}\n${'a'.repeat(10)}\n${'a'.repeat(5)} y`)
+})
+
+test('createWordWrap never splits wide characters or surrogate pairs', () => {
+  assert.equal(streamed('あいあいあい', 4), 'あい\nあい\nあい')
+  assert.equal(streamed('😀😀😀', 4), '😀😀\n😀')
+})
+
+test('createWordWrap styles each piece and keeps fold newlines raw', () => {
+  const chunks = []
+  const wrap = createWordWrap({ stdout: { write: (c) => chunks.push(String(c)) }, cols: 5, style: (s) => `[${s}]` })
+  wrap.write('ab cd')
+  wrap.write(' ef')
+  wrap.flush()
+  assert.equal(chunks.join(''), '[ab][ cd]\n[ef]')
+})
+
+test('createWordWrap passes through unchanged without a width', () => {
+  assert.equal(streamed('aaa bbb ccc ddd eee fff ggg hhh', null), 'aaa bbb ccc ddd eee fff ggg hhh')
 })
