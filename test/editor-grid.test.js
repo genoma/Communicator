@@ -251,7 +251,15 @@ test('word-aware folding keeps the cursor row and column exact', async (t) => {
     '❯ aaa bbb ccc ddd',
     '❯ eee',
   ])
-  assert.deepEqual(term.cursor, { r: 1, c: 6 })
+  // End of text: right after 'eee' (the folded space is not counted).
+  assert.deepEqual(term.cursor, { r: 1, c: 5 })
+  press(stdin, '\x1b[D')
+  assert.deepEqual(term.cursor, { r: 1, c: 4 })
+  press(stdin, '\x1b[D')
+  press(stdin, '\x1b[D')
+  press(stdin, '\x1b[D')
+  // On the dropped fold space: the cursor parks at the end of the first row.
+  assert.deepEqual(term.cursor, { r: 0, c: 17 })
   submit(stdin)
   const [value] = await editor
   assert.equal(value, 'aaa bbb ccc ddd eee')

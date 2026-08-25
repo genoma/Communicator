@@ -70,6 +70,22 @@ export function wrapSegments(text, limit) {
 }
 
 /**
+ * Logical display offset of each segment in its source line. Word folding
+ * drops exactly one space at the fold point, so consecutive segments are
+ * separated by a 1-column gap in logical coordinates (hard cuts have none).
+ */
+function segmentStarts(line, segments) {
+  const starts = []
+  let pos = 0
+  for (const segment of segments) {
+    const at = line.indexOf(segment, pos)
+    starts.push(at)
+    pos = at + segment.length
+  }
+  return starts
+}
+
+/**
  * Compute the visual grid for the editor block.
  *
  * Input: header rows (styled, pre-split), the styled line prefix (+ its raw
@@ -111,20 +127,29 @@ export function computeGrid(ctx) {
     const segments = wrapSegments(lines[li], limit)
     if (li === row) {
       const dcol = stringWidth(lines[li].slice(0, col))
+      const starts = segmentStarts(lines[li], segments)
+      // Map the logical column onto the visual rows: cursor positions in a
+      // dropped fold space sit at the end of the preceding segment's row.
       let idx = segments.length - 1
-      let covered = 0
+      let vcol = 0
       for (let si = 0; si < segments.length; si++) {
         const w = stringWidth(segments[si])
-        if (dcol < covered + w) {
-          idx = si
+        if (dcol < starts[si]) {
+          idx = si - 1
+          vcol = stringWidth(segments[si - 1])
           break
         }
-        covered += w
+        if (dcol < starts[si] + w) {
+          idx = si
+          vcol = dcol - starts[si]
+          break
+        }
       }
-      let before = 0
-      for (let si = 0; si < idx; si++) before += stringWidth(segments[si])
+      if (idx === segments.length - 1 && dcol >= starts[idx] + stringWidth(segments[idx])) {
+        vcol = dcol - starts[idx]
+      }
       cursorRow = inputOffset + idx
-      cursorCol = linePrefixWidth + (dcol - before)
+      cursorCol = linePrefixWidth + vcol
     }
     inputOffset += wrappedCounts[li]
   }
