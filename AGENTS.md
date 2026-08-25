@@ -46,7 +46,7 @@
 ## Project notes
 
 - CLI chat client for OpenRouter + Venice.ai with interactive model/provider selection, session persistence, usage/cost tracking, markdown export, and Venice image generation (`--image`, `--list-image-models`).
-- WIP, do not merge yet: the frame-diffing editor (in-repo `src/editor/`) lives on branch `feat/editor-bufferdiff-v2`; Implementation facts live in MEMORY.md §Command autocomplete.
+- The frame-diffing editor (in-repo `src/editor/`, merged Aug 2026) replaces the vendored read-multiline editor; its behaviour contract is in MEMORY.md §Command autocomplete and the parity tests in `test/editor-parity.test.js`.
 - Streaming renderer, config file persistence (`--config`, `savePreferences`), per-request timeouts/retry with backoff (`fetchWithTimeout`/`fetchWithRetry` in `src/http.js`), and web search sources are implemented; keep them working when touching related code.
 - When testing image generation (Venice `--image`, OpenRouter image-output models), prefer cheap/fast models (e.g. `venice-sd35` on Venice, low-cost models on OpenRouter) unless the test genuinely needs the heavy hitters (`gpt-image-2`, `nano-banana-2`, ...) — high-end generations take minutes and cost more.
 - Documentation update policy: see §Documentation & memory below.
