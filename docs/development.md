@@ -64,7 +64,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 │   ├── footer.js          — help footer builder + kitty protocol detection
 │   ├── history.js         — prompt history persistence (atomic append)
 │   ├── model.js           — pure buffer/cursor/undo/redo/history state machine
-│   ├── layout.js          — grid computation (explicit display-width wrapping + cursor mapping)
+│   ├── layout.js          — grid computation (explicit word-aware wrapping + cursor mapping)
 │   ├── paint.js           — shadow-frame diff paint kernel (in-place/forward/absolute modes)
 │   ├── keys.js            — raw-mode input consumer (paste markers, escapes, DSR replies)
 │   └── index.js           — readEditor: terminal lifecycle, keymap, submit/cancel

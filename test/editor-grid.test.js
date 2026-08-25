@@ -235,11 +235,26 @@ test('text wider than the terminal wraps explicitly, no soft-wrap reliance', asy
   type(stdin, 'the quick brown fox jumps')
   const lines = term.lines().filter((l) => l !== '')
   assert.deepEqual(lines, [
-    '❯ the quick brown fo', // 18 chars: exactly the usable width (20 - 2)
-    '❯ x jumps',
+    '❯ the quick brown', // word-aware fold: 15 chars under the usable width (20 - 2)
+    '❯ fox jumps',
   ])
   submit(stdin)
   await editor
+})
+
+test('word-aware folding keeps the cursor row and column exact', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, { cols: 20 })
+  type(stdin, 'aaa bbb ccc ddd eee')
+  const lines = term.lines().filter((l) => l !== '')
+  assert.deepEqual(lines, [
+    '❯ aaa bbb ccc ddd',
+    '❯ eee',
+  ])
+  assert.deepEqual(term.cursor, { r: 1, c: 6 })
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'aaa bbb ccc ddd eee')
 })
 
 test('typing exactly to the right margin then one more char keeps every letter', async (t) => {
@@ -628,9 +643,14 @@ test('rowBody never erases after a row that fills the terminal exactly', () => {
   assert.equal(rowBody(['abcdef', 'xyz'], 6), 'abcdef\r\nxyz\x1b[K')
 })
 
-test('wrapSegments never splits a wide char and fills limits exactly', () => {
+test('wrapSegments never splits a wide char and folds at word boundaries', () => {
+  // No spaces: long words still hard-cut at the exact width.
   assert.deepEqual(wrapSegments('abcde', 3), ['abc', 'de'])
   assert.deepEqual(wrapSegments('abcde', 5), ['abcde'])
   assert.deepEqual(wrapSegments('中a中', 3), ['中a', '中'])
+  // Words that do not fit start the next segment; the fold space is dropped.
+  assert.deepEqual(wrapSegments('aa bb cc', 4), ['aa', 'bb', 'cc'])
+  assert.deepEqual(wrapSegments('the quick brown fox jumps', 10), ['the quick', 'brown fox', 'jumps'])
+  assert.deepEqual(wrapSegments('a b c d e f g', 3), ['a b', 'c d', 'e f', 'g'])
   assert.deepEqual(wrapSegments('', 3), [''])
 })

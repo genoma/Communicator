@@ -12,19 +12,53 @@ function usableWidth(termWidth, prefixWidth) {
 
 /**
  * Split a plain logical line into wrapped segments that each fit `limit`
- * display columns. Wide characters never split across segments; a wide char
- * that would not fit starts the next segment.
+ * display columns. Segments fold at word boundaries: the word that would not
+ * fit starts the next segment, so only a single word longer than the full
+ * segment width is ever broken (at the width, never mid-word otherwise). Wide
+ * characters never split across segments.
  */
 export function wrapSegments(text, limit) {
   const segments = []
   let current = ''
   let cw = 0
+  // The last space in the current segment (code-unit index + width before it)
+  // is the fold point; folding drops that space.
+  let foldAt = -1
+  let foldW = 0
   for (const ch of text) {
     const w = charWidth(ch.codePointAt(0))
+    if (ch === ' ') {
+      // Spaces never overflow: they are committed (a trailing one stays
+      // invisible at the row end) and the next word folds before this one.
+      foldAt = current.length
+      foldW = cw
+      current += ch
+      cw += w
+      continue
+    }
     if (cw + w > limit) {
-      segments.push(current)
-      current = ch
-      cw = w
+      if (foldAt > 0) {
+        segments.push(current.slice(0, foldAt))
+        current = current.slice(foldAt + 1) + ch
+        cw = cw - foldW - 1 + w
+      } else {
+        segments.push(current)
+        current = ch
+        cw = w
+      }
+      // Recompute the fold point of the residual segment.
+      foldAt = -1
+      foldW = 0
+      let w2 = 0
+      let i2 = 0
+      for (const rc of current) {
+        if (rc === ' ') {
+          foldAt = i2
+          foldW = w2
+        }
+        w2 += charWidth(rc.codePointAt(0))
+        i2 += rc.length
+      }
     } else {
       current += ch
       cw += w
