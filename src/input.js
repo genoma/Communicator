@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { readMultiline } from './vendor/read-multiline/index.js'
+import { readEditor } from './editor/index.js'
 import { matchCommands } from './suggest.js'
 import { DATA_DIR } from './constants.js'
 
@@ -25,7 +25,7 @@ export async function readInput({ commands, onResizeRepaint } = {}) {
       input.on('end', onEof)
       input.on('close', onEof)
     }
-    readMultiline('', {
+    readEditor('', {
       prefix: '',
       linePrefix: '❯ ',
       helpFooter: true,
