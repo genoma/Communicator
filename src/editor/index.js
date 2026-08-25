@@ -1,5 +1,4 @@
-// Editor front-end: replaces the vendored read-multiline editor with an
-// explicit-grid, frame-diffing editor. Same readInput option surface (the
+// Editor front-end: explicit-grid, frame-diffing editor for the chat prompt. Same readInput option surface (the
 // validate/transform/highlight/inlinePrompt options have no in-repo callers
 // and are rejected loudly).
 import { stringWidth } from './chars.js'
@@ -49,6 +48,7 @@ import {
   paintForward,
   paintRefresh,
   paintSequential,
+  paintSubmit,
 } from './paint.js'
 import { appendPersistedHistory } from './history.js'
 
@@ -202,7 +202,7 @@ function readFromTTY(input, output, prompt, options) {
         const blockTop = param - g.cursor.r
         if (blockTop < 0) {
           // The block top scrolled off the viewport: fall back to a forward
-          // repaint (the vendor's clearScreen fallback).
+          // repaint (the safe fallback).
           paintForward(output, g)
         } else {
           paintAbsolute(output, g, blockTop)
@@ -222,6 +222,13 @@ function readFromTTY(input, output, prompt, options) {
           paintForward(output, g)
         }
         setShadow(g)
+        return
+      }
+      if (mode === 'submit') {
+        if (view.shadow && !view.windowed && fitsOnScreen(g)) {
+          paintSubmit(output, g)
+          setShadow(g)
+        }
         return
       }
       if (!view.shadow || view.windowed || !fitsOnScreen(g)) {
@@ -301,11 +308,14 @@ function readFromTTY(input, output, prompt, options) {
       },
       pasteEnded() {
         // The physical cursor never moved during the paste: the shadow still
-        // marks it. Rewind to the block top and rewrite in place when the
-        // cursor is not on row 0 (the vendor's rewind case), else draw forward.
+        // marks it. Rewind to the block top and rewrite it all in place when
+        // the cursor is not on row 0 (the legacy rewind case), else draw
+        // forward.
         const g = computeGridFn()
         if (view.shadow && !view.windowed && fitsOnScreen(g) && view.shadow.cursor.r > 0) {
-          paintDiff(output, view.shadow, g)
+          // The physical cursor is still at the pre-paste position: rewind
+          // from the shadow's cursor row to reach the block top.
+          paintRefresh(output, g, view.shadow.cursor.r)
         } else {
           paintForward(output, g)
         }
@@ -480,7 +490,7 @@ function readFromTTY(input, output, prompt, options) {
       const result = model.lines.join('\n')
       model.visualState = 'submitted'
       if (!view.windowed && fitsOnScreen(computeGridFn())) {
-        repaintMode('normal')
+        repaintMode('submit')
       }
       cleanup()
       if (historyConfig?.filePath) {

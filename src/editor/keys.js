@@ -2,7 +2,6 @@
 // Raw-mode input consumer: reassembles escape sequences split across chunks,
 // handles bracketed-paste markers, routes DSR replies and dispatchable keys,
 // and inserts printable runs into the model one character at a time.
-// Algorithm mirrors the vendored @toiroakr/read-multiline (MIT) input.js.
 
 const PASTE_START = '\x1b[200~'
 const PASTE_END = '\x1b[201~'

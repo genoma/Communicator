@@ -1,7 +1,6 @@
 // Pure editor state machine: text buffer, cursor, editing, undo/redo, history
 // and suggestion-session logic. No terminal I/O — the caller applies edits and
-// repaints through the layout/paint modules. Behaviour mirrors the vendored
-// @toiroakr/read-multiline (MIT) editing/navigation modules.
+// repaints through the layout/paint modules.
 import {
   charAtIndex,
   charBeforeIndex,

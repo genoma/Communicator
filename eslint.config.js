@@ -43,6 +43,6 @@ export default [
     },
   },
   {
-    ignores: ['node_modules/**', 'coverage/**', 'src/vendor/**'],
+    ignores: ['node_modules/**', 'coverage/**'],
   },
 ]

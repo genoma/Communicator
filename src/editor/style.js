@@ -1,5 +1,4 @@
-// Theme/style resolution ported from the vendored @toiroakr/read-multiline
-// (MIT), src/vendor/read-multiline/style.js.
+// Theme/style resolution (stateful prefixes, prompt header).
 import { styleText } from 'node:util'
 
 /** Resolve a Stateful value to its concrete value for the given state */

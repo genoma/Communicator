@@ -1,5 +1,4 @@
-// Prompt history persistence, ported from the vendored @toiroakr/read-multiline
-// (MIT), src/vendor/read-multiline/history.js.
+// Prompt history persistence (atomic append).
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname } from 'node:path'

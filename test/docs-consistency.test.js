@@ -300,7 +300,6 @@ async function listSourceFiles(dir) {
   for (const entry of entries) {
     const full = join(dir, entry.name)
     if (entry.isDirectory()) {
-      if (entry.name === 'vendor') continue
       files.push(...await listSourceFiles(full))
     } else if (entry.name.endsWith('.js')) {
       files.push(relative(ROOT, full))

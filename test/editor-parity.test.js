@@ -8,13 +8,13 @@ import { join } from 'node:path'
 
 // The history file path is derived from the home dir at module load, so the
 // os mock must be registered before input.js is imported.
-const tempHome = await mkdtemp(join(tmpdir(), 'communicator-vendor-home-'))
+const tempHome = await mkdtemp(join(tmpdir(), 'communicator-editor-home-'))
 mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 after(() => rm(tempHome, { recursive: true, force: true }))
 
 const { readInput } = await import('../src/input.js')
-const { readMultiline } = await import('../src/vendor/read-multiline/index.js')
-const { _resetKittyDetection } = await import('../src/vendor/read-multiline/footer.js')
+const { readEditor } = await import('../src/editor/index.js')
+const { _resetKittyDetection } = await import('../src/editor/footer.js')
 
 function fakeStdin() {
   const stdin = new EventEmitter()
@@ -106,7 +106,7 @@ async function runEditor(t, { rows, chunks, submit }) {
   _resetKittyDetection(false)
   const { output, writes } = fakeOutput(t, rows)
   const stdin = fakeStdin()
-  const pending = readMultiline('', {
+  const pending = readEditor('', {
     input: stdin,
     output,
     prefix: '',
@@ -132,7 +132,7 @@ function runEditorTuple(t, { rows, chunks, onResizeRepaint } = {}) {
   _resetKittyDetection(false)
   const { output, writes, listeners } = fakeOutput(t, rows)
   const stdin = fakeStdin()
-  const pending = readMultiline('', {
+  const pending = readEditor('', {
     input: stdin,
     output,
     prefix: '',

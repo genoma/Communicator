@@ -59,7 +59,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 ├── e2ee.js               — E2EE crypto (ECDH + HKDF + AES-256-GCM) and TEE attestation
 ├── clipboard.js          — clipboard copy via pbcopy/clip/wl-copy/xclip/xsel
 ├── editor/
-│   ├── chars.js           — display-width helpers (ported from the vendored read-multiline)
+│   ├── chars.js           — display-width helpers (wcwidth-style)
 │   ├── style.js           — theme/style resolution (stateful prefixes, prompt header)
 │   ├── footer.js          — help footer builder + kitty protocol detection
 │   ├── history.js         — prompt history persistence (atomic append)
@@ -70,8 +70,6 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 │   └── index.js           — readEditor: terminal lifecycle, keymap, submit/cancel
 ├── input.js              — chat input via the frame-diffing editor (with command suggestions)
 ├── suggest.js            — prefix matching for command suggestions (matchCommands)
-├── vendor/
-│   └── read-multiline/   — vendored @toiroakr/read-multiline@0.4.1 + suggest patch (reference only)
 ├── ui/
 │   ├── style.js          — ANSI helpers (dim, bold, sep, thinking, answer)
 │   ├── format.js         — price formatting (formatModelPrice, formatPricePerM)
@@ -84,7 +82,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 └── chat.js               — runChatSession: DI chat loop (readInput/renderer/stdout/exit/save/signals), banner, SIGINT
 ```
 
-Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing, [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) and [`@inquirer/core`](https://www.npmjs.com/package/@inquirer/core) for the interactive search/select UI, [`markdown-it`](https://www.npmjs.com/package/markdown-it) for terminal markdown rendering, and [`string-width`](https://www.npmjs.com/package/string-width) for emoji-aware column measurement (stream rewind math). Multi-line input uses the in-repo frame-diffing editor (`src/editor/`); the vendored copy of [`@toiroakr/read-multiline`](https://www.npmjs.com/package/@toiroakr/read-multiline) 0.4.1 (see `src/vendor/read-multiline/README.md`) is kept for reference.
+Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing, [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) and [`@inquirer/core`](https://www.npmjs.com/package/@inquirer/core) for the interactive search/select UI, [`markdown-it`](https://www.npmjs.com/package/markdown-it) for terminal markdown rendering, and [`string-width`](https://www.npmjs.com/package/string-width) for emoji-aware column measurement (stream rewind math). Multi-line input uses the in-repo frame-diffing editor (`src/editor/`), whose behaviour contract was originally defined by the vendored `@toiroakr/read-multiline` 0.4.1 (removed in 2026-08; attribution in the module headers).
 
 ## Architecture
 

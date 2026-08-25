@@ -2,8 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { CHAT_COMMANDS } from '../src/commands/chat/index.js'
 import { matchCommands } from '../src/suggest.js'
-import { updateSuggestionSession } from '../src/vendor/read-multiline/rendering.js'
-import { nextSuggestionMove } from '../src/vendor/read-multiline/editing.js'
+import { updateSuggestionSession, nextSuggestionMove } from '../src/editor/model.js'
 
 test('matchCommands filters commands by prefix', () => {
   assert.deepEqual(matchCommands('/', CHAT_COMMANDS), CHAT_COMMANDS)

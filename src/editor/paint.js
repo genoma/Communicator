@@ -103,17 +103,28 @@ export function paintAbsolute(out, grid, blockTopRow) {
 }
 
 /**
- * In-place full rewrite of the block from its top row (Ctrl+L, DSR fallback):
- * rewinds to the block top and rewrites every row even when the grids are
- * identical, so screen junk in the block area is removed.
+ * In-place full rewrite of the block from its top row (paste/submit repaint,
+ * Ctrl+L, DSR fallback): rewinds to the block top and rewrites every row even
+ * when the grids are identical, so screen junk in the block area is removed.
  */
-export function paintRefresh(out, grid) {
+export function paintRefresh(out, grid, rewindRow = grid.cursor.r) {
+  let body = ''
+  if (rewindRow > 0) body += `\x1b[${rewindRow}A`
+  body += '\r\x1b[J'
+  body += rowBody(grid.rows)
+  batchText(out, rewindCursor(body, grid))
+}
+
+/**
+ * Submit-render rewrite (unbatched):
+ * rewinds to the block top and rewrites every row in the submitted style.
+ */
+export function paintSubmit(out, grid) {
   let body = ''
   if (grid.cursor.r > 0) body += `\x1b[${grid.cursor.r}A`
-  body += '\r'
+  body += '\r\x1b[J'
   body += rowBody(grid.rows)
-  body += '\x1b[J'
-  batchText(out, rewindCursor(body, grid))
+  out.write(rewindCursor(body, grid))
 }
 
 /** Erase the whole editor block in place (cancel / EOF) */

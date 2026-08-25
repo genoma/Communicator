@@ -1,5 +1,4 @@
-// Display-width helpers ported from the vendored @toiroakr/read-multiline
-// (MIT), src/vendor/read-multiline/chars.js.
+// Display-width helpers, per the wcwidth conventions used by the editor.
 import { stripVTControlCharacters } from 'node:util'
 
 /** Returns the terminal display width of a character (full-width=2, half-width=1) */

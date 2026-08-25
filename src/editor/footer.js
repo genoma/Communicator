@@ -1,6 +1,5 @@
 /* eslint-disable no-control-regex */
-// Help footer + kitty keyboard protocol detection, ported from the vendored
-// @toiroakr/read-multiline (MIT), src/vendor/read-multiline/footer.js.
+// Help footer + kitty keyboard protocol detection.
 import { stringWidth } from './chars.js'
 import { applyStyle } from './style.js'
 
