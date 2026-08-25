@@ -660,5 +660,31 @@ test('wrapSegments never splits a wide char and folds at word boundaries', () =>
   assert.deepEqual(wrapSegments('aa bb cc', 4), ['aa', 'bb', 'cc'])
   assert.deepEqual(wrapSegments('the quick brown fox jumps', 10), ['the quick', 'brown fox', 'jumps'])
   assert.deepEqual(wrapSegments('a b c d e f g', 3), ['a b', 'c d', 'e f', 'g'])
+  // A space that would cross the width is the fold point: it is dropped and
+  // the next word starts a fresh row (rows never exceed the terminal width).
+  assert.deepEqual(wrapSegments('aaaa bbbbb', 5), ['aaaa', 'bbbbb'])
   assert.deepEqual(wrapSegments('', 3), [''])
+})
+
+test('typing to the exact row width never duplicates rows across a fold', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, { cols: 64 })
+  const l1 = '"I mean..." I stand up "Wouldn\'t be easy to let out to the public, the absolute abominion they did in the past centuries? Guide the rebel and put the soldier against them, directly?'
+  const l2 = '"Wouldn\'t be easier to flush them out, get them in those nice quantum locks they created for me?" I stop walking in circles "Would it work?" I open my hand a million timelines starts'
+  type(stdin, l1)
+  type(stdin, '\n')
+  type(stdin, l2)
+  await t.mock.timers.tick(50)
+  const lines = term.lines().filter((l) => l.trim() !== '')
+  assert.deepEqual(lines, [
+    '❯ "I mean..." I stand up "Wouldn\'t be easy to let out to the',
+    '❯ public, the absolute abominion they did in the past centuries?',
+    '❯ Guide the rebel and put the soldier against them, directly?',
+    '❯ "Wouldn\'t be easier to flush them out, get them in those nice',
+    '❯ quantum locks they created for me?" I stop walking in circles',
+    '❯ "Would it work?" I open my hand a million timelines starts',
+  ])
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, `${l1}\n${l2}`)
 })

@@ -28,6 +28,17 @@ export function wrapSegments(text, limit) {
   for (const ch of text) {
     const w = charWidth(ch.codePointAt(0))
     if (ch === ' ') {
+      if (cw + w > limit) {
+        // The row is already full: the space is the fold point — it would be
+        // invisible at the row end, so drop it and let the next word start a
+        // fresh row (a grid row must never exceed the terminal width).
+        segments.push(current)
+        current = ''
+        cw = 0
+        foldAt = -1
+        foldW = 0
+        continue
+      }
       // Spaces never overflow: they are committed (a trailing one stays
       // invisible at the row end) and the next word folds before this one.
       foldAt = current.length
