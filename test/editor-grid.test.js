@@ -457,6 +457,32 @@ test('Escape dismisses the list: prefix restored, footer hidden, session stays c
   assert.equal(value, 'o/m')
 })
 
+test('the suggestion list reflects only the gated commands passed in', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { visibleChatCommands } = await import('../src/commands/chat/index.js')
+  const make = async (gated) => {
+    const h = setup(t, { options: { suggest: () => gated } })
+    type(h.stdin, '/')
+    const rows = h.term.lines().filter((l) => l !== '')
+    h.stdin.emit('data', '\x03') // cancel: no submit, just close
+    const [, err] = await h.editor
+    assert.equal(err?.kind, 'cancel')
+    return rows
+  }
+  const textOnly = visibleChatCommands({ visionSupported: false, providerName: 'openrouter' })
+  assert.ok(!textOnly.includes('/attach') && !textOnly.includes('/attachments') && !textOnly.includes('/scrape'))
+  const nonVision = await make(textOnly)
+  assert.ok(nonVision.some((l) => l === '› /quit'), 'commands show')
+  assert.ok(!nonVision.some((l) => l.includes('/attach')), '/attach hidden for text-only models')
+  assert.ok(!nonVision.some((l) => l.includes('/scrape')), '/scrape hidden outside Venice')
+
+  const full = visibleChatCommands({ visionSupported: true, providerName: 'openrouter' })
+  const vision = await make(full)
+  assert.ok(vision.some((l) => l === '  /attach' || l.startsWith('› /attach')), '/attach shown for vision models')
+  assert.ok(vision.some((l) => l.startsWith('  /attachments') || l.startsWith('› /attachments')))
+  assert.ok(!vision.some((l) => l.includes('/scrape')), '/scrape hidden outside Venice')
+})
+
 test('submit erases the suggestion list so picker output lands clean', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const { term, stdin, editor } = setup(t, {
