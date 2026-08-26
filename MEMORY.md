@@ -155,7 +155,7 @@
 ## Error handling contract
 
 - Providers throw `ApiError`: 401 invalid key (not retryable), 429/5xx/network retried, timeouts retried.
-- Transient chat errors pop the user message so it is not re-sent; permanent errors keep it.
+- Transient chat errors pop the user message so it is not re-sent; permanent errors keep it. The popped turn is stashed as `state.retryTurn` (content only — attachments are embedded in it), so `/retry` replays exactly that failed turn with its attachments; a new user prompt clears the stash. Network/timeout retries in `fetchWithRetry` are idempotent-method only (a POST whose response never arrived may have been processed server-side — retrying would double the generation and the bill); response-class retries (429/5xx) still apply to any method.
 - Session/prefs saves are non-fatal; single warning per save path.
 - `ExitPromptError` from pickers must propagate to the cli-main “Aborted.” handler.
 - `writeFileAtomic` used for config/session/sidecar; private modes 0600/0700.

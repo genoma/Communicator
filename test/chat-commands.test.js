@@ -537,6 +537,25 @@ test('/retry pops the last assistant message then reruns the turn', async (t) =>
   assert.equal(ctx.state.messages[1].role, 'user')
 })
 
+test('/retry replays the stashed failed turn (attachments included) instead of the previous turn', async (t) => {
+  mockConsole(t)
+  const harness = makeCtx(); const { ctx } = harness
+  // A previous successful turn...
+  ctx.state.appendUser('earlier question')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'earlier answer' })
+  // ...then a failed turn with an attachment: its content carries the parts.
+  const failedContent = [{ type: 'text', text: 'summarize' }, { type: 'file', file: { file_data: 'ref://sha256' } }]
+  ctx.state.retryTurn = failedContent
+
+  await chatCommands['/retry'](ctx)
+
+  assert.equal(harness.turnCount, 1)
+  assert.deepEqual(ctx.state.messages[3], { role: 'user', content: failedContent })
+  assert.equal(ctx.state.retryTurn, null)
+  // The earlier answer was NOT replayed and the earlier turn untouched.
+  assert.equal(ctx.state.messages[1].role, 'user')
+})
+
 test('/retry clears the terminal and redraws history without the old answer after the replacement arrives', async (t) => {
   mockConsole(t)
   const writes = []

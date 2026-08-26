@@ -361,6 +361,7 @@ test('a retryable error pops the last user message when the turn appended it', a
   await runTurn(deps, state, { userAppended: true })
 
   assert.equal(state.messages.length, 1)
+  assert.equal(state.retryTurn, 'hello')
 })
 
 test('a retryable error pops the last user message even for /retry turns', async (t) => {
@@ -377,8 +378,10 @@ test('a retryable error pops the last user message even for /retry turns', async
 
   // The /retry path re-runs an existing user message without appending; when
   // it fails retryably the message must still be dropped, otherwise the next
-  // typed prompt would silently replay the failed one alongside itself.
+  // typed prompt would silently replay the failed one alongside itself —
+  // but the turn is preserved for /retry.
   assert.equal(state.messages.length, 1)
+  assert.equal(state.retryTurn, 'hello')
 })
 
 test('a non-retryable error keeps the user message', async (t) => {

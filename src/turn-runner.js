@@ -170,9 +170,11 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       // A retryable failure drops the user message that triggered this turn
       // whenever it is still the last one, so it is never silently re-sent
       // with the next prompt (the /retry path re-runs an existing message
-      // without appending a new one).
+      // without appending a new one). The popped message (attachments
+      // embedded in its content) is stashed as `retryTurn`: /retry replays
+      // exactly this turn instead of re-running the previous one.
       if (err instanceof ApiError && err.retryable && state.messages[state.messages.length - 1]?.role === 'user') {
-        state.messages.pop()
+        state.retryTurn = state.messages.pop().content
       }
       return
     } finally {

@@ -25,6 +25,10 @@ export class ChatState {
     this.fileSupported = fileSupported
     this.imageOutputSupported = imageOutputSupported
     this.pendingAttachments = []
+    // The user turn that failed with a retryable error: popped from
+    // `messages` (so it is never re-sent silently with the next prompt) but
+    // preserved here, attachments included, for /retry. Never persisted.
+    this.retryTurn = null
     this.sessionId = sessionId
     this.createdAt = createdAt
     this.modelReasoning = modelReasoning
@@ -71,6 +75,7 @@ export class ChatState {
     this.webResults = null
     this.scrapes = 0
     this.pendingAttachments = []
+    this.retryTurn = null
     return true
   }
 

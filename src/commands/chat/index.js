@@ -355,6 +355,18 @@ const handlers = {
       console.log(guard)
       return
     }
+    const retryTurn = ctx.state.retryTurn
+    if (retryTurn) {
+      // The last attempt failed with a retryable error and its turn (with
+      // attachments) was stashed instead of dropped: replay exactly that
+      // turn — never the one that preceded it.
+      ctx.state.retryTurn = null
+      ctx.state.appendUser(retryTurn)
+      redrawForRetry(ctx)
+      await ctx.runTurn()
+      redrawForRetry(ctx)
+      return
+    }
     const last = ctx.state.messages[ctx.state.messages.length - 1]
     if (last?.role === 'assistant') {
       ctx.state.popLastMessage()
