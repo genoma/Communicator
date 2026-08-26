@@ -112,18 +112,24 @@ export function pinnedFetch(url, { addresses, family = 0, timeoutMs = DEFAULT_TI
   return new Promise((resolve, reject) => {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(new TimeoutError(`Request timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs)
-    const onAbort = () => reject(controller.signal.reason || signal?.reason || new Error('Aborted'))
-    controller.signal.addEventListener('abort', onAbort, { once: true })
-    const combined = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal
-
     let settled = false
     const finish = (fn, value) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
       controller.signal.removeEventListener('abort', onAbort)
+      signal?.removeEventListener('abort', onSignalAbort)
       fn(value)
     }
+    const onAbort = () => finish(reject, controller.signal.reason || signal?.reason || new Error('Aborted'))
+    controller.signal.addEventListener('abort', onAbort, { once: true })
+    // Settle on the CALLER's abort too: the combined signal aborts the
+    // underlying request, but its error event may be delayed — without this
+    // listener the timeout timer keeps ticking (and the event loop alive)
+    // after the caller has already given up.
+    const onSignalAbort = () => finish(reject, signal?.reason || new Error('Aborted'))
+    signal?.addEventListener('abort', onSignalAbort, { once: true })
+    const combined = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal
 
     const req = requestFn(parsed, {
       method: 'GET',

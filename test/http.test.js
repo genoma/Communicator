@@ -400,3 +400,18 @@ test('fetchWithRetry still retries retryable HTTP statuses on POSTs', async (t) 
   assert.equal(result.status, 200)
   assert.equal(calls, 2)
 })
+
+test('pinnedFetch settles immediately when the caller aborts (timer cleared)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const controller = new AbortController()
+  // A slow request that never emits its own 'error' event after the abort:
+  // settling must come from the external-signal listener, not from the
+  // request error path.
+  const requestFn = (parsed, opts) => {
+    opts.signal.addEventListener('abort', () => {})
+    return { on: () => {}, end: () => {} }
+  }
+  const promise = pinnedFetch('https://example.com/a.png', { addresses: ['1.2.3.4'], family: 4, timeoutMs: 30_000, signal: controller.signal, requestFn })
+  controller.abort()
+  await assert.rejects(promise, /aborted/i)
+})
