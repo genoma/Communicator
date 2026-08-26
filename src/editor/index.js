@@ -8,6 +8,7 @@ import { createInputConsumer } from './keys.js'
 import {
   bufferEnd,
   bufferStart,
+  clearAll,
   createModel,
   cycleSuggestion,
   deleteToLineEnd,
@@ -377,6 +378,8 @@ function readFromTTY(input, output, prompt, options) {
     keyMap.set('\x17', withRepaint(deleteWordBack)) // Ctrl+W
     keyMap.set('\x1b[119;5u', withRepaint(deleteWordBack)) // kitty Ctrl+W
     keyMap.set('\x1b[3~', withRepaint(handleDelete)) // Delete
+    keyMap.set('\x1b[3;5~', withRepaint(clearAll)) // Ctrl+Delete (xterm)
+    keyMap.set('\x1b[3;5u', withRepaint(clearAll)) // kitty Ctrl+Delete
     keyMap.set('\x15', withRepaint(deleteToLineStart)) // Ctrl+U
     keyMap.set('\x1b[117;5u', withRepaint(deleteToLineStart)) // kitty Ctrl+U
     keyMap.set('\x0b', withRepaint(deleteToLineEnd)) // Ctrl+K

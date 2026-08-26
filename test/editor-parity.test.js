@@ -211,6 +211,37 @@ test('kitty Ctrl+C cancels', async (t) => {
   assert.equal(error?.kind, 'cancel')
 })
 
+test('Ctrl+Delete clears the whole buffer', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['one', '\n', 'two', '\x1b[3;5~', '\r'] })
+  const [value] = await pending
+  assert.equal(value, '')
+})
+
+test('kitty Ctrl+Delete clears the whole buffer', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['one', '\n', 'two', '\x1b[3;5u', '\r'] })
+  const [value] = await pending
+  assert.equal(value, '')
+})
+
+test('Ctrl+Delete clears text before the cursor too', async (t) => {
+  // Cursor is mid-buffer after the newline; clear must empty all lines.
+  const { pending } = runEditorTuple(t, { chunks: ['one', '\n', 'two\x1b[D', '\x1b[3;5~', '\r'] })
+  const [value] = await pending
+  assert.equal(value, '')
+})
+
+test('undo restores content after Ctrl+Delete clear', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['one', '\n', 'two', '\x1b[3;5~', '\x1a', '\r'] })
+  const [value] = await pending
+  assert.equal(value, 'one\ntwo')
+})
+
+test('Ctrl+Delete on an empty buffer is a no-op', async (t) => {
+  const { pending } = runEditorTuple(t, { chunks: ['\x1b[3;5~', '\r'] })
+  const [value] = await pending
+  assert.equal(value, '')
+})
+
 test('kitty Ctrl+C mixed with typed text cancels with the partial input', async (t) => {
   const { pending } = runEditorTuple(t, { chunks: ['abc\x1b[99;5u'] })
   const [value, error] = await pending

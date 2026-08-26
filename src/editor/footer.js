@@ -4,7 +4,7 @@ import { stringWidth } from './chars.js'
 import { applyStyle } from './style.js'
 
 // Ctrl+D is deliberately unbound (it would exit the chat): never advertised.
-const DEFAULT_ITEMS = ['submit', 'newline', 'undo', 'cancel']
+const DEFAULT_ITEMS = ['submit', 'newline', 'undo', 'clear', 'cancel']
 
 /** Preferred display order for newline/submit modified keys */
 const MODIFIED_KEY_LABELS = {
@@ -130,6 +130,8 @@ function resolveAction(action, preferNewlineOnEnter, submitLabels, newlineLabels
       return { keys: ['Ctrl+U'], action: 'delete to start' }
     case 'delete-to-end':
       return { keys: ['Ctrl+K'], action: 'delete to end' }
+    case 'clear':
+      return { keys: ['Ctrl+Delete'], action: 'clear' }
     case 'clear-screen':
       return { keys: ['Ctrl+L'], action: 'clear screen' }
   }

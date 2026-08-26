@@ -375,6 +375,17 @@ export function deleteToLineEnd(model) {
   postEdit(model)
 }
 
+/** Delete the entire buffer (all lines), resetting the cursor to the start (Ctrl+Delete) */
+export function clearAll(model) {
+  if (model.lines.length === 1 && model.lines[0] === '' && model.row === 0 && model.col === 0) return
+  saveUndo(model)
+  model.lines = ['']
+  model.row = 0
+  model.col = 0
+  model.lastEditType = ''
+  postEdit(model)
+}
+
 /** Delete the previous word (Ctrl+W behavior) */
 export function deleteWordBack(model) {
   if (model.col === 0) {
