@@ -41,16 +41,33 @@ function rewriteUserContent(content, text) {
 }
 
 // On TTY retries, replace the previous answer visually instead of leaving it
-// in place while the new one streams below. Non-TTY output (pipes/tests) is
+// in place while the new one streams below. The wipe + rebuild must reproduce
+// the exact app-owned layout the resize path uses (banner + transcript via
+// onResizeRepaint), so the connection header and the freshly printed turn
+// metrics are never stranded off-screen. Non-TTY output (pipes/tests) is
 // left untouched so the plain transcript stays mechanical.
 function redrawForRetry(ctx) {
   if (ctx.stdout?.isTTY !== true) return
   ctx.stdout.write('\x1b[2J\x1b[3J\x1b[H')
+  if (typeof ctx.onResizeRepaint === 'function') {
+    ctx.onResizeRepaint()
+    return
+  }
   renderHistory(ctx.state.messages, {
     markdown: ctx.state.markdown,
     stdout: ctx.stdout,
     compactThinking: ctx.state.compactThinking,
     ...(ctx.rpgMarkers ?? {}),
+  })
+}
+
+// Redraw after a rerun only when the turn did not produce a replacement:
+// a successful turn streams its answer (and the tokens/cost footer) live
+// after the pre-run redraw, so a second wipe would erase them.
+function rerunTurn(ctx) {
+  return ctx.runTurn().then((produced) => {
+    if (!produced) redrawForRetry(ctx)
+    return produced
   })
 }
 
@@ -374,8 +391,7 @@ const handlers = {
       ctx.state.retryTurn = null
       ctx.state.appendUser(retryTurn)
       redrawForRetry(ctx)
-      await ctx.runTurn()
-      redrawForRetry(ctx)
+      await rerunTurn(ctx)
       return
     }
     const last = ctx.state.messages[ctx.state.messages.length - 1]
@@ -384,17 +400,12 @@ const handlers = {
       // Wipe the stale answer before starting the replacement so the old
       // response is not left on screen while the new one streams.
       redrawForRetry(ctx)
-      await ctx.runTurn()
-      // Refresh again after the attempt: on success this renders the new
-      // answer; on failure or an empty replacement it keeps the screen in
-      // sync with the state after the old answer was removed.
-      redrawForRetry(ctx)
+      await rerunTurn(ctx)
     } else if (last?.role === 'user') {
       // A failed attempt can leave partial output on screen without a saved
       // assistant message. Clear that stale view before re-running the turn.
       redrawForRetry(ctx)
-      await ctx.runTurn()
-      redrawForRetry(ctx)
+      await rerunTurn(ctx)
     } else {
       console.log('Nothing to retry yet.\n')
     }
@@ -437,8 +448,7 @@ const handlers = {
     // rerun.
     await ctx.saveSession()
     redrawForRetry(ctx)
-    await ctx.runTurn()
-    redrawForRetry(ctx)
+    await rerunTurn(ctx)
   },
 
   '/copy': async (ctx) => {

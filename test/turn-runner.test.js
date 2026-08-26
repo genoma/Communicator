@@ -112,6 +112,28 @@ test('a successful turn streams tokens, records usage and appends the message', 
   assert.equal(exitCodes.length, 0)
 })
 
+test('runTurn resolves true only when an assistant message was appended', async (t) => {
+  mockConsole(t)
+  const { deps } = makeDeps({ provider: okProvider() })
+  const state = fakeState()
+
+  const ok = await runTurn(deps, state)
+
+  assert.equal(ok, true)
+  assert.equal(state.messages.at(-1).role, 'assistant')
+})
+
+test('runTurn resolves false when the provider returns no content', async (t) => {
+  mockConsole(t)
+  const { deps } = makeDeps({ provider: okProvider({ chatCompletion: async () => ({ usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }) }) })
+  const state = fakeState()
+
+  const ok = await runTurn(deps, state)
+
+  assert.equal(ok, false)
+  assert.equal(state.messages.at(-1).role, 'user')
+})
+
 test('forwards the session top-p to chatCompletion', async (t) => {
   mockConsole(t)
   const render = () => {}

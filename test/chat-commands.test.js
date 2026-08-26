@@ -7,6 +7,8 @@ import { tmpdir } from 'node:os'
 import { chatCommands, budgetGuard, CHAT_COMMANDS, visibleChatCommands } from '../src/commands/chat/index.js'
 import { ChatState } from '../src/chat-state.js'
 import { UsageTracker } from '../src/tracker.js'
+import { connectedBanner, buildStatusLine } from '../src/status-line.js'
+import { renderHistory } from '../src/ui/stream.js'
 
 function fakeProvider(overrides = {}) {
   return {
@@ -58,10 +60,20 @@ function makeCtx(overrides = {}) {
     render: { markdown: true, smooth: true, smoothCharsPerTick: 40 },
     newSessionId: async () => '2026-01-02T00-00-00',
     copyText: async (text) => { copied = text; return { ok: true } },
-    onResizeRepaint: () => {},
+    onResizeRepaint: null,
     selectModelAndEndpoint: undefined,
     selectReasoningEffort: undefined,
     ...overrides,
+  }
+
+  // The default hook mirrors chat.js `renderAboveEditor`: banner + transcript
+  // onto ctx.stdout, so TTY retry/edit tests exercise the same rebuild the
+  // resize path uses (and its own wipe comes from redrawForRetry).
+  ctx.onResizeRepaint ??= () => {
+    const stdout = ctx.stdout
+    if (!stdout?.write) return
+    stdout.write(`${connectedBanner(buildStatusLine(ctx.state))}\n`)
+    renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout, compactThinking: ctx.state.compactThinking })
   }
 
   return {
@@ -575,6 +587,31 @@ test('/retry clears the terminal and redraws history without the old answer afte
   assert.ok(output.includes('\x1b[2J\x1b[3J\x1b[H'))
   assert.match(output, /hello/)
   assert.match(output, /second answer/)
+  assert.doesNotMatch(output, /first answer/)
+})
+
+test('/retry keeps the banner and the turn metrics when the replacement succeeds', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  const harness = makeCtx({ stdout })
+  const { ctx } = harness
+  ctx.runTurn = async () => {
+    stdout.write('\nsecond answer\n\nTokens ↑ 10 prompt  ↓ 5 completion  = 15 total')
+    ctx.state.appendAssistant({ role: 'assistant', content: 'second answer' })
+    return true
+  }
+  ctx.state.appendUser('hello')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'first answer' })
+
+  await chatCommands['/retry'](ctx)
+
+  const output = writes.join('')
+  assert.equal(output.split('\x1b[2J').length - 1, 1, 'a successful rerun is wiped once, before the stream')
+  assert.match(output, /Connected to Provider/)
+  assert.match(output, /hello/)
+  assert.match(output, /second answer/)
+  assert.match(output, /Tokens ↑ 10 prompt/)
   assert.doesNotMatch(output, /first answer/)
 })
 

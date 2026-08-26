@@ -191,9 +191,15 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       sessionState.streamController = null
     }
 
+    // The verdict is what /retry and /edit need: true only when an assistant
+    // message was appended, so callers can tell a successful replacement
+    // (already rendered live, plus its metrics footer) from a failed turn
+    // whose stale error/partial view still needs a screen wipe.
     if (apiResult.content) {
       state.appendAssistant(apiResultMessage(apiResult))
+      return true
     }
+    return false
   }
 
   return { runTurn }
