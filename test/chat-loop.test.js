@@ -946,6 +946,31 @@ test('resume path renders history, seeds the tracker and shows the previous sess
   assert.equal(calls[0].messages[3].content, 'next question')
 })
 
+test('launch frame matches the resize frame: summary and separator sit above the transcript', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const stdoutWrites = []
+  const stdout = { isTTY: true, write(chunk) { stdoutWrites.push(String(chunk)); return true } }
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/quit']), stdout })
+
+  await runChatSession(
+    baseCtx(provider, {
+      initialMessages: [
+        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'user', content: 'old question' },
+        { role: 'assistant', content: 'old answer', usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 } },
+      ],
+    }),
+    harness.deps
+  )
+
+  const logs = consoleSpy.allLogs()
+  assert.match(logs[0], /Connected to/, 'the banner comes first')
+  assert.match(logs[1], /Previous session:/, 'the summary comes right after the banner, like the resize rebuild')
+  assert.equal(logs[2].includes(THIN_SEP), true, 'the loop separator comes right after the summary')
+  assert.match(stdoutWrites.join(''), /^\n❯ You\n\nold question/, 'the transcript opens one blank row under the separator')
+})
+
 test('resumed scrape counts seed the tracker cost and the scrape counter once', async (t) => {
   const consoleSpy = mockConsole(t)
   const { provider } = fakeProvider()

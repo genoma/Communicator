@@ -122,6 +122,33 @@ test('compact live streaming and history replay emit the same checkpoint block',
   assert.ok(history.text().includes(checkpointBlock), 'history replay must include the same checkpoint block')
 })
 
+test('renderHistory tailBlank: false ends flush so the rerun adds the one blank row', () => {
+  const history = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'question' },
+  ], { markdown: false, stdout: history.stdout, tailBlank: false })
+  assert.equal(history.plain(), '\n❯ You\n\nquestion')
+  // The default keeps the trailing blank below the body (footer/separator
+  // that follows the non-flush locations).
+  const tailed = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'question' },
+  ], { markdown: false, stdout: tailed.stdout })
+  assert.equal(tailed.plain(), '\n❯ You\n\nquestion\n\n')
+})
+
+test('renderHistory tailBlank: false flushes through attachments and sources', () => {
+  const history = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: [{ type: 'text', text: 'question' }, { type: 'file', file: { filename: 'r.pdf', file_data: 'data:application/pdf;base64,AA==' } }] },
+    { role: 'assistant', content: 'answer', waitLine: 'Waiting for response', sources: [{ title: 'One', url: 'https://one.example' }] },
+  ], { markdown: false, stdout: history.stdout, tailBlank: false })
+  assert.equal(history.plain(), '\n❯ You\n\nquestion\n\nattached: r.pdf (file)\n✓ Waiting for response\nanswer\n\n\nSources (1)\n[1] One')
+})
+
 test('attachmentLine styles the word, label, meta and note with one dim note', (t) => {
   enableAnsi(t)
   const line = attachmentLine('attached', 'photo.png', { meta: 'image, 7 B', note: 'saved to /tmp/photo.png' })

@@ -39,6 +39,7 @@
 
 - Write very clean code: readable, consistent with existing style, no dead code or leftovers.
 - No comments unless they explain non-obvious intent.
+- Terminal output layout is a contract: every repeated visual element (markers, separators, footers, banners) must keep the identical spacing in every stage that renders it — one blank line above and one below unless the established pattern says otherwise. Never let one code path (live stream, history replay, rebuild, continuation redraw) drift from the others; when a new stage re-renders an element, mirror the spacing of the existing stages (see MEMORY.md §Display consistency contract).
 - No debug prints, no `console.log` leftovers in final code.
 - Do not add dependencies without need; prefer built-in Node.js APIs where reasonable.
 - Keep the CLI flag conventions: long-form flags (`--list-models`, `--output-dir`, `--reasoning-effort`, ...), single-character short flags only (Commander does not support multi-char short flags).

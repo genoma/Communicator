@@ -163,7 +163,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     if (resumeSummary) console.log(resumeSummary)
     console.log(sep())
     if (state.messages.length > 1) {
-      renderHistory(state.messages, { markdown: state.markdown, stdout, compactThinking: tty && state.compactThinking, ...rpgMarkers })
+      renderHistory(state.messages, { markdown: state.markdown, stdout, compactThinking: tty && state.compactThinking, tailBlank: opts.turnFooter !== false, ...rpgMarkers })
     }
     // The pre-resize layout ends a completed turn with the loop sep, the
     // printTurn Tokens/Cost footer and the loop sep again (see the chat loop
@@ -181,11 +181,6 @@ export async function runChatSession(ctx = {}, deps = {}) {
       if (state.messages.length > 1 || metrics) console.log(sep())
     }
   }
-  printBanner()
-  if (state.messages.length > 1) {
-    renderHistory(state.messages, { markdown: state.markdown, stdout, compactThinking: tty && state.compactThinking, ...rpgMarkers })
-  }
-
   if (initialMessages && sessionState.tracker.requests > 0) {
     let summary = sessionState.tracker.summary()
     if (lastUsage) {
@@ -194,7 +189,16 @@ export async function runChatSession(ctx = {}, deps = {}) {
       if (ctx) summary += `  |  ${ctx}`
     }
     resumeSummary = `${dim('Previous session:')} ${summary}\n`
-    console.log(resumeSummary)
+  }
+  // The launch frame is the same app-owned frame the resize path rebuilds —
+  // banner, summary, separator, transcript — so the first `❯ You` gets the
+  // same single blank row above it and a resize never changes the layout
+  // (the loop's own separator is the closing one below the transcript).
+  printBanner()
+  if (resumeSummary) console.log(resumeSummary)
+  if (state.messages.length > 1) {
+    console.log(sep())
+    renderHistory(state.messages, { markdown: state.markdown, stdout, compactThinking: tty && state.compactThinking, ...rpgMarkers })
   }
 
   const render = renderer({

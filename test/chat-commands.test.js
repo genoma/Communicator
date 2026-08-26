@@ -69,11 +69,11 @@ function makeCtx(overrides = {}) {
   // The default hook mirrors chat.js `renderAboveEditor`: banner + transcript
   // onto ctx.stdout, so TTY retry/edit tests exercise the same rebuild the
   // resize path uses (and its own wipe comes from redrawForRetry).
-  ctx.onResizeRepaint ??= () => {
+  ctx.onResizeRepaint ??= (opts = {}) => {
     const stdout = ctx.stdout
     if (!stdout?.write) return
     stdout.write(`${connectedBanner(buildStatusLine(ctx.state))}\n`)
-    renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout, compactThinking: ctx.state.compactThinking })
+    renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout, compactThinking: ctx.state.compactThinking, tailBlank: opts.turnFooter !== false })
   }
 
   return {
@@ -658,6 +658,31 @@ test('/retry clears stale failed output when the last message is a user message'
   assert.match(output, /new answer/)
 })
 
+test('/retry rerun leaves exactly one blank row between the rebuilt transcript and the stream', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  const harness = makeCtx({ stdout })
+  const { ctx } = harness
+  ctx.runTurn = async () => {
+    // The rerun behaves exactly like a live turn: its '\n\n' owns the blank
+    // row below the rebuilt transcript, then the reasoning label streams on
+    // the next row.
+    stdout.write('\n\n')
+    stdout.write('❯ Thinking\n\n')
+    ctx.state.appendAssistant({ role: 'assistant', content: 'second answer', reasoning: 're' })
+    return true
+  }
+  ctx.state.appendUser('hello')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'first answer' })
+
+  await chatCommands['/retry'](ctx)
+
+  const output = writes.join('')
+  assert.match(output, /hello\n\n❯ Thinking/, 'the streamed marker must sit one blank row under the rebuilt transcript')
+  assert.doesNotMatch(output, /hello\n\n\n+❯ Thinking/, 'the rerun must not double-blank on the transcript tail')
+})
+
 test('/retry redraws the transcript even when no replacement arrives', async (t) => {
   mockConsole(t)
   const writes = []
@@ -733,6 +758,31 @@ test('/edit replaces the last user message, drops the stale answer, and reruns t
   assert.equal(harness.turnCount, 1)
   assert.deepEqual(savedSessions, [2])
   assert.ok(writes.join('').includes('\x1b[2J'), 'the transcript is redrawn before and after the rerun')
+})
+
+test('/edit rerun leaves exactly one blank row between the rebuilt transcript and the stream', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  const harness = makeCtx({
+    stdout,
+    readInput: async () => ({ value: 'edited prompt' }),
+  })
+  const { ctx } = harness
+  ctx.runTurn = async () => {
+    stdout.write('\n\n')
+    stdout.write('✓ Waiting for response\n')
+    ctx.state.appendAssistant({ role: 'assistant', content: 'new answer' })
+    return true
+  }
+  ctx.state.appendUser('original prompt')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'old answer' })
+
+  await chatCommands['/edit'](ctx)
+
+  const output = writes.join('')
+  assert.match(output, /edited prompt\n\n✓ Waiting for response/, 'the checkpoint must sit one blank row under the rebuilt transcript')
+  assert.doesNotMatch(output, /edited prompt\n\n\n+✓ Waiting for response/, 'the rerun must not double-blank on the transcript tail')
 })
 
 test('/edit keeps attachments and replaces only the message text part', async (t) => {

@@ -182,9 +182,13 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
 }
 
 export function printSources(sources, stdout = process.stdout) {
-  if (!sources?.length) return
-  stdout.write('\n')
-  stdout.write(`${dim(`Sources (${sources.length})`)}\n`)
+  stdout.write(sourcesText(sources))
+}
+
+function sourcesText(sources) {
+  if (!sources?.length) return ''
+  let out = '\n'
+  out += `${dim(`Sources (${sources.length})`)}\n`
   sources.forEach((source, i) => {
     let label = source.title
     if (!label) {
@@ -197,11 +201,12 @@ export function printSources(sources, stdout = process.stdout) {
     label = sanitizeAnsi(label)
     const cleanUrl = sanitizeAnsi(source.url)
     const link = label && cleanUrl ? hyperlink(cleanUrl, label) : null
-    stdout.write(`${dim(`[${i + 1}]`)} ${italic(link || label || dim(cleanUrl))}\n`)
+    out += `${dim(`[${i + 1}]`)} ${italic(link || label || dim(cleanUrl))}\n`
   })
+  return out
 }
 
-export function renderHistory(messages, { markdown = false, stdout = process.stdout, userMarker = null, assistantMarker = null, compactThinking = false } = {}) {
+export function renderHistory(messages, { markdown = false, stdout = process.stdout, userMarker = null, assistantMarker = null, compactThinking = false, tailBlank = true } = {}) {
   if (!messages || messages.length <= 1) return
 
   const cols = typeof stdout.columns === 'number' ? stdout.columns : null
@@ -209,13 +214,13 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
   const hasVisible = messages.some((m) => m.role !== 'system')
   if (!hasVisible) return
 
-  stdout.write('\n')
+  let out = '\n'
   for (const msg of messages) {
     if (msg.role === 'user') {
       // One blank line above and below the marker, then the body.
-      stdout.write(`${userMarker ?? you()}\n\n${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), [], cols) : wrapPlain(sanitizeAnsi(contentText(msg.content)))}\n\n`)
+      out += `${userMarker ?? you()}\n\n${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), [], cols) : wrapPlain(sanitizeAnsi(contentText(msg.content)))}\n\n`
       for (const att of contentAttachments(msg.content)) {
-        stdout.write(`${attachmentLine('attached', att.filename, { meta: att.kind })}\n`)
+        out += `${attachmentLine('attached', att.filename, { meta: att.kind })}\n`
       }
     } else if (msg.role === 'assistant') {
       // Same marker sequence as the live stream (writeSegment): one blank
@@ -225,11 +230,11 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
       if (msg.reasoning) {
         if (compactThinking) {
           const count = formatCompactCount(sanitizeAnsi(msg.reasoning).length)
-          stdout.write(`${green('✓')} Thinking · ${count}\n\n${answer()}\n\n`)
+          out += `${green('✓')} Thinking · ${count}\n\n${answer()}\n\n`
         } else {
-          stdout.write(`${thinking()}\n\n`)
-          stdout.write(`${dim(wrapPlain(sanitizeAnsi(msg.reasoning)))}\n`)
-          stdout.write(`\n${answer()}\n\n`)
+          out += `${thinking()}\n\n`
+          out += `${dim(wrapPlain(sanitizeAnsi(msg.reasoning)))}\n`
+          out += `\n${answer()}\n\n`
         }
       }
       // A reasoning-less turn resolved its loader row to a green checkpoint
@@ -238,16 +243,20 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
       // the answer). Never stored on reasoning turns — the thinking marker or
       // the compact meter checkpoint owns that row instead.
       if (msg.waitLine) {
-        stdout.write(`${green('✓')} ${sanitizeSingleLine(msg.waitLine)}\n`)
+        out += `${green('✓')} ${sanitizeSingleLine(msg.waitLine)}\n`
       }
-      if (assistantMarker) stdout.write(`${assistantMarker}\n\n`)
-      stdout.write(`${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), msg.sources || [], cols) : wrapPlain(sanitizeAnsi(contentText(msg.content)))}\n\n`)
+      if (assistantMarker) out += `${assistantMarker}\n\n`
+      out += `${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), msg.sources || [], cols) : wrapPlain(sanitizeAnsi(contentText(msg.content)))}\n\n`
       for (const att of contentAttachments(msg.content)) {
-        stdout.write(`${attachmentLine(att.kind, att.filename)}\n`)
+        out += `${attachmentLine(att.kind, att.filename)}\n`
       }
-      if (msg.sources?.length) {
-        printSources(msg.sources, stdout)
-      }
+      out += sourcesText(msg.sources)
     }
   }
+  // Continuation redraws (/retry, /edit) end the transcript flush so the
+  // rerun's leading '\n\n' leaves exactly one blank row under the last
+  // message — the same one the live submitted line gets — never a doubled
+  // gap from the transcript's own trailing blank.
+  if (!tailBlank) out = out.replace(/\n+$/, '')
+  stdout.write(out)
 }
