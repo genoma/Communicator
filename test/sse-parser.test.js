@@ -671,6 +671,59 @@ test('a delta carrying reasoning and content emits both', async () => {
   assert.deepEqual(tokens, [['start_reasoning', '\n'], ['reasoning', 'why'], ['end_reasoning', null], ['content', 'then']])
 })
 
+test('reasoning deltas with an empty content field keep one thinking block', async () => {
+  // DeepSeek-family streams put `content: ''` on every reasoning delta; the
+  // empty field is not the thinking→content transition, and treating it as
+  // one would re-open the block on the next reasoning delta — a start/end
+  // cycle per delta, which compact mode renders as a checkpoint per chunk.
+  const tokens = []
+  const delta = (reasoning) => event({ choices: [{ delta: { content: '', role: 'assistant', reasoning } }] })
+  const { fullText, fullReasoning } = await parseSSEStream(
+    streamReader([
+      delta('H'),
+      delta('mm,'),
+      delta(' the user'),
+      event({ choices: [{ delta: { content: 'Hi!', role: 'assistant' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t])
+  )
+  assert.equal(fullReasoning, 'Hmm, the user')
+  assert.equal(fullText, 'Hi!')
+  assert.deepEqual(
+    tokens,
+    [
+      ['start_reasoning', '\n'],
+      ['reasoning', 'H'],
+      ['reasoning', 'mm,'],
+      ['reasoning', ' the user'],
+      ['end_reasoning', null],
+      ['content', 'Hi!'],
+    ]
+  )
+})
+
+test('an empty content parts array does not close the thinking block either', async () => {
+  const tokens = []
+  const delta = (reasoning) => event({ choices: [{ delta: { content: [], reasoning } }] })
+  const { fullReasoning } = await parseSSEStream(
+    streamReader([
+      delta('think'),
+      event({ choices: [{ delta: { content: [{ type: 'text', text: 'answer' }] } }] }),
+    ]),
+    (t, type) => tokens.push([type, t])
+  )
+  assert.equal(fullReasoning, 'think')
+  assert.deepEqual(
+    tokens,
+    [
+      ['start_reasoning', '\n'],
+      ['reasoning', 'think'],
+      ['end_reasoning', null],
+      ['content', 'answer'],
+    ]
+  )
+})
+
 test('empty keep-alive data events are not counted as malformed chunks', async () => {
   const { fullText, skippedChunks } = await parseSSEStream(
     streamReader(['data:\n\n', 'data:\n\n', event({ choices: [{ delta: { content: 'alive' } }] }), '\n']),

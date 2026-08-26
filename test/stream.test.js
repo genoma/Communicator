@@ -422,6 +422,20 @@ test('compact renderer hides reasoning and emits the checkpoint with the final c
   assert.equal(plain(), '\r✓ Thinking · 13\x1b[K\n\n❯ Answer\n\nAnswer here')
 })
 
+test('compact renderer checkpoints once per thinking block, not per reasoning delta', () => {
+  // A DeepSeek-family stream may cross back and forth but the parser emits
+  // one start/end cycle per block; the meter must not replay the checkpoint
+  // (and the Answer label) for each reasoning chunk.
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true })
+  render('', 'start_reasoning')
+  render('H', 'reasoning')
+  render('mm,', 'reasoning')
+  render('', 'end_reasoning')
+  render('Hi!', 'content')
+  assert.equal(plain(), '\r✓ Thinking · 4\x1b[K\n\n❯ Answer\n\nHi!')
+})
+
 test('compact renderer puts the assistant marker after the Answer label', () => {
   const { stdout, plain } = capture()
   const render = createStreamRenderer({ stdout, compactThinking: true, assistantMarker: '❯ Zara' })

@@ -221,7 +221,14 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     }
 
     const contentToken = delta.content
-    if (contentToken != null) {
+    // An EMPTY content payload (`content: ''`, `content: []`) is not the
+    // thinking→content transition: reasoning streams commonly carry an empty
+    // content field on every delta, and closing the block there would re-open
+    // it on the next reasoning delta — a start/end cycle per delta, which
+    // compact mode renders as a checkpoint line per reasoning chunk.
+    const hasContent = contentToken != null &&
+      (typeof contentToken === 'string' ? contentToken !== '' : Array.isArray(contentToken) ? contentToken.length > 0 : true)
+    if (hasContent) {
       if (inThinking) {
         inThinking = false
         onToken(null, 'end_reasoning')

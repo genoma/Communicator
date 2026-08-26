@@ -186,6 +186,7 @@ Cross-path invariants pinned by `test/ui-consistency.test.js`. Every change must
 
 - Reasoning fields: `delta.reasoning_content` (OpenAI-style) or `delta.reasoning` (DeepSeek-family).
 - SSE parser handles multi-line data, malformed chunks, idle timeout, partial tokens, usage, non-text parts, E2EE decrypt.
+- The thinking→content transition is ONLY a non-empty content payload (`content: ''` / `content: []` are not): reasoning streams commonly carry an empty content field on every delta, and closing the block there would re-open it on the next reasoning delta — a start/end cycle per delta, which compact mode renders as a checkpoint line per reasoning chunk. A mixed delta with real `reasoning`/`reasoning_content` AND real `content` emits both (block closes, content streams).
 
 ## Command autocomplete
 
