@@ -14,6 +14,7 @@ const MAX_UNDO = 200
 
 /** Create the editor model with the given options */
 export function createModel(options = {}) {
+  const historyRows = options.historyRows ?? []
   const model = {
     lines: [''],
     row: 0,
@@ -23,8 +24,8 @@ export function createModel(options = {}) {
     maxLines: options.maxLines,
     statusText: '',
     statusColor: '',
-    history: [...options.historyRows],
-    historyIndex: options.historyRows.length,
+    history: [...historyRows],
+    historyIndex: historyRows.length,
     draft: '',
     historyArrowNavigation: options.historyArrowNavigation ?? 'single',
     historyArrowAttempt: 0,

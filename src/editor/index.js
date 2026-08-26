@@ -8,6 +8,7 @@ import { createInputConsumer } from './keys.js'
 import {
   bufferEnd,
   bufferStart,
+  createModel,
   cycleSuggestion,
   deleteToLineEnd,
   deleteToLineStart,
@@ -113,34 +114,14 @@ function readFromTTY(input, output, prompt, options) {
     const historyConfig = historyOption && !Array.isArray(historyOption) ? historyOption : undefined
     const disabledKeySet = new Set(disabledKeys)
 
-    const model = {
-      lines: [''],
-      row: 0,
-      col: 0,
-      visualState: 'pending',
+    const model = createModel({
       maxLength,
       maxLines,
-      statusText: '',
-      statusColor: '',
-      history: [...historyRows],
-      historyIndex: historyRows.length,
-      draft: '',
+      historyRows,
       historyArrowNavigation,
-      historyArrowAttempt: 0,
-      undoStack: [],
-      redoStack: [],
-      lastEditType: '',
       suggest,
-      suggestSession: null,
-      dismissUntilEdit: false,
-      isPasting: false,
-    }
-    if (initialValue) {
-      const initLines = initialValue.split('\n')
-      model.lines = [...initLines]
-      model.row = initLines.length - 1
-      model.col = initLines[model.row].length
-    }
+      initialValue,
+    })
 
     const terminalWidth = () =>
       typeof output.columns === 'number' && output.columns > 0 ? output.columns : 80
