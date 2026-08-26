@@ -815,3 +815,19 @@ test('stdin EOF tears the editor down and resolves as an EOF cancel', async (t) 
   assert.ok(all.includes('\x1b[?2004l'), 'bracketed paste disabled')
   assert.ok(all.includes('\x1b[<u'), 'kitty protocol disabled')
 })
+
+test('a paste starting while an escape tail is held joins cleanly', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { stdin, editor } = setup(t, { options: { suggest: () => ['/quit'] } })
+  type(stdin, '/') // open a suggestion session
+  press(stdin, '\x1b') // lone ESC: dismissed after the 50 ms flush — but a
+  // paste arrives before the flush: the held tail must not swallow the
+  // paste marker (it would be re-dispatched as one unknown escape and the
+  // whole paste would be lost).
+  type(stdin, '\x1b[200~paste text\x1b[201~')
+  await t.mock.timers.tick(50)
+  submit(stdin)
+  await t.mock.timers.tick(0)
+  const [value] = await editor
+  assert.equal(value, '/paste text')
+})

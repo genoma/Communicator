@@ -160,8 +160,24 @@ export function createInputConsumer(ctx) {
         state.escTimer = null
       }
       if (state.escBuffer) {
-        const combined = state.escBuffer + seq
+        const held = state.escBuffer
+        const combined = held + seq
         state.escBuffer = ''
+        // An incomplete escape tail followed immediately by a paste start
+        // marker can never complete: its continuation bytes would BE the
+        // marker. Strip the stale tail (a lone ESC is still dispatched as a
+        // key) and let the paste begin unambiguously — otherwise the joined
+        // bytes are consumed as one unknown escape and the paste marker is
+        // eaten, leaking the payload into key input.
+        if (!state.isPasting) {
+          const markerAt = combined.indexOf(PASTE_START)
+          if (markerAt === held.length) {
+            if (held === '\x1b') ctx.dispatch('\x1b')
+            const tail = consume(seq)
+            if (tail) holdTail(tail)
+            return
+          }
+        }
         const tail = consume(combined)
         if (tail) {
           holdTail(tail)
