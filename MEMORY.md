@@ -165,7 +165,9 @@
 Cross-path invariants pinned by `test/ui-consistency.test.js`. Every change must update all call sites and this section.
 
 - **Session banner**: `\nConnected to <segments joined '  '>\n[<hints joined '  |  '>\n]`; TTY dims keys/brackets; wraps greedily, badges atomic. Banner and `/status` use same `buildStatusLine` segments. Image banner uses `buildImageStatusLine`.
-- **Turn markers**: `❯ Thinking\n<reasoning>\n\n❯ Answer\n\n`; live and history replay identical. Compact mode replaces the body with the meter checkpoint `✓ Thinking · <count>\n\n❯ Answer\n\n` (count = ANSI-stripped reasoning chars via `formatCompactCount`); live and history replay identical.
+- **Turn markers**: every marker (`❯ Thinking`, `❯ Answer`, `❯ You`, and in RPG mode `❯ <char>`/`❯ <user>`) gets exactly one blank line above and one below the label: `❯ Thinking\n\n<reasoning>\n\n❯ Answer\n\n`. Live and history replay identical. Compact mode replaces the body with the meter checkpoint `✓ Thinking · <count>\n\n❯ Answer\n\n` (count = ANSI-stripped reasoning chars via `formatCompactCount`); live and history replay identical.
+- **Live turn start** (`createTurnRunner`): on TTY the turn writes `\n\n` before the loader, so the loader/marker row is one blank row below the submitted user line — markers never glue to the user line. `start_reasoning` bare-stops the loader (`\r\x1b[K`) in FULL mode too (not just compact): the `❯ Thinking` label / meter checkpoint owns the loader's line, so the spinner text never collides with the label and `✓ Waiting for response` never appears in a reasoning transcript (reasoning tokens never stop the loader again; `content` still resolves the waiting line when no reasoning intervened).
+- The `start_reasoning` marker token from the SSE parser is a bare `'\n'`; the renderer ignores marker token text (live and history replay share the exact one-blank layout).
 - **Attachment/artifact lines**: shared `attachmentLine(word, label, { meta, note, link })`; call sites differ only by label/note.
 - **Sources**: `printSources` leading newline, dim `[i]` + OSC 8 link; citations same `[n]`.
 - **Malformed-chunk notice**: dim, TTY-only.

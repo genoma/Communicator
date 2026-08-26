@@ -33,9 +33,11 @@ Once connected, responses stream token by token. Reasoning tokens appear in gray
 
 ```
 ❯ You
+
 What is the capital of France?
 
 ❯ Thinking
+
 The user is asking about the capital of France...
 
 ❯ Answer

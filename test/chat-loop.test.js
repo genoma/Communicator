@@ -288,7 +288,7 @@ test('/new in rpg mode saves the prior story, restarts with the first message, a
   const out = writes.join('')
   assert.ok(out.includes('The gate creaks open.'))
   // The launch replay and the /new re-render both speak under the char name.
-  assert.match(out, /❯ Zara\nThe gate creaks open\./)
+  assert.match(out, /❯ Zara\n\nThe gate creaks open\./)
   assert.doesNotMatch(out, /❯ You/)
 })
 
@@ -320,11 +320,11 @@ test('rpg live replies stream under the char marker and replay user turns under 
 
   // eslint-disable-next-line no-control-regex
   const out = writes.join('').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\r/g, '')
-  assert.match(out, /❯ Zara\nWelcome to the story\./)
+  assert.match(out, /❯ Zara\n\nWelcome to the story\./)
   // The live stream puts the char marker right before the first token; the
   // markdown renderer rewrites partial lines, so tolerate the duplicated
   // first chunk after normalization.
-  assert.match(out, /❯ Zara\nHel/)
+  assert.match(out, /❯ Zara\n\nHel/)
   assert.ok(out.includes('Hello!'))
   assert.doesNotMatch(out, /❯ You/)
 })

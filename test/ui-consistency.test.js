@@ -96,8 +96,8 @@ test('live streaming and history replay emit the same reasoning marker block', (
     { role: 'assistant', content: 'answer', reasoning: 'thinking text' },
   ], { markdown: false, stdout: history.stdout })
 
-  assert.equal(live.plain(), '❯ Thinking\nthinking text\n\n❯ Answer\n\nanswer')
-  assert.match(history.plain(), /❯ Thinking\nthinking text\n\n❯ Answer\n\nanswer/)
+  assert.equal(live.plain(), '❯ Thinking\n\nthinking text\n\n❯ Answer\n\nanswer')
+  assert.match(history.plain(), /❯ Thinking\n\nthinking text\n\n❯ Answer\n\nanswer/)
 })
 
 test('compact live streaming and history replay emit the same checkpoint block', () => {

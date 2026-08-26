@@ -208,7 +208,7 @@ test('renderHistory substitutes named RPG speaker markers for user and assistant
     { role: 'user', content: 'question' },
     { role: 'assistant', content: 'Answer here' },
   ], { markdown: false, stdout, userMarker: '❯ Kael', assistantMarker: '❯ Zara' })
-  assert.equal(plain(), '\n❯ Kael\nquestion\n\n❯ Zara\nAnswer here\n\n')
+  assert.equal(plain(), '\n❯ Kael\n\nquestion\n\n❯ Zara\n\nAnswer here\n\n')
   assert.doesNotMatch(plain(), /❯ You/)
 })
 
@@ -220,7 +220,7 @@ test('renderHistory keeps Thinking/Answer and puts the char marker before conten
     { role: 'user', content: 'question' },
     { role: 'assistant', content: 'Answer here', reasoning: 'thinking text' },
   ], { markdown: false, stdout, userMarker: '❯ Kael', assistantMarker: '❯ Zara' })
-  assert.equal(plain(), '\n❯ Kael\nquestion\n\n❯ Thinking\nthinking text\n\n❯ Answer\n\n❯ Zara\nAnswer here\n\n')
+  assert.equal(plain(), '\n❯ Kael\n\nquestion\n\n❯ Thinking\n\nthinking text\n\n❯ Answer\n\n❯ Zara\n\nAnswer here\n\n')
 })
 
 test('smooth renderer writes nothing before the first tick and paces at the char cap', async (t) => {
@@ -295,20 +295,20 @@ test('smooth keeps reasoning markers ordered behind paced text', async (t) => {
   const pump = () => t.mock.timers.tick(20)
 
   pump()
-  assert.equal(plain(), '❯ Thinking\nTH')
+  assert.equal(plain(), '❯ Thinking\n\nTH')
   pump()
   pump()
   pump()
-  assert.equal(plain(), '❯ Thinking\nTHINKING\n\n❯ Answer\n\n')
+  assert.equal(plain(), '❯ Thinking\n\nTHINKING\n\n❯ Answer\n\n')
   pump()
-  assert.equal(plain(), '❯ Thinking\nTHINKING\n\n❯ Answer\n\nHE')
-  pump()
-  pump()
-  assert.equal(plain(), '❯ Thinking\nTHINKING\n\n❯ Answer\n\nHELLO')
+  assert.equal(plain(), '❯ Thinking\n\nTHINKING\n\n❯ Answer\n\nHE')
   pump()
   pump()
+  assert.equal(plain(), '❯ Thinking\n\nTHINKING\n\n❯ Answer\n\nHELLO')
   pump()
-  assert.equal(plain(), '❯ Thinking\nTHINKING\n\n❯ Answer\n\nHELLO')
+  pump()
+  pump()
+  assert.equal(plain(), '❯ Thinking\n\nTHINKING\n\n❯ Answer\n\nHELLO')
 })
 
 test('stream renderer prints the assistant marker before the first content token of each message', (t) => {
@@ -317,29 +317,29 @@ test('stream renderer prints the assistant marker before the first content token
   const render = createStreamRenderer({ stdout, assistantMarker: '❯ Zara' })
   render('Hel', 'content')
   render('lo', 'content')
-  assert.equal(plain(), '❯ Zara\nHello')
+  assert.equal(plain(), '❯ Zara\n\nHello')
   render.resetMessage()
   render('!', 'content')
-  assert.equal(plain(), '❯ Zara\nHello❯ Zara\n!')
+  assert.equal(plain(), '❯ Zara\n\nHello❯ Zara\n\n!')
 })
 
 test('stream renderer puts the assistant marker after the Answer label when reasoning precedes content', (t) => {
   enableAnsi(t)
   const { stdout, plain } = capture()
   const render = createStreamRenderer({ stdout, assistantMarker: '❯ Zara' })
-  render('think', 'start_reasoning')
-  render('ing', 'reasoning')
+  render('\n', 'start_reasoning')
+  render('thinking', 'reasoning')
   render('', 'end_reasoning')
   render('Hi', 'content')
-  assert.equal(plain(), '❯ Thinking\nthinking\n\n❯ Answer\n\n❯ Zara\nHi')
+  assert.equal(plain(), '❯ Thinking\n\nthinking\n\n❯ Answer\n\n❯ Zara\n\nHi')
 })
 
 test('stream renderer prints no assistant marker for a reasoning-only message', (t) => {
   enableAnsi(t)
   const { stdout, plain } = capture()
   const render = createStreamRenderer({ stdout, assistantMarker: '❯ Zara' })
-  render('think', 'start_reasoning')
-  render('ing', 'reasoning')
+  render('\n', 'start_reasoning')
+  render('thinking', 'reasoning')
   render('', 'end_reasoning')
   assert.doesNotMatch(plain(), /Zara/)
 })
@@ -443,7 +443,7 @@ test('compact renderer puts the assistant marker after the Answer label', () => 
   render('thinking text', 'reasoning')
   render('', 'end_reasoning')
   render('Hi', 'content')
-  assert.equal(plain(), '\r✓ Thinking · 13\x1b[K\n\n❯ Answer\n\n❯ Zara\nHi')
+  assert.equal(plain(), '\r✓ Thinking · 13\x1b[K\n\n❯ Answer\n\n❯ Zara\n\nHi')
 })
 
 test('compact renderer keeps content paced while the checkpoint is immediate', async (t) => {
@@ -500,7 +500,7 @@ test('compact renderer toggling off between turns restores the thinking text', (
   render('now visible', 'reasoning')
   render('', 'end_reasoning')
   render('done', 'content')
-  assert.equal(plain(), '\r✓ Thinking · 6\x1b[K\n\n❯ Answer\n\n❯ Thinking\nnow visible\n\n❯ Answer\n\ndone')
+  assert.equal(plain(), '\r✓ Thinking · 6\x1b[K\n\n❯ Answer\n\n❯ Thinking\n\nnow visible\n\n❯ Answer\n\ndone')
 })
 
 test('renderHistory compact replays the checkpoint derived from stored reasoning', () => {
@@ -510,5 +510,5 @@ test('renderHistory compact replays the checkpoint derived from stored reasoning
     { role: 'user', content: 'question' },
     { role: 'assistant', content: 'answer', reasoning: 'thinking text' },
   ], { markdown: false, stdout, compactThinking: true })
-  assert.equal(plain(), '\n❯ You\nquestion\n\n✓ Thinking · 13\n\n❯ Answer\n\nanswer\n\n')
+  assert.equal(plain(), '\n❯ You\n\nquestion\n\n✓ Thinking · 13\n\n❯ Answer\n\nanswer\n\n')
 })

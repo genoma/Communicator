@@ -61,7 +61,14 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
 
     try {
       stdout.write('\n')
-      if (tty) loader.start(state.webSearch === 'always' ? 'Searching the web' : 'Waiting for response')
+      if (tty) {
+        // One blank row between the submitted user line and the marker row,
+        // so every marker keeps exactly one blank line above it: the loader
+        // line (or the compact meter checkpoint on it) is the first row of
+        // the marker block, never glued to the user line.
+        stdout.write('\n')
+        loader.start(state.webSearch === 'always' ? 'Searching the web' : 'Waiting for response')
+      }
       apiResult = await provider.chatCompletion({
         apiKey,
         model: state.modelId,
@@ -72,13 +79,15 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
           ? [...state.messages, { role: 'system', content: postHistoryInstruction }]
           : state.messages,
         onToken: (token, type) => {
-          // In compact mode the Thinking meter owns the line from
-          // start_reasoning on; the waiting loader hands over without its
-          // checkmark and the reasoning tokens never stop it again.
+          // When a thought block opens, the marker owns the loader's line in
+          // BOTH modes: bare stop, no checkmark, so the `❯ Thinking` label
+          // (or the compact meter checkpoint) is never appended to a live
+          // spinner row and the waiting checkmark never leaks into a
+          // reasoning transcript. Reasoning tokens arrive after
+          // start_reasoning, so they never stop the loader again; only
+          // content resolves the waiting line when no reasoning intervened.
           if (type === 'start_reasoning') {
-            if (state.compactThinking && tty) loader.stop()
-          } else if (type === 'reasoning') {
-            if (!(state.compactThinking && tty)) loader.stop({ done: true })
+            if (tty) loader.stop()
           } else if (type === 'content') {
             loader.stop({ done: true })
           }

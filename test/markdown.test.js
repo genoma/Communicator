@@ -678,7 +678,7 @@ test('reasoning stream folds word-aware at the terminal width', () => {
   render('short words that exceed the width limit totally', 'reasoning')
   render('', 'end_reasoning')
   const plain = chunks.join('').replace(ANSI, '')
-  assert.equal(plain, '❯ Thinking\nshort words that\nexceed the width\nlimit totally\n\n❯ Answer\n\n')
+  assert.equal(plain, '❯ Thinking\n\nshort words that\nexceed the width\nlimit totally\n\n❯ Answer\n\n')
 })
 
 test('non-markdown content folds word-aware at the terminal width', () => {

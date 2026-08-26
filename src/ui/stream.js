@@ -40,8 +40,9 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
 
   const writeSegment = (type, text) => {
     if (type === 'start_reasoning') {
-      stdout.write(`${thinking()}\n`)
-      stdout.write(text)
+      // The parser's marker token is a bare '\n'; it must not add a row here
+      // (live and history replay then share the exact one-blank layout).
+      stdout.write(`${thinking()}\n\n`)
     } else if (type === 'reasoning') {
       reasoningWrap.write(text)
     } else if (type === 'end_reasoning') {
@@ -50,7 +51,7 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
     } else if (type === 'content') {
       if (!messageStarted) {
         messageStarted = true
-        if (assistantMarker) stdout.write(`${assistantMarker}\n`)
+        if (assistantMarker) stdout.write(`${assistantMarker}\n\n`)
       }
       if (render.markdown) md.write(text)
       else contentWrap.write(text)
@@ -59,7 +60,8 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
 
   // Compact mode: reasoning body is never printed; the meter owns the line.
   // The checkpoint line and the following Answer label keep the same spacing
-  // as the full mode (`✓ Thinking · N\n\n❯ Answer\n\n`).
+  // as the full mode (`✓ Thinking · N\n\n❯ Answer\n\n`): one blank line above
+  // and below every marker.
   const writeCompact = (type, text) => {
     if (type === 'start_reasoning') {
       meter.start()
@@ -210,13 +212,14 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
   stdout.write('\n')
   for (const msg of messages) {
     if (msg.role === 'user') {
-      stdout.write(`${userMarker ?? you()}\n${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), [], cols) : wrapPlain(sanitizeAnsi(contentText(msg.content)))}\n\n`)
+      // One blank line above and below the marker, then the body.
+      stdout.write(`${userMarker ?? you()}\n\n${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), [], cols) : wrapPlain(sanitizeAnsi(contentText(msg.content)))}\n\n`)
       for (const att of contentAttachments(msg.content)) {
         stdout.write(`${attachmentLine('attached', att.filename, { meta: att.kind })}\n`)
       }
     } else if (msg.role === 'assistant') {
-      // Same marker sequence as the live stream (writeSegment): one newline
-      // after the thinking label, one blank line before the answer label.
+      // Same marker sequence as the live stream (writeSegment): one blank
+      // line above and below every marker.
       // Compact mode replays the live checkpoint (`✓ Thinking · N`) with the
       // count derived from the stored reasoning, never the body.
       if (msg.reasoning) {
@@ -224,12 +227,12 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
           const count = formatCompactCount(sanitizeAnsi(msg.reasoning).length)
           stdout.write(`${green('✓')} Thinking · ${count}\n\n${answer()}\n\n`)
         } else {
-          stdout.write(`${thinking()}\n`)
+          stdout.write(`${thinking()}\n\n`)
           stdout.write(`${dim(wrapPlain(sanitizeAnsi(msg.reasoning)))}\n`)
           stdout.write(`\n${answer()}\n\n`)
         }
       }
-      if (assistantMarker) stdout.write(`${assistantMarker}\n`)
+      if (assistantMarker) stdout.write(`${assistantMarker}\n\n`)
       stdout.write(`${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), msg.sources || [], cols) : wrapPlain(sanitizeAnsi(contentText(msg.content)))}\n\n`)
       for (const att of contentAttachments(msg.content)) {
         stdout.write(`${attachmentLine(att.kind, att.filename)}\n`)

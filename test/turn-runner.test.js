@@ -522,3 +522,45 @@ test('compact thinking hands the loader to the meter without a checkmark', async
   assert.deepEqual(calls, [{}, { done: true }, {}])
   assert.equal(state.messages[2].reasoning, 'thinking')
 })
+
+test('full mode starts the turn with a blank row above the marker and never checkmarks the loader during thinking', async (t) => {
+  mockConsole(t)
+  const calls = []
+  const loader = {
+    start() {},
+    stop(opts) { calls.push(opts ?? {}) },
+  }
+  const render = () => {}
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => {}
+  const state = fakeState({ compactThinking: false })
+  const provider = {
+    async chatCompletion(opts) {
+      opts.onToken(null, 'start_reasoning')
+      opts.onToken('thinking', 'reasoning')
+      opts.onToken(null, 'end_reasoning')
+      opts.onToken('Hello', 'content')
+      return { content: 'Hello', reasoning: 'thinking' }
+    },
+  }
+  const writes = []
+  const { deps } = makeDeps({
+    render,
+    loader,
+    provider,
+    tty: true,
+    stdout: { write: (chunk) => writes.push(String(chunk)) },
+  })
+
+  await runTurn(deps, state)
+
+  // One blank row between the submitted user line and the loader/marker row
+  // (turn start writes '\n' + '\n' on tty), so `❯ Thinking` has exactly one
+  // blank line above it while streaming. start_reasoning hands the loader
+  // over without a checkmark in full mode too — no `✓ Waiting for response`
+  // line ever appears in a reasoning transcript; only the post-turn no-op
+  // stop remains after content's checkmark is already a no-op.
+  assert.deepEqual(writes.slice(0, 2), ['\n', '\n'])
+  assert.deepEqual(calls, [{}, { done: true }, {}])
+})
