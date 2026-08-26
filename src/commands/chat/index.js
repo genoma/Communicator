@@ -8,7 +8,7 @@ import { budgetStatusLine, budgetExhaustedMessage } from '../../tracker.js'
 import { sessionLabel } from '../../ui/format.js'
 import { dim } from '../../ui/style.js'
 import { attachmentLine, renderHistory } from '../../ui/stream.js'
-import { loadAttachments, attachmentGate, contentText, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
+import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
 import { fetchModelPubKey } from '../../e2ee.js'
 import { buildStatusLine, wrapStatusLine } from '../../status-line.js'
@@ -29,11 +29,15 @@ function attachmentGateOptions(ctx) {
   return attachGateOptions(ctx.state, ctx.provider.meta)
 }
 
-// The edited text replaces only the text parts of the original content; any
-// attachment parts (image/file blobs) stay untouched.
+// The edited text replaces the message text part in place; attachment parts
+// (image/file blobs and text-attachment payloads) stay untouched.
 function rewriteUserContent(content, text) {
   if (typeof content === 'string') return text
-  return [{ type: 'text', text }, ...content.filter((part) => part.type !== 'text')]
+  const edited = [...content]
+  const textIdx = edited.findIndex((part) => part.type === 'text')
+  if (textIdx === -1) edited.unshift({ type: 'text', text })
+  else edited[textIdx] = { type: 'text', text }
+  return edited
 }
 
 // On TTY retries, replace the previous answer visually instead of leaving it
@@ -412,7 +416,7 @@ const handlers = {
       console.log('Nothing to edit yet.\n')
       return
     }
-    const result = await ctx.readInput({ initialValue: contentText(target) })
+    const result = await ctx.readInput({ initialValue: messageText(target), onResizeRepaint: ctx.onResizeRepaint })
     if (result?.cancelled) return
     const text = result.value
     if (!text.trim()) {

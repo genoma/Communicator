@@ -299,6 +299,11 @@ export async function runChatSession(ctx = {}, deps = {}) {
     runTurn,
     render,
     readInput,
+    // Editor-opening commands (e.g. /edit) re-render the transcript above
+    // the editor on resize exactly like the main prompt does; without the
+    // hook the editor falls back to the DSR-only path and the rewrapped
+    // transcript stays garbled.
+    onResizeRepaint: renderAboveEditor,
     newSessionId,
     copyText,
     stdout,

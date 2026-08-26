@@ -58,6 +58,7 @@ function makeCtx(overrides = {}) {
     render: { markdown: true, smooth: true, smoothCharsPerTick: 40 },
     newSessionId: async () => '2026-01-02T00-00-00',
     copyText: async (text) => { copied = text; return { ok: true } },
+    onResizeRepaint: () => {},
     selectModelAndEndpoint: undefined,
     selectReasoningEffort: undefined,
     ...overrides,
@@ -685,7 +686,9 @@ test('/edit replaces the last user message, drops the stale answer, and reruns t
 
   await chatCommands['/edit'](ctx)
 
-  assert.deepEqual(edits, [{ initialValue: 'original prompt' }])
+  assert.equal(edits.length, 1)
+  assert.equal(edits[0].initialValue, 'original prompt')
+  assert.equal(typeof edits[0].onResizeRepaint, 'function', 'the resize hook is forwarded to the editor')
   assert.deepEqual(ctx.state.messages, [
     ctx.state.messages[0],
     { role: 'user', content: 'edited prompt' },
@@ -695,20 +698,27 @@ test('/edit replaces the last user message, drops the stale answer, and reruns t
   assert.ok(writes.join('').includes('\x1b[2J'), 'the transcript is redrawn before and after the rerun')
 })
 
-test('/edit keeps attachments and replaces only the text parts', async (t) => {
+test('/edit keeps attachments and replaces only the message text part', async (t) => {
   mockConsole(t)
+  const edits = []
+  const textAtt = { type: 'text', text: '<attached .md content>' }
   const image = { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }
   const harness = makeCtx({
     stdout: { isTTY: true, write: () => {} },
-    readInput: async () => ({ value: 'new text' }),
+    readInput: async (opts) => { edits.push(opts); return { value: 'new text' } },
   })
   const { ctx } = harness
-  ctx.state.appendUser([{ type: 'text', text: 'old text' }, image])
+  ctx.state.appendUser([{ type: 'text', text: 'old text' }, textAtt, image])
   ctx.state.appendAssistant({ role: 'assistant', content: 'answer' })
 
   await chatCommands['/edit'](ctx)
 
-  assert.deepEqual(ctx.state.messages[1], { role: 'user', content: [{ type: 'text', text: 'new text' }, image] })
+  // The pre-fill shows only the message text, never the attachment payloads.
+  assert.equal(edits[0].initialValue, 'old text')
+  assert.deepEqual(ctx.state.messages[1], {
+    role: 'user',
+    content: [{ type: 'text', text: 'new text' }, textAtt, image],
+  })
   assert.equal(ctx.state.messages.length, 2)
 })
 
@@ -768,7 +778,7 @@ test('/edit edits the stashed failed turn when the last user turn was popped', a
 
   await chatCommands['/edit'](ctx)
 
-  assert.deepEqual(edits, [{ initialValue: 'failed prompt' }])
+  assert.equal(edits[0].initialValue, 'failed prompt')
   assert.equal(ctx.state.retryTurn, null)
   assert.deepEqual(ctx.state.messages.at(-1), { role: 'user', content: 'fixed prompt' })
   assert.equal(harness.turnCount, 1)
