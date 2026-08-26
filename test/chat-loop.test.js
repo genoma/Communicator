@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { ExitPromptError } from '@inquirer/core'
 import { runChatSession } from '../src/chat.js'
 import { createStreamRenderer } from '../src/ui/stream.js'
+import { THIN_SEP } from '../src/constants.js'
 
 function scriptedInput(values) {
   const queue = [...values]
@@ -694,6 +695,77 @@ test('resize repaint hook rebuilds the app-owned frame above the editor', async 
     consoleSpy.allLogs().slice(logCountBefore).some((line) => line.includes('Connected to')),
     'resize repaint should re-render the banner'
   )
+
+  release({ cancelled: true })
+  await session
+})
+
+test('resize repaint restores the separators and the turn-metrics footer after a completed turn', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const writes = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  let repaint
+  let release
+  let calls = 0
+  const readInput = ({ onResizeRepaint } = {}) => {
+    calls += 1
+    if (calls === 1) return { value: 'hello' }
+    repaint = onResizeRepaint
+    return new Promise((resolve) => { release = resolve })
+  }
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput, stdout })
+  const session = runChatSession(baseCtx(provider), harness.deps)
+
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(typeof repaint, 'function', 'readInput should receive the resize repaint hook')
+
+  const logCountBefore = consoleSpy.allLogs().length
+  writes.length = 0
+  repaint()
+  const newLogs = consoleSpy.allLogs().slice(logCountBefore)
+  const rebuilt = writes.join('')
+  assert.ok(rebuilt.includes('hello'), 'resize repaint should include the user message')
+  assert.ok(rebuilt.includes('✓ Waiting for response'), 'resize repaint should restore the loader checkpoint')
+  assert.equal(newLogs.filter((line) => line.includes(THIN_SEP)).length >= 3, true, 'resize repaint should restore the separators')
+  assert.ok(newLogs.some((line) => line.includes('Tokens')), 'resize repaint should restore the tokens footer')
+  assert.ok(newLogs.some((line) => line.includes('Cost')), 'resize repaint should restore the cost footer')
+
+  // The /retry and /edit continuation redraw (turnFooter: false) must not
+  // leave the stale footer or a closing separator between the transcript and
+  // the replacement stream that follows.
+  const logCountBeforeRetry = consoleSpy.allLogs().length
+  writes.length = 0
+  repaint({ turnFooter: false })
+  const retryLogs = consoleSpy.allLogs().slice(logCountBeforeRetry)
+  assert.equal(retryLogs.filter((line) => line.includes(THIN_SEP)).length, 1, 'a continuation redraw keeps only the leading separator')
+  assert.ok(retryLogs.some((line) => line.includes('Connected to')), 'a continuation redraw re-renders the banner')
+  assert.ok(!retryLogs.some((line) => line.includes('Tokens')), 'a continuation redraw must not restore the stale footer')
+  assert.ok(writes.join('').includes('hello'), 'a continuation redraw keeps the transcript')
+
+  release({ cancelled: true })
+  await session
+})
+
+test('resize repaint keeps a single separator when no turn has run yet', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const writes = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  let repaint
+  let release
+  const readInput = ({ onResizeRepaint } = {}) => {
+    repaint = onResizeRepaint
+    return new Promise((resolve) => { release = resolve })
+  }
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput, stdout })
+  const session = runChatSession(baseCtx(provider), harness.deps)
+
+  await new Promise((resolve) => setImmediate(resolve))
+  const logCountBefore = consoleSpy.allLogs().length
+  repaint()
+  const newLogs = consoleSpy.allLogs().slice(logCountBefore)
+  assert.equal(newLogs.filter((line) => line.includes(THIN_SEP)).length, 1, 'a session with no turn gets one separator only')
 
   release({ cancelled: true })
   await session

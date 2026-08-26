@@ -152,16 +152,39 @@ export async function runChatSession(ctx = {}, deps = {}) {
     assistantMarker: rpgCharName ? char(rpgCharName) : null,
   }
 
-  // The single source for the app-owned portion of the screen: the banner and
-  // the chat transcript above the prompt. The editor draws its own block after
-  // this is called, so this is also the resize repaint path.
-  const renderAboveEditor = () => {
-    out(connectedBanner(buildStatusLine(state), { hints: hintParts }))
+  // The single source for the app-owned portion of the screen: the banner, the
+  // resumed-session summary and the chat transcript above the prompt. The
+  // editor draws its own block after this is called, so this is also the
+  // resize repaint path.
+  let resumeSummary = null
+  const printBanner = () => out(connectedBanner(buildStatusLine(state), { hints: hintParts }))
+  const renderAboveEditor = (opts = {}) => {
+    printBanner()
+    if (resumeSummary) console.log(resumeSummary)
+    console.log(sep())
     if (state.messages.length > 1) {
       renderHistory(state.messages, { markdown: state.markdown, stdout, compactThinking: tty && state.compactThinking, ...rpgMarkers })
     }
+    // The pre-resize layout ends a completed turn with the loop sep, the
+    // printTurn Tokens/Cost footer and the loop sep again (see the chat loop
+    // below): the rebuild must reproduce all three, or a resize strands the
+    // transcript without its separators and metrics. A session with no turn
+    // yet only ever shows the single loop sep, so it must not get a second.
+    // /retry and /edit redraw with turnFooter: false instead: their
+    // replacement stream owns everything below the transcript, so neither the
+    // stale footer nor a closing sep may sit between them.
+    if (opts.turnFooter !== false) {
+      const metrics = sessionState.lastTurnMetrics
+      if (metrics) {
+        sessionState.tracker.printTurn(metrics.usage, metrics.pricing, metrics.contextLength, metrics.budgetNote)
+      }
+      if (state.messages.length > 1 || metrics) console.log(sep())
+    }
   }
-  renderAboveEditor()
+  printBanner()
+  if (state.messages.length > 1) {
+    renderHistory(state.messages, { markdown: state.markdown, stdout, compactThinking: tty && state.compactThinking, ...rpgMarkers })
+  }
 
   if (initialMessages && sessionState.tracker.requests > 0) {
     let summary = sessionState.tracker.summary()
@@ -170,7 +193,8 @@ export async function runChatSession(ctx = {}, deps = {}) {
       const ctx = contextSegment(sessionState.tracker.peakContext, state.contextLength, hit)
       if (ctx) summary += `  |  ${ctx}`
     }
-    console.log(`${dim('Previous session:')} ${summary}\n`)
+    resumeSummary = `${dim('Previous session:')} ${summary}\n`
+    console.log(resumeSummary)
   }
 
   const render = renderer({
@@ -363,6 +387,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
       if (outcome?.reset) {
         sessionState.tracker = new UsageTracker()
         sessionState.budgetWarned = false
+        sessionState.lastTurnMetrics = null
       }
       if (outcome?.resetBudgetWarning) sessionState.budgetWarned = false
       // The trailing lines start AFTER the command line in the raw input:

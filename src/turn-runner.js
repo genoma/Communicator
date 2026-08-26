@@ -14,6 +14,10 @@ export function createSessionState() {
     streaming: false,
     streamController: null,
     interrupted: false,
+    // Arguments of the last turn-metrics footer (printTurn Tokens/Cost block)
+    // on screen: the resize repaint rebuilds that footer from this snapshot.
+    // null after /new and before the first successful turn.
+    lastTurnMetrics: null,
   }
 }
 
@@ -143,6 +147,14 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
             budgetNote = line
           }
         }
+        // Snapshot the footer arguments at turn time (pricing can change via
+        // /model) so the resize repaint can reproduce the exact block.
+        sessionState.lastTurnMetrics = {
+          usage: apiResult.usage,
+          pricing: state.pricing,
+          contextLength: state.contextLength,
+          budgetNote,
+        }
         sessionState.tracker.printTurn(apiResult.usage, state.pricing, state.contextLength, budgetNote)
       }
     } catch (err) {
@@ -196,7 +208,17 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
     // (already rendered live, plus its metrics footer) from a failed turn
     // whose stale error/partial view still needs a screen wipe.
     if (apiResult.content) {
-      state.appendAssistant(apiResultMessage(apiResult))
+      const message = apiResultMessage(apiResult)
+      // A reasoning-less turn owns the loader row: it resolved to the green
+      // checkpoint (`✓ Waiting for response` / `✓ Searching the web`) and the
+      // answer started on the next row. Stash the label on the message so
+      // history replay (resize rebuild, resume) shows the same line instead
+      // of silently dropping it. With reasoning, the thinking marker (or the
+      // compact meter checkpoint) owns that row and no label is stored.
+      if (tty && !apiResult.reasoning) {
+        message.waitLine = state.webSearch === 'always' ? 'Searching the web' : 'Waiting for response'
+      }
+      state.appendAssistant(message)
       return true
     }
     return false

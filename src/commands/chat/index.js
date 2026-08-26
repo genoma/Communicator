@@ -43,14 +43,15 @@ function rewriteUserContent(content, text) {
 // On TTY retries, replace the previous answer visually instead of leaving it
 // in place while the new one streams below. The wipe + rebuild must reproduce
 // the exact app-owned layout the resize path uses (banner + transcript via
-// onResizeRepaint), so the connection header and the freshly printed turn
-// metrics are never stranded off-screen. Non-TTY output (pipes/tests) is
-// left untouched so the plain transcript stays mechanical.
+// onResizeRepaint) so the connection header is never stranded off-screen; the
+// turn-metrics footer is skipped because the upcoming rerun streams its own
+// answer and prints its own Tokens/Cost block at the end. Non-TTY output
+// (pipes/tests) is left untouched so the plain transcript stays mechanical.
 function redrawForRetry(ctx) {
   if (ctx.stdout?.isTTY !== true) return
   ctx.stdout.write('\x1b[2J\x1b[3J\x1b[H')
   if (typeof ctx.onResizeRepaint === 'function') {
-    ctx.onResizeRepaint()
+    ctx.onResizeRepaint({ turnFooter: false })
     return
   }
   renderHistory(ctx.state.messages, {

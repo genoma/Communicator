@@ -1,7 +1,7 @@
 import { dim, italic, green, you, thinking, answer } from './style.js'
 import { createMarkdownRenderer, renderText } from './markdown.js'
 import { createWordWrap, wrapWords } from './wrap.js'
-import { hyperlink, sanitizeAnsi } from './hyperlink.js'
+import { hyperlink, sanitizeAnsi, sanitizeSingleLine } from './hyperlink.js'
 import { SMOOTH_CHARS_PER_TICK, SMOOTH_TICK_MS } from '../constants.js'
 import { contentText, contentAttachments } from '../attachments.js'
 import { createThinkingMeter } from './loader.js'
@@ -231,6 +231,14 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
           stdout.write(`${dim(wrapPlain(sanitizeAnsi(msg.reasoning)))}\n`)
           stdout.write(`\n${answer()}\n\n`)
         }
+      }
+      // A reasoning-less turn resolved its loader row to a green checkpoint
+      // (`✓ Waiting for response`/`✓ Searching the web`): replay it exactly
+      // as the live stream showed it (no blank row between the checkpoint and
+      // the answer). Never stored on reasoning turns — the thinking marker or
+      // the compact meter checkpoint owns that row instead.
+      if (msg.waitLine) {
+        stdout.write(`${green('✓')} ${sanitizeSingleLine(msg.waitLine)}\n`)
       }
       if (assistantMarker) stdout.write(`${assistantMarker}\n\n`)
       stdout.write(`${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), msg.sources || [], cols) : wrapPlain(sanitizeAnsi(contentText(msg.content)))}\n\n`)
