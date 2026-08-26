@@ -278,6 +278,7 @@ export async function fetchWithTimeout(url, opts = {}, { timeoutMs = DEFAULT_TIM
 
 export async function fetchWithRetry(url, opts = {}, { timeoutMs = DEFAULT_TIMEOUT_MS, attempts = 3, signal, errorResponse, retryDelays = RETRY_DELAYS } = {}) {
   if (attempts < 1) throw new Error('fetchWithRetry requires attempts >= 1')
+  const idempotent = ['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE'].includes(String((opts.method || 'GET').toUpperCase()))
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const res = await fetchWithTimeout(url, opts, { timeoutMs, signal })
@@ -304,7 +305,14 @@ export async function fetchWithRetry(url, opts = {}, { timeoutMs = DEFAULT_TIMEO
     } catch (err) {
       if (signal?.aborted) throw err
       if (err instanceof ApiError && !(err instanceof TimeoutError)) throw err
-      if (attempt < attempts) {
+      // A request that never got a response may still have been processed by
+      // the server (a POST completion or image generation can finish
+      // server-side after a client-side timeout): silently re-sending it
+      // would double the generation and the bill. Network/timeout retries
+      // are therefore reserved for idempotent requests; response-class
+      // retries (429/5xx via `errorResponse`) stay available for any method
+      // because the server already rejected the request.
+      if (idempotent && attempt < attempts) {
         await sleep(retryDelays[attempt - 1] ?? retryDelays[retryDelays.length - 1], signal)
         continue
       }

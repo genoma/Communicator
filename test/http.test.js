@@ -353,3 +353,50 @@ test('fetchWithRetry wraps a non-throwing errorResponse as a non-retryable ApiEr
     (err) => err instanceof ApiError && err.status === 500 && err.retryable === true
   )
 })
+
+test('fetchWithRetry does not retry a POST on network/timeout failure (no silent re-send)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let calls = 0
+  const boom = new Error('network down')
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++
+    throw boom
+  })
+
+  await assert.rejects(
+    fetchWithRetry('https://example.test', { method: 'POST' }, { retryDelays: [0, 0] }),
+    (err) => err instanceof ApiError && err.retryable === true && /network down/.test(err.message)
+  )
+  // One attempt only: the server may have processed the POST despite the
+  // client-side failure; a retry would double the generation and the bill.
+  assert.equal(calls, 1)
+})
+
+test('fetchWithRetry does not retry a POST on timeout either', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let calls = 0
+  const timeoutFetch = (url, opts) => {
+    calls++
+    return abortAwareFetch()(url, opts)
+  }
+  t.mock.method(globalThis, 'fetch', timeoutFetch)
+
+  const promise = fetchWithRetry('https://example.test', { method: 'POST' }, { timeoutMs: 1000, attempts: 3, retryDelays: [0, 0] })
+  const assertion = assert.rejects(promise, (err) => err instanceof TimeoutError && /timed out after 1s/.test(err.message))
+  await flushTimers(t)
+  await assertion
+  assert.equal(calls, 1)
+})
+
+test('fetchWithRetry still retries retryable HTTP statuses on POSTs', async (t) => {
+  const response = new Response('slow down', { status: 429 })
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++
+    return calls === 1 ? response : new Response('ok', { status: 200 })
+  })
+
+  const result = await fetchWithRetry('https://example.test', { method: 'POST' }, { errorResponse, retryDelays: [0, 0] })
+  assert.equal(result.status, 200)
+  assert.equal(calls, 2)
+})
