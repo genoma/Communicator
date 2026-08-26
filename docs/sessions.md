@@ -18,13 +18,13 @@ automatically from the session files.
 communicator --list-sessions
 ```
 
-Output shows each session's ID, timestamp, model, message count, and the session title:
+Output shows each session's ID, last-activity timestamp, model, message count, and the session title. Sessions are listed most-recently-used first: the timestamp is `updatedAt`, bumped on every save and again when the session is resumed (`--resume`), so a resumed old conversation surfaces at the top with its fresh date. Legacy sessions without `updatedAt` fall back to `createdAt`, then to the creation-time id:
 
 ```
 3 saved session(s):
 
   ID: 2026-07-30T19-15-22
-     2026-07-30 19:15:22  openai/gpt-4o                        12 msgs       "Write a Python script that..."
+     2026-08-02 14:31:08  openai/gpt-4o                        12 msgs       "Write a Python script that..."
   ID: 2026-07-30T18-42-10
      2026-07-30 18:42:10  deepseek-v4-flash                     5 msgs       "Explain how garbage collection..."
   ID: 2026-07-30T17-11-45

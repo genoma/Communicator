@@ -83,6 +83,25 @@ test('skips corrupt session files and filters empty sessions', async (t) => {
   assert.deepEqual(sessions, [])
 })
 
+test('listSessions orders by last activity, not creation', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData({ model: 'old', updatedAt: '2026-02-01T00:00:00.000Z' }))
+  await saveSession(dir, '2026-01-02T00-00-00', sessionData({ model: 'new', updatedAt: '2026-01-15T00:00:00.000Z' }))
+
+  const sessions = await listSessions(dir)
+  assert.deepEqual(sessions.map((s) => s.id), ['2026-01-01T00-00-00', '2026-01-02T00-00-00'])
+  assert.equal(sessions[0].model, 'old')
+})
+
+test('listSessions falls back to createdAt and id for legacy sessions', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData({ updatedAt: undefined, createdAt: '2026-03-01T00:00:00.000Z' }))
+  await saveSession(dir, '2026-01-02T00-00-00', sessionData({ updatedAt: undefined, createdAt: undefined }))
+
+  const sessions = await listSessions(dir)
+  assert.deepEqual(sessions.map((s) => s.id), ['2026-01-01T00-00-00', '2026-01-02T00-00-00'])
+})
+
 test('rebuilds sidecar when a session file is newer than the sidecar', async (t) => {
   const dir = await tempDir(t)
   await saveSession(dir, '2026-01-01T00-00-00', sessionData({ model: 'old' }))

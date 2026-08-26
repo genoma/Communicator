@@ -147,6 +147,8 @@
 - RPG history is separate dir-local `history.json`.
 - Attachment blobs stored under `~/.communicator/sessions/attachments/<sessionId>/<sha256>.<ext>` with `ref://` sentinels; externalize before JSON; hydrate on load; delete removes blob dir.
 - Sidecar `.index.json` maps session metadata; rebuilt if missing/stale; system-only sessions filtered.
+- `listSessions` orders most-recently-used first: `updatedAt` desc, falling back to `createdAt`, then the creation-time id (left for legacy sessions). `formatSessionItem` shows the same last-activity timestamp, so the picker and `--list-sessions` display when a session was last used, not when it was created.
+- `--resume` touches the session (bumps `updatedAt` via `saveSession`) so a resumed session jumps to the top of the listing even if no new message is sent.
 - Session ids `YYYY-MM-DDTHH-MM-SS`; prefix matching works.
 - Title from first user message, truncated to 50 chars (a longer message yields the first 50 chars + `...`).
 - `loadSession` error contract: missing/corrupt files raise `CliError`; other read errors rethrown.

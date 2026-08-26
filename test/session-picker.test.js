@@ -44,7 +44,7 @@ test('selectSession returns all choices without an input filter', async () => {
   searchImpl = async (opts) => {
     const all = await opts.source('')
     assert.equal(all.length, 2)
-    assert.match(all[0].name, /2026-07-30 19:15:22/)
+    assert.match(all[0].name, /2026-07-30 19:20:00/)
     assert.equal(all[0].value, '2026-07-30T19-15-22')
     assert.match(all[0].description, /12 messages {2}• {2}OpenAI/)
     return all[0].value
@@ -56,7 +56,7 @@ test('selectSession returns all choices without an input filter', async () => {
 test('selectSession filters by id, line, and description case-insensitively', async () => {
   const sessions = [
     sessionItem({ id: '2026-07-30T19-15-22', title: 'Python script' }),
-    sessionItem({ id: '2026-07-29T10-00-00', title: 'Rust borrow checker', providerType: 'venice', providerName: 'venice' }),
+    sessionItem({ id: '2026-07-29T10-00-00', title: 'Rust borrow checker', providerType: 'venice', providerName: 'venice', updatedAt: '2026-07-29T10:00:00.000Z' }),
   ]
   let seen = []
   searchImpl = async (opts) => {
@@ -80,7 +80,7 @@ test('selectSessions builds checkbox choices matching selectSession and returns 
     assert.equal(opts.pageSize, 10)
     assert.deepEqual(opts.shortcuts, { all: 'a', invert: 'i' })
     assert.equal(opts.choices.length, 2)
-    assert.match(opts.choices[0].name, /2026-07-30 19:15:22/)
+    assert.match(opts.choices[0].name, /2026-07-30 19:20:00/)
     assert.equal(opts.choices[0].value, '2026-07-30T19-15-22')
     assert.match(opts.choices[0].description, /12 messages {2}• {2}OpenAI/)
     return [opts.choices[0].value, opts.choices[1].value]

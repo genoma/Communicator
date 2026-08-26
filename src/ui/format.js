@@ -87,8 +87,19 @@ export function formatSessionTime(value, { utc = false } = {}) {
   return time
 }
 
+// Session ids store the UTC clock with dashes (2026-01-01T00-00-00); normalize
+// ISO timestamps to the same shape so formatSessionTime renders both identically.
+function pickerTimestamp(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return date.toISOString().replace(/:/g, '-').replace(/\.\d+.*$/, '')
+}
+
 export function formatSessionItem(s) {
-  const time = sanitizeSingleLine(formatSessionTime(s.id))
+  // The leading timestamp is last activity (updatedAt), not creation: after a
+  // resume an old session surfaces with its fresh date instead of its birth.
+  const time = sanitizeSingleLine(formatSessionTime(pickerTimestamp(s.updatedAt || s.createdAt || s.id)))
   const model = sanitizeSingleLine(s.model)
   const modelText = model.length > 35 ? model.slice(0, 32) + '...' : model
   const count = `${s.messageCount} msg${s.messageCount !== 1 ? 's' : ''}`

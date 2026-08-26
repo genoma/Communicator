@@ -177,7 +177,7 @@ async function seedSession(id, data = {}) {
 test('--list-sessions prints the seeded session and exits 0', async (t) => {
   await seedSession('2026-01-01T00-00-00', { title: 'My custom title' })
   const { out } = await runAndExit(t, { listSessions: true }, undefined, 0)
-  assert.match(out.join('\n'), /2026-01-01 00:00:00/)
+  assert.match(out.join('\n'), /2026-01-01 00:00:01/)
   assert.match(out.join('\n'), /"My custom title"/)
 })
 

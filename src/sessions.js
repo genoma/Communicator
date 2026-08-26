@@ -130,6 +130,21 @@ function toSessionItem(id, meta) {
 
 const byIdDesc = (a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
 
+function sessionRecency(item) {
+  const value = item.updatedAt || item.createdAt || item.id
+  if (!value) return 0
+  const parsed = Date.parse(value)
+  if (Number.isFinite(parsed)) return parsed
+  // Legacy ids and timestamps write the UTC clock as dashes (2026-01-01T00-00-00)
+  // instead of ISO colons, so Date.parse rejects them; normalize before parsing.
+  const legacy = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})/.exec(String(value))
+  return legacy ? Date.parse(`${legacy[1]}T${legacy[2]}:${legacy[3]}:${legacy[4]}Z`) : 0
+}
+
+// Most recently active first: updatedAt (bumped on every save and on resume),
+// falling back to createdAt, then the creation-time id for legacy sessions.
+const byActivityDesc = (a, b) => sessionRecency(b) - sessionRecency(a) || byIdDesc(a, b)
+
 async function parseSessionFiles(dir, jsonFiles) {
   const sessions = await Promise.all(jsonFiles.map(async (file) => {
     const id = basename(file, '.json')
@@ -154,7 +169,7 @@ async function parseSessionFiles(dir, jsonFiles) {
       return null
     }
   }))
-  return sessions.filter(Boolean).sort(byIdDesc)
+  return sessions.filter(Boolean).sort(byActivityDesc)
 }
 
 export async function listSessions(dir) {
@@ -186,7 +201,7 @@ export async function listSessions(dir) {
       else ghosts.push(id)
     }
     if (ghosts.length > 0) await dropSidecarEntries(dir, ghosts)
-    return valid.sort(byIdDesc)
+    return valid.sort(byActivityDesc)
   }
 
   const sessions = await parseSessionFiles(dir, jsonFiles)

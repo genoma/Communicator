@@ -1,4 +1,4 @@
-import { ensureSessionsDir, resolveSessionInteractive, loadSession } from '../sessions.js'
+import { ensureSessionsDir, resolveSessionInteractive, loadSession, saveSession } from '../sessions.js'
 import { normalizeWebSearchMode } from '../flags.js'
 
 export async function resumeCmd(partialId) {
@@ -7,6 +7,9 @@ export async function resumeCmd(partialId) {
   if (!matchedId) return null
 
   const sessionData = await loadSession(dir, matchedId)
+  // Resuming counts as activity: bump updatedAt so the session jumps to the
+  // top of the most-recently-used listing even if no new message is sent.
+  await saveSession(dir, matchedId, { ...sessionData, updatedAt: new Date().toISOString() })
   return {
     modelId: sessionData.model,
     providerName: sessionData.providerName || null,
