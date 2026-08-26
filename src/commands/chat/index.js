@@ -8,7 +8,7 @@ import { budgetStatusLine, budgetExhaustedMessage } from '../../tracker.js'
 import { sessionLabel } from '../../ui/format.js'
 import { dim } from '../../ui/style.js'
 import { attachmentLine, renderHistory } from '../../ui/stream.js'
-import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
+import { loadAttachments, attachmentGate, contentText, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
 import { fetchModelPubKey } from '../../e2ee.js'
 import { buildStatusLine, wrapStatusLine } from '../../status-line.js'
@@ -27,6 +27,13 @@ export function budgetGuard(ctx) {
 
 function attachmentGateOptions(ctx) {
   return attachGateOptions(ctx.state, ctx.provider.meta)
+}
+
+// The edited text replaces only the text parts of the original content; any
+// attachment parts (image/file blobs) stay untouched.
+function rewriteUserContent(content, text) {
+  if (typeof content === 'string') return text
+  return [{ type: 'text', text }, ...content.filter((part) => part.type !== 'text')]
 }
 
 // On TTY retries, replace the previous answer visually instead of leaving it
@@ -387,6 +394,47 @@ const handlers = {
     } else {
       console.log('Nothing to retry yet.\n')
     }
+  },
+
+  '/edit': async (ctx) => {
+    const guard = budgetGuard(ctx)
+    if (guard) {
+      console.log(guard)
+      return
+    }
+    // A retryable failure pops the most recent user turn out of `messages`
+    // into `retryTurn`: that is the last user message, so edit that content
+    // instead of the older answered one.
+    const retained = ctx.state.retryTurn
+    const idx = retained ? -1 : ctx.state.messages.findLastIndex((m) => m.role === 'user')
+    const target = retained ?? (idx === -1 ? null : ctx.state.messages[idx].content)
+    if (!target) {
+      console.log('Nothing to edit yet.\n')
+      return
+    }
+    const result = await ctx.readInput({ initialValue: contentText(target) })
+    if (result?.cancelled) return
+    const text = result.value
+    if (!text.trim()) {
+      console.log('Edit cancelled: the message cannot be empty.\n')
+      return
+    }
+    const edited = rewriteUserContent(target, text)
+    if (retained) {
+      ctx.state.retryTurn = null
+      ctx.state.appendUser(edited)
+    } else {
+      ctx.state.messages[idx] = { role: 'user', content: edited }
+      // The stale answer (and anything after it) no longer matches the
+      // edited prompt; regenerate from here.
+      ctx.state.messages.splice(idx + 1)
+    }
+    // The edited turn is persisted right away so the edit survives a failed
+    // rerun.
+    await ctx.saveSession()
+    redrawForRetry(ctx)
+    await ctx.runTurn()
+    redrawForRetry(ctx)
   },
 
   '/copy': async (ctx) => {

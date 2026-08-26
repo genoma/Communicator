@@ -538,7 +538,7 @@ test('unknown command is rejected with the exact message and the provider is not
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /status, /new, /model, /attach, /attachments, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /compact-thinking, /cost\n'
+    'Unknown command "/nope". Available: /quit, /status, /new, /model, /attach, /attachments, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /edit, /copy, /markdown, /smooth, /compact-thinking, /cost\n'
   )
 })
 
@@ -553,7 +553,7 @@ test('unknown command list omits /attach and /attachments when the model lacks v
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /status, /new, /model, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /copy, /markdown, /smooth, /compact-thinking, /cost\n'
+    'Unknown command "/nope". Available: /quit, /status, /new, /model, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /edit, /copy, /markdown, /smooth, /compact-thinking, /cost\n'
   )
 })
 
@@ -781,6 +781,19 @@ test('retry pops the assistant message and resends the same user message', async
   assert.equal(calls[0].messages[1].content, 'hello')
   assert.deepEqual(calls[1].messages.map((m) => m.role), ['system', 'user'])
   assert.equal(calls[1].messages[1].content, 'hello')
+})
+
+test('edit replaces the last user message and resends the edited text', async (t) => {
+  mockConsole(t)
+  const { provider, calls } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['hello', '/edit', 'hello world', '/quit']) })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  assert.equal(calls.length, 2)
+  assert.equal(calls[0].messages[1].content, 'hello')
+  assert.equal(calls[1].messages[1].content, 'hello world')
+  assert.deepEqual(calls[1].messages.map((m) => m.role), ['system', 'user'])
 })
 
 test('resume path renders history, seeds the tracker and shows the previous session summary', async (t) => {

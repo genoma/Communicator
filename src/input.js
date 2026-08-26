@@ -5,7 +5,7 @@ import { DATA_DIR } from './constants.js'
 
 const HISTORY_PATH = join(DATA_DIR, 'history.json')
 
-export async function readInput({ commands, onResizeRepaint } = {}) {
+export async function readInput({ commands, onResizeRepaint, initialValue } = {}) {
   const input = process.stdin
   return new Promise((resolve) => {
     let settled = false
@@ -27,7 +27,7 @@ export async function readInput({ commands, onResizeRepaint } = {}) {
     // timers) and resolves { kind: 'eof' } first; this listener then just
     // concludes with the cancelled result. ('end'/'close' dispatch on
     // registration order, which is why the call must come first.)
-    readEditor('', {
+    readEditor(initialValue ?? '', {
       prefix: '',
       linePrefix: '❯ ',
       helpFooter: true,

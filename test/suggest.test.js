@@ -12,8 +12,8 @@ test('matchCommands filters commands by prefix', () => {
   assert.deepEqual(matchCommands('', CHAT_COMMANDS), CHAT_COMMANDS)
 })
 
-test('CHAT_COMMANDS has 19 commands', () => {
-  assert.equal(CHAT_COMMANDS.length, 19)
+test('CHAT_COMMANDS has 20 commands', () => {
+  assert.equal(CHAT_COMMANDS.length, 20)
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/status',
@@ -29,6 +29,7 @@ test('CHAT_COMMANDS has 19 commands', () => {
     '/web-results',
     '/scrape',
     '/retry',
+    '/edit',
     '/copy',
     '/markdown',
     '/smooth',

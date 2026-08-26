@@ -298,6 +298,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     savePrefs,
     runTurn,
     render,
+    readInput,
     newSessionId,
     copyText,
     stdout,

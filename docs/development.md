@@ -24,7 +24,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 │   ├── image-gen.js      — image generation command (--image flag, sizing validation, persistence)
 │   ├── image-session.js  — interactive image session REPL (sizing commands, /model handoff to chat)
 │   └── chat/
-│       └── index.js      — slash command registry (19 chatCommands) + budgetGuard
+│       └── index.js      — slash command registry (20 chatCommands) + budgetGuard
 ├── providers/
 │   ├── index.js          — factory: getProvider(name) → provider module; common chatCompletion contract
 │   ├── openrouter.js     — OpenRouter API client: models, endpoints, chat completions
@@ -90,7 +90,7 @@ Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI arg
 The chat flow is built around four pieces:
 
 - **`ChatState` (`src/chat-state.js`)** — the mutable session state (model, reasoning effort, temperature, top-p, budget, web search, messages, …) with pure transitions (`setTemperature`, `setTopP`, `applyModelSelection`, `toggleMarkdown`, …). `toFinalState()` produces the exact snapshot written to the session file; `resetForNewSession()` backs `/new`.
-- **Command registry (`src/commands/chat/index.js`)** — the 19 slash commands live in a data-driven map of `/name → async (ctx) => outcome`; `CHAT_COMMANDS` is derived from the registry keys so the suggestion list and the loop can never drift. Handlers never call `process.exit` — they return `{ exit }` / `{ reset }` signals that the loop translates into exit codes, which keeps every handler unit-testable (`test/chat-commands.test.js`).
+- **Command registry (`src/commands/chat/index.js`)** — the 20 slash commands live in a data-driven map of `/name → async (ctx) => outcome`; `CHAT_COMMANDS` is derived from the registry keys so the suggestion list and the loop can never drift. Handlers never call `process.exit` — they return `{ exit }` / `{ reset }` signals that the loop translates into exit codes, which keeps every handler unit-testable (`test/chat-commands.test.js`).
 - **`runChatSession(ctx, deps)` (`src/chat.js`)** — the chat loop is dependency-injected: `deps = { readInput, renderer, stdout, exit, saveSession, savePrefs, onSignal, newSessionId }`, each defaulting to the real implementation, so production behavior is unchanged while the whole loop is drivable with fakes (`test/chat-loop.test.js`). Signal handling (idle/streaming SIGINT, `beforeExit`, `uncaughtException`) is registered through `onSignal` (`src/signals.js`); per-turn orchestration — stream rendering, abort, interrupt salvage, usage tracking — lives in `src/turn-runner.js` on a shared `sessionState` object.
 - **`src/flags.js`** — CLI flag parsing helpers (`resolveTemperatureFlag`, `resolveTopPFlag`, `resolveWebResultsFlag`, `resolveWebSearchFlag`, `resolveReasoningFlag`, `resolveBudget`) shared by the chat loop, one-shot mode, and chat-start.
 

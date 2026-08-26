@@ -671,6 +671,126 @@ test('/retry is blocked by the budget guard', async (t) => {
   assert.equal(consoleSpy.log(0), 'Budget exhausted ($6.000000 of $5.000000). /new to start fresh or /quit.\n')
 })
 
+test('/edit replaces the last user message, drops the stale answer, and reruns the turn', async (t) => {
+  mockConsole(t)
+  const edits = []
+  const writes = []
+  const harness = makeCtx({
+    stdout: { isTTY: true, write: (chunk) => writes.push(String(chunk)) },
+    readInput: async (opts) => { edits.push(opts); return { value: 'edited prompt' } },
+  })
+  const { ctx, savedSessions } = harness
+  ctx.state.appendUser('original prompt')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'old answer' })
+
+  await chatCommands['/edit'](ctx)
+
+  assert.deepEqual(edits, [{ initialValue: 'original prompt' }])
+  assert.deepEqual(ctx.state.messages, [
+    ctx.state.messages[0],
+    { role: 'user', content: 'edited prompt' },
+  ])
+  assert.equal(harness.turnCount, 1)
+  assert.deepEqual(savedSessions, [2])
+  assert.ok(writes.join('').includes('\x1b[2J'), 'the transcript is redrawn before and after the rerun')
+})
+
+test('/edit keeps attachments and replaces only the text parts', async (t) => {
+  mockConsole(t)
+  const image = { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }
+  const harness = makeCtx({
+    stdout: { isTTY: true, write: () => {} },
+    readInput: async () => ({ value: 'new text' }),
+  })
+  const { ctx } = harness
+  ctx.state.appendUser([{ type: 'text', text: 'old text' }, image])
+  ctx.state.appendAssistant({ role: 'assistant', content: 'answer' })
+
+  await chatCommands['/edit'](ctx)
+
+  assert.deepEqual(ctx.state.messages[1], { role: 'user', content: [{ type: 'text', text: 'new text' }, image] })
+  assert.equal(ctx.state.messages.length, 2)
+})
+
+test('/edit cancel leaves the session untouched', async (t) => {
+  mockConsole(t)
+  let asked = false
+  const harness = makeCtx({ readInput: async () => { asked = true; return { cancelled: true } } })
+  const { ctx } = harness
+  ctx.state.appendUser('original prompt')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'old answer' })
+  const before = structuredClone(ctx.state.messages)
+
+  await chatCommands['/edit'](ctx)
+
+  assert.equal(asked, true)
+  assert.deepEqual(ctx.state.messages, before)
+  assert.equal(harness.turnCount, 0)
+})
+
+test('/edit rejects an empty replacement', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx({ readInput: async () => ({ value: '   ' }) })
+  const { ctx } = harness
+  ctx.state.appendUser('original prompt')
+
+  await chatCommands['/edit'](ctx)
+
+  assert.equal(consoleSpy.log(0), 'Edit cancelled: the message cannot be empty.\n')
+  assert.deepEqual(ctx.state.messages[1], { role: 'user', content: 'original prompt' })
+  assert.equal(harness.turnCount, 0)
+})
+
+test('/edit reports nothing to edit in a fresh session', async (t) => {
+  const consoleSpy = mockConsole(t)
+  let asked = false
+  const harness = makeCtx({ readInput: async () => { asked = true; return { value: 'x' } } })
+  const { ctx } = harness
+
+  await chatCommands['/edit'](ctx)
+
+  assert.equal(consoleSpy.log(0), 'Nothing to edit yet.\n')
+  assert.equal(asked, false)
+  assert.equal(harness.turnCount, 0)
+})
+
+test('/edit edits the stashed failed turn when the last user turn was popped', async (t) => {
+  mockConsole(t)
+  const edits = []
+  const harness = makeCtx({
+    stdout: { isTTY: true, write: () => {} },
+    readInput: async (opts) => { edits.push(opts); return { value: 'fixed prompt' } },
+  })
+  const { ctx } = harness
+  ctx.state.appendUser('earlier') 
+  ctx.state.appendAssistant({ role: 'assistant', content: 'answer' })
+  ctx.state.retryTurn = 'failed prompt'
+
+  await chatCommands['/edit'](ctx)
+
+  assert.deepEqual(edits, [{ initialValue: 'failed prompt' }])
+  assert.equal(ctx.state.retryTurn, null)
+  assert.deepEqual(ctx.state.messages.at(-1), { role: 'user', content: 'fixed prompt' })
+  assert.equal(harness.turnCount, 1)
+})
+
+test('/edit is blocked by the budget guard', async (t) => {
+  const consoleSpy = mockConsole(t)
+  let asked = false
+  const harness = makeCtx({ readInput: async () => { asked = true; return { value: 'x' } } })
+  const { ctx } = harness
+  ctx.state.setBudget(5)
+  ctx.tracker.cost = 6
+  ctx.state.appendUser('hello')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'answer' })
+
+  await chatCommands['/edit'](ctx)
+
+  assert.equal(asked, false)
+  assert.equal(harness.turnCount, 0)
+  assert.equal(consoleSpy.log(0), 'Budget exhausted ($6.000000 of $5.000000). /new to start fresh or /quit.\n')
+})
+
 test('/copy reports no response to copy and leaves the clipboard untouched', async (t) => {
   const consoleSpy = mockConsole(t)
   const harness = makeCtx(); const { ctx } = harness
@@ -1079,7 +1199,7 @@ test('/model keeps compatible attachments on switch', async (t) => {
   assert.equal(consoleSpy.log(0), '\nSwitched to NewProvider / new/model\n')
 })
 
-test('CHAT_COMMANDS keeps the 19-command order', () => {
+test('CHAT_COMMANDS keeps the 20-command order', () => {
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/status',
@@ -1095,6 +1215,7 @@ test('CHAT_COMMANDS keeps the 19-command order', () => {
     '/web-results',
     '/scrape',
     '/retry',
+    '/edit',
     '/copy',
     '/markdown',
     '/smooth',
