@@ -96,21 +96,6 @@ export function clearStatus(model) {
   model.statusColor = ''
 }
 
-/** Set status and update the visual state (styles) */
-export function setStatusWithVisualState(model, text, color, visualState) {
-  model.statusText = text
-  model.statusColor = color
-  if (model.visualState !== visualState) {
-    model.visualState = visualState
-  }
-}
-
-/** Clear status and revert the visual state to pending (if not in error state) */
-export function resetStatus(model) {
-  clearStatus(model)
-  if (model.visualState === 'error') model.visualState = 'pending'
-}
-
 // --- Content change handling ---
 export function postEdit(model) {
   model.dismissUntilEdit = false
