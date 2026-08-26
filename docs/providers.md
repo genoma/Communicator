@@ -12,7 +12,7 @@ The provider is saved in each session, so resuming a Venice session automaticall
 
 ## Zero data retention (ZDR)
 
-OpenRouter lets you force **zero data retention** per request: no caching, no logging, no training on your prompts or responses. Pass `--zdr` (OpenRouter only — silently ignored on Venice) and every request in the session carries `provider.zdr: true`.
+OpenRouter lets you force **zero data retention** per request: no caching, no logging, no training on your prompts or responses. Pass `--zdr` (OpenRouter only — other providers reject it up front: `--zdr is only available with --provider openrouter`) and every request in the session carries `provider.zdr: true`.
 
 Selection is **filtered to ZDR-capable entries**: the model picker shows only models with a zero-retention endpoint, the provider picker shows only `[zero retention]` endpoints, and a non-interactive `-m <model>` fails at selection — before any request — if the model has no ZDR endpoints. The runtime error is kept as a safety net for paths that bypass selection (`--resume`, mid-chat model switches, index drift). Without `--zdr` nothing changes — normal (non-ZDR) routing applies.
 

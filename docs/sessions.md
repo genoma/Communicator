@@ -3,8 +3,8 @@
 Session persistence: listing, resuming, deleting, exporting, and the on-disk session file format. See the [README](../README.md#documentation) for the full docs index.
 
 Every chat session is automatically saved to `~/.communicator/sessions/<timestamp>.json`,
-with a `title` auto-generated from the first user message (whitespace collapsed,
-truncated to 50 chars). Sessions are saved when you quit (`/quit` or `Ctrl+C`),
+with a `title` auto-generated from the first user message (whitespace collapsed;
+when longer than 50 chars the title is the first 50 chars plus `...`). Sessions are saved when you quit (`/quit` or `Ctrl+C`),
 when you switch models or start a new session, and on interrupt during streaming
 (including the partial response). A metadata index at
 `~/.communicator/sessions/.index.json` powers `--list-sessions` and the

@@ -49,7 +49,7 @@ The description is the positional prompt; piped stdin works too (`echo "a red ca
 | `--no-watermark`     | Hide the Venice watermark on the generated images (persisted as the global `hideWatermark` pref) |
 | `--output-dir <path>`| Also copy the generated images to this directory (saved as the default for later runs) |
 
-Explicit flags are validated against the chosen model's supported options (aspect ratios, formats, resolution tiers, quality levels, width/height divisor) when the model is known; an unsupported value errors with the supported list. An unknown `--image-model` id passes the flags through and the API surfaces any error.
+Explicit flags are validated against the chosen model's supported options (aspect ratios, formats, resolution tiers, quality levels, width/height divisor) when the model is known; an unsupported value errors with the supported list. An unknown `--image-model` id is rejected at selection (`image model <id> not found. Use --list-image-models to see available models.`) — the API is never reached.
 
 On a TTY, `--image` (and `-m <image-model>`) without the sizing flags asks for the aspect ratio and output format with compact pickers — the saved default is preselected, so pressing Enter accepts it. Pixel-based models get the same ratio picker over their hardcoded preset list, with each ratio labeled with its computed pixel size (`2:3 · 848x1272`) and the saved ratio preselected (falling back to 1:1). Flags skip the pickers. Piped input uses the saved defaults directly.
 

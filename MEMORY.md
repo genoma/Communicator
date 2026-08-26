@@ -148,7 +148,7 @@
 - Attachment blobs stored under `~/.communicator/sessions/attachments/<sessionId>/<sha256>.<ext>` with `ref://` sentinels; externalize before JSON; hydrate on load; delete removes blob dir.
 - Sidecar `.index.json` maps session metadata; rebuilt if missing/stale; system-only sessions filtered.
 - Session ids `YYYY-MM-DDTHH-MM-SS`; prefix matching works.
-- Title from first user message, truncated to 50 chars.
+- Title from first user message, truncated to 50 chars (a longer message yields the first 50 chars + `...`).
 - `loadSession` error contract: missing/corrupt files raise `CliError`; other read errors rethrown.
 
 
@@ -200,7 +200,7 @@ Cross-path invariants pinned by `test/ui-consistency.test.js`. Every change must
 
 ## Project strategy
 
-- **Feature freeze** (Aug 2026, after 3.38.2): no new features. Only bug fixes with regression tests; refactors stay maintenance-shaped (no new flags/options).
+- **Feature freeze** (Aug 2026, after 3.38.2 through 3.40.x): no experimental features; the word-aware wrapping + frame-diffing editor work (3.39.0) was the last feature push. Only bug fixes with regression tests; refactors stay maintenance-shaped (no new flags/options).
 - The frame-diffing editor (`src/editor/`) is the live implementation (merged Aug 2026): the abandoned buffer-diff design direction from Aug 2026 was revisited and broadened — explicit-grid rendering replaces the old editor's cursor-relative soft-wrap math, and the terminal-emulator test harness (`test/editor-grid.test.js`) pins the desync bug class at screen level. The vendored `read-multiline` copy was removed with the swap; its behaviour lives on as parity facts above.
 - No feature branch exists for RPG mode: it is fully merged into `main` (commits in history, `feat/rpg-mode-wip` deleted).
 - Not scheduled: rewriting the chat/stream renderer itself in Rust or another language.
