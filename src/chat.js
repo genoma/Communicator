@@ -320,7 +320,11 @@ export async function runChatSession(ctx = {}, deps = {}) {
       return exitCleanly()
     }
 
-    const input = result.value.trim()
+    // Command detection uses the trimmed value, but the message body keeps
+    // the raw input: intentional leading indentation and trailing whitespace
+    // of a pasted multi-line message must survive to the API.
+    const rawInput = result.value
+    const input = rawInput.trim()
     if (!input) continue
 
     if (input.startsWith('/')) {
@@ -353,8 +357,8 @@ export async function runChatSession(ctx = {}, deps = {}) {
         sessionState.budgetWarned = false
       }
       if (outcome?.resetBudgetWarning) sessionState.budgetWarned = false
-      const trailing = lines.slice(1).join('\n').trim()
-      if (trailing) {
+      const trailing = rawInput.split('\n').slice(1).join('\n')
+      if (trailing.trim()) {
         const guard = budgetGuard(chatCtx)
         if (guard) {
           console.log(guard)
@@ -377,7 +381,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
       continue
     }
 
-    const content = buildContent(input, state.pendingAttachments)
+    const content = buildContent(rawInput, state.pendingAttachments)
     state.pendingAttachments = []
     // A fresh user prompt supersedes any failed turn that /retry could
     // have replayed.

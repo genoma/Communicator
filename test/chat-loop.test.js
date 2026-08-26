@@ -94,6 +94,29 @@ function mockConsole(t) {
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
 
+test('submitted whitespace is preserved in the message body', async (t) => {
+  mockConsole(t)
+  const { provider, calls } = fakeProvider()
+  const message = '  indented first line\nsecond line   \n'
+  const harness = makeDeps({ readInput: scriptedInput([message, '/quit']) })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].messages[1].content, message)
+})
+
+test('command trailing lines keep their whitespace', async (t) => {
+  mockConsole(t)
+  const { provider, calls } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/status\n  indented body  ', '/quit']) })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  const sent = calls.map((c) => c.messages.filter((m) => m.role === 'user').map((m) => m.content))
+  assert.deepEqual(sent, [['  indented body  ']])
+})
+
 test('zdr flag flows to chatCompletion calls in interactive mode', async (t) => {
   mockConsole(t)
   const { provider, calls } = fakeProvider()
