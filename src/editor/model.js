@@ -293,7 +293,10 @@ export function insertPaste(model, text) {
       model.lines.splice(row, 0, line.slice(col))
       col = 0
     } else {
+      // Line budget exhausted: stop; the remaining parts would otherwise be
+      // merged noisily into the last line with their newlines dropped.
       limitStatus = `Maximum ${model.maxLines} lines`
+      break
     }
     const segment = take(parts[i])
     const line = model.lines[row]
@@ -408,6 +411,13 @@ export function deleteWordBack(model) {
 }
 
 // --- Cursor movement ---
+// A cursor move is an undo-group boundary: typing `abc`, moving the cursor
+// and typing `def` must undo as two groups, and undo must not restore the
+// cursor position captured before the move.
+const movedCursor = (model) => {
+  model.lastEditType = ''
+}
+
 export function moveLeft(model) {
   if (model.col > 0) {
     model.col -= charBeforeIndex(model.lines[model.row], model.col).length
@@ -415,6 +425,7 @@ export function moveLeft(model) {
     model.row--
     model.col = model.lines[model.row].length
   }
+  movedCursor(model)
   model.historyArrowAttempt = 0
 }
 
@@ -425,6 +436,7 @@ export function moveRight(model) {
     model.row++
     model.col = 0
   }
+  movedCursor(model)
   model.historyArrowAttempt = 0
 }
 
@@ -434,6 +446,7 @@ export function moveUp(model) {
   const vc = visualCol(model.lines[model.row], model.col)
   model.row--
   model.col = colFromVisual(model.lines[model.row], vc)
+  movedCursor(model)
   model.historyArrowAttempt = 0
 }
 
@@ -443,6 +456,7 @@ export function moveDown(model) {
   const vc = visualCol(model.lines[model.row], model.col)
   model.row++
   model.col = colFromVisual(model.lines[model.row], vc)
+  movedCursor(model)
   model.historyArrowAttempt = 0
 }
 
@@ -489,12 +503,15 @@ export function moveDownOrHistory(model) {
 }
 
 // --- Word jump ---
+// Both jumps step by whole code points (chars.js helpers), never by code
+// units: an emoji/astral pair must not leave the cursor between its
+// surrogates (a further edit would corrupt it).
 export function wordRight(model) {
   let r = model.row
   let c = model.col
   while (r < model.lines.length) {
     const line = model.lines[r]
-    while (c < line.length && !isWordChar(line[c])) c++
+    while (c < line.length && !isWordChar(charAtIndex(line, c))) c += charAtIndex(line, c).length
     if (c < line.length) break
     if (r < model.lines.length - 1) {
       r++
@@ -502,7 +519,7 @@ export function wordRight(model) {
     } else break
   }
   const line = model.lines[r]
-  while (c < line.length && isWordChar(line[c])) c++
+  while (c < line.length && isWordChar(charAtIndex(line, c))) c += charAtIndex(line, c).length
   if (r !== model.row || c !== model.col) {
     model.row = r
     model.col = c
@@ -514,12 +531,13 @@ export function wordLeft(model) {
   let r = model.row
   let c = model.col
   if (c > 0) {
-    c--
+    c -= charBeforeIndex(model.lines[r], c).length
   } else if (r > 0) {
     r--
     c = model.lines[r].length
-    if (c > 0) c--
-    else {
+    if (c > 0) {
+      c -= charBeforeIndex(model.lines[r], c).length
+    } else {
       model.row = r
       model.col = 0
       model.historyArrowAttempt = 0
@@ -531,22 +549,24 @@ export function wordLeft(model) {
   }
   while (true) {
     const line = model.lines[r]
-    while (c > 0 && !isWordChar(line[c])) c--
-    if (isWordChar(line[c])) break
+    while (c > 0 && !isWordChar(charAtIndex(line, c))) {
+      // A wide char (2+ code units) at c must not undershoot past 0.
+      const step = charAtIndex(line, c).length
+      c = c >= step ? c - step : 0
+    }
+    if (c < line.length && isWordChar(charAtIndex(line, c))) break
     if (r > 0) {
       r--
-      c = model.lines[r].length - 1
-      if (c < 0) {
-        c = 0
-        break
-      }
+      c = model.lines[r].length
+      if (c === 0) break
+      c -= charBeforeIndex(model.lines[r], c).length
     } else {
       c = 0
       break
     }
   }
   const line = model.lines[r]
-  while (c > 0 && isWordChar(line[c - 1])) c--
+  while (c > 0 && isWordChar(charBeforeIndex(line, c))) c -= charBeforeIndex(line, c).length
   model.row = r
   model.col = c
   model.historyArrowAttempt = 0

@@ -108,6 +108,19 @@ export function wrapWords(styled, cols) {
     const w = stringWidth(ch)
     const inLink = linkStart !== -1 && linkEnd === -1
     if (ch === ' ' && !inLink) {
+      if (lineWidth + wordWidth + 1 > cols) {
+        // The space itself would push the row over the width: it is the fold
+        // point — drop it and let the next word start a fresh row (the row
+        // must never exceed the terminal width; an over-wide row soft-wraps
+        // and desyncs the history replay above the editor).
+        if (lineStart < i) segments.push(styled.slice(lineStart, i))
+        lineStart = i + 1
+        lineWidth = 0
+        wordStart = i + 1
+        wordWidth = 0
+        i += 1
+        continue
+      }
       lineWidth += wordWidth + 1
       wordStart = i + 1
       wordWidth = 0
@@ -177,6 +190,12 @@ export function createWordWrap({ stdout, cols, style = null }) {
   const emit = (piece) => stdout.write(style ? style(piece) : piece)
   const newline = () => stdout.write('\n')
 
+  // `cols` may be a number or a getter: the width is re-resolved on every
+  // write so a terminal resize mid-stream folds at the new width instead of
+  // the width captured when the renderer was created (the markdown renderer
+  // already re-reads the width per line; this keeps plain output consistent).
+  const colsOf = typeof cols === 'function' ? cols : () => cols
+
   // Longest prefix of `text` no wider than `width` (first code point always
   // included, so a wider-than-width char still makes progress).
   const sliceAtWidth = (text, width) => {
@@ -197,11 +216,11 @@ export function createWordWrap({ stdout, cols, style = null }) {
   let sepCount = 0
   let overflow = false
 
-  const emitChunks = (text) => {
+  const emitChunks = (text, width) => {
     let rest = text
     let first = true
     while (rest !== '') {
-      const chunk = sliceAtWidth(rest, cols)
+      const chunk = sliceAtWidth(rest, width)
       if (!first) newline()
       emit(chunk.text)
       lineW = chunk.width
@@ -210,7 +229,7 @@ export function createWordWrap({ stdout, cols, style = null }) {
     }
   }
 
-  const flushWord = () => {
+  const flushWord = (width) => {
     if (overflow) {
       held = ''
       heldW = 0
@@ -218,13 +237,13 @@ export function createWordWrap({ stdout, cols, style = null }) {
       return
     }
     if (held !== '' || sepCount > 0) {
-      if (lineW + sepCount + heldW <= cols) {
+      if (lineW + sepCount + heldW <= width) {
         emit(`${' '.repeat(sepCount)}${held}`)
         lineW += sepCount + heldW
       } else {
         if (lineW > 0) newline()
         lineW = 0
-        if (held !== '') emitChunks(held)
+        if (held !== '') emitChunks(held, width)
       }
     }
     held = ''
@@ -233,27 +252,28 @@ export function createWordWrap({ stdout, cols, style = null }) {
   }
 
   const write = (text) => {
-    if (!(cols > 0)) {
+    const width = colsOf()
+    if (!(width > 0)) {
       if (text !== '') emit(text)
       return
     }
     for (const ch of text) {
       if (ch === '\n') {
-        flushWord()
+        flushWord(width)
         newline()
         lineW = 0
         overflow = false
         continue
       }
       if (ch === ' ') {
-        if (held !== '') flushWord()
+        if (held !== '') flushWord(width)
         overflow = false
         sepCount += 1
         continue
       }
       const w = stringWidth(ch)
       if (overflow) {
-        if (lineW + w > cols) {
+        if (lineW + w > width) {
           newline()
           lineW = 0
         }
@@ -262,7 +282,7 @@ export function createWordWrap({ stdout, cols, style = null }) {
         continue
       }
       if (held === '') {
-        if (lineW + sepCount + w > cols) {
+        if (lineW + sepCount + w > width) {
           if (lineW > 0) newline()
           lineW = 0
           sepCount = 0
@@ -271,16 +291,16 @@ export function createWordWrap({ stdout, cols, style = null }) {
         heldW = w
         continue
       }
-      if (lineW + sepCount + heldW + w > cols) {
+      if (lineW + sepCount + heldW + w > width) {
         // The word cannot fit on the line: fold it over and stream the rest.
         if (lineW > 0) newline()
         lineW = 0
         sepCount = 0
-        emitChunks(held)
+        emitChunks(held, width)
         held = ''
         heldW = 0
         overflow = true
-        if (lineW + w > cols) {
+        if (lineW + w > width) {
           newline()
           lineW = 0
         }
@@ -294,7 +314,7 @@ export function createWordWrap({ stdout, cols, style = null }) {
   }
 
   const flush = () => {
-    flushWord()
+    flushWord(colsOf())
     overflow = false
   }
 

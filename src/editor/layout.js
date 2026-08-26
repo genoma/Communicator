@@ -18,13 +18,33 @@ function usableWidth(termWidth, prefixWidth) {
  * characters never split across segments.
  */
 export function wrapSegments(text, limit) {
+  return wrapSegmentsDetailed(text, limit).segments
+}
+
+/**
+ * Like `wrapSegments`, but also returns for each segment its exact code-unit
+ * start in the source line and the code-unit index of every fold-dropped
+ * space. These offsets are recorded while wrapping (never re-derived with
+ * indexOf, whose first-match search mislocates a segment whose text also
+ * appears at the drop site, e.g. a space run around a fold at limit 1).
+ */
+export function wrapSegmentsDetailed(text, limit) {
   const segments = []
+  const starts = []
+  const drops = []
   let current = ''
   let cw = 0
-  // The last space in the current segment (code-unit index + width before it)
-  // is the fold point; folding drops that space.
+  // The last space in the current segment (code-unit offset within it + width
+  // before it) is the fold point; folding drops that space.
   let foldAt = -1
   let foldW = 0
+  // Code-unit index of `current`'s first character in `text`.
+  let curStart = 0
+  let i = 0
+  const pushSegment = (start, end) => {
+    segments.push(text.slice(start, end))
+    starts.push(start)
+  }
   for (const ch of text) {
     const w = charWidth(ch.codePointAt(0))
     if (ch === ' ') {
@@ -32,11 +52,14 @@ export function wrapSegments(text, limit) {
         // The row is already full: the space is the fold point — it would be
         // invisible at the row end, so drop it and let the next word start a
         // fresh row (a grid row must never exceed the terminal width).
-        segments.push(current)
+        pushSegment(curStart, i)
+        drops.push(i)
         current = ''
+        curStart = i + 1
         cw = 0
         foldAt = -1
         foldW = 0
+        i += 1
         continue
       }
       // Spaces never overflow: they are committed (a trailing one stays
@@ -45,16 +68,27 @@ export function wrapSegments(text, limit) {
       foldW = cw
       current += ch
       cw += w
+      i += 1
       continue
     }
     if (cw + w > limit) {
       if (foldAt > 0) {
-        segments.push(current.slice(0, foldAt))
-        current = current.slice(foldAt + 1) + ch
+        // The fold space is the character directly before the residual.
+        pushSegment(curStart, curStart + foldAt)
+        drops.push(curStart + foldAt)
+        const residualStart = curStart + foldAt + 1
+        // current === text.slice(curStart, i), so the residual (post-fold)
+        // equals text.slice(residualStart, i) + ch.
+        current = text.slice(residualStart, i) + ch
+        curStart = residualStart
         cw = cw - foldW - 1 + w
       } else {
-        segments.push(current)
+        // Hard cut: the residual is full at the fold point. Never push an
+        // empty segment — a leading wide char at limit 1 would otherwise
+        // become a ghost blank grid row.
+        if (current !== '') pushSegment(curStart, i)
         current = ch
+        curStart = i
         cw = w
       }
       // Recompute the fold point of the residual segment.
@@ -74,26 +108,30 @@ export function wrapSegments(text, limit) {
       current += ch
       cw += w
     }
+    i += ch.length
   }
-  segments.push(current)
-  if (segments.length > 1 && segments.at(-1) === '') segments.pop()
-  return segments
+  if (current !== '' || segments.length === 0) pushSegment(curStart, text.length)
+  if (segments.length > 1 && segments.at(-1) === '') {
+    segments.pop()
+    starts.pop()
+  }
+  return { segments, starts, drops }
 }
 
 /**
- * Logical display offset of each segment in its source line. Word folding
- * drops exactly one space at the fold point, so consecutive segments are
- * separated by a 1-column gap in logical coordinates (hard cuts have none).
+ * Display column of each segment's first character in the flattened view.
+ * A fold drops exactly one space, so consecutive segments are consecutive in
+ * display space; the dropped space itself occupies one LOGICAL column (the
+ * cursor parks on it at the end of the previous row) but no display column.
  */
-function segmentStarts(line, segments) {
-  const starts = []
-  let pos = 0
+function segmentDisplayStarts(segments) {
+  const dispStarts = []
+  let disp = 0
   for (const segment of segments) {
-    const at = line.indexOf(segment, pos)
-    starts.push(at)
-    pos = at + segment.length
+    dispStarts.push(disp)
+    disp += stringWidth(segment)
   }
-  return starts
+  return dispStarts
 }
 
 /**
@@ -137,30 +175,28 @@ export function computeGrid(ctx) {
   for (let li = 0; li < lines.length; li++) {
     const segments = wrapSegments(lines[li], limit)
     if (li === row) {
-      const dcol = stringWidth(lines[li].slice(0, col))
-      const starts = segmentStarts(lines[li], segments)
-      // Map the logical column onto the visual rows: cursor positions in a
-      // dropped fold space sit at the end of the preceding segment's row.
-      let idx = segments.length - 1
-      let vcol = 0
-      for (let si = 0; si < segments.length; si++) {
-        const w = stringWidth(segments[si])
-        if (dcol < starts[si]) {
-          idx = si - 1
-          vcol = stringWidth(segments[si - 1])
-          break
-        }
-        if (dcol < starts[si] + w) {
-          idx = si
-          vcol = dcol - starts[si]
-          break
-        }
+      const { starts, drops } = wrapSegmentsDetailed(lines[li], limit)
+      const dispStarts = segmentDisplayStarts(segments)
+      // Map the logical column onto the visual rows, entirely in display
+      // space (code-unit offsets only decide WHICH segment the cursor is
+      // in; wide chars never match a code-unit offset). A dropped fold
+      // space is invisible: subtract it from the display column only once
+      // the cursor has crossed it, so a cursor ON the fold space parks at
+      // the end of the preceding row.
+      let folded = 0
+      for (const d of drops) {
+        if (d < col) folded += 1
       }
-      if (idx === segments.length - 1 && dcol >= starts[idx] + stringWidth(segments[idx])) {
-        vcol = dcol - starts[idx]
+      const dcol = stringWidth(lines[li].slice(0, col)) - folded
+      let idx = 0
+      for (let si = segments.length - 1; si >= 0; si--) {
+        if (starts[si] <= col) {
+          idx = si
+          break
+        }
       }
       cursorRow = inputOffset + idx
-      cursorCol = linePrefixWidth + vcol
+      cursorCol = linePrefixWidth + (dcol - dispStarts[idx])
     }
     inputOffset += wrappedCounts[li]
   }

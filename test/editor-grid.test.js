@@ -666,6 +666,14 @@ test('wrapSegments never splits a wide char and folds at word boundaries', () =>
   assert.deepEqual(wrapSegments('', 3), [''])
 })
 
+test('wrapSegments never emits an empty segment at limit 1 with wide chars', () => {
+  // A wide char cannot fit the 1-column row: the hard cut must not push a
+  // ghost blank segment (it would paint an extra empty row and shift every
+  // later cursor row).
+  assert.deepEqual(wrapSegments('a 文', 1), ['a', '文'])
+  assert.deepEqual(wrapSegments('中A', 1), ['中', 'A'])
+})
+
 test('typing to the exact row width never duplicates rows across a fold', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const { term, stdin, editor } = setup(t, { cols: 64 })
@@ -687,4 +695,123 @@ test('typing to the exact row width never duplicates rows across a fold', async 
   submit(stdin)
   const [value] = await editor
   assert.equal(value, `${l1}\n${l2}`)
+})
+
+// --- Cursor mapping in display space (wide chars) ---
+
+test('cursor maps wide chars by display column, not code-unit offset', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, { cols: 12 })
+  type(stdin, 'abcdef中中x') // wraps at usable width 10: 'abcdef中中' | 'x'
+  // End of text: after 'x' — display col 1 on the second row.
+  assert.deepEqual(term.cursor, { r: 1, c: 3 })
+  press(stdin, '\x1b[D') // before 'x'
+  assert.deepEqual(term.cursor, { r: 1, c: 2 })
+  press(stdin, '\x1b[D') // after 中#1 → display col 8 on row 0
+  assert.deepEqual(term.cursor, { r: 0, c: 10 })
+  press(stdin, '\x1b[D') // before 中#1 → display col 6
+  assert.deepEqual(term.cursor, { r: 0, c: 8 })
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'abcdef中中x')
+})
+
+test('word-aware folding keeps display columns exact with wide chars', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, { cols: 8 }) // usable width 6
+  type(stdin, 'aa 中 中bb') // folds: 'aa 中' | '中bb' (the second space is the fold)
+  assert.deepEqual(term.lines().filter((l) => l !== ''), ['❯ aa 中', '❯ 中bb'])
+  // End: after 'bb' — display col 4 of the second row (the dropped space is
+  // not counted, the wide 中 is 2 columns).
+  assert.deepEqual(term.cursor, { r: 1, c: 6 })
+  press(stdin, '\x1b[D') // before b#2
+  assert.deepEqual(term.cursor, { r: 1, c: 5 })
+  press(stdin, '\x1b[D') // before b#1
+  assert.deepEqual(term.cursor, { r: 1, c: 4 })
+  press(stdin, '\x1b[D') // before 中#2 → start of the second row
+  assert.deepEqual(term.cursor, { r: 1, c: 2 })
+  press(stdin, '\x1b[D') // on the dropped fold space: parks at end of row 0
+  assert.deepEqual(term.cursor, { r: 0, c: 7 })
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'aa 中 中bb')
+})
+
+// --- Editing semantics ---
+
+test('undo groups do not span a cursor move', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { stdin, editor } = setup(t)
+  type(stdin, 'abc')
+  press(stdin, '\x1b[D') // left: an undo-group boundary
+  type(stdin, 'de') // => 'abdec'
+  press(stdin, '\x1a') // Ctrl+Z: only the second insert group
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'abc')
+})
+
+test('undo across a cursor move restores the cursor position of the group', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { stdin, editor } = setup(t)
+  type(stdin, 'abc')
+  press(stdin, '\x1b[D')
+  type(stdin, 'de')
+  press(stdin, '\x1a') // undo 'de' → 'abc' with the cursor after 'b'
+  type(stdin, 'X') // inserts at the restored position: 'abXc'
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'abXc')
+})
+
+test('word jumps stay on char boundaries and never corrupt a surrogate pair', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { stdin, editor } = setup(t)
+  type(stdin, 'a😀b')
+  press(stdin, '\x1b[1;3D') // Alt+Left: word left of 'b'
+  press(stdin, '\x1b[1;3C') // Alt+Right: back to the end
+  type(stdin, '!')
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'a😀b!')
+})
+
+test('paste beyond maxLines stops instead of merging the overflow', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { stdin, editor } = setup(t, { options: { maxLines: 2, initialValue: 'x' } })
+  type(stdin, '\x1b[200~a\nbc\nd\x1b[201~')
+  submit(stdin)
+  await t.mock.timers.tick(0)
+  const [value] = await editor
+  assert.equal(value, 'xa\nbc')
+})
+
+test('stdin EOF tears the editor down and resolves as an EOF cancel', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t)
+  let rawOff = false
+  let paused = false
+  stdin.setRawMode = (on) => {
+    if (on === false) rawOff = true
+  }
+  stdin.pause = () => {
+    paused = true
+  }
+  const writes = []
+  const out = term.out
+  const write = out.write.bind(out)
+  out.write = (chunk) => {
+    writes.push(String(chunk))
+    write(chunk)
+  }
+  type(stdin, 'partial')
+  stdin.emit('end')
+  const [value, error] = await editor
+  assert.equal(value, 'partial')
+  assert.equal(error.kind, 'eof')
+  assert.equal(rawOff, true)
+  assert.equal(paused, true)
+  const all = writes.join('')
+  assert.ok(all.includes('\x1b[?2004l'), 'bracketed paste disabled')
+  assert.ok(all.includes('\x1b[<u'), 'kitty protocol disabled')
 })

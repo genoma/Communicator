@@ -2,7 +2,7 @@
 // validate/transform/highlight/inlinePrompt options have no in-repo callers
 // and are rejected loudly).
 import { stringWidth } from './chars.js'
-import { buildHelpFooter, detectKittyProtocol } from './footer.js'
+import { buildHelpFooter, detectKittyProtocol, resetKittyDetectionCache } from './footer.js'
 import { loadHistory } from './history.js'
 import { createInputConsumer } from './keys.js'
 import {
@@ -509,7 +509,22 @@ function readFromTTY(input, output, prompt, options) {
       output.write('\x1b[<u') // Disable kitty protocol
       input.setRawMode?.(false)
       input.removeListener('data', dataHandler)
+      input.removeListener('end', onEof)
+      input.removeListener('close', onEof)
       input.pause()
+      resetKittyDetectionCache()
+    }
+
+    // Real stdin EOF while the prompt is open (pty close / pipe end; Ctrl+D
+    // is deliberately unbound, so EOF arrives only through the stream):
+    // tear the editor down and resolve as an EOF cancel, mirroring cancel().
+    function onEof() {
+      if (!active) return
+      if (!view.windowed && fitsOnScreen(computeGridFn())) {
+        repaintMode('erase')
+      }
+      cleanup()
+      resolve([model.lines.join('\n'), { kind: 'eof' }])
     }
 
     function submit() {
@@ -568,6 +583,8 @@ function readFromTTY(input, output, prompt, options) {
       output.write('\x1b[?2004h') // Enable bracketed paste mode
       dataHandler = (data) => consumer.data(data)
       input.on('data', dataHandler)
+      input.on('end', onEof)
+      input.on('close', onEof)
       if (helpFooter) {
         // The cached kitty result (src/editor/footer.js module state) filters
         // protocol-dependent keys out of the help footer once known: repaint.

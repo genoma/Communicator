@@ -25,7 +25,9 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
     partialFlushMs: smooth ? smoothTickMs : undefined,
   })
 
-  const cols = typeof stdout.columns === 'number' ? stdout.columns : null
+  // Width is resolved lazily (per write): a mid-stream terminal resize folds
+  // new text at the new width instead of the width at renderer creation.
+  const cols = () => (typeof stdout.columns === 'number' ? stdout.columns : null)
   const reasoningWrap = createWordWrap({ stdout, cols, style: dim })
   const contentWrap = createWordWrap({ stdout, cols })
 

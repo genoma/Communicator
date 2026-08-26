@@ -21,10 +21,12 @@ export async function readInput({ commands, onResizeRepaint } = {}) {
       finish({ cancelled: true, eof: true })
       return
     }
-    if (input.isTTY) {
-      input.on('end', onEof)
-      input.on('close', onEof)
-    }
+    // The editor registers its own end/close listener during readEditor, so
+    // OUR handler is registered after the call: on EOF the editor tears its
+    // terminal state down (raw mode, bracketed paste, kitty protocol,
+    // timers) and resolves { kind: 'eof' } first; this listener then just
+    // concludes with the cancelled result. ('end'/'close' dispatch on
+    // registration order, which is why the call must come first.)
     readEditor('', {
       prefix: '',
       linePrefix: '❯ ',
@@ -54,5 +56,9 @@ export async function readInput({ commands, onResizeRepaint } = {}) {
       },
       () => finish({ cancelled: true })
     )
+    if (input.isTTY) {
+      input.on('end', onEof)
+      input.on('close', onEof)
+    }
   })
 }

@@ -36,6 +36,20 @@ export function _resetKittyDetection(value) {
 }
 
 /**
+ * Forget a negative detection when an editor session ends: a slow terminal
+ * (or a busy machine) can miss the 100 ms window once, and the protocol-query
+ * response never observed means the *next* session re-detects instead of
+ * hiding Shift/Ctrl/Cmd+Enter from the footer for the whole process. A
+ * confirmed positive stays cached (the protocol cannot change mid-process).
+ */
+export function resetKittyDetectionCache() {
+  if (_kittySupported === false) {
+    _kittySupported = undefined
+    _kittyDetectionPromise = null
+  }
+}
+
+/**
  * Detect kitty keyboard protocol support.
  * Must be called after raw mode is enabled on the input stream.
  * Results are cached; subsequent calls return the cached promise.

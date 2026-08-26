@@ -86,3 +86,36 @@ test('createWordWrap styles each piece and keeps fold newlines raw', () => {
 test('createWordWrap passes through unchanged without a width', () => {
   assert.equal(streamed('aaa bbb ccc ddd eee fff ggg hhh', null), 'aaa bbb ccc ddd eee fff ggg hhh')
 })
+
+test('wrapWords folds at a space that would cross the exact row width', () => {
+  // A space after a word that already fills the row is the fold point: it is
+  // dropped, so no segment is ever wider than the terminal (an over-wide row
+  // would soft-wrap in the shell). Regression for the wrapSegments 5846a7e
+  // bug class in the plain-word wrapper.
+  assert.deepEqual(wrapWords('ab  cd', 2), ['ab', 'cd'])
+  assert.deepEqual(wrapWords('abc  def', 3), ['abc', 'def'])
+  assert.deepEqual(wrapWords('aaaa bbbbb', 5), ['aaaa', 'bbbbb'])
+  assert.deepEqual(wrapWords('x  y', 2), ['x ', 'y']) // committed space stays, fold space dropped
+})
+
+test('createWordWrap resolves the width lazily per write', () => {
+  const out = []
+  const stdout = { write: (s) => out.push(s) }
+  let cols = 10
+  const w = createWordWrap({ stdout, cols: () => cols })
+  w.write('aaaa bbbb cccc')
+  w.flush()
+  cols = 4
+  w.write('yy yy')
+  w.flush()
+  assert.equal(out.join(''), 'aaaa bbbb\ncccc\nyy\nyy') // width 4: 'yy yy' folds to two rows
+})
+
+test('createWordWrap passes through when the width getter yields no width', () => {
+  const out = []
+  const stdout = { write: (s) => out.push(s) }
+  const w = createWordWrap({ stdout, cols: () => undefined })
+  w.write('unchanged text  there')
+  w.flush()
+  assert.equal(out.join(''), 'unchanged text  there')
+})
