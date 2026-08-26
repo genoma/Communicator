@@ -658,3 +658,33 @@ test('decryptToken mode fails closed on plaintext tokens', async () => {
     (err) => /unencrypted chunk/.test(err.message)
   )
 })
+
+test('a delta carrying reasoning and content emits both', async () => {
+  const tokens = []
+  const chunk = event({ choices: [{ delta: { reasoning_content: 'why', content: 'then' } }] })
+  const { fullText, fullReasoning } = await parseSSEStream(
+    streamReader([chunk]),
+    (t, type) => tokens.push([type, t])
+  )
+  assert.equal(fullReasoning, 'why')
+  assert.equal(fullText, 'then')
+  assert.deepEqual(tokens, [['start_reasoning', '\n'], ['reasoning', 'why'], ['end_reasoning', null], ['content', 'then']])
+})
+
+test('empty keep-alive data events are not counted as malformed chunks', async () => {
+  const { fullText, skippedChunks } = await parseSSEStream(
+    streamReader(['data:\n\n', 'data:\n\n', event({ choices: [{ delta: { content: 'alive' } }] }), '\n']),
+    () => {}
+  )
+  assert.equal(fullText, 'alive')
+  assert.equal(skippedChunks, 0)
+})
+
+test('a trailing empty data payload when the stream ends is not malformed either', async () => {
+  const { fullText, skippedChunks } = await parseSSEStream(
+    streamReader([event({ choices: [{ delta: { content: 'end' } }] }), 'data:\n']),
+    () => {}
+  )
+  assert.equal(fullText, 'end')
+  assert.equal(skippedChunks, 0)
+})

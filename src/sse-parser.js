@@ -139,6 +139,9 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
   let pendingDataLines = []
   const handleDataEvent = (data) => {
     if (data === SSE_DONE) return
+    // Legitimate keep-alives arrive as an empty `data:` event; they are not
+    // malformed chunks and must not surface in the skipped-chunk report.
+    if (data.trim() === '') return
     let parsed
     try {
       parsed = JSON.parse(data)
@@ -203,6 +206,11 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
 
     const reasoningToken = delta.reasoning_content ?? (typeof delta.reasoning === 'string' ? delta.reasoning : undefined)
     if (reasoningToken) {
+      // No early return here: providers may deliver `reasoning_content` and
+      // `content` in the SAME delta (the transition chunk). Returning would
+      // drop the content — and the final-message dedup gate would then
+      // discard the full text only when no text was streamed, so the dropped
+      // content was never recovered.
       const text = maybeDecrypt(reasoningToken)
       fullReasoningParts.push(text)
       if (!inThinking) {
@@ -210,7 +218,6 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
         onToken('\n', 'start_reasoning')
       }
       onToken(text, 'reasoning')
-      return
     }
 
     const contentToken = delta.content
