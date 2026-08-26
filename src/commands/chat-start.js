@@ -11,8 +11,8 @@ import { resolveSessionFlags, persistSession, buildSessionContext } from '../ses
 import { findImageModel } from '../model-selection.js'
 import { startImageSession } from './image-session.js'
 
-function imageSessionContext({ provider, apiKey, prefs, imageModelId, sessionId, createdAt, initialMessages, configPath, imageProviderName = null, pricing = null }) {
-  return { imageModelId, provider, apiKey, prefs, sessionId, createdAt, initialMessages, configPath, imageProviderName, pricing }
+function imageSessionContext({ provider, apiKey, prefs, imageModelId, sessionId, createdAt, updatedAt = null, initialMessages, configPath, imageProviderName = null, pricing = null }) {
+  return { imageModelId, provider, apiKey, prefs, sessionId, createdAt, updatedAt, initialMessages, configPath, imageProviderName, pricing }
 }
 
 async function createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, scraped = null }) {
@@ -48,6 +48,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
         imageModelId: result.modelId,
         sessionId: result.sessionId,
         createdAt: result.sessionCreatedAt,
+        updatedAt: result.sessionUpdatedAt,
         initialMessages: result.initialMessages,
         configPath: opts.config,
         imageProviderName: result.providerName,
@@ -88,6 +89,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
       initialMessages: result.initialMessages,
       sessionId: result.sessionId,
       sessionCreatedAt: result.sessionCreatedAt,
+      sessionUpdatedAt: result.sessionUpdatedAt,
       provider,
       apiKey,
       modelReasoning: null,
@@ -195,6 +197,7 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
     initialMessages: ctx.initialMessages,
     sessionId: ctx.sessionId,
     createdAt: ctx.sessionCreatedAt,
+    updatedAt: ctx.sessionUpdatedAt,
     supportsReasoning: ctx.supportsReasoning,
     reasoningMandatory: ctx.reasoningMandatory,
     modelReasoning: ctx.modelReasoning,
@@ -242,7 +245,7 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMes
     // /model with a text-model pick transitions the image session into the
     // chat REPL, same session id and history.
     if (!imageResult?.switchToChat) return
-    const { selection, messages, sessionId, createdAt } = imageResult.switchToChat
+    const { selection, messages, sessionId, createdAt, updatedAt } = imageResult.switchToChat
     const { budget, smoothSpeed, zdr, e2ee } = resolveSessionFlags(opts, prefs)
     await runChatToEnd({
       apiKey,
@@ -256,6 +259,7 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMes
       initialMessages: messages,
       sessionId,
       sessionCreatedAt: createdAt,
+      sessionUpdatedAt: updatedAt,
       supportsReasoning: selection.supportsReasoning,
       reasoningMandatory: selection.modelReasoning?.mandatory === true,
       modelReasoning: selection.modelReasoning,

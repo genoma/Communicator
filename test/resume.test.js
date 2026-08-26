@@ -3,13 +3,11 @@ import assert from 'node:assert/strict'
 
 let matchedId = '2026-01-01T00-00-00'
 let sessionData = null
-let saved = null
 mock.module(new URL('../src/sessions.js', import.meta.url).href, {
   namedExports: {
     ensureSessionsDir: async () => '/fake/sessions',
     resolveSessionInteractive: async () => matchedId,
     loadSession: async () => sessionData,
-    saveSession: async (dir, id, data) => { saved = { dir, id, data } },
   },
 })
 
@@ -32,6 +30,7 @@ function session(overrides = {}) {
     webSearchSupported: false,
     isImageModel: false,
     createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:01.000Z',
     messages: [
       { role: 'system', content: 'You are a helpful assistant.' },
       { role: 'user', content: 'First question' },
@@ -62,6 +61,7 @@ test('resumeCmd maps the session payload with normalized values', async () => {
   assert.equal(result.isImageModel, false)
   assert.equal(result.sessionId, '2026-01-01T00-00-00')
   assert.equal(result.sessionCreatedAt, '2026-01-01T00:00:00.000Z')
+  assert.equal(result.sessionUpdatedAt, '2026-01-01T00:00:01.000Z')
   assert.equal(result.initialMessages.length, 3)
 })
 
@@ -129,15 +129,10 @@ test('resumeCmd marks image sessions and maps legacy on web search to auto', asy
   assert.equal(result.webSearch, 'auto')
 })
 
-test('resumeCmd touches the session with a fresh updatedAt', async () => {
-  sessionData = session({ updatedAt: '2025-01-01T00:00:00.000Z' })
-  saved = null
+test('resumeCmd carries the stored updatedAt for unchanged saves', async () => {
+  sessionData = session({ updatedAt: '2025-06-01T00:00:00.000Z' })
   const result = await resumeCmd('2026')
-
-  assert.equal(saved.id, '2026-01-01T00-00-00')
-  assert.ok(new Date(saved.data.updatedAt).getTime() > new Date('2025-01-01T00:00:00.000Z').getTime())
-  assert.equal(saved.data.model, 'org/model')
-  assert.equal(result.sessionId, '2026-01-01T00-00-00')
+  assert.equal(result.sessionUpdatedAt, '2025-06-01T00:00:00.000Z')
 })
 
 test('resumeCmd returns null when the picker resolves nothing', async () => {

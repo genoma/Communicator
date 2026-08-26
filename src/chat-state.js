@@ -2,7 +2,7 @@ import { DEFAULT_SYSTEM_PROMPT } from './constants.js'
 import { normalizeSmoothSpeed, normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
-  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, topP, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, modelReasoning, reasoningMandatory, markdown = true, smoothStreaming = true, smoothSpeed, compactThinking = false, messages, systemContent, scrapes = 0 }) {
+  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, topP, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, updatedAt = null, modelReasoning, reasoningMandatory, markdown = true, smoothStreaming = true, smoothSpeed, compactThinking = false, messages, systemContent, scrapes = 0 }) {
     this.modelId = modelId
     this.endpointProviderName = endpointProviderName
     this.reasoningEffort = reasoningEffort
@@ -31,6 +31,7 @@ export class ChatState {
     this.retryTurn = null
     this.sessionId = sessionId
     this.createdAt = createdAt
+    this.updatedAt = updatedAt
     this.modelReasoning = modelReasoning
     this.reasoningMandatory = reasoningMandatory === true || modelReasoning?.mandatory === true
     this.markdown = markdown
@@ -47,6 +48,7 @@ export class ChatState {
       messages: this.messages,
       sessionId: this.sessionId,
       createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
       modelId: this.modelId,
       endpointProviderName: this.endpointProviderName,
       reasoningEffort: this.reasoningEffort,
@@ -74,6 +76,7 @@ export class ChatState {
     this.budget = null
     this.webResults = null
     this.scrapes = 0
+    this.updatedAt = null
     this.pendingAttachments = []
     this.retryTurn = null
     return true
@@ -139,6 +142,9 @@ export class ChatState {
 
   appendUser(content) {
     this.messages.push({ role: 'user', content })
+    // A sent message is the activity signal: updatedAt is only bumped when
+    // new turn content is actually added, never by resuming alone.
+    this.updatedAt = new Date().toISOString()
   }
 
   appendAssistant(message) {

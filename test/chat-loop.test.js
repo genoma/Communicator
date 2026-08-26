@@ -186,6 +186,42 @@ test('happy path runs a turn and saves the final session once', async (t) => {
   assert.deepEqual(harness.exitCodes, [])
 })
 
+test('resuming without a new message keeps the stored updatedAt', async (t) => {
+  mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/quit']) })
+
+  await runChatSession(baseCtx(provider, {
+    updatedAt: '2026-01-01T00:00:01.000Z',
+    initialMessages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'First question' },
+      { role: 'assistant', content: 'First answer' },
+    ],
+  }), harness.deps)
+
+  assert.equal(harness.saveCalls.length, 1)
+  assert.equal(harness.saveCalls[0].payload.updatedAt, '2026-01-01T00:00:01.000Z')
+})
+
+test('sending a message bumps updatedAt on a resumed session', async (t) => {
+  mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['hello', '/quit']) })
+
+  await runChatSession(baseCtx(provider, {
+    updatedAt: '2026-01-01T00:00:01.000Z',
+    initialMessages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'First question' },
+      { role: 'assistant', content: 'First answer' },
+    ],
+  }), harness.deps)
+
+  assert.equal(harness.saveCalls.length, 1)
+  assert.ok(Date.parse(harness.saveCalls[0].payload.updatedAt) > Date.parse('2026-01-01T00:00:01.000Z'))
+})
+
 test('/new mid-session resets messages and the tracker and saves the prior session', async (t) => {
   const consoleSpy = mockConsole(t)
   const { provider, calls } = fakeProvider()

@@ -25,7 +25,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   const s = makeState()
   assert.deepEqual(
     Object.keys(s).sort(),
-    ['budget', 'compactThinking', 'contextLength', 'createdAt', 'e2ee', 'e2eeContext', 'endpointProviderName', 'fileSupported', 'imageOutputSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'reasoningMandatory', 'retryTurn', 'scrapes', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'topP', 'visionSupported', 'webResults', 'webSearch', 'webSearchSupported', 'zdr']
+    ['budget', 'compactThinking', 'contextLength', 'createdAt', 'e2ee', 'e2eeContext', 'endpointProviderName', 'fileSupported', 'imageOutputSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'reasoningMandatory', 'retryTurn', 'scrapes', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'topP', 'updatedAt', 'visionSupported', 'webResults', 'webSearch', 'webSearchSupported', 'zdr']
   )
   assert.equal(s.modelId, 'org/model')
   assert.equal(s.endpointProviderName, 'Provider')
@@ -44,6 +44,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   assert.deepEqual(s.pendingAttachments, [])
   assert.equal(s.sessionId, '2026-01-01T00-00-00')
   assert.equal(s.createdAt, '2026-01-01T00:00:00.000Z')
+  assert.equal(s.updatedAt, null)
   assert.deepEqual(s.modelReasoning, { supported: true })
   assert.equal(s.markdown, true)
   assert.equal(s.smoothStreaming, true)
@@ -92,6 +93,7 @@ test('toFinalState returns exactly the old finalState field list', () => {
     'supportsReasoning',
     'temperature',
     'topP',
+    'updatedAt',
     'visionSupported',
     'webResults',
     'webSearch',
@@ -100,6 +102,7 @@ test('toFinalState returns exactly the old finalState field list', () => {
   assert.equal(state.messages, s.messages)
   assert.equal(state.sessionId, '2026-01-01T00-00-00')
   assert.equal(state.createdAt, '2026-01-01T00:00:00.000Z')
+  assert.equal(state.updatedAt, null)
   assert.equal(state.modelId, 'org/model')
   assert.equal(state.endpointProviderName, 'Provider')
   assert.equal(state.reasoningEffort, 'high')
@@ -266,6 +269,17 @@ test('setSmoothSpeed updates the speed and falls back for invalid values', () =>
   assert.equal(s.smoothSpeed, 2000)
   s.setSmoothSpeed(undefined)
   assert.equal(s.smoothSpeed, 2000)
+})
+
+test('appendUser stamps updatedAt and resetForNewSession clears it', () => {
+  const s = makeState({ updatedAt: '2026-01-01T00:00:01.000Z', messages: [{ role: 'system', content: 'x' }] })
+  assert.equal(s.updatedAt, '2026-01-01T00:00:01.000Z')
+
+  s.appendUser('new question')
+  assert.ok(Date.parse(s.updatedAt) > Date.parse('2026-01-01T00:00:01.000Z'))
+
+  s.resetForNewSession()
+  assert.equal(s.updatedAt, null)
 })
 
 test('appendAssistant, popLastMessage and lastAssistantMessage round-trip', () => {

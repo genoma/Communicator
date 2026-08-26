@@ -18,7 +18,7 @@ automatically from the session files.
 communicator --list-sessions
 ```
 
-Output shows each session's ID, last-activity timestamp, model, message count, and the session title. Sessions are listed most-recently-used first: the timestamp is `updatedAt`, bumped on every save and again when the session is resumed (`--resume`), so a resumed old conversation surfaces at the top with its fresh date. Legacy sessions without `updatedAt` fall back to `createdAt`, then to the creation-time id:
+Output shows each session's ID, last-activity timestamp, model, message count, and the session title. Sessions are listed most-recently-used first: the timestamp is `updatedAt`, bumped when new content is saved (a new message or an image generation) — merely resuming an old conversation does not bump it, so it keeps its place until you actually use it again. Legacy sessions without `updatedAt` fall back to `createdAt`, then to the creation-time id:
 
 ```
 3 saved session(s):
@@ -191,6 +191,6 @@ Each session is stored as a JSON file:
 - Binary attachment payloads (`image_url.url` / `file.file_data`) are not stored inline: the data URL is replaced by a `ref://attachments/<sha256>.<ext>` sentinel pointing at a blob in `~/.communicator/sessions/attachments/<sessionId>/` (raw bytes, deduplicated by sha256 within the session). On `--resume`/`--export` the blob is read back and re-encoded into the `data:<mime>;base64,...` URL. Text-file attachments stay inline as `text` parts. Old sessions with inline data URLs load unchanged and convert to refs on the next save; a missing blob drops that part with a warning
 - `pricing` stores per-token dollar amounts used for cost calculation
 - Assistant messages may carry `sources` (`[{ title, url }]`) when web search was used — restored on `--resume` (numbered list + clickable inline citations) and exported as a markdown `**Sources:**` list with `^n^` citations converted to `[n](url)` links; older sessions without the field render no sources and keep citations literal
-- `updatedAt` is bumped on every auto-save
+- `updatedAt` is bumped when new content is saved (a new message or an image generation), and kept as-is on resumes that add nothing — `--resume` alone never reorders the listing
 - Empty sessions (no user messages) are never saved
 - Older sessions without `temperature`/`topP`/`budget`/`title` restore unset / unset / no cap / no title

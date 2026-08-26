@@ -481,6 +481,20 @@ test('buildSessionPayload passes nulls through for optional fields', () => {
   assert.equal(payload.title, '')
 })
 
+test('buildSessionPayload carries a stored updatedAt instead of stamping a fresh one', () => {
+  const payload = buildSessionPayload({
+    messages: [{ role: 'user', content: 'Hi' }],
+    modelId: 'm',
+    endpointProviderName: 'P',
+    providerType: 'openrouter',
+    temperature: 0.7,
+    webSearch: false,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:01.000Z',
+  })
+  assert.equal(payload.updatedAt, '2026-01-01T00:00:01.000Z')
+})
+
 test('buildSessionPayload fills createdAt when missing and defaults undefined fields to null', () => {
   const payload = buildSessionPayload({
     messages: [{ role: 'user', content: 'Hi' }],

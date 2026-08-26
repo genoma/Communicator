@@ -97,7 +97,7 @@ function aspectPresetLine(presets, current) {
   return `Aspect ratios: ${marked} (none set).`
 }
 
-export async function startImageSession({ provider, apiKey, prefs, imageModelId, sessionId, createdAt, initialMessages = [], configPath, imageProviderName = null, pricing = null, stdout = process.stdout, readInput: read = readInputFromInput }) {
+export async function startImageSession({ provider, apiKey, prefs, imageModelId, sessionId, createdAt, updatedAt: initialUpdatedAt = null, initialMessages = [], configPath, imageProviderName = null, pricing = null, stdout = process.stdout, readInput: read = readInputFromInput }) {
   let model = await findImageModel(provider, apiKey, imageModelId)
   if (!model) {
     throw new CliError(`Error: image model ${imageModelId} is no longer available. Use --list-image-models to see available models.`)
@@ -123,7 +123,10 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
   }
 
   let messages = initialMessages.length > 0 ? [...initialMessages] : [{ role: 'system', content: DEFAULT_SYSTEM_PROMPT }]
-  const persist = () => persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: imageModelId, createdAt, providerName: provider.meta.name, endpointProviderName: model.endpointProviderName, pricing: model.pricing }))
+  // Carried from resume: bumped only when a generation adds new content, so
+  // resuming and quitting silently keeps the session where it was.
+  let updatedAt = initialUpdatedAt
+  const persist = () => persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: imageModelId, createdAt, updatedAt, providerName: provider.meta.name, endpointProviderName: model.endpointProviderName, pricing: model.pricing }))
 
   // Preference writes are non-fatal here: a failing disk must not take the
   // whole session down with a raw fs error.
@@ -232,7 +235,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       const transitionMessages = sel.visionSupported === false
         ? messages.map((m) => ({ ...m, content: stripImageParts(m.content) }))
         : messages
-      return { switchToChat: { selection: sel, messages: transitionMessages, sessionId, createdAt } }
+      return { switchToChat: { selection: sel, messages: transitionMessages, sessionId, createdAt, updatedAt } }
     }
 
     if (provider.meta.name === 'venice' && (input === '/watermark' || input.startsWith('/watermark '))) {
@@ -402,6 +405,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
 
     messages.push({ role: 'user', content: input })
     messages.push(outcome.message)
+    updatedAt = new Date().toISOString()
     await persist()
     const updated = syncPreferenceUpdates(prefs, { lastImageModel: outcome.modelId })
     const withImageDefaults = outcome.prefsUpdates ? mergeImageDefaults(updated, provider.meta.name, outcome.prefsUpdates) : updated

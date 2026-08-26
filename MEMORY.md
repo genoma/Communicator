@@ -14,7 +14,7 @@
 - `src/turn-runner.js` — `createTurnRunner` + `createSessionState`: per-turn orchestration (stream render, loader, abort, partial salvage, usage/budget tracking). Runner and SIGINT handler share `sessionState`; `/new` resets tracker/budgetWarned. Resolves model-produced artifacts post-stream.
 - `src/artifacts.js` — shared artifact handling: `extractMarkdownImageUrls`, `produceParts` (parallel downloads), `resolveArtifacts` (single shared gate), `buildPartsContent`, `printArtifacts`, `printArtifactsSummary`, `printPostStreamMetrics`.
 - `src/commands/chat/index.js` — slash command registry (20 commands, no `/exit` alias), `CHAT_COMMANDS`, `budgetGuard`, `showStatus`. Handlers return `{ exit }` / `{ reset }` / `{ resetBudgetWarning }` signals; never `process.exit`. Picker deps injectable for tests.
-- `src/chat-state.js` — `ChatState`: 30-field session state plus pure transitions; `toFinalState(providerType)` returns the exact 22-field session snapshot (omits `pendingAttachments`, `modelReasoning`, `markdown`, `smoothStreaming`, `smoothSpeed`, `compactThinking`); `reasoningMandatory` rides through for OpenRouter/Venice.
+- `src/chat-state.js` — `ChatState`: 30-field session state plus pure transitions; `toFinalState(providerType)` returns the exact 23-field session snapshot (omits `pendingAttachments`, `modelReasoning`, `markdown`, `smoothStreaming`, `smoothSpeed`, `compactThinking`); `reasoningMandatory` rides through for OpenRouter/Venice.
 - `src/attachments.js` — classification, loading, capability gates, content/part helpers, `partUrl`/`partLabel`, `formatBytes`.
 - `src/session-setup.js` — shared session setup: `resolveSessionFlags`, `attachGateOptions`, `buildSessionContext`, `persistSession` (save + merged prefs).
 - `src/rpg.js` — RPG mode provisioning/assembly (see RPG mode).
@@ -148,9 +148,10 @@
 - Attachment blobs stored under `~/.communicator/sessions/attachments/<sessionId>/<sha256>.<ext>` with `ref://` sentinels; externalize before JSON; hydrate on load; delete removes blob dir.
 - Sidecar `.index.json` maps session metadata; rebuilt if missing/stale; system-only sessions filtered.
 - `listSessions` orders most-recently-used first: `updatedAt` desc, falling back to `createdAt`, then the creation-time id (left for legacy sessions). `formatSessionItem` shows the same last-activity timestamp, so the picker and `--list-sessions` display when a session was last used, not when it was created.
-- `--resume` touches the session (bumps `updatedAt` via `saveSession`) so a resumed session jumps to the top of the listing even if no new message is sent.
+- `updatedAt` is activity-stamped, never resume-stamped: `ChatState` (and the image REPL) carry the stored value and refresh it only when new content is added (`appendUser` / an image generation). Resuming and quitting without sending anything leaves `updatedAt` unchanged, so the session stays where it was; the payload falls back to `now` only when no stored value exists.
 - Session ids `YYYY-MM-DDTHH-MM-SS`; prefix matching works.
 - Title from first user message, truncated to 50 chars (a longer message yields the first 50 chars + `...`).
+- `appendUser` stamps `updatedAt` (new turn); `/retry`/`/edit`/`/scrape` go through it too, so all message-sending paths bump. `toFinalState` carries `updatedAt`.
 - `loadSession` error contract: missing/corrupt files raise `CliError`; other read errors rethrown.
 
 

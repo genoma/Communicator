@@ -85,7 +85,7 @@ export function generateTitle(messages) {
   return collapsed.length > 50 ? collapsed.slice(0, 50) + '...' : collapsed
 }
 
-export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, topP, budget, webSearch, webResults, pricing, contextLength, supportsReasoning, reasoningMandatory = false, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, isImageModel = false, e2ee = false, scrapes = 0, createdAt }) {
+export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, topP, budget, webSearch, webResults, pricing, contextLength, supportsReasoning, reasoningMandatory = false, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, isImageModel = false, e2ee = false, scrapes = 0, createdAt, updatedAt }) {
   return {
     model: modelId,
     providerName: endpointProviderName,
@@ -108,7 +108,9 @@ export function buildSessionPayload({ messages, modelId, endpointProviderName, p
     e2ee,
     scrapes,
     createdAt: createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    // Carried by ChatState (and the image REPL): stamped only when new turn
+    // content was added, never by an unchanged resume.
+    updatedAt: updatedAt || new Date().toISOString(),
     title: generateTitle(messages),
     messages,
   }

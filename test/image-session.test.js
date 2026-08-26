@@ -280,6 +280,28 @@ test('resume continues from initialMessages without re-adding a system message',
   assert.equal(saved.messages[3].content, 'new prompt')
 })
 
+test('resume without generating keeps the stored updatedAt, a generation bumps it', async (t) => {
+  genCalls.length = 0
+  printed.length = 0
+  payloadArgs.length = 0
+  mockConsole(t)
+
+  await startImageSession(baseOpts({
+    updatedAt: '2026-01-01T00:00:01.000Z',
+    readInput: scriptedInput(['/quit']),
+  }))
+  assert.equal(payloadArgs.at(-1).updatedAt, '2026-01-01T00:00:01.000Z')
+
+  genCalls.length = 0
+  printed.length = 0
+  payloadArgs.length = 0
+  await startImageSession(baseOpts({
+    updatedAt: '2026-01-01T00:00:01.000Z',
+    readInput: scriptedInput(['a red cat', '/quit']),
+  }))
+  assert.ok(Date.parse(payloadArgs.at(-1).updatedAt) > Date.parse('2026-01-01T00:00:01.000Z'))
+})
+
 test('/quit leaves the session without generating', async (t) => {
   genCalls.length = 0
   printed.length = 0

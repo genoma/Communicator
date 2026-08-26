@@ -318,7 +318,7 @@ export function printImageOutcome({ savedPaths = [], blurred = false, costLine =
   if (blurred) process.stderr.write('Warning: the generated image was returned blurred (safe mode).\n')
 }
 
-export function buildImageSessionPayload({ messages, modelId, createdAt, providerName = 'venice', endpointProviderName = providerName, pricing = null }) {
+export function buildImageSessionPayload({ messages, modelId, createdAt, updatedAt, providerName = 'venice', endpointProviderName = providerName, pricing = null }) {
   return buildSessionPayload({
     messages,
     modelId,
@@ -333,11 +333,12 @@ export function buildImageSessionPayload({ messages, modelId, createdAt, provide
     contextLength: null,
     isImageModel: true,
     createdAt,
+    updatedAt,
   })
 }
 
-export async function finalizeImageSession({ prefs, opts = {}, config, sessionId, messages, outcome, createdAt, providerName = 'venice', stdout = process.stdout }) {
-  await persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: outcome.modelId, createdAt, providerName, endpointProviderName: outcome.endpointProviderName, pricing: outcome.pricing }))
+export async function finalizeImageSession({ prefs, opts = {}, config, sessionId, messages, outcome, createdAt, updatedAt, providerName = 'venice', stdout = process.stdout }) {
+  await persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: outcome.modelId, createdAt, updatedAt, providerName, endpointProviderName: outcome.endpointProviderName, pricing: outcome.pricing }))
   const updated = syncPreferenceUpdates(prefs, {
     lastImageModel: outcome.modelId,
     outputDir: opts.outputDir,
