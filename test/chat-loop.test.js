@@ -117,6 +117,17 @@ test('command trailing lines keep their whitespace', async (t) => {
   assert.deepEqual(sent, [['  indented body  ']])
 })
 
+test('a leading blank line before a command is not re-sent as a message', async (t) => {
+  mockConsole(t)
+  const { provider, calls } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['\n/status', '/quit']) })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  const sent = calls.map((c) => c.messages.filter((m) => m.role === 'user').map((m) => m.content))
+  assert.deepEqual(sent, [])
+})
+
 test('zdr flag flows to chatCompletion calls in interactive mode', async (t) => {
   mockConsole(t)
   const { provider, calls } = fakeProvider()

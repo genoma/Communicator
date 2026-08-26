@@ -79,3 +79,17 @@ test('readInput keeps cancelling via Ctrl+C within the reader', async (t) => {
   const result = await pending
   assert.deepEqual(result, { cancelled: true, partial: 'hello' })
 })
+
+test('readInput pre-fills the editor buffer with initialValue', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  t.mock.method(process.stdout, 'write', () => true)
+  const stdin = fakeStdin()
+  installFakeStdin(t, stdin)
+
+  const pending = readInput({ initialValue: 'original prompt' })
+  stdin.emit('data', '!')
+  stdin.emit('data', '\r')
+  await t.mock.timers.tick(0)
+  const result = await pending
+  assert.deepEqual(result, { value: 'original prompt!' })
+})

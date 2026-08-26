@@ -358,7 +358,12 @@ export async function runChatSession(ctx = {}, deps = {}) {
         sessionState.budgetWarned = false
       }
       if (outcome?.resetBudgetWarning) sessionState.budgetWarned = false
-      const trailing = rawInput.split('\n').slice(1).join('\n')
+      // The trailing lines start AFTER the command line in the raw input:
+      // leading blank/whitespace lines before the command are not part of
+      // the message body (trim() moved the command to line 0).
+      const rawLines = rawInput.split('\n')
+      const cmdIdx = rawLines.findIndex((line) => line.trim() === lines[0])
+      const trailing = rawLines.slice(cmdIdx + 1).join('\n')
       if (trailing.trim()) {
         const guard = budgetGuard(chatCtx)
         if (guard) {

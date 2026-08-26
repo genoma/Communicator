@@ -27,7 +27,8 @@ export async function readInput({ commands, onResizeRepaint, initialValue } = {}
     // timers) and resolves { kind: 'eof' } first; this listener then just
     // concludes with the cancelled result. ('end'/'close' dispatch on
     // registration order, which is why the call must come first.)
-    readEditor(initialValue ?? '', {
+    readEditor('', {
+      initialValue,
       prefix: '',
       linePrefix: '❯ ',
       helpFooter: true,
