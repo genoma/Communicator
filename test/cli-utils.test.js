@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolveFlagOrExit, collectFlag, fail } from '../src/cli-utils.js'
+import { resolveFlagOrExit, collectFlag, findUnmappedDashArg, fail } from '../src/cli-utils.js'
 import { CliError } from '../src/errors.js'
 import { resolveBudget } from '../src/flags.js'
 
@@ -8,6 +8,19 @@ test('collectFlag accumulates repeated --attach values', () => {
   assert.deepEqual(collectFlag('a.png', []), ['a.png'])
   assert.deepEqual(collectFlag('b.pdf', collectFlag('a.png', [])), ['a.png', 'b.pdf'])
   assert.deepEqual(collectFlag('c.txt', ['a.png', 'b.pdf']), ['a.png', 'b.pdf', 'c.txt'])
+})
+
+test('findUnmappedDashArg rejects dash-prefixed prompt args that are unmapped options', () => {
+  assert.equal(findUnmappedDashArg('-2', ['-2']), '-2')
+  assert.equal(findUnmappedDashArg('-2.5', ['-2.5']), '-2.5')
+  assert.equal(findUnmappedDashArg('-.5', ['-.5']), '-.5')
+})
+
+test('findUnmappedDashArg passes through normal prompts, lone dash, and -- escaped args', () => {
+  assert.equal(findUnmappedDashArg('hello', ['hello']), null)
+  assert.equal(findUnmappedDashArg('-', ['-']), null)
+  assert.equal(findUnmappedDashArg('-2', ['--', '-2']), null)
+  assert.equal(findUnmappedDashArg(undefined, ['--list-models']), null)
 })
 
 test('resolveFlagOrExit passes valid values through', () => {

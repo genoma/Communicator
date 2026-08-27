@@ -3,7 +3,7 @@
 import { Command } from 'commander'
 import pkg from './package.json' with { type: 'json' }
 import { runCli } from './src/cli-main.js'
-import { collectFlag } from './src/cli-utils.js'
+import { collectFlag, findUnmappedDashArg } from './src/cli-utils.js'
 
 const program = new Command()
 
@@ -55,5 +55,11 @@ program
 
 program.parse()
 const opts = program.opts()
+const promptArg = program.args[0]
 
-await runCli(opts, program.args[0])
+const unmapped = findUnmappedDashArg(promptArg, process.argv.slice(2))
+if (unmapped) {
+  program.error(`error: unknown option '${unmapped}'`)
+}
+
+await runCli(opts, promptArg)

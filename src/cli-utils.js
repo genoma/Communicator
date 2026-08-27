@@ -32,6 +32,16 @@ export function collectFlag(value, acc) {
   return acc
 }
 
+// Commander silently treats dash-prefixed positionals that look like negative
+// numbers ("-2") as arguments instead of unmapped options; reject them unless
+// the user escaped them with the "--" separator.
+export function findUnmappedDashArg(promptArg, argv) {
+  if (promptArg && promptArg.length > 1 && promptArg.startsWith('-') && !argv.includes('--')) {
+    return promptArg
+  }
+  return null
+}
+
 export function fail(message, code = 1) {
   console.error(message)
   process.exit(code)

@@ -219,6 +219,7 @@ Cross-path invariants pinned by `test/ui-consistency.test.js`. Every change must
 
 - Editor raw mode intercepts Ctrl+C at prompt; during streaming Ctrl+C is real SIGINT.
 - Piped stdin reads to EOF as one message; piped flows exit explicitly.
+- Commander 14 silently accepts dash-prefixed positionals that look like negative numbers (e.g. `-2`) instead of erroring on them; `index.js` rejects a leaked dash arg from the prompt slot via `findUnmappedDashArg` (`src/cli-utils.js`) unless the user escaped it with `--`, so unmapped flags fail fast with the same `error: unknown option '<arg>'` message Commander itself emits.
 
 ## Project strategy
 
