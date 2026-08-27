@@ -5,7 +5,7 @@ import { hyperlink, sanitizeAnsi, sanitizeSingleLine } from './hyperlink.js'
 import { SMOOTH_CHARS_PER_TICK, SMOOTH_TICK_MS } from '../constants.js'
 import { contentText, contentAttachments } from '../attachments.js'
 import { createThinkingMeter } from './loader.js'
-import { formatCompactCount } from './format.js'
+import { formatCompactCount, formatElapsedSeconds } from './format.js'
 
 // The one attachment/artifact line format shared by history replay, live
 // /attach confirmations, artifact reports and image outcomes: dim italic
@@ -18,7 +18,7 @@ export function attachmentLine(word, label, { meta = null, note = null, link = n
   return `${head}${link ?? ''}${metaText}${noteText}`
 }
 
-export function createStreamRenderer({ markdown = false, stdout = process.stdout, smooth = false, smoothCharsPerTick = SMOOTH_CHARS_PER_TICK, smoothTickMs = SMOOTH_TICK_MS, assistantMarker = null, compactThinking = false } = {}) {
+export function createStreamRenderer({ markdown = false, stdout = process.stdout, smooth = false, smoothCharsPerTick = SMOOTH_CHARS_PER_TICK, smoothTickMs = SMOOTH_TICK_MS, assistantMarker = null, compactThinking = false, now = null } = {}) {
   const md = createMarkdownRenderer({
     getSources: () => render.sources,
     stdout,
@@ -31,7 +31,7 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   const reasoningWrap = createWordWrap({ stdout, cols, style: dim })
   const contentWrap = createWordWrap({ stdout, cols })
 
-  const meter = createThinkingMeter({ stdout })
+  const meter = createThinkingMeter({ stdout, now: now ?? undefined })
 
   const queue = []
   let pumpTimer = null
@@ -230,7 +230,8 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
       if (msg.reasoning) {
         if (compactThinking) {
           const count = formatCompactCount(sanitizeAnsi(msg.reasoning).length)
-          out += `${green('✓')} Thinking · ${count}\n\n${answer()}\n\n`
+          const duration = msg.reasoningMs != null ? ` · ${formatElapsedSeconds(msg.reasoningMs)}` : ''
+          out += `${green('✓')} Thinking · ${count}${duration}\n\n${answer()}\n\n`
         } else {
           out += `${thinking()}\n\n`
           out += `${dim(wrapPlain(sanitizeAnsi(msg.reasoning)))}\n`

@@ -77,6 +77,19 @@ export function formatCompactCount(value) {
   return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
 }
 
+// Elapsed time for the thinking meter: one decimal under 10s (0.8s, 5.7s),
+// rounded seconds below a minute (42s), then minutes with padded seconds
+// (1m05s, 2m).
+export function formatElapsedSeconds(ms) {
+  const total = ms / 1000
+  if (total < 10) return `${(Math.round(total * 10) / 10).toFixed(1).replace(/\.0$/, '')}s`
+  const seconds = Math.round(total)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const rest = seconds % 60
+  return rest === 0 ? `${minutes}m` : `${minutes}m${String(rest).padStart(2, '0')}s`
+}
+
 export function formatSessionTime(value, { utc = false } = {}) {
   if (!value) return 'Unknown'
   let time = String(value).replace('T', ' ')

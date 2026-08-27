@@ -21,6 +21,7 @@ const nodeGlobals = {
   URL: 'readonly',
   URLSearchParams: 'readonly',
   Buffer: 'readonly',
+  performance: 'readonly',
   structuredClone: 'readonly',
   queueMicrotask: 'readonly',
   setImmediate: 'readonly',

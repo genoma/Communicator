@@ -203,7 +203,10 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
 
   if (result.content || result.parts?.length > 0) {
     const msg = { role: 'assistant', content: result.content }
-    if (result.reasoning) msg.reasoning = result.reasoning
+    if (result.reasoning) {
+      msg.reasoning = result.reasoning
+      if (result.reasoningMs != null) msg.reasoningMs = result.reasoningMs
+    }
     if (result.usage) msg.usage = result.usage
     if (result.sources?.length > 0) msg.sources = result.sources
     messages.push(msg)

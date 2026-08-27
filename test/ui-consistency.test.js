@@ -102,12 +102,12 @@ test('live streaming and history replay emit the same reasoning marker block', (
 
 test('compact live streaming and history replay emit the same checkpoint block', () => {
   const live = capture()
-  const liveRender = createStreamRenderer({ stdout: live.stdout, markdown: false, compactThinking: true })
+  const liveRender = createStreamRenderer({ stdout: live.stdout, markdown: false, compactThinking: true, now: () => 0 })
   liveRender('', 'start_reasoning')
   liveRender('thinking text', 'reasoning')
   liveRender('', 'end_reasoning')
   liveRender('answer', 'content')
-  const checkpointBlock = '✓ Thinking · 13\n\n❯ Answer\n\nanswer'
+  const checkpointBlock = '✓ Thinking · 13 · 0s\n\n❯ Answer\n\nanswer'
   // The meter redraws one line with \r + erase sequences; normalized, the
   // live transcript and the history replay carry the identical block.
   const norm = (s) => s.replace(/\r/g, '').replace(/\x1b\[K/g, '')
@@ -117,7 +117,7 @@ test('compact live streaming and history replay emit the same checkpoint block',
   renderHistory([
     { role: 'system', content: 'sys' },
     { role: 'user', content: 'question' },
-    { role: 'assistant', content: 'answer', reasoning: 'thinking text' },
+    { role: 'assistant', content: 'answer', reasoning: 'thinking text', reasoningMs: 0 },
   ], { markdown: false, stdout: history.stdout, compactThinking: true })
   assert.ok(history.text().includes(checkpointBlock), 'history replay must include the same checkpoint block')
 })

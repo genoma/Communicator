@@ -26,6 +26,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
     const msg = { role: 'assistant', content: apiResult.content }
     if (apiResult.reasoning) {
       msg.reasoning = apiResult.reasoning
+      if (apiResult.reasoningMs != null) msg.reasoningMs = apiResult.reasoningMs
     }
     if (apiResult.usage) {
       msg.usage = apiResult.usage

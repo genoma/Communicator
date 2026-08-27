@@ -1,6 +1,6 @@
 import { dim, cyan, green } from './style.js'
 import { LOADER_GRACE_MS, LOADER_TICK_MS } from '../constants.js'
-import { formatCompactCount } from './format.js'
+import { formatCompactCount, formatElapsedSeconds } from './format.js'
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
@@ -94,23 +94,31 @@ export function createLoader({ stdout = process.stdout, graceMs = LOADER_GRACE_M
 
 // The compact-thinking indicator: the same line format as the loader (dim
 // label + cyan braille spinner), but the label carries a live count of the
-// reasoning characters received so far. `update` only bumps the counter; the
-// next tick paints it, so reasoning bursts never flood the terminal with
-// rewrites. `stop({ done: true })` always resolves the line to a green
-// checkpoint — even when thinking finished inside the grace window, so the
-// final transcript is deterministic (`✓ Thinking · N`).
-export function createThinkingMeter({ stdout = process.stdout, graceMs = LOADER_GRACE_MS, tickMs = LOADER_TICK_MS, label = 'Thinking' } = {}) {
+// reasoning characters received so far and the elapsed thinking time. `update`
+// only bumps the counter; the next tick paints it (and the seconds), so
+// reasoning bursts never flood the terminal with rewrites. `stop({ done: true
+// })` always resolves the line to a green checkpoint — even when thinking
+// finished inside the grace window, so the final transcript is deterministic
+// (`✓ Thinking · N · 3s`).
+export function createThinkingMeter({ stdout = process.stdout, graceMs = LOADER_GRACE_MS, tickMs = LOADER_TICK_MS, label = 'Thinking', now = () => performance.now() } = {}) {
   let count = 0
+  let startedAt = 0
+  let elapsed = 0
   let stopped = true
+  const meterLine = (running) => {
+    const seconds = formatElapsedSeconds(running ? now() - startedAt : elapsed)
+    return `${label} · ${formatCompactCount(count)} · ${seconds}`
+  }
   const spinner = createSpinner({
     stdout,
     graceMs,
     tickMs,
-    drawLine: (frame) => `\r${dim(`${label} · ${formatCompactCount(count)}`)} ${cyan(frame)}`,
+    drawLine: (frame) => `\r${dim(meterLine(true))} ${cyan(frame)}`,
   })
   return {
     start() {
       count = 0
+      startedAt = now()
       stopped = false
       spinner.start()
     },
@@ -120,9 +128,10 @@ export function createThinkingMeter({ stdout = process.stdout, graceMs = LOADER_
     stop({ done = false } = {}) {
       if (stopped) return
       stopped = true
+      elapsed = now() - startedAt
       spinner.stopTimers()
       if (done) {
-        stdout.write(`\r${green('✓')} ${label} · ${formatCompactCount(count)}\x1b[K\n`)
+        stdout.write(`\r${green('✓')} ${meterLine(false)}\x1b[K\n`)
         spinner.hide()
         return
       }

@@ -79,6 +79,8 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
   const seenParts = new Set()
   let buffer = ''
   let inThinking = false
+  let reasoningStartedAt = null
+  let reasoningMs = null
   let finalUsage = null
   let skippedChunks = 0
   const fullSources = []
@@ -136,6 +138,16 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     if (idleTimeoutMs > 0) timer = setTimeout(onTimeout, idleTimeoutMs)
   })
 
+  // One start/end cycle per thinking block; the elapsed time feeds the
+  // compact-thinking meter checkpoint and session replay.
+  const closeThinking = () => {
+    if (!inThinking) return
+    inThinking = false
+    reasoningMs = reasoningStartedAt !== null ? performance.now() - reasoningStartedAt : null
+    reasoningStartedAt = null
+    onToken(null, 'end_reasoning')
+  }
+
   let pendingDataLines = []
   const handleDataEvent = (data) => {
     if (data === SSE_DONE) return
@@ -178,10 +190,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
       for (const part of finalContent) {
         if (part?.type === 'text' && typeof part.text === 'string') {
           if (noTextYet) {
-            if (inThinking) {
-              inThinking = false
-              onToken(null, 'end_reasoning')
-            }
+            closeThinking()
             const text = maybeDecrypt(part.text)
             fullTextParts.push(text)
             onToken(text, 'content')
@@ -192,10 +201,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
         }
       }
     } else if (typeof finalContent === 'string' && fullTextParts.length === 0) {
-      if (inThinking) {
-        inThinking = false
-        onToken(null, 'end_reasoning')
-      }
+      closeThinking()
       const text = maybeDecrypt(finalContent)
       fullTextParts.push(text)
       onToken(text, 'content')
@@ -215,6 +221,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
       fullReasoningParts.push(text)
       if (!inThinking) {
         inThinking = true
+        reasoningStartedAt = performance.now()
         onToken('\n', 'start_reasoning')
       }
       onToken(text, 'reasoning')
@@ -229,10 +236,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     const hasContent = contentToken != null &&
       (typeof contentToken === 'string' ? contentToken !== '' : Array.isArray(contentToken) ? contentToken.length > 0 : true)
     if (hasContent) {
-      if (inThinking) {
-        inThinking = false
-        onToken(null, 'end_reasoning')
-      }
+      closeThinking()
       if (typeof contentToken === 'string' && contentToken) {
         // Skip delta text when the same chunk already emitted the final
         // message content (it duplicates it exactly).
@@ -307,7 +311,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     }
     // A stream that ends mid-thinking (reasoning deltas with no content
     // delta) must still close the thinking block for the renderer.
-    if (inThinking) onToken(null, 'end_reasoning')
+    closeThinking()
   } finally {
     // A stall or stream error must not leave the connection parked until the
     // server closes it; cancelling the reader aborts the fetch. A fully
@@ -315,5 +319,5 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     await reader.cancel?.().catch(() => {})
   }
 
-  return { fullText: fullTextParts.join(''), fullReasoning: fullReasoningParts.join(''), finalUsage, fullSources, skippedChunks, fullParts }
+  return { fullText: fullTextParts.join(''), fullReasoning: fullReasoningParts.join(''), finalUsage, fullSources, skippedChunks, fullParts, reasoningMs }
 }

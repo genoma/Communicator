@@ -545,6 +545,54 @@ test('compact thinking hands the loader to the meter without a checkmark', async
   assert.equal(state.messages[2].reasoning, 'thinking')
 })
 
+test('stores the reasoning duration on the assistant message', async (t) => {
+  mockConsole(t)
+  const render = () => {}
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => {}
+  const state = fakeState()
+  const provider = {
+    async chatCompletion(opts) {
+      opts.onToken(null, 'start_reasoning')
+      opts.onToken('thinking', 'reasoning')
+      opts.onToken(null, 'end_reasoning')
+      opts.onToken('Hello', 'content')
+      return { content: 'Hello', reasoning: 'thinking', reasoningMs: 1234 }
+    },
+  }
+  const { deps } = makeDeps({ render, provider })
+
+  await runTurn(deps, state)
+
+  assert.equal(state.messages[2].reasoning, 'thinking')
+  assert.equal(state.messages[2].reasoningMs, 1234)
+})
+
+test('omits the duration when the result carries none', async (t) => {
+  mockConsole(t)
+  const render = () => {}
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => {}
+  const state = fakeState()
+  const provider = {
+    async chatCompletion(opts) {
+      opts.onToken(null, 'start_reasoning')
+      opts.onToken('thinking', 'reasoning')
+      opts.onToken(null, 'end_reasoning')
+      opts.onToken('Hello', 'content')
+      return { content: 'Hello', reasoning: 'thinking' }
+    },
+  }
+  const { deps } = makeDeps({ render, provider })
+
+  await runTurn(deps, state)
+
+  assert.equal(state.messages[2].reasoning, 'thinking')
+  assert.equal(state.messages[2].reasoningMs, undefined)
+})
+
 test('full mode starts the turn with a blank row above the marker and never checkmarks the loader during thinking', async (t) => {
   mockConsole(t)
   const calls = []

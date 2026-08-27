@@ -88,6 +88,37 @@ test('emits reasoning then content transition events', async () => {
   ])
 })
 
+test('reports the reasoning phase duration when reasoning was streamed', async () => {
+  const { fullReasoning, reasoningMs } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { reasoning_content: 'think' } }] }),
+      event({ choices: [{ delta: { content: 'Answer' } }] }),
+    ]),
+    () => {}
+  )
+  assert.equal(fullReasoning, 'think')
+  assert.equal(typeof reasoningMs, 'number')
+  assert.ok(reasoningMs >= 0 && reasoningMs < 60_000)
+})
+
+test('reports the duration when the stream ends mid-thinking', async () => {
+  const { fullReasoning, reasoningMs } = await parseSSEStream(
+    streamReader([event({ choices: [{ delta: { reasoning_content: 'deep' } }] })]),
+    () => {}
+  )
+  assert.equal(fullReasoning, 'deep')
+  assert.equal(typeof reasoningMs, 'number')
+  assert.ok(reasoningMs >= 0)
+})
+
+test('reports null reasoning duration when no reasoning was streamed', async () => {
+  const { reasoningMs } = await parseSSEStream(
+    streamReader([event({ choices: [{ delta: { content: 'ok' } }] })]),
+    () => {}
+  )
+  assert.equal(reasoningMs, null)
+})
+
 test('captures usage chunk and skips [DONE]', async () => {
   const usage = { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 }
   const { fullText, finalUsage } = await parseSSEStream(
