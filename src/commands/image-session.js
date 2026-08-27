@@ -7,6 +7,7 @@ import { findImageModel, selectImageEndpoint, selectModelAndEndpoint } from '../
 import { sessionLabel } from '../ui/format.js'
 import { dim } from '../ui/style.js'
 import { connectedBanner, buildImageStatusLine, wrapStatusLine } from '../status-line.js'
+import { sanitizeSingleLine } from '../ui/hyperlink.js'
 import { CliError, commandErrorLine, formatError } from '../errors.js'
 import { resolveAspectRatio, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
@@ -63,7 +64,7 @@ async function persistClearedDefault(prefs, providerName, key, save, message) {
 }
 
 function unsupportedListError(kind, value, model, list) {
-  return `Error: ${kind} ${value} is not supported by ${model.id}. Supported: ${list.join(', ')}.`
+  return `Error: ${kind} ${value} is not supported by ${sanitizeSingleLine(model.id)}. Supported: ${sanitizeSingleLine(list.join(', '))}.`
 }
 
 // Marks the current value in brackets inside the model's supported list,
@@ -74,10 +75,11 @@ function pluralKind(kind) {
 }
 
 function supportedListLine(kind, values, current, model) {
-  const marked = values.map((v) => (v === current ? `[${v}]` : v)).join(' ')
+  const marked = sanitizeSingleLine(values.map((v) => (v === current ? `[${v}]` : v)).join(' '))
   const label = pluralKind(kind)
+  const id = sanitizeSingleLine(model.id)
   if (current && values.includes(current)) return `${label}: ${marked}.`
-  if (current) return `${label}: ${marked} (${current} not supported by ${model.id}).`
+  if (current) return `${label}: ${marked} (${current} not supported by ${id}).`
   return `${label}: ${marked} (none set).`
 }
 
@@ -261,11 +263,11 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
           if (Array.isArray(list)) {
             console.log(`${supportedListLine(handler.kind, list, current, model)}\n`)
           } else {
-            console.log(`${handler.kind} is not supported by ${model.id}.\n`)
+            console.log(`${handler.kind} is not supported by ${sanitizeSingleLine(model.id)}.\n`)
           }
         } else if (!handler.listKey) {
           if (handler.flagKey === 'variants') {
-            const maxN = model.constraints?.maxN != null ? model.constraints.maxN : 4
+            const maxN = sanitizeSingleLine(String(model.constraints?.maxN != null ? model.constraints.maxN : 4))
             console.log(current === undefined ? `Variants: 1-${maxN} (none set).\n` : `Variants: 1-${maxN} (current: ${current}).\n`)
           } else {
             console.log(current === undefined ? 'Seed: not set.\n' : `Seed: ${current}.\n`)
@@ -295,7 +297,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         const constraints = model.constraints
         const list = constraints?.[handler.listKey]
         if (constraints && !Array.isArray(list)) {
-          console.error(`Error: ${handler.errorKind} is not supported by ${model.id}.\n`)
+          console.error(`Error: ${handler.errorKind} is not supported by ${sanitizeSingleLine(model.id)}.\n`)
           continue
         }
         if (Array.isArray(list) && !list.includes(parsed)) {
@@ -303,7 +305,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
           continue
         }
       } else if (handler.flagKey === 'variants' && model.constraints?.maxN != null && parsed > model.constraints.maxN) {
-        console.error(`Error: variants ${parsed} is not supported by ${model.id}. Supported: 1-${model.constraints.maxN}.\n`)
+        console.error(`Error: variants ${parsed} is not supported by ${sanitizeSingleLine(model.id)}. Supported: 1-${sanitizeSingleLine(String(model.constraints.maxN))}.\n`)
         continue
       }
       sessionValues[handler.flagKey] = parsed
@@ -328,7 +330,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         } else if (isPixelModel(model)) {
           console.log(`${aspectPresetLine(sizePresets(model), current)}\n`)
         } else if (model.constraints) {
-          console.log(`Aspect ratio is not supported by ${model.id}.\n`)
+          console.log(`Aspect ratio is not supported by ${sanitizeSingleLine(model.id)}.\n`)
         } else {
           console.log(current ? `Aspect ratio: ${current}.\n` : 'Aspect ratio: not set.\n')
         }
@@ -353,7 +355,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       // derived from the ratio). Other models without a list cannot take the
       // parameter at all.
       if (constraints && !Array.isArray(ratios) && !isPixelModel(model)) {
-        console.error(`Error: aspect ratio is not supported by ${model.id}.\n`)
+        console.error(`Error: aspect ratio is not supported by ${sanitizeSingleLine(model.id)}.\n`)
         continue
       }
       const supported = isPixelModel(model) ? SIZE_PRESET_RATIOS : ratios

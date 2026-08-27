@@ -108,6 +108,61 @@ test('listImageModelsCmd prints token-billed prices per 1M tokens', async (t) =>
   assert.ok(lines[1].includes('?'))
 })
 
+test('listModelsCmd strips terminal escape sequences from remote catalog fields', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const provider = {
+    async fetchModels() {
+      return [
+        {
+          id: 'escape/model',
+          name: 'Escape',
+          contextLength: 128000,
+          visionSupported: true,
+          pricing: { prompt: 0.000001, completion: 0.000002 },
+          capabilities: { privacy: '\x1b[2Janonymized\x1b[0m' },
+        },
+      ]
+    },
+  }
+
+  await listModelsCmd(provider, 'key')
+
+  const lines = consoleSpy.allLogs()
+  assert.equal(lines.length, 1)
+  assert.ok(!lines[0].includes('\x1b'))
+  assert.ok(lines[0].includes('[anonymized]'))
+})
+
+test('listImageModelsCmd strips terminal escape sequences from remote constraint lists', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const provider = {
+    async fetchImageModels() {
+      return [
+        {
+          id: 'escape/image',
+          name: 'Escape Image',
+          pricing: { perImage: 0.02, byResolution: null, byQuality: null },
+          constraints: {
+            aspectRatios: ['1:1', '\x1b[31m16:9\x1b[0m'],
+            resolutions: ['\x1b[2J1K'],
+            qualities: ['low'],
+          },
+          privacy: 'anonymized\x1b]0;title\x07',
+          offline: false,
+        },
+      ]
+    },
+  }
+
+  await listImageModelsCmd(provider, 'key')
+
+  const lines = consoleSpy.allLogs()
+  assert.equal(lines.length, 1)
+  assert.ok(!lines[0].includes('\x1b'))
+  assert.ok(lines[0].includes('[aspect: 1:1, 16:9]'))
+  assert.ok(lines[0].includes('[resolution: 1K]'))
+})
+
 test('listImageModelsCmd requests pricing for OpenRouter and prints from-price rows with tags', async (t) => {
   const consoleSpy = mockConsole(t)
   let pricingRequested = false

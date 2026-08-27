@@ -583,6 +583,45 @@ test('/aspect bare notes a stored value outside the supported list', async (t) =
   assert.ok(logs.some((l) => l.includes('Aspect ratios: 1:1 16:9 3:2 (21:9 not supported by venice-sd35).')))
 })
 
+test('image session strips terminal escape sequences from remote model ids and constraint lists', async (t) => {
+  const logs = []
+  const errs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', (line) => { errs.push(String(line)) })
+  const evilProvider = {
+    meta: { name: 'venice' },
+    async fetchImageModels() {
+      return [{
+        id: 'venice-\x1b[2Jsanitize',
+        name: 'SD 3.5',
+        pricing: { perImage: 0.02 },
+        constraints: {
+          aspectRatios: ['1:1', '\x1b[31m16:9\x1b[0m'],
+          formats: ['png'],
+          resolutions: ['\x1b[2J1K', '2K'],
+          qualities: ['low'],
+          maxN: '2',
+        },
+      }]
+    },
+  }
+
+  await startImageSession(baseOpts({
+    provider: evilProvider,
+    imageModelId: 'venice-\x1b[2Jsanitize',
+    readInput: scriptedInput(['/aspect', '/resolution', '/variants', '/resolution 4K', '/variants 3', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('Aspect ratios: 1:1 16:9 (none set).')))
+  assert.ok(logs.some((l) => l.includes('Resolutions: 1K 2K (none set).')))
+  assert.ok(logs.some((l) => l.includes('Variants: 1-2 (none set).')))
+  assert.ok(errs.some((l) => l.includes('resolution 4K is not supported by venice-sanitize. Supported: 1K, 2K.')))
+  assert.ok(errs.some((l) => l.includes('variants 3 is not supported by venice-sanitize. Supported: 1-2.')))
+  for (const line of [...logs, ...errs]) {
+    assert.ok(!line.includes('\x1b'), `unexpected escape sequence in: ${line}`)
+  }
+})
+
 test('/aspect clear unsets the ratio and removes the persisted key', async (t) => {
   genCalls.length = 0
   genOpts.length = 0
