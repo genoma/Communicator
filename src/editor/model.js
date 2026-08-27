@@ -47,7 +47,7 @@ export function createModel(options = {}) {
 }
 
 // --- Undo / Redo ---
-export function takeSnapshot(model) {
+function takeSnapshot(model) {
   return { lines: [...model.lines], row: model.row, col: model.col }
 }
 
@@ -86,18 +86,18 @@ export function redo(model) {
 }
 
 // --- Status ---
-export function setStatus(model, text, color) {
+function setStatus(model, text, color) {
   model.statusText = text
   model.statusColor = color
 }
 
-export function clearStatus(model) {
+function clearStatus(model) {
   model.statusText = ''
   model.statusColor = ''
 }
 
 // --- Content change handling ---
-export function postEdit(model) {
+function postEdit(model) {
   model.dismissUntilEdit = false
   if (model.maxLength != null) {
     const len = contentLength(model.lines)
@@ -438,7 +438,7 @@ export function moveRight(model) {
 }
 
 /** Move cursor one line up, preserving visual column position */
-export function moveUp(model) {
+function moveUp(model) {
   if (model.row <= 0) return
   const vc = visualCol(model.lines[model.row], model.col)
   model.row--
@@ -448,7 +448,7 @@ export function moveUp(model) {
 }
 
 /** Move cursor one line down, preserving visual column position */
-export function moveDown(model) {
+function moveDown(model) {
   if (model.row >= model.lines.length - 1) return
   const vc = visualCol(model.lines[model.row], model.col)
   model.row++
@@ -595,7 +595,7 @@ export function bufferEnd(model) {
 
 // --- History ---
 /** Replace editor content and place cursor at the specified position */
-export function loadContent(model, content, cursor = 'end') {
+function loadContent(model, content, cursor = 'end') {
   const newLines = content.split('\n')
   model.lines = newLines
   model.row = newLines.length - 1

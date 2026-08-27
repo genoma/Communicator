@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ApiError, formatError } from '../src/errors.js'
+import { ApiError, formatError, commandErrorLine } from '../src/errors.js'
 import { resolveReasoningFlag } from '../src/flags.js'
 import { formatModelPrice, formatPricePerM, formatSessionTime, formatCompactCount } from '../src/ui/format.js'
 import { normalizePricing as normalizeVenice } from '../src/providers/venice.js'
@@ -19,6 +19,12 @@ test('formatError returns ApiError message and falls back gracefully', () => {
   assert.equal(formatError(new ApiError('rate limited', {})), 'rate limited')
   assert.equal(formatError(new Error('plain')), 'plain')
   assert.equal(formatError('string error'), 'string error')
+})
+
+test('formatError and commandErrorLine sanitize provider-controlled escapes', () => {
+  const hostile = 'provider \x1b[2J said \u009b2J boom\x07'
+  assert.equal(formatError(new ApiError(hostile, {})), 'provider  said 2J boom')
+  assert.equal(commandErrorLine(new Error(hostile)), '\nError: provider  said 2J boom\n')
 })
 
 test('resolveReasoningFlag normalizes effort semantics', () => {

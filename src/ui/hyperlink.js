@@ -2,14 +2,18 @@
 /* eslint-disable no-control-regex */
 
 // Strips ANSI escape sequences (full CSI with parameter/intermediate bytes,
-// OSC, charset-select, stray ESC) while preserving newlines — safe for
-// multi-line model/provider-derived text written to the terminal.
+// OSC, charset-select, stray ESC) while preserving newlines and tabs — safe
+// for multi-line model/provider-derived text written to the terminal. Bare
+// C0 controls (BEL, CR, ...), DEL and the C1 range (U+0080–U+009F, which
+// terminals interpret as 8-bit CSI/OSC) are stripped as well: without them a
+// lone U+009B could still inject an escape sequence.
 export function sanitizeAnsi(text) {
   return String(text ?? '')
     .replace(/\x1b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g, '')
     .replace(/\x1b\][^\x1b]*(?:\x1b\\)?/g, '')
     .replace(/\x1b[()][0-9A-Za-z]/g, '')
     .replace(/\x1b/g, '')
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, '')
 }
 
 // Link labels/URLs must stay single-line: newlines are stripped here in

@@ -15,7 +15,7 @@ import { buildStatusLine, wrapStatusLine } from '../../status-line.js'
 import { scrapeContext, scrapeMessage } from '../../scrape.js'
 const ARG_COMMANDS = new Set(['/temp', '/top-p', '/budget', '/web-search', '/web-results', '/smooth', '/compact-thinking', '/attach', '/attachments', '/scrape'])
 
-export function showStatus(ctx) {
+function showStatus(ctx) {
   console.log(`${wrapStatusLine(dim('Current settings:'), buildStatusLine(ctx.state))}\n`)
 }
 
@@ -231,7 +231,7 @@ const handlers = {
     try {
       parsed = resolveTemperatureFlag({ temperature: value })
     } catch (err) {
-      console.error(`\nError: ${err.message}\n`)
+      console.error(commandErrorLine(err))
       return
     }
     ctx.state.setTemperature(parsed)
@@ -257,7 +257,7 @@ const handlers = {
     try {
       parsed = resolveTopPFlag({ topP: value })
     } catch (err) {
-      console.error(`\nError: ${err.message}\n`)
+      console.error(commandErrorLine(err))
       return
     }
     ctx.state.setTopP(parsed)
@@ -273,7 +273,7 @@ const handlers = {
       try {
         parsed = resolveBudget(value)
       } catch (err) {
-        console.error(`\nError: ${err.message}\n`)
+        console.error(commandErrorLine(err))
         return
       }
       ctx.state.setBudget(parsed)
@@ -334,7 +334,7 @@ const handlers = {
     try {
       parsed = resolveWebResultsFlag({ webResults: value })
     } catch (err) {
-      console.error(`\nError: ${err.message}\n`)
+      console.error(commandErrorLine(err))
       return
     }
     ctx.state.setWebResults(parsed)
@@ -492,7 +492,7 @@ const handlers = {
     try {
       cps = resolveSmoothSpeed(value)
     } catch (err) {
-      console.error(`\nError: ${err.message}\n`)
+      console.error(commandErrorLine(err))
       return
     }
     ctx.state.setSmoothStreaming(true)

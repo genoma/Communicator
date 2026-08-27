@@ -25,7 +25,7 @@ function markerTail(seq, marker) {
  * is incomplete and more bytes are expected. A control byte inside a CSI makes
  * the escape malformed: the sequence ends there so the byte is reprocessed.
  */
-export function escapeLength(seq, start) {
+function escapeLength(seq, start) {
   const s = seq.slice(start)
   if (s.length < 2) return 0
   if (s[1] === '[') {

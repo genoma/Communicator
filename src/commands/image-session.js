@@ -7,7 +7,7 @@ import { findImageModel, selectImageEndpoint, selectModelAndEndpoint } from '../
 import { sessionLabel } from '../ui/format.js'
 import { dim } from '../ui/style.js'
 import { connectedBanner, buildImageStatusLine, wrapStatusLine } from '../status-line.js'
-import { CliError, commandErrorLine } from '../errors.js'
+import { CliError, commandErrorLine, formatError } from '../errors.js'
 import { resolveAspectRatio, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
 import { runImageGeneration, printImageOutcome, buildImageSessionPayload, handleWatermarkCommand } from './image-gen.js'
@@ -288,7 +288,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       try {
         parsed = handler.resolve(value)
       } catch (err) {
-        console.error(`Error: ${err.message}\n`)
+        console.error(`Error: ${formatError(err)}\n`)
         continue
       }
       if (handler.listKey) {
@@ -343,7 +343,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       try {
         parsed = resolveAspectRatio(value)
       } catch (err) {
-        console.error(`Error: ${err.message}\n`)
+        console.error(`Error: ${formatError(err)}\n`)
         continue
       }
       const constraints = model.constraints

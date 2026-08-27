@@ -3,7 +3,7 @@ import { extname, basename, resolve } from 'node:path'
 import { MAX_IMAGE_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES, MAX_INLINE_TEXT_ATTACHMENT_BYTES } from './constants.js'
 import { CliError } from './errors.js'
 
-export const IMAGE_MIMES = {
+const IMAGE_MIMES = {
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
@@ -12,14 +12,14 @@ export const IMAGE_MIMES = {
   bmp: 'image/bmp',
 }
 
-export const OFFICE_MIMES = {
+const OFFICE_MIMES = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   xls: 'application/vnd.ms-excel',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 }
 
-export const PDF_MIME = 'application/pdf'
+const PDF_MIME = 'application/pdf'
 
 const MIME_EXT = {
   'image/png': 'png',

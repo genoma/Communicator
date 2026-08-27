@@ -61,7 +61,7 @@ function isPrivateAddress(address) {
 // addresses the guard approved. The subsequent request pins DNS to those
 // addresses, closing the check-then-fetch race a rebinding domain could
 // otherwise exploit (guard approves one resolution, fetch uses another).
-export async function resolveSafeUrl(url) {
+async function resolveSafeUrl(url) {
   let parsed
   try {
     parsed = new URL(url)

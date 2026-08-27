@@ -3,12 +3,12 @@ import { join } from 'node:path'
 import { CliError } from './errors.js'
 import { writeFileAtomic } from './fs-utils.js'
 
-export const RPG_FILES = ['char.md', 'user.md', 'prompt.md', 'scenario.md', 'first-message.md']
-export const RPG_POST_HISTORY_FILE = 'post-history-instruction.md'
-export const RPG_TEMPLATE_MARKER = 'RPG_TEMPLATE'
-export const RPG_FIRST_MESSAGE_PLACEHOLDER = 'RPG_FIRST_MESSAGE_TODO'
-export const RPG_HISTORY_FILE = 'history.json'
-export const RPG_PROMPT_LOG_FILE = 'prompt-log.jsonl'
+const RPG_FILES = ['char.md', 'user.md', 'prompt.md', 'scenario.md', 'first-message.md']
+const RPG_POST_HISTORY_FILE = 'post-history-instruction.md'
+const RPG_TEMPLATE_MARKER = 'RPG_TEMPLATE'
+const RPG_FIRST_MESSAGE_PLACEHOLDER = 'RPG_FIRST_MESSAGE_TODO'
+const RPG_HISTORY_FILE = 'history.json'
+const RPG_PROMPT_LOG_FILE = 'prompt-log.jsonl'
 
 const CARD_TEMPLATE = `<!-- RPG_TEMPLATE: delete this comment after filling in this file.
      Fill every section below (rename, remove, or add sections as needed).

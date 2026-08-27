@@ -1,3 +1,5 @@
+import { sanitizeAnsi } from './ui/hyperlink.js'
+
 export class ApiError extends Error {
   constructor(message, { status = null, provider = null, retryable = false, cause = null } = {}) {
     super(message, { cause })
@@ -23,16 +25,19 @@ export class CliError extends Error {
   }
 }
 
+// Error messages can carry provider/model-derived text (SSE stream errors,
+// HTTP error bodies), so the terminal-facing renderings are sanitized here —
+// the same treatment content/reasoning output gets before display.
 export function formatError(err) {
-  if (err instanceof ApiError) return err.message
-  return err?.message || String(err)
+  if (err instanceof ApiError) return sanitizeAnsi(err.message)
+  return sanitizeAnsi(err?.message || String(err))
 }
 
 // One-line rendering of a command failure: CliErrors already carry their
 // user-facing text, everything else is prefixed and passed through
 // formatError.
 export function commandErrorLine(err) {
-  return err instanceof CliError ? `\n${err.message}\n` : `\nError: ${formatError(err)}\n`
+  return err instanceof CliError ? `\n${sanitizeAnsi(err.message)}\n` : `\nError: ${formatError(err)}\n`
 }
 
 export function makeHandleHttpError({ providerName, providerId = providerName, apiKeyEnv, notFoundMessage = null }) {

@@ -276,7 +276,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
       void bestEffortSave()
     },
     uncaughtException: (err) => {
-      console.error(`\nUnhandled error: ${err?.message || err}`)
+      console.error(`\nUnhandled error: ${formatError(err)}`)
       void bestEffortSave().finally(() => exit(1))
     },
   })

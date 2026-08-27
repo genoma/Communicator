@@ -7,7 +7,7 @@ import { bold, dim } from './ui/style.js'
 
 export const BACK_SENTINEL = Symbol('back')
 
-export const BACK_CHOICE = {
+const BACK_CHOICE = {
   name: '← Back to model selection',
   value: BACK_SENTINEL,
   description: 'Return to the model picker',

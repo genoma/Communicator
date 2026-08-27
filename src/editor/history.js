@@ -32,7 +32,7 @@ export function loadHistory(filePath, maxEntries) {
  * readers never observe a partial JSON document. Errors are silently swallowed
  * to preserve the prior fire-and-forget semantics.
  */
-export function saveHistory(filePath, entries) {
+function saveHistory(filePath, entries) {
   const resolved = expandHome(filePath)
   try {
     mkdirSync(dirname(resolved), { recursive: true, mode: 0o700 })
@@ -67,7 +67,7 @@ export function appendPersistedHistory(filePath, entry, maxEntries) {
 }
 
 /** Append an entry to the history array and apply maxEntries limit. Returns a new array. */
-export function appendHistory(entries, entry, maxEntries) {
+function appendHistory(entries, entry, maxEntries) {
   const updated = [...entries, entry]
   if (maxEntries != null && maxEntries > 0 && updated.length > maxEntries) {
     return updated.slice(-maxEntries)

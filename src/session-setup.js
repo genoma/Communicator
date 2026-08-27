@@ -36,7 +36,7 @@ export function attachGateOptions(selection, providerMeta) {
 // Resolves a sampling param (temperature/top-p): an explicit flag wins over
 // the persisted per-model pref; a null forced value (the "default" keyword)
 // clears the persisted pref and falls back to the provider default.
-export function samplingPrefValue(forced, persisted, prefs, section, modelId) {
+function samplingPrefValue(forced, persisted, prefs, section, modelId) {
   if (forced === null) {
     if (prefs[section]?.[modelId] !== undefined) {
       syncPreferenceUpdates(prefs, { modelId, [section]: null })

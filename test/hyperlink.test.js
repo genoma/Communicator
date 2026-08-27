@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { hyperlink } from '../src/ui/hyperlink.js'
+import { hyperlink, sanitizeAnsi } from '../src/ui/hyperlink.js'
 
 test('hyperlink wraps a plain url and label in OSC 8 escapes', () => {
   assert.equal(hyperlink('https://example.com', 'Example'), '\x1b]8;;https://example.com\x1b\\Example\x1b]8;;\x1b\\')
@@ -35,4 +35,16 @@ test('hyperlink returns null for non-http(s) schemes', () => {
     assert.equal(hyperlink(url, 'x'), null)
   }
   assert.ok(hyperlink('http://example.com', 'x'))
+})
+
+test('sanitizeAnsi strips C1 controls (U+009B is 8-bit CSI)', () => {
+  assert.equal(sanitizeAnsi('hello\u009b2Jworld'), 'hello2Jworld')
+})
+
+test('sanitizeAnsi strips bare C0 controls but keeps newline and tab', () => {
+  assert.equal(sanitizeAnsi('a\u0007b'), 'ab') // BEL
+  assert.equal(sanitizeAnsi('a\rb'), 'ab') // CR
+  assert.equal(sanitizeAnsi('a\r\nb'), 'a\nb') // CRLF collapses to LF
+  assert.equal(sanitizeAnsi('a\nb\tc'), 'a\nb\tc') // LF/tab preserved
+  assert.equal(sanitizeAnsi('x\u007f\u009b'), 'x') // DEL + C1
 })

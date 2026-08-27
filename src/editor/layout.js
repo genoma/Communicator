@@ -28,7 +28,7 @@ export function wrapSegments(text, limit) {
  * indexOf, whose first-match search mislocates a segment whose text also
  * appears at the drop site, e.g. a space run around a fold at limit 1).
  */
-export function wrapSegmentsDetailed(text, limit) {
+function wrapSegmentsDetailed(text, limit) {
   const segments = []
   const starts = []
   const drops = []

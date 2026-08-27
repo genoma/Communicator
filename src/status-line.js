@@ -35,7 +35,7 @@ export function wrapStatusLine(prefix, segments, width = process.stdout.columns 
   return rows.join('\n')
 }
 
-export function buildStatusBadges(state) {
+function buildStatusBadges(state) {
   const parts = []
   if (state.reasoningEffort != null) parts.push(kv('thinking', getEffortLabel(state.reasoningEffort)))
   parts.push(kv('temp', formatSamplingValue(state.temperature)))

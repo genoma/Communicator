@@ -51,7 +51,7 @@ export function contextSegment(peakTokens, contextLength, hit = false) {
   return contextStyle(pct)(`CTX ${renderBar(pct)} ${pct.toFixed(0)}%`)
 }
 
-export function contextLine(peakTokens, contextLength) {
+function contextLine(peakTokens, contextLength) {
   if (!contextLength || contextLength <= 0) return null
   const pct = Math.min(100, (peakTokens / contextLength) * 100)
   if (pct < CTX_MIN_PCT) return null
