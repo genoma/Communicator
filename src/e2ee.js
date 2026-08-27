@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createECDH, hkdfSync, randomBytes } from 'node:crypto'
+import { createCipheriv, createDecipheriv, createECDH, hkdfSync, randomBytes, timingSafeEqual } from 'node:crypto'
 import { fetchWithRetry } from './http.js'
 import { ApiError } from './errors.js'
 import { VENICE_BASE } from './constants.js'
@@ -37,9 +37,20 @@ export function createE2eeClient() {
 }
 
 function normalizeModelPubKey(hex) {
-  if (typeof hex !== 'string') return null
-  if (!hex.startsWith('04') && hex.length === 128) return `04${hex}`
-  return hex.startsWith('04') ? hex : null
+  if (typeof hex !== 'string' || !/^[0-9a-fA-F]+$/.test(hex)) return null
+  if (hex.length === 128) return `04${hex}`
+  if (hex.length === 130 && hex.startsWith('04')) return hex
+  return null
+}
+
+// Constant-time nonce comparison: timingSafeEqual needs equal-length
+// buffers, so a different-length or non-hex attestation nonce fails closed
+// rather than being truncated into a false match.
+function nonceMatches(attestationNonce, nonce) {
+  return typeof attestationNonce === 'string'
+    && attestationNonce.length === nonce.length
+    && /^[0-9a-f]+$/i.test(attestationNonce)
+    && timingSafeEqual(Buffer.from(attestationNonce, 'hex'), Buffer.from(nonce, 'hex'))
 }
 
 // Fetches and verifies the TEE attestation for a model and returns the
@@ -66,12 +77,22 @@ export async function fetchModelPubKey({ apiKey, modelId }) {
   if (attestation.verified !== true) {
     throw e2eeError('TEE attestation verification failed on server.')
   }
-  if (attestation.nonce !== nonce) {
+  if (!nonceMatches(attestation.nonce, nonce)) {
     throw e2eeError('TEE attestation nonce mismatch — possible replay attack.')
   }
   const modelPubKeyHex = normalizeModelPubKey(attestation.signing_key ?? attestation.signing_public_key)
   if (!modelPubKeyHex) {
     throw e2eeError('No signing key in TEE attestation response.')
+  }
+  try {
+    // A malformed/off-curve key would otherwise surface as an opaque
+    // computeSecret throw on the first message encryption: reject it here
+    // with a precise error instead.
+    const probe = createECDH('secp256k1')
+    probe.generateKeys()
+    probe.computeSecret(Buffer.from(modelPubKeyHex, 'hex'))
+  } catch {
+    throw e2eeError('Invalid signing key in TEE attestation response.')
   }
   return modelPubKeyHex
 }

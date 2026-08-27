@@ -121,19 +121,72 @@ test('encryptMessages rejects non-string content', () => {
 
 test('fetchModelPubKey verifies the attestation and normalizes the signing key', async (t) => {
   const calls = []
+  const model = serverKeypair()
   mockFetch(t, async (url) => {
     calls.push(String(url))
     return jsonResponse({
       verified: true,
       nonce: new URL(String(url)).searchParams.get('nonce'),
-      signing_key: 'ab'.repeat(64), // 128 hex chars, no 04 prefix
+      signing_key: model.pubKeyHex.slice(2), // 128 hex chars, no 04 prefix
     })
   })
 
   const pubKey = await fetchModelPubKey({ apiKey: 'key', modelId: 'e2ee-qwen3-5-122b-a10b' })
-  assert.equal(pubKey, `04${'ab'.repeat(64)}`)
+  assert.equal(pubKey, model.pubKeyHex)
   assert.equal(calls.length, 1)
   assert.ok(calls[0].includes('/tee/attestation?model=e2ee-qwen3-5-122b-a10b&nonce='))
+})
+
+test('fetchModelPubKey accepts an 04-prefixed uncompressed signing key', async (t) => {
+  const model = serverKeypair()
+  mockFetch(t, async (url) => jsonResponse({
+    verified: true,
+    nonce: new URL(String(url)).searchParams.get('nonce'),
+    signing_key: model.pubKeyHex,
+  }))
+
+  const pubKey = await fetchModelPubKey({ apiKey: 'k', modelId: 'm' })
+  assert.equal(pubKey, model.pubKeyHex)
+})
+
+test('fetchModelPubKey rejects an off-curve signing key', async (t) => {
+  mockFetch(t, async (url) => jsonResponse({
+    verified: true,
+    nonce: new URL(String(url)).searchParams.get('nonce'),
+    signing_key: `04${'ab'.repeat(64)}`,
+  }))
+
+  await assert.rejects(fetchModelPubKey({ apiKey: 'k', modelId: 'm' }), /Invalid signing key/)
+})
+
+test('fetchModelPubKey rejects a malformed signing key', async (t) => {
+  mockFetch(t, async (url) => jsonResponse({
+    verified: true,
+    nonce: new URL(String(url)).searchParams.get('nonce'),
+    signing_key: 'ab'.repeat(60), // wrong length
+  }))
+
+  await assert.rejects(fetchModelPubKey({ apiKey: 'k', modelId: 'm' }), /No signing key/)
+})
+
+test('fetchModelPubKey rejects a non-hex signing key', async (t) => {
+  mockFetch(t, async (url) => jsonResponse({
+    verified: true,
+    nonce: new URL(String(url)).searchParams.get('nonce'),
+    signing_key: `04${'zz'.repeat(64)}`,
+  }))
+
+  await assert.rejects(fetchModelPubKey({ apiKey: 'k', modelId: 'm' }), /No signing key/)
+})
+
+test('fetchModelPubKey rejects a non-hex nonce', async (t) => {
+  mockFetch(t, async (url) => jsonResponse({
+    verified: true,
+    nonce: 'g'.repeat(64),
+    signing_key: '04'.repeat(65),
+  }))
+
+  await assert.rejects(fetchModelPubKey({ apiKey: 'k', modelId: 'm' }), /nonce mismatch/)
 })
 
 test('fetchModelPubKey rejects a nonce mismatch', async (t) => {
@@ -156,13 +209,14 @@ test('fetchModelPubKey surfaces HTTP errors', async (t) => {
 })
 
 test('createE2eeSession returns the client key pair and the attested model key', async (t) => {
+  const model = serverKeypair()
   mockFetch(t, async (url) => jsonResponse({
     verified: true,
     nonce: new URL(String(url)).searchParams.get('nonce'),
-    signing_key: `04${'ab'.repeat(64)}`,
+    signing_key: model.pubKeyHex,
   }))
   const session = await createE2eeSession({ apiKey: 'k', modelId: 'm' })
   assert.ok(session.clientKey)
   assert.equal(session.clientPubKeyHex.length, 130)
-  assert.equal(session.modelPubKeyHex, `04${'ab'.repeat(64)}`)
+  assert.equal(session.modelPubKeyHex, model.pubKeyHex)
 })

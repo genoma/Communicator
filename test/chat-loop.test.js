@@ -4,6 +4,7 @@ import { mkdtemp, writeFile, rm, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { ExitPromptError } from '@inquirer/core'
+import { createECDH } from 'node:crypto'
 import { runChatSession } from '../src/chat.js'
 import { createStreamRenderer } from '../src/ui/stream.js'
 import { THIN_SEP } from '../src/constants.js'
@@ -773,10 +774,12 @@ test('resize repaint keeps a single separator when no turn has run yet', async (
 
 test('e2ee shows the badge, forces web search off, and flows to chatCompletion', async (t) => {
   const consoleSpy = mockConsole(t)
+  const model = createECDH('secp256k1')
+  const modelPubKeyHex = model.generateKeys('hex')
   t.mock.method(globalThis, 'fetch', async (url) => new Response(JSON.stringify({
     verified: true,
     nonce: new URL(String(url)).searchParams.get('nonce'),
-    signing_key: '04'.repeat(65),
+    signing_key: modelPubKeyHex,
   })))
   const { provider, calls } = fakeProvider()
   const harness = makeDeps({ readInput: scriptedInput(['hello', '/quit']) })

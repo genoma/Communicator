@@ -32,7 +32,7 @@
 - `src/sse-parser.js` — SSE parsing, reasoning/content transitions, usage, parts, idle timeout, skipped-chunk counter, E2EE decrypt hook, prompt-cache handling.
 - `src/tracker.js` — usage/cost accumulator, budget helpers, CTX/budget line helpers, scrape cost.
 - `src/session-sidecar.js`, `src/sessions.js`, `src/attachment-store.js` — session storage/index/blob layer (see Session persistence).
-- `src/sessions.js` — session save/load/list, sidecar, ids/generation, title; `buildSessionPayload` (single source for the 24-field save shape), `deleteSession`/`deleteAllSessions`, interactive resolve helpers.
+- `src/sessions.js` — session save/load/list, sidecar, ids/generation, title; `buildSessionPayload` (single source for the 24-field save shape), `deleteSession`/`deleteAllSessions`, interactive resolve helpers. `saveSession` re-validates the id with `validSessionId` like `loadSession`/`deleteSession`, so file writes can never escape the sessions dir.
 - `src/session-picker.js` — `selectSession`/`selectSessions`.
 
 ## Text vs Image command separation
@@ -91,7 +91,7 @@
 ## End-to-end encryption (E2EE, Venice)
 
 - Venice-only. Client crypto in `src/e2ee.js`: ECDH secp256k1 + HKDF-SHA256 + AES-256-GCM; hex wire format (ephemeral pubkey ‖ nonce ‖ ciphertext+tag).
-- Session setup fetches/verifies TEE attestation; failure aborts (never falls back to plaintext).
+- Session setup fetches/verifies TEE attestation; failure aborts (never falls back to plaintext). Attestation signing keys are validated up front (hex, exactly 128/130 chars, 04-prefixed uncompressed point on secp256k1) and nonces are compared in constant time (`timingSafeEqual`, non-hex/odd-length nonces fail closed).
 - `ChatState` stores `e2ee` persisted marker + in-memory `e2eeContext`; only the boolean is serialized.
 - Threading: flag → validation → session setup → selectors → chat/one-shot → provider.
 - Model selection filters to `supportsE2EE`; image models not shown under e2ee.

@@ -4,6 +4,7 @@ import { ExitPromptError } from '@inquirer/core'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { createECDH } from 'node:crypto'
 import { chatCommands, budgetGuard, CHAT_COMMANDS, visibleChatCommands } from '../src/commands/chat/index.js'
 import { ChatState } from '../src/chat-state.js'
 import { UsageTracker } from '../src/tracker.js'
@@ -1539,10 +1540,12 @@ test('/model under e2ee refreshes the attested model key and keeps e2ee state', 
     },
   })
 
+  const model = createECDH('secp256k1')
+  const modelPubKeyHex = model.generateKeys('hex')
   t.mock.method(globalThis, 'fetch', async (url) => new Response(JSON.stringify({
     verified: true,
     nonce: new URL(String(url)).searchParams.get('nonce'),
-    signing_key: '04'.repeat(65),
+    signing_key: modelPubKeyHex,
   })))
 
   await chatCommands['/model'](ctx)
@@ -1550,7 +1553,7 @@ test('/model under e2ee refreshes the attested model key and keeps e2ee state', 
   assert.equal(ctx.state.modelId, 'new/model')
   assert.equal(ctx.state.e2ee, true)
   assert.equal(ctx.state.webSearch, 'off')
-  assert.equal(e2eeContext.modelPubKeyHex, '04'.repeat(65))
+  assert.equal(e2eeContext.modelPubKeyHex, modelPubKeyHex)
   assert.deepEqual(prefsUpdates, [{ modelId: 'new/model', lastModel: 'new/model', lastProvider: 'venice', reasoningEffort: undefined }])
 })
 

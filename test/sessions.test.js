@@ -29,6 +29,15 @@ function sessionData(overrides = {}) {
   }
 }
 
+test('saveSession rejects invalid session ids', async (t) => {
+  const dir = await tempDir(t)
+  for (const id of ['../escape', 'a/b', '..', 'bad id', 'a..b', '']) {
+    await assert.rejects(saveSession(dir, id, sessionData()), /Invalid session id/, id)
+  }
+  const entries = await readdir(dir)
+  assert.deepEqual(entries, [])
+})
+
 test('saveSession writes file and sidecar entry', async (t) => {
   const dir = await tempDir(t)
   await saveSession(dir, '2026-01-01T00-00-00', sessionData())

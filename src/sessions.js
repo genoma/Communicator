@@ -234,6 +234,9 @@ export async function removeEmptySessionClaim(dir, id) {
 }
 
 export async function saveSession(dir, id, data) {
+  if (!validSessionId(id)) {
+    throw new CliError(`Error: Invalid session id "${id}".`)
+  }
   const filePath = join(dir, `${id}.json`)
   if (!data.messages || data.messages.length <= 1) {
     // The id may have been claimed by generateSessionId (empty wx file) but
