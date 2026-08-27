@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Readable } from 'node:stream'
-import { fetchWithTimeout, fetchWithRetry, fetchSafeBytes, assertSafeUrl, readBodyWithDeadline, pinnedFetch, sleep } from '../src/http.js'
+import { fetchWithTimeout, fetchWithRetry, fetchSafeBytes, fetchWithRedirects, assertSafeUrl, readBodyWithDeadline, pinnedFetch, sleep } from '../src/http.js'
 import { ApiError, TimeoutError } from '../src/errors.js'
 
 function abortAwareFetch() {
@@ -276,6 +276,29 @@ test('fetchSafeBytes bounds a slow-drip body with the read deadline', async (t) 
 
 test('fetchSafeBytes rejects private IPv6 targets and reports oversized bodies', async () => {
   assert.equal(await fetchSafeBytes('http://[fec0::1]/x', { maxBytes: 100 }), null)
+})
+
+test('fetchWithRedirects rejects an https to http redirect downgrade', async () => {
+  const requestFn = respond(nodeResponse({ status: 302, headers: { location: 'http://93.184.216.34/plain' } }))
+
+  const result = await fetchWithRedirects('https://93.184.216.34/start', { requestFn })
+
+  assert.equal(result.res, null)
+  assert.equal(result.error, 'blocked redirect (https to http downgrade)')
+})
+
+test('fetchWithRedirects follows same-scheme redirects across hosts', async () => {
+  const requestFn = (parsed) => {
+    if (parsed.pathname === '/start') {
+      return respond(nodeResponse({ status: 302, headers: { location: 'https://93.184.216.34/next' } }))()
+    }
+    return respond(nodeResponse({ status: 200, body: Buffer.from('ok') }))()
+  }
+
+  const result = await fetchWithRedirects('https://93.184.216.34/start', { requestFn })
+
+  assert.equal(result.res.status, 200)
+  assert.equal(result.url, 'https://93.184.216.34/next')
 })
 
 test('pinnedFetch pins DNS to the validated addresses and exposes status/headers', async () => {

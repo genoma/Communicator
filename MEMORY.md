@@ -27,7 +27,7 @@
 - `src/config.js` — API key lookup, preferences persistence, `savePrefsBestEffort` (never throws), `applyPreferenceUpdates`/`syncPreferenceUpdates` (single merge helpers), `mergePreferenceState` (in-place merge skipping `__proto__`/`constructor`/`prototype` keys; used by every prefs writer), `getImageDefaults`/`mergeImageDefaults`, corrupt-prefs quarantine. `loadPreferences` strips prototype-polluting keys from JSON-parsed files on load.
 - `src/model-selection.js` — interactive/non-interactive selection; `capabilityFlags`; image selection helpers.
 - `src/providers/` — OpenRouter/Venice chatCompletion contract, image APIs, scrape. OpenRouter endpoint URLs percent-encode each model-id path segment (the slash stays a separator) and reject `..` dot segments, so catalog-derived ids cannot reshape the request path.
-- `src/http.js` — `fetchWithTimeout`/`fetchWithRetry` (2 retries; 30s), SSRF-pinned transport (`resolveSafeUrl`, `pinnedFetch`, `fetchWithRedirects`, `readBodyWithDeadline`).
+- `src/http.js` — `fetchWithTimeout`/`fetchWithRetry` (2 retries; 30s), SSRF-pinned transport (`resolveSafeUrl`, `pinnedFetch`, `fetchWithRedirects`, `readBodyWithDeadline`). Manual redirect hops are re-validated per hop and an https→http scheme downgrade is rejected outright.
 - `src/errors.js` — `ApiError`, `TimeoutError`, `CliError`, `formatError`.
 - `src/sse-parser.js` — SSE parsing, reasoning/content transitions, usage, parts, idle timeout, skipped-chunk counter, E2EE decrypt hook, prompt-cache handling.
 - `src/tracker.js` — usage/cost accumulator, budget helpers, CTX/budget line helpers, scrape cost.

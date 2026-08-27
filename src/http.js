@@ -180,11 +180,19 @@ export async function fetchWithRedirects(url, { maxHops = 5, timeoutMs = DEFAULT
     const location = res.headers.get('location')
     await res.body?.cancel?.()
     if (!location) return { res: null, error: 'redirect without location' }
+    let next
     try {
-      current = new URL(location, current).href
+      next = new URL(location, current)
     } catch {
       return { res: null, error: 'invalid redirect URL' }
     }
+    // A model-supplied https URL must never be fetched in cleartext: reject
+    // the hop before it happens, instead of silently downgrading the
+    // transport (the same re-validation policy as the private-IP checks).
+    if (new URL(current).protocol === 'https:' && next.protocol === 'http:') {
+      return { res: null, error: 'blocked redirect (https to http downgrade)' }
+    }
+    current = next.href
   }
   return { res: null, error: 'too many redirects' }
 }
