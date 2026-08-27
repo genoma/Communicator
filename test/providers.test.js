@@ -356,6 +356,31 @@ test('openrouter fetchEndpoints maps endpoint pricing and parameters', async (t)
   assert.equal(endpoints[0].privacyPolicyURL, 'https://example.com/privacy')
 })
 
+test('openrouter fetchEndpoints percent-encodes reserved characters in the model id path', async (t) => {
+  resetModels()
+  resetMetadataCaches()
+  const requested = []
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    requested.push(String(url))
+    if (url.includes('/endpoints/zdr') || url.endsWith('/providers')) return jsonResponse({})
+    return jsonResponse({ data: { endpoints: [{ name: 'P', provider_name: 'P', pricing: {}, supported_parameters: [] }] } })
+  })
+
+  await openrouter.fetchEndpoints('key', 'org/model?x=1#frag% z')
+
+  const endpointCalls = requested.filter((u) => u.includes('/endpoints') && !u.includes('/endpoints/zdr'))
+  assert.equal(endpointCalls.length, 1)
+  assert.ok(endpointCalls[0].includes('/models/org/model%3Fx%3D1%23frag%25%20z/endpoints'), endpointCalls[0])
+})
+
+test('openrouter fetchEndpoints rejects model ids with dot segments', async (t) => {
+  resetModels()
+  resetMetadataCaches()
+  t.mock.method(globalThis, 'fetch', async () => jsonResponse({}))
+
+  await assert.rejects(openrouter.fetchEndpoints('key', 'org/../../etc'), /Invalid model id/)
+})
+
 test('chatCompletion streams tokens and usage for openrouter', async (t) => {
   const cacheHeaders = { 'x-openrouter-cache-status': 'MISS' }
   t.mock.method(globalThis, 'fetch', async () => sseResponse([

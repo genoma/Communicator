@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Readable } from 'node:stream'
 import { ApiError } from '../src/errors.js'
-import { fetchImageModels, resetImageModelCaches, generateImage } from '../src/providers/openrouter.js'
+import { fetchImageModels, resetImageModelCaches, generateImage, fetchImageModelEndpoints } from '../src/providers/openrouter.js'
 
 function jsonResponse(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
@@ -31,6 +31,26 @@ const NO_PARAM_MODEL = {
   description: 'No structured params',
   supported_parameters: { seed: { boolean: true } },
 }
+
+test('fetchImageModelEndpoints percent-encodes reserved characters in the model id path', async (t) => {
+  resetImageModelCaches()
+  const requested = []
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    requested.push(String(url))
+    return jsonResponse({ data: { endpoints: [{ provider_name: 'P', pricing: [] }] } })
+  })
+
+  await fetchImageModelEndpoints('key', 'org/model?#sp ace')
+
+  assert.ok(requested[0].includes('/images/models/org/model%3F%23sp%20ace/endpoints'), requested[0])
+})
+
+test('fetchImageModelEndpoints rejects model ids with dot segments', async (t) => {
+  resetImageModelCaches()
+  t.mock.method(globalThis, 'fetch', async () => jsonResponse({ data: { endpoints: [] } }))
+
+  await assert.rejects(fetchImageModelEndpoints('key', 'org/../etc'), /Invalid model id/)
+})
 
 test('fetchImageModels normalizes typed descriptors into constraints', async (t) => {
   resetImageModelCaches()

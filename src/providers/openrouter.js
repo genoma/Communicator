@@ -156,10 +156,23 @@ function imagePricingFromEntries(entries) {
   return { perImage: cheapestImagePrice(perImage), perToken: cheapestImagePrice(perToken), byResolution: null, byQuality: null }
 }
 
+// Model ids may contain path separators (openai/gpt-4o) and other reserved
+// characters, and can be catalog-derived on the alias path: each segment is
+// percent-encoded so a hostile id cannot reshape the request URL, and
+// dot-segments are rejected outright (encodeURIComponent leaves dots alone,
+// so a `..` traversal would survive encoding).
+function modelPathId(modelId) {
+  const id = String(modelId)
+  if (id.includes('..')) {
+    throw new ApiError(`Invalid model id: ${id}`, { retryable: false })
+  }
+  return id.split('/').map(encodeURIComponent).join('/')
+}
+
 export async function fetchImageModelEndpoints(apiKey, modelId) {
   const cached = imageEndpointsCache.get(modelId)
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.endpoints
-  const res = await fetchWithRetry(`${OPENROUTER_BASE}/images/models/${modelId}/endpoints`, {
+  const res = await fetchWithRetry(`${OPENROUTER_BASE}/images/models/${modelPathId(modelId)}/endpoints`, {
     headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
   }, { errorResponse: handleHttpError })
   const parsed = await res.json()
@@ -295,7 +308,7 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   const model = allModels?.find((m) => m.id === modelId)
   let queryId = model?.aliasTarget || modelId
 
-  const request = () => fetchWithRetry(`${OPENROUTER_BASE}/models/${queryId}/endpoints`, {
+  const request = () => fetchWithRetry(`${OPENROUTER_BASE}/models/${modelPathId(queryId)}/endpoints`, {
     headers: { Authorization: `Bearer ${apiKey}` },
   }, { errorResponse: handleHttpError })
 
