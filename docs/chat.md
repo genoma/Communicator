@@ -108,7 +108,7 @@ Override the default path with `--system-prompt`:
 communicator --system-prompt /path/to/custom-prompt.md
 ```
 
-- If the file is missing or empty, the default `"You are a helpful assistant."` prompt is used silently.
+- If `--system-prompt` points to a file that does not exist or cannot be read, the run stops with an error instead of silently falling back. The default `~/.communicator-system-prompt.md` stays optional: when it is missing or empty, the default `"You are a helpful assistant."` prompt is used silently.
 - The file is read once at startup. Changes require restarting the chat.
 - Venice always sets `include_venice_system_prompt: false` since the app provides its own system prompt.
 

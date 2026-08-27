@@ -43,16 +43,26 @@ export async function loadPreferences(customPath) {
 
 export async function loadSystemPrompt(customPath) {
   const promptFile = customPath || DEFAULT_SYSTEM_PROMPT_FILE
+  let content
   try {
-    const content = await readFile(promptFile, 'utf-8')
-    const trimmed = content.trim()
-    return trimmed || null
+    content = await readFile(promptFile, 'utf-8')
   } catch (err) {
+    // An explicitly requested prompt file is a user error, not a silent
+    // fallback: fail loudly instead of quietly using the default prompt.
+    // The default file stays optional, so its absence (or an unreadable
+    // default) still degrades to the built-in prompt with a warning.
+    if (customPath) {
+      throw new CliError(err.code === 'ENOENT'
+        ? `Error: system prompt file not found: ${promptFile}`
+        : `Error: could not read system prompt file ${promptFile}: ${err.message}`)
+    }
     if (err.code !== 'ENOENT') {
       console.error(`Warning: could not read ${promptFile}: ${err.message}`)
     }
     return null
   }
+  const trimmed = content.trim()
+  return trimmed || null
 }
 
 export async function savePreferences(prefs, customPath) {

@@ -246,9 +246,10 @@ test('loadSystemPrompt returns the trimmed content of a custom file', async (t) 
   assert.equal(await loadSystemPrompt(file), 'You are a pirate.  \n\nSecond line')
 })
 
-test('loadSystemPrompt returns null for a missing custom file', async (t) => {
+test('loadSystemPrompt throws for a missing explicit custom file', async (t) => {
   const dir = await tempDir(t)
-  assert.equal(await loadSystemPrompt(join(dir, 'missing.md')), null)
+  const missing = join(dir, 'missing.md')
+  await assert.rejects(loadSystemPrompt(missing), { name: 'CliError', message: `Error: system prompt file not found: ${missing}` })
 })
 
 test('loadSystemPrompt returns null for an empty or whitespace-only file', async (t) => {

@@ -403,6 +403,16 @@ test('--resume with no matching sessions exits 1 with a friendly error', async (
   assert.match(err.join('\n'), /No session found matching "zzz"/)
 })
 
+test('--system-prompt with a missing file exits 1 with a clear error', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-system-prompt-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const missing = join(dir, 'prompt.md')
+  const { err } = await runAndExit(t, { systemPrompt: missing }, undefined, 1)
+  assert.ok(err.join('\n').includes(`system prompt file not found: ${missing}`))
+})
+
 function mockVeniceScrapeFetch(t) {
   const models = [{ id: 'venice-model', model_spec: { name: 'V', capabilities: {}, constraints: {} } }]
   const calls = []

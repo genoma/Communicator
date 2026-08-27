@@ -170,6 +170,13 @@
 - `ExitPromptError` from pickers must propagate to the cli-main “Aborted.” handler.
 - `writeFileAtomic` used for config/session/sidecar; private modes 0600/0700.
 
+## System prompt semantics
+
+- `loadSystemPrompt(customPath)` (`src/config.js`) reads + trims the file; empty/whitespace-only content returns null (falls back to `DEFAULT_SYSTEM_PROMPT`).
+- Explicit `--system-prompt <path>`: any read failure is a fatal `CliError` (ENOENT → `Error: system prompt file not found: <path>`, other errors → `Error: could not read system prompt file <path>: <msg>`) — never a silent fallback, so typos fail loudly before the pickers/one-shot dispatch (cli-main).
+- Default `~/.communicator-system-prompt.md`: missing is the normal optional case (returns null silently); other read errors warn and return null.
+- The file is read once at startup; changes require restarting the chat. Venice always sends `include_venice_system_prompt: false`.
+
 ## Display consistency contract
 
 Cross-path invariants pinned by `test/ui-consistency.test.js`. Every change must update all call sites and this section.
