@@ -26,7 +26,18 @@ export async function loadPreferences(customPath) {
     return {}
   }
   try {
-    return JSON.parse(data)
+    const parsed = JSON.parse(data)
+    // An own `__proto__` key survives JSON.parse and would swap the prefs
+    // object's prototype when assigned via [[Set]] (Object.assign or
+    // `target[key] =`); `constructor`/`prototype` are equally never legit
+    // prefs keys. Drop them on load so a hand-edited file cannot poison the
+    // shared state or get re-persisted.
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      for (const key of Object.keys(parsed)) {
+        if (UNSAFE_PREF_KEYS.has(key)) delete parsed[key]
+      }
+    }
+    return parsed
   } catch (err) {
     // A corrupt file must not be silently clobbered by the next save: move
     // it aside so the original preferences survive as a backup.
@@ -84,6 +95,21 @@ export function savePrefsBestEffort(save, onError = (message) => console.warn(me
   }
 }
 
+const UNSAFE_PREF_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+
+// In-place merge used by every prefs writer: skips keys that would trigger
+// the __proto__ setter (or shadow the object's constructor) when assigned
+// via [[Set]]. The prefs object may hold JSON-parsed data, so an own
+// `__proto__` data property from a previous version of this file must never
+// reach an assignment.
+export function mergePreferenceState(prefs, updates) {
+  for (const key of Object.keys(updates)) {
+    if (UNSAFE_PREF_KEYS.has(key)) continue
+    prefs[key] = updates[key]
+  }
+  return prefs
+}
+
 // Applies a delta like applyPreferenceUpdates but ALSO keeps the shared prefs
 // object current (mutated in place) and returns the merged object. Every
 // writer then merges from the latest state instead of the launch snapshot, so
@@ -91,7 +117,7 @@ export function savePrefsBestEffort(save, onError = (message) => console.warn(me
 // preserved by the end-of-session prefs save instead of being dropped.
 export function syncPreferenceUpdates(prefs, updates) {
   const merged = applyPreferenceUpdates(prefs, updates)
-  Object.assign(prefs, merged)
+  mergePreferenceState(prefs, merged)
   return merged
 }
 

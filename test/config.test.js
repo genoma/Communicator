@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { applyPreferenceUpdates, syncPreferenceUpdates, loadSystemPrompt, getApiKey, getImageDefaults, mergeImageDefaults, loadPreferences } from '../src/config.js'
+import { applyPreferenceUpdates, syncPreferenceUpdates, loadSystemPrompt, getApiKey, getImageDefaults, mergeImageDefaults, loadPreferences, mergePreferenceState } from '../src/config.js'
 import { CliError } from '../src/errors.js'
 
 test('applyPreferenceUpdates merges per-model maps by spread', () => {
@@ -116,6 +116,41 @@ test('syncPreferenceUpdates still skips undefined fields', () => {
 
   assert.deepEqual(Object.keys(merged).sort(), ['lastModel'])
   assert.deepEqual(Object.keys(prefs).sort(), ['lastModel'])
+})
+
+test('mergePreferenceState ignores prototype-polluting keys', () => {
+  const prefs = { lastModel: 'a' }
+  const poisoned = JSON.parse('{"__proto__": {"polluted": true}, "constructor": {"bad": 1}, "prototype": {"x": 1}, "b": 2}')
+
+  mergePreferenceState(prefs, poisoned)
+
+  assert.deepEqual(prefs, { lastModel: 'a', b: 2 })
+  assert.equal(Object.getPrototypeOf(prefs), Object.prototype)
+  assert.equal({}.polluted, undefined)
+})
+
+test('syncPreferenceUpdates cannot pollute the prototype through a poisoned prefs object', () => {
+  const prefs = JSON.parse('{"__proto__": {"polluted": true}, "lastModel": "a"}')
+
+  const merged = syncPreferenceUpdates(prefs, { lastModel: 'b' })
+
+  assert.equal(merged.lastModel, 'b')
+  assert.equal(prefs.lastModel, 'b')
+  assert.equal(Object.getPrototypeOf(prefs), Object.prototype)
+  assert.equal({}.polluted, undefined)
+})
+
+test('loadPreferences strips prototype-polluting keys from the config file', async (t) => {
+  const dir = await tempDir(t)
+  const file = join(dir, 'prefs.json')
+  await writeFile(file, JSON.stringify({ __proto__: { polluted: true }, constructor: { bad: 1 }, lastModel: 'm' }))
+
+  const prefs = await loadPreferences(file)
+
+  assert.equal(prefs.lastModel, 'm')
+  assert.deepEqual(Object.keys(prefs).sort(), ['lastModel'])
+  assert.equal(Object.getPrototypeOf(prefs), Object.prototype)
+  assert.equal({}.polluted, undefined)
 })
 
 test('applyPreferenceUpdates merges the global smoothStreaming key', () => {

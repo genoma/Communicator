@@ -2,7 +2,7 @@ import { readInput as readInputFromInput } from '../input.js'
 import { ExitPromptError } from '@inquirer/core'
 import { persistSessionFile } from '../sessions.js'
 import { DEFAULT_SYSTEM_PROMPT } from '../constants.js'
-import { getImageDefaults, mergeImageDefaults, clearImageDefault, savePreferences, savePrefsBestEffort, syncPreferenceUpdates } from '../config.js'
+import { getImageDefaults, mergeImageDefaults, clearImageDefault, savePreferences, savePrefsBestEffort, syncPreferenceUpdates, mergePreferenceState } from '../config.js'
 import { findImageModel, selectImageEndpoint, selectModelAndEndpoint } from '../model-selection.js'
 import { sessionLabel } from '../ui/format.js'
 import { dim } from '../ui/style.js'
@@ -58,7 +58,7 @@ function stripImageParts(content) {
 // change through the given saver.
 async function persistClearedDefault(prefs, providerName, key, save, message) {
   const updated = clearImageDefault(prefs, providerName, key)
-  Object.assign(prefs, updated)
+  mergePreferenceState(prefs, updated)
   await save(updated)
   console.log(message)
 }
@@ -311,7 +311,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       sessionValues[handler.flagKey] = parsed
       if (handler.persisted) {
         const updated = mergeImageDefaults(prefs, providerName, { [handler.defaultKey]: parsed })
-        Object.assign(prefs, updated)
+        mergePreferenceState(prefs, updated)
         await savePrefs(updated)
       }
       console.log(`${handler.kind} set to ${parsed}.\n`)
@@ -367,14 +367,14 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
         const computed = computePixelSize(parsed, model.constraints.widthHeightDivisor)
         sessionValues.aspectRatio = parsed
         const updated = mergeImageDefaults(prefs, provider.meta.name, { aspectRatio: parsed })
-        Object.assign(prefs, updated)
+        mergePreferenceState(prefs, updated)
         await savePrefs(updated)
         console.log(`Aspect ratio set to ${parsed} (${formatSize(computed.width, computed.height)}).\n`)
         continue
       }
       sessionValues.aspectRatio = parsed
       const updated = mergeImageDefaults(prefs, provider.meta.name, { aspectRatio: parsed })
-      Object.assign(prefs, updated)
+      mergePreferenceState(prefs, updated)
       await savePrefs(updated)
       console.log(`Aspect ratio set to ${parsed}.\n`)
       continue
@@ -411,7 +411,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     await persist()
     const updated = syncPreferenceUpdates(prefs, { lastImageModel: outcome.modelId })
     const withImageDefaults = outcome.prefsUpdates ? mergeImageDefaults(updated, provider.meta.name, outcome.prefsUpdates) : updated
-    Object.assign(prefs, withImageDefaults)
+    mergePreferenceState(prefs, withImageDefaults)
     await savePrefs(withImageDefaults)
     printImageOutcome(outcome, stdout)
   }
