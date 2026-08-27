@@ -196,7 +196,7 @@ test('blocks hosts resolving to loopback addresses without fetching', async () =
 })
 
 test('re-validates redirect targets and blocks hops to private addresses', async () => {
-  const requestFn = spyRequest(nodeResponse({ status: 302, headers: { Location: 'http://127.0.0.1/internal.png' } }))
+  const requestFn = spyRequest(nodeResponse({ status: 302, headers: { Location: 'https://127.0.0.1/internal.png' } }))
   const res = await downloadRemotePart(imagePart('https://example.com/redir.png'), 'sess-redir', { requestFn })
   assert.match(res.error, /blocked URL/)
   assert.equal(requestFn.calls(), 1)
