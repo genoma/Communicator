@@ -180,7 +180,7 @@ test('fetchModelPubKey rejects a non-hex signing key', async (t) => {
 })
 
 test('fetchModelPubKey rejects a non-hex nonce', async (t) => {
-  mockFetch(t, async (url) => jsonResponse({
+  mockFetch(t, async () => jsonResponse({
     verified: true,
     nonce: 'g'.repeat(64),
     signing_key: '04'.repeat(65),
