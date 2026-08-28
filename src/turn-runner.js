@@ -3,7 +3,9 @@ import { formatError, ApiError } from './errors.js'
 import { extractPartialToken } from './sse-parser.js'
 import { isEncryptedHex, decryptToken } from './e2ee.js'
 import { debug } from './ui/io.js'
+import { dim } from './ui/style.js'
 import { printPostStreamMetrics } from './artifacts.js'
+import { createStreamKeyMonitor as defaultStreamKeyMonitor } from './stream-keys.js'
 
 // Shared per-session mutable state: the runner and the signal handlers in
 // chat.js both touch these fields, and /new replaces the tracker.
@@ -14,6 +16,8 @@ export function createSessionState() {
     streaming: false,
     streamController: null,
     interrupted: false,
+    stopped: false,
+    stopping: false,
     // Arguments of the last turn-metrics footer (printTurn Tokens/Cost block)
     // on screen: the resize repaint rebuilds that footer from this snapshot.
     // null after /new and before the first successful turn.
@@ -21,7 +25,7 @@ export function createSessionState() {
   }
 }
 
-export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState, requestFn, onRequest = null, postHistoryInstruction = null }) {
+export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState, requestFn, onRequest = null, postHistoryInstruction = null, input = process.stdin, createStreamKeyMonitor = defaultStreamKeyMonitor }) {
   const apiResultMessage = (apiResult) => {
     const msg = { role: 'assistant', content: apiResult.content }
     if (apiResult.reasoning) {
@@ -43,12 +47,35 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
     // growing string is quadratic in the answer length.
     const contentParts = []
     const reasoningParts = []
+    // Streaming-phase raw-mode key listener (Esc stop / \x03 interrupt), torn
+    // down in the finally and before exit so the terminal is never left raw.
+    let streamKeys = null
 
     render.sources = []
     render.resetMessage()
     sessionState.streaming = true
     sessionState.streamController = new AbortController()
     sessionState.interrupted = false
+    sessionState.stopped = false
+    sessionState.stopping = false
+
+    // Ctrl+C (SIGINT while streaming, or the \x03 byte once raw mode disables
+    // ISIG) aborts the stream; the runner salvages the partial and exits 130.
+    const requestInterrupt = () => {
+      if (!sessionState.streaming) return
+      sessionState.interrupted = true
+      sessionState.streamController?.abort()
+    }
+
+    // Esc stops the generation: abort the fetch and finalize the delivered
+    // partial as the turn result, returning to the prompt instead of exiting.
+    // `stopping` guards against a second Esc while the stop is finalizing.
+    const requestStop = () => {
+      if (!sessionState.streaming || sessionState.stopping) return
+      sessionState.stopping = true
+      sessionState.stopped = true
+      sessionState.streamController?.abort()
+    }
 
     // Ctrl+C is also honored while the stream is draining (slow smooth
     // rendering, artifact downloads): save the response produced so far,
@@ -61,7 +88,46 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         state.appendAssistant(message)
       }
       await interruptSave()
+      streamKeys?.stop()
       exit(130)
+    }
+
+    // Esc stop finalizes the delivered partial as the turn result and returns
+    // to the prompt. With no output delivered the triggering user message is
+    // popped so the next prompt is clean and /retry can replay it.
+    const finishStopped = async (partial) => {
+      const hasContent = partial.content || partial.reasoning
+      if (hasContent) {
+        state.appendAssistant(partial)
+      } else if (state.messages[state.messages.length - 1]?.role === 'user') {
+        state.retryTurn = state.messages.pop().content
+      }
+      await saveCurrentSession()
+      return Boolean(hasContent)
+    }
+
+    const buildPartial = (err) => {
+      const partial = { role: 'assistant', content: contentParts.join('') }
+      if (reasoningParts.length > 0) partial.reasoning = reasoningParts.join('')
+      if (render.sources?.length > 0) partial.sources = render.sources
+      if (!partial.content && !partial.reasoning && err?.pendingBuffer) {
+        const pending = extractPartialToken(err.pendingBuffer)
+        if (pending) {
+          let text = pending.text
+          if (state.e2ee && isEncryptedHex(text)) {
+            try {
+              text = decryptToken(text, state.e2eeContext.clientKey)
+            } catch {
+              text = null
+            }
+          }
+          if (text != null) {
+            if (pending.type === 'reasoning') partial.reasoning = text
+            else partial.content = text
+          }
+        }
+      }
+      return partial
     }
 
     try {
@@ -73,6 +139,10 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         // the marker block, never glued to the user line.
         stdout.write('\n')
         loader.start(state.webSearch === 'always' ? 'Searching the web' : 'Waiting for response')
+      }
+      if (tty && input.isTTY) {
+        streamKeys = createStreamKeyMonitor({ input, onStop: requestStop, onInterrupt: requestInterrupt })
+        streamKeys.start()
       }
       apiResult = await provider.chatCompletion({
         apiKey,
@@ -170,28 +240,14 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       if (sessionState.interrupted) {
         render.flush({ sync: true })
         stdout.write('\n')
-        const partial = { role: 'assistant', content: contentParts.join('') }
-        if (reasoningParts.length > 0) partial.reasoning = reasoningParts.join('')
-        if (render.sources?.length > 0) partial.sources = render.sources
-        if (!partial.content && !partial.reasoning && err.pendingBuffer) {
-          const pending = extractPartialToken(err.pendingBuffer)
-          if (pending) {
-            let text = pending.text
-            if (state.e2ee && isEncryptedHex(text)) {
-              try {
-                text = decryptToken(text, state.e2eeContext.clientKey)
-              } catch {
-                text = null
-              }
-            }
-            if (text != null) {
-              if (pending.type === 'reasoning') partial.reasoning = text
-              else partial.content = text
-            }
-          }
-        }
-        await interruptedExit(partial)
+        await interruptedExit(buildPartial(err))
         return
+      }
+      if (sessionState.stopped) {
+        render.flush({ sync: true })
+        stdout.write('\n\n')
+        stdout.write(`${dim('Stopped')}\n`)
+        return await finishStopped(buildPartial(err))
       }
       render.flush({ sync: true })
       debug(err?.stack)
@@ -207,8 +263,13 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       }
       return
     } finally {
+      streamKeys?.stop()
+      streamKeys = null
       sessionState.streaming = false
       sessionState.streamController = null
+      sessionState.interrupted = false
+      sessionState.stopped = false
+      sessionState.stopping = false
     }
 
     // The verdict is what /retry and /edit need: true only when an assistant

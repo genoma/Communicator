@@ -513,6 +513,162 @@ test('an interrupt with no streamed content saves nothing and still exits 130', 
   assert.equal(state.messages.length, 2)
 })
 
+test('Esc stop salvages the partial, appends it, saves the session and does not exit', async (t) => {
+  mockConsole(t)
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  const provider = okProvider({
+    async chatCompletion(opts) {
+      opts.signal.addEventListener('abort', () => {
+        rejectCompletion(Object.assign(new Error('aborted'), { pendingBuffer: 'data: {"choices":[{"delta":{"content":"Hel' }))
+      })
+      return pending
+    },
+  })
+  const state = fakeState()
+  const sessionState = createSessionState()
+  sessionState.streaming = true
+  sessionState.streamController = new AbortController()
+  const { deps, exitCodes, saves } = makeDeps({ provider, sessionState })
+
+  const turn = runTurn(deps, state)
+  sessionState.stopped = true
+  sessionState.streamController.abort()
+  const produced = await turn
+
+  // No exit: the partial is the turn result and the runner returns to the prompt.
+  assert.deepEqual(exitCodes, [])
+  assert.deepEqual(saves, ['session'])
+  assert.equal(state.messages[2].content, 'Hel')
+  assert.equal(produced, true)
+  assert.equal(sessionState.streaming, false)
+})
+
+test('Esc stop with no streamed content pops the user message for /retry and does not exit', async (t) => {
+  mockConsole(t)
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  const provider = okProvider({
+    async chatCompletion(opts) {
+      opts.signal.addEventListener('abort', () => rejectCompletion(new Error('aborted')))
+      return pending
+    },
+  })
+  const state = fakeState()
+  const sessionState = createSessionState()
+  sessionState.streaming = true
+  sessionState.streamController = new AbortController()
+  const { deps, exitCodes } = makeDeps({ provider, sessionState })
+
+  const turn = runTurn(deps, state)
+  sessionState.stopped = true
+  sessionState.streamController.abort()
+  const produced = await turn
+
+  assert.deepEqual(exitCodes, [])
+  assert.equal(state.messages.length, 1)
+  assert.equal(state.retryTurn, 'hello')
+  assert.equal(produced, false)
+})
+
+test('the streaming key monitor wires Esc to a single stop via the stopping guard', async (t) => {
+  mockConsole(t)
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  const provider = okProvider({
+    async chatCompletion(opts) {
+      opts.signal.addEventListener('abort', () => {
+        rejectCompletion(Object.assign(new Error('aborted'), { pendingBuffer: 'data: {"choices":[{"delta":{"content":"Hel' }))
+      })
+      return pending
+    },
+  })
+  const state = fakeState()
+  const sessionState = createSessionState()
+  let onStop
+  const streamMonitor = { start() {}, stop() {} }
+  const createStreamKeyMonitor = (opts) => {
+    onStop = opts.onStop
+    return streamMonitor
+  }
+  const { deps, exitCodes, saves } = makeDeps({ provider, sessionState })
+  const runner = createTurnRunner({
+    state,
+    provider,
+    apiKey: 'test-key',
+    render: deps.render,
+    loader: deps.loader,
+    stdout: deps.stdout,
+    tty: true,
+    saveCurrentSession: deps.saveCurrentSession,
+    interruptSave: deps.interruptSave,
+    exit: deps.exit,
+    sessionState,
+    input: { isTTY: true },
+    createStreamKeyMonitor,
+  })
+
+  const turn = runner.runTurn()
+  onStop() // first Esc: abort + mark stopped
+  onStop() // second Esc: the `stopping` guard must block a second abort
+  await turn
+
+  assert.deepEqual(exitCodes, [])
+  assert.deepEqual(saves, ['session'])
+  const assistants = state.messages.filter((m) => m.role === 'assistant')
+  assert.equal(assistants.length, 1)
+  assert.equal(assistants[0].content, 'Hel')
+  assert.equal(sessionState.stopped, false)
+  assert.equal(sessionState.stopping, false)
+})
+
+test('Ctrl+C via the streaming key monitor (\x03) still saves the partial and exits 130', async (t) => {
+  mockConsole(t)
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  const provider = okProvider({
+    async chatCompletion(opts) {
+      opts.signal.addEventListener('abort', () => {
+        rejectCompletion(Object.assign(new Error('aborted'), { pendingBuffer: 'data: {"choices":[{"delta":{"content":"Hel' }))
+      })
+      return pending
+    },
+  })
+  const state = fakeState()
+  const sessionState = createSessionState()
+  let onInterrupt
+  const streamMonitor = { start() {}, stop() {} }
+  const createStreamKeyMonitor = (opts) => {
+    onInterrupt = opts.onInterrupt
+    return streamMonitor
+  }
+  const { deps, exitCodes, saves } = makeDeps({ provider, sessionState })
+  const runner = createTurnRunner({
+    state,
+    provider,
+    apiKey: 'test-key',
+    render: deps.render,
+    loader: deps.loader,
+    stdout: deps.stdout,
+    tty: true,
+    saveCurrentSession: deps.saveCurrentSession,
+    interruptSave: deps.interruptSave,
+    exit: deps.exit,
+    sessionState,
+    input: { isTTY: true },
+    createStreamKeyMonitor,
+  })
+
+  const turn = runner.runTurn()
+  onInterrupt()
+  await turn
+
+  assert.deepEqual(exitCodes, [130])
+  assert.deepEqual(saves, ['interrupt'])
+  assert.equal(state.messages[2].content, 'Hel')
+})
+
+
 test('compact thinking hands the loader to the meter without a checkmark', async (t) => {
   mockConsole(t)
   const calls = []

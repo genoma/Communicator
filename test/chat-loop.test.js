@@ -580,6 +580,47 @@ test('SIGINT during streaming preserves streamed reasoning in the partial messag
   assert.equal(assistant.reasoning, 'think')
 })
 
+test('Esc during streaming stops the generation, keeps the partial and returns to the prompt', async (t) => {
+  mockConsole(t)
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  const { provider } = fakeProvider({
+    async chatCompletion(opts) {
+      opts.signal.addEventListener('abort', () => {
+        rejectCompletion(Object.assign(new Error('aborted'), { pendingBuffer: 'data: {"choices":[{"delta":{"content":"Hel' }))
+      })
+      return pending
+    },
+  })
+  let stopTrigger = null
+  const createStreamKeyMonitor = (opts) => {
+    stopTrigger = opts.onStop
+    return { start() {}, stop() {} }
+  }
+  const harness = makeDeps({
+    readInput: scriptedInput(['hello', '/quit']),
+    stdout: { write() {}, isTTY: true },
+    input: { isTTY: true },
+    createStreamKeyMonitor,
+  })
+
+  const session = runChatSession(baseCtx(provider), harness.deps)
+  await tick()
+  await tick()
+  assert.ok(stopTrigger, 'the stop callback was wired during streaming')
+  stopTrigger()
+
+  const finalState = await session
+
+  assert.deepEqual(harness.exitCodes, [])
+  const saved = harness.saveCalls.find((s) => s.id === '2026-01-01T00-00-00')
+  assert.ok(saved)
+  const assistant = saved.payload.messages.find((m) => m.role === 'assistant')
+  assert.equal(assistant.content, 'Hel')
+  assert.equal(finalState.messages[finalState.messages.length - 1].role, 'assistant')
+})
+
+
 test('budget-exhausted guard blocks a user message without calling the provider', async (t) => {
   const consoleSpy = mockConsole(t)
   const { provider, calls } = fakeProvider()
