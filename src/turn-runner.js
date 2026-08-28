@@ -217,7 +217,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       }
       stdout.write('\n\n')
 
-      await printPostStreamMetrics(apiResult, {
+      const wroteMetrics = await printPostStreamMetrics(apiResult, {
         sessionId: state.sessionId,
         imageOutputSupported: state.imageOutputSupported,
         stdout,
@@ -229,7 +229,9 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         return
       }
       if (sessionState.stopped) {
-        stdout.write('\n\n')
+        // The post-stream separator already provides the blank row above when
+        // the metrics block printed nothing.
+        if (wroteMetrics) stdout.write('\n\n')
         stdout.write(`${dim('Stopped')}\n\n`)
         await finishStopped(buildPartial(null))
         return
