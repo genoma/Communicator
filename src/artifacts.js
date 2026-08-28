@@ -7,12 +7,27 @@ import { attachmentLine, printSources } from './ui/stream.js'
 // Models that advertise image output often emit the artifact as a markdown
 // image in plain text instead of a structured part. The conversion is gated on
 // the capability flag so regular text is never misclassified.
+//
+// One-pass scan (not a regex): the markdown-image shape needs `![` … `](` … `)`
+// with the URL immediately after `(`, and a malformed `![x](https://` prefix
+// with no closing `)` made the old regex backtrack quadratically over
+// model-controlled text.
 export function extractMarkdownImageUrls(text) {
   const urls = []
-  const re = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)[^)]*\)/g
-  let match
-  while ((match = re.exec(String(text ?? ''))) !== null) {
-    urls.push(match[1])
+  const s = String(text ?? '')
+  let searchFrom = 0
+  while (searchFrom < s.length) {
+    const open = s.indexOf('![', searchFrom)
+    if (open === -1) break
+    const close = s.indexOf(']', open + 2)
+    if (close === -1) break
+    searchFrom = open + 2
+    if (s[close + 1] !== '(') continue
+    const parenEnd = s.indexOf(')', close + 2)
+    if (parenEnd === -1) break
+    const url = /^https?:\/\/[^\s)]+/.exec(s.slice(close + 2, parenEnd))?.[0]
+    if (url) urls.push(url)
+    searchFrom = parenEnd + 1
   }
   return urls
 }

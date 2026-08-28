@@ -161,10 +161,11 @@ export function computeGrid(ctx) {
   } = ctx
   const rows = [...headerRows]
   const limit = usableWidth(width, linePrefixWidth)
-  const wrappedCounts = []
-  for (const line of lines) {
-    const segments = wrapSegments(line, limit)
-    wrappedCounts.push(segments.length)
+  // Wrap each logical line once; the cursor-row math reuses the same result
+  // (segments, code-unit starts and fold-dropped offsets) instead of
+  // re-wrapping every line a second time per keystroke.
+  const wrappedLines = lines.map((line) => wrapSegmentsDetailed(line, limit))
+  for (const { segments } of wrappedLines) {
     for (const segment of segments) {
       rows.push(linePrefix + applyStyle(segment, inputStyle))
     }
@@ -173,9 +174,8 @@ export function computeGrid(ctx) {
   let cursorCol = 0
   let inputOffset = headerRows.length
   for (let li = 0; li < lines.length; li++) {
-    const segments = wrapSegments(lines[li], limit)
+    const { segments, starts, drops } = wrappedLines[li]
     if (li === row) {
-      const { starts, drops } = wrapSegmentsDetailed(lines[li], limit)
       const dispStarts = segmentDisplayStarts(segments)
       // Map the logical column onto the visual rows, entirely in display
       // space (code-unit offsets only decide WHICH segment the cursor is
@@ -198,7 +198,7 @@ export function computeGrid(ctx) {
       cursorRow = inputOffset + idx
       cursorCol = linePrefixWidth + (dcol - dispStarts[idx])
     }
-    inputOffset += wrappedCounts[li]
+    inputOffset += segments.length
   }
   if (statusText) {
     const errorStyle = statusColor === 'red' ? theme?.error : undefined

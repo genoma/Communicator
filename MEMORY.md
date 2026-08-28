@@ -110,7 +110,7 @@
 
 - markdown-it based, `html: false`, `linkify: true`; setext headings disabled.
 - Line-buffered renderer with incremental re-parse after block boundaries; tables buffered until close.
-- Streaming perf: incremental tail parse, fence-aware scanning, 64-line tail window, O(n) token splitting.
+- Streaming perf: incremental tail parse, fence-aware scanning, 64-line tail window, O(n) token splitting. The 64-line tail cap applies to BOTH the emit path (`processBatch`) and partial restyles (`partialContext`), so a boundary-less stream (one giant list/paragraph) neither re-parses per emitted line nor per partial redraw; the cap is suppressed on fences/tables and while `lines` is empty (first partial line).
 - Flush per turn; `/markdown` toggles at runtime.
 - ANSI hyperlinks via sanitized `hyperlink` (http(s) only), citations `^n^` only when sources exist.
 - `sanitizeAnsi` (`src/ui/hyperlink.js`) strips CSI/OSC/charset-select/stray ESC, bare C0 controls except LF/tab (BEL, CR, ...), DEL and the C1 range (U+0080–U+009F, which terminals interpret as 8-bit CSI/OSC); CRLF collapses to LF. Applied to streamed content/reasoning, history replay, sources, attachment labels, and — via `formatError`/`commandErrorLine` — to all error-message output (provider/model-derived SSE error text and HTTP bodies reached the terminal unsanitized before). Catalog-derived display output is single-line sanitized at the display site too: `listModelsCmd`/`listImageModelsCmd` run remote privacy/context/constraint/pricing fragments through `sanitizeSingleLine`, and the image REPL sanitizes `model.id` plus remote constraint lists in every supported-list/not-supported message (`unsupportedListError`, `supportedListLine`, the variant/aspect error lines).
@@ -152,7 +152,7 @@
 
 - Save at `/quit`, `/new`, `/model`, SIGINT (partial), `beforeExit`/`uncaughtException` best-effort.
 - RPG history is separate dir-local `history.json`.
-- Attachment blobs stored under `~/.communicator/sessions/attachments/<sessionId>/<sha256>.<ext>` with `ref://` sentinels; externalize before JSON; hydrate on load; delete removes blob dir.
+- Attachment blobs stored under `~/.communicator/sessions/attachments/<sessionId>/<sha256>.<ext>` with `ref://` sentinels; externalize before JSON; hydrate on load; delete removes blob dir. The data-URL→ref cache is bounded (512 entries, oldest evicted; eviction is transparent because blobs are content-addressed).
 - Sidecar `.index.json` maps session metadata; rebuilt if missing/stale; system-only sessions filtered.
 - `listSessions` orders most-recently-used first: `updatedAt` desc, falling back to `createdAt`, then the creation-time id (left for legacy sessions). `formatSessionItem` shows the same last-activity timestamp, so the picker and `--list-sessions` display when a session was last used, not when it was created.
 - `updatedAt` is activity-stamped, never resume-stamped: `ChatState` (and the image REPL) carry the stored value and refresh it only when new content is added (`appendUser` / an image generation). Resuming and quitting without sending anything leaves `updatedAt` unchanged, so the session stays where it was; the payload falls back to `now` only when no stored value exists.
@@ -220,7 +220,7 @@ Cross-path invariants pinned by `test/ui-consistency.test.js`. Every change must
 ## Providers / SSE parsing
 
 - Reasoning fields: `delta.reasoning_content` (OpenAI-style) or `delta.reasoning` (DeepSeek-family).
-- SSE parser handles multi-line data, malformed chunks, idle timeout, partial tokens, usage, non-text parts, E2EE decrypt.
+- SSE parser handles multi-line data, malformed chunks, idle timeout, partial tokens, usage, non-text parts, E2EE decrypt, and a hard stream byte cap (`MAX_STREAM_BYTES` = 128 MB, option `maxBytes`, measured on raw chunk bytes; exceeding throws a non-retryable `ApiError` — guards slow-drip and newline-less chunk lines that bypass the idle timeout).
 - The thinking→content transition is ONLY a non-empty content payload (`content: ''` / `content: []` are not): reasoning streams commonly carry an empty content field on every delta, and closing the block there would re-open it on the next reasoning delta — a start/end cycle per delta, which compact mode renders as a checkpoint line per reasoning chunk. A mixed delta with real `reasoning`/`reasoning_content` AND real `content` emits both (block closes, content streams).
 
 ## Command autocomplete
@@ -244,7 +244,8 @@ Cross-path invariants pinned by `test/ui-consistency.test.js`. Every change must
 
 ## Historical audit notes (condensed)
 
-- Current hardening that must not regress: SSRF-pinned downloads with per-hop validation; `ref://` and session-id validation; ANSI output sanitization; exported markdown scheme neutralization; private file modes; web-results cap; SSE error events; atomic writes; bounded stream bodies; E2EE fail-closed; SIGTERM like SIGINT; empty session claim cleanup; `/retry` does not replay stale prompts; multi-line SSE data; quoted paths; non-fatal prefs saves; clipboard EPIPE; pure config setters on piped stdin; variants gated by `maxN`; lazy chat-start import; image/model fetch caching; coverage/perf consolidations (incremental markdown, SSE arrays, import cycle fixes, duplicate constant cleanup).
+- Current hardening that must not regress: SSRF-pinned downloads with per-hop validation; `ref://` and session-id validation; ANSI output sanitization; exported markdown scheme neutralization; private file modes; web-results cap; SSE error events; atomic writes; bounded stream bodies; E2EE fail-closed; SIGTERM like SIGINT; empty session claim cleanup; `/retry` does not replay stale prompts; multi-line SSE data; quoted paths; non-fatal prefs saves; clipboard EPIPE; pure config setters on piped stdin; variants gated by `maxN`; lazy chat-start import; image/model fetch caching; coverage/perf consolidations (incremental markdown, SSE arrays, import cycle fixes, duplicate constant cleanup); AI-stream byte cap; linear markdown-image URL scan; editor single-pass grid wrap; bounded data-URL ref cache; `partialContext` tail cap.
+- Aug 2026 audit (branch `chore/security-perf-audit`, not merged): security review found no critical/high/medium issues (SSRF, keys, injection, prototype pollution, path traversal, ANSI/terminal injection, ReDoS elsewhere all verified sound); perf review found the markdown `partialContext` O(n²), the editor double-wrap and the unbounded caches — all fixed here. Kept report-only: whole-file `.index.json` rewrite per session save (save paths are exit/command only), `renderHistory` re-parse on resize (not per-chunk), and the reviewer's claimed `wrapSegmentsDetailed` within-line O(n²) (disproven: hard-cut residual is one char, fold residual ≤ limit). E2EE prompt-log plaintext under `--debug --rpg` is a local opt-in artifact. Major-version dep updates (inquirer 12, commander 15, markdown-it 15) deliberately NOT taken; in-range refresh only (@inquirer/prompts 8.7.0, markdown-it 14.3.1, eslint 10.9.1).
 
 ## Tests, CI and platform notes
 

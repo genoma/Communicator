@@ -30,6 +30,11 @@ export const MAX_IMAGE_ATTACHMENT_BYTES = 20 * 1024 * 1024
 
 export const MAX_FILE_ATTACHMENT_BYTES = 25 * 1024 * 1024
 
+// Hard cap on one streamed model response: text plus embedded data-URL parts
+// stay far below this; it only trips on a hostile or runaway stream (infinite
+// slow-drip or a giant newline-less chunk line).
+export const MAX_STREAM_BYTES = 128 * 1024 * 1024
+
 export const MAX_INLINE_TEXT_ATTACHMENT_BYTES = 256 * 1024
 
 export const SMOOTH_CHARS_PER_TICK = 40

@@ -140,6 +140,12 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
       return { e: env(), ctx: { type: 'fence', quote: false } }
     }
     advanceParseFrom()
+    // Same tail-window cap as processBatch: on a boundary-less stream a
+    // partial restyle must not re-parse the whole accumulated text per tick.
+    // (lines is empty on the very first partial line, hence the guard.)
+    if (lines.length > 0 && openFence === -1 && scanLastOpenIndex === -1 && !lines[lines.length - 1].trimStart().startsWith('|')) {
+      parseFrom = Math.min(Math.max(parseFrom, lines.length - TAIL_WINDOW), emitted)
+    }
     const e = env()
     const tail = lines.slice(parseFrom)
     const text = buffer ? `${tail.join('\n')}${tail.length > 0 ? '\n' : ''}${buffer}` : tail.join('\n')

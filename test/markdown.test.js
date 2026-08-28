@@ -566,6 +566,23 @@ test('streaming renderer stays linear on a long boundary-less paragraph', (t) =>
   assert.equal(text.split('\n').filter(Boolean).length, 200)
 })
 
+test('partial redraw after a long boundary-less stream keeps the tail context correct', (t) => {
+  const output = captureStdout(t)
+  const renderer = createMarkdownRenderer()
+
+  // 100 boundary-less lines, then a partial line that triggers partialContext
+  // (the tail-window cap is active: parseFrom is clamped past 64 lines).
+  for (let i = 0; i < 100; i++) {
+    renderer.write(`line ${i} of a giant paragraph\n`)
+  }
+  renderer.write('partial tail')
+  renderer.flush()
+  const text = plain(output())
+  assert.ok(text.includes('line 0 of a giant paragraph\n'))
+  assert.ok(text.includes('line 99 of a giant paragraph\n'))
+  assert.ok(text.includes('partial tail'))
+})
+
 test('streaming renderer emits a large open fence without re-parsing per line', (t) => {
   const output = captureStdout(t)
   const renderer = createMarkdownRenderer()

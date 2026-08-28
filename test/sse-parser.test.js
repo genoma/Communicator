@@ -241,6 +241,27 @@ test('cancels the reader when the stream stalls', async (t) => {
   assert.equal(cancelled, 1)
 })
 
+test('aborts when the stream exceeds maxBytes', async () => {
+  let cancelled = 0
+  const reader = {
+    read: async () => ({ done: false, value: new TextEncoder().encode('x'.repeat(200)) }),
+    cancel: async () => { cancelled++ },
+  }
+
+  await assert.rejects(
+    parseSSEStream(reader, () => {}, null, { maxBytes: 64 }),
+    (err) => err instanceof ApiError && /exceeded/.test(err.message)
+  )
+  assert.equal(cancelled, 1)
+})
+
+test('passes a stream whose bytes equal maxBytes', async () => {
+  const chunk = event({ choices: [{ delta: { content: 'hello' } }] })
+  const reader = streamReader([chunk])
+  const { fullText } = await parseSSEStream(reader, () => {}, null, { maxBytes: new TextEncoder().encode(chunk).byteLength })
+  assert.equal(fullText, 'hello')
+})
+
 test('cancels the reader when the provider sends an error event', async () => {
   let cancelled = 0
   const reader = {

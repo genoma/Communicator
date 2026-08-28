@@ -41,6 +41,12 @@ test('extractMarkdownImageUrls finds only http(s) markdown images', () => {
   assert.deepEqual(extractMarkdownImageUrls('![multi](https://a.example/one.png "title") ![](https://b.example/two.png)'), ['https://a.example/one.png', 'https://b.example/two.png'])
   assert.deepEqual(extractMarkdownImageUrls(null), [])
   assert.deepEqual(extractMarkdownImageUrls(''), [])
+  // Malformed shapes must not extract anything and must not blow up: the
+  // old regex backtracked quadratically on an unterminated `![x](https://`.
+  assert.deepEqual(extractMarkdownImageUrls('![x](https://' + 'a'.repeat(20_000)), [])
+  assert.deepEqual(extractMarkdownImageUrls('![a]x](https://u.example/a.png)'), [])
+  assert.deepEqual(extractMarkdownImageUrls('![x](no-url)'), [])
+  assert.deepEqual(extractMarkdownImageUrls('![x](https://u.example/a.png '), [])
 })
 
 test('buildPartsContent puts text first and omits it when empty', () => {

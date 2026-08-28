@@ -1,4 +1,4 @@
-import { SSE_DONE, STREAM_IDLE_TIMEOUT_MS } from './constants.js'
+import { SSE_DONE, STREAM_IDLE_TIMEOUT_MS, MAX_STREAM_BYTES } from './constants.js'
 import { createHash } from 'node:crypto'
 import { ApiError } from './errors.js'
 import { isEncryptedHex } from './e2ee.js'
@@ -69,8 +69,9 @@ function collectSources(parsed, fullSources, seenUrls, onSources) {
   if (found && onSources) onSources(fullSources)
 }
 
-export async function parseSSEStream(reader, onToken, onSources = null, { idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, decryptToken = null } = {}) {
+export async function parseSSEStream(reader, onToken, onSources = null, { idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, decryptToken = null, maxBytes = MAX_STREAM_BYTES } = {}) {
   const decoder = new TextDecoder()
+  let receivedBytes = 0
   // Text accumulates in arrays and is joined once at the end: `+=` on the
   // growing string is quadratic in the answer length.
   const fullTextParts = []
@@ -292,6 +293,14 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
       if (done) {
         buffer += decoder.decode()
         break
+      }
+
+      // Hard byte cap on the whole stream (slows-drips and newline-less
+      // chunk lines included): a provider cannot accumulate text or buffer
+      // memory without bound.
+      receivedBytes += value.byteLength
+      if (receivedBytes > maxBytes) {
+        throw new ApiError(`Stream exceeded ${Math.round(maxBytes / 1024 / 1024)} MB`, { retryable: false })
       }
 
       buffer += decoder.decode(value, { stream: true })

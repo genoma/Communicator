@@ -74,6 +74,11 @@ async function externalizeDataUrl(value, dir) {
 
   const { path, error } = await storeBlob(dir, `${hash}.${ext}`, bytes)
   if (path) {
+    // Cache is bounded: eviction is transparent because blobs are
+    // content-addressed (a later write is an EEXIST no-op).
+    if (dataUrlRefCache.size >= MAX_DATA_URL_CACHE_ENTRIES) {
+      dataUrlRefCache.delete(dataUrlRefCache.keys().next().value)
+    }
     dataUrlRefCache.set(cacheKey, ref)
     return ref
   }
@@ -81,6 +86,10 @@ async function externalizeDataUrl(value, dir) {
   return value
 }
 
+// Bounded cache of data-URL → ref mappings (content-addressed, so entries
+// are small keys of dir + hash). A session with many distinct attachments
+// cannot grow it without limit.
+const MAX_DATA_URL_CACHE_ENTRIES = 512
 const dataUrlRefCache = new Map()
 
 export async function externalizeAttachments(messages, dir) {
