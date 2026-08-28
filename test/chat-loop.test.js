@@ -1054,6 +1054,17 @@ function assertNoDoubledSeparators(lines) {
   }
 }
 
+// A separator line must contain only the separator: a transcript that ends
+// flush-ended glues the following separator onto its last message row instead
+// of giving it a line of its own.
+function assertNoGluedSeparators(lines) {
+  for (const line of lines) {
+    if (!line.includes(THIN_SEP)) continue
+    // eslint-disable-next-line no-control-regex
+    assert.equal(line.replace(/\x1b\[[0-9;]*m/g, '').trim(), THIN_SEP, `separator must stand alone, got: ${JSON.stringify(line)}`)
+  }
+}
+
 // Interleave console.log with stdout writes in submission order: the live
 // turn's transcript and markers go to stdout while the banner/seps/footer go
 // through console.log, so a console.log-only stream shows the printTurn sep
@@ -1110,6 +1121,64 @@ test('/delete keeping the footer does not double the closing separator', async (
   assertNoDoubledSeparators(ordered.join('').split('\n'))
   const rebuild = ordered.join('').split('\x1b[2J\x1b[3J\x1b[H').at(-1)
   assert.ok(rebuild.includes('Tokens'), 'the stash-drop rebuild keeps the surviving footer')
+})
+
+test('/delete rebuild keeps a blank row between the last message row and the loop separator', async (t) => {
+  const { ordered, stdout } = makeOrderedCapture(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/delete', '/quit']), stdout })
+
+  await runChatSession(baseCtx(provider, {
+    initialMessages: [
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'user', content: 'First question' },
+      { role: 'assistant', content: 'First answer', usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 } },
+      { role: 'user', content: 'Second question' },
+      { role: 'assistant', content: 'Second answer', usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 } },
+    ],
+  }), harness.deps)
+
+  // After the wipe the surviving transcript is re-rendered and only the chat
+  // loop's own separator follows it: the transcript must keep its trailing
+  // blank row so the separator sits on its own line, never glued to the last
+  // message row (the /delete removal is not followed by a rerun stream, unlike
+  // /retry and /edit).
+  const rebuild = ordered.join('').split('\x1b[2J\x1b[3J\x1b[H').at(-1)
+  const lines = rebuild.split('\n')
+  assertNoGluedSeparators(lines)
+  assertNoDoubledSeparators(lines)
+  const lastSep = lines.map((line, i) => ({ line, i })).filter(({ line }) => line.includes(THIN_SEP)).at(-1)
+  assert.ok(lastSep, 'the delete rebuild ends with the loop separator')
+  assert.equal(lines[lastSep.i - 1], '', 'the loop separator has a blank row above it')
+})
+
+test('/delete stash-drop keeps a blank row between the last message row and the footer separator', async (t) => {
+  const { ordered, stdout } = makeOrderedCapture(t)
+  const { ApiError } = await import('../src/errors.js')
+  const { provider } = fakeProvider()
+  let calls = 0
+  provider.chatCompletion = async () => {
+    calls += 1
+    if (calls === 2) throw new ApiError('Rate limited', { status: 429, retryable: true })
+    return { content: 'recovered', usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 } }
+  }
+  const harness = makeDeps({ readInput: scriptedInput(['hello', 'again', '/delete', '/quit']), stdout })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  // The stash-drop rebuild keeps the surviving transcript AND the turn-metrics
+  // footer, whose printTurn block opens with its own separator line: the
+  // transcript must keep its trailing blank row so that separator does not glue
+  // to the last message row.
+  const rebuild = ordered.join('').split('\x1b[2J\x1b[3J\x1b[H').at(-1)
+  const lines = rebuild.split('\n')
+  assertNoGluedSeparators(lines)
+  assertNoDoubledSeparators(lines)
+  assert.ok(rebuild.includes('Tokens'), 'the stash-drop rebuild keeps the surviving footer')
+  const tokensIdx = lines.findIndex((line) => line.includes('Tokens'))
+  assert.ok(tokensIdx > 0, 'the footer is present')
+  assert.ok(lines[tokensIdx - 1].includes(THIN_SEP), 'the footer opens with a separator line')
+  assert.equal(lines[tokensIdx - 2], '', 'a blank row separates the transcript from the footer separator')
 })
 
 test('onSources populates render.sources and the next turn resets it', async (t) => {

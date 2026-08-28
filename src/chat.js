@@ -158,7 +158,13 @@ export async function runChatSession(ctx = {}, deps = {}) {
     // separator is the banner/transcript divider and always printed.
     if (opts.loopSep !== false || state.messages.length > 1) console.log(sep())
     if (state.messages.length > 1) {
-      renderHistory(state.messages, { markdown: state.markdown, stdout, compactThinking: tty && state.compactThinking, tailBlank: opts.turnFooter !== false, ...rpgMarkers })
+      // tailBlank defaults to the resize/footer rule (the completed turn's
+      // blank row ends the transcript) but a command rebuild can override it
+      // explicitly: /retry and /edit flush the transcript (tailBlank: false,
+      // the rerun stream supplies the single blank row), while /delete keeps
+      // the trailing blank row (tailBlank: true) because only the loop
+      // separator or the footer block follows the transcript, not a rerun.
+      renderHistory(state.messages, { markdown: state.markdown, stdout, compactThinking: tty && state.compactThinking, tailBlank: opts.tailBlank ?? (opts.turnFooter !== false), ...rpgMarkers })
     }
     // The pre-resize layout ends a completed turn with the loop sep, the
     // printTurn Tokens/Cost footer and the loop sep again (see the chat loop

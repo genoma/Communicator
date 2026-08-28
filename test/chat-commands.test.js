@@ -1025,7 +1025,7 @@ test('/delete on a TTY wipes and rebuilds with the footer when dropping the stas
   const output = writes.join('')
   assert.ok(output.includes('\x1b[2J\x1b[3J\x1b[H'))
   assert.equal(resizeOpts.length, 1)
-  assert.deepEqual(resizeOpts[0], { turnFooter: true, loopSep: false })
+  assert.deepEqual(resizeOpts[0], { turnFooter: true, loopSep: false, tailBlank: true })
   assert.match(output, /TOKENS\/COST FOOTER/)
 })
 
@@ -1050,7 +1050,7 @@ test('/delete on a TTY wipes and rebuilds without the footer after deleting the 
   const output = writes.join('')
   assert.ok(output.includes('\x1b[2J\x1b[3J\x1b[H'))
   assert.equal(resizeOpts.length, 1)
-  assert.deepEqual(resizeOpts[0], { turnFooter: false, loopSep: false })
+  assert.deepEqual(resizeOpts[0], { turnFooter: false, loopSep: false, tailBlank: true })
   assert.doesNotMatch(output, /TOKENS\/COST FOOTER/)
 })
 

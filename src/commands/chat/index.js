@@ -53,20 +53,25 @@ function rewriteUserContent(content, text) {
 // the next prompt, so `loopSep: false` keeps the frame from reproducing that
 // separator (an empty session would otherwise get a doubled row). The
 // transcript is rebuilt flush-ended (tailBlank: false) so a rerun's leading
-// blank leaves exactly one blank row under the last message. Non-TTY output
-// (pipes/tests) is left untouched so the plain transcript stays mechanical.
-function rebuildScreen(ctx, { turnFooter }) {
+// blank leaves exactly one blank row under the last message. Where no rerun
+// stream follows the transcript, /delete passes tailBlank: true (its deletion
+// frame is closed by the loop separator; its stash-drop frame is closed by
+// the turn-metrics footer's leading sep) so the transcript ends with its
+// trailing blank row instead and nothing glues to the last message row.
+// Non-TTY output (pipes/tests) is left untouched so the plain transcript
+// stays mechanical.
+function rebuildScreen(ctx, { turnFooter, tailBlank = false }) {
   if (ctx.stdout?.isTTY !== true) return
   ctx.stdout.write('\x1b[2J\x1b[3J\x1b[H')
   if (typeof ctx.onResizeRepaint === 'function') {
-    ctx.onResizeRepaint({ turnFooter, loopSep: false })
+    ctx.onResizeRepaint({ turnFooter, loopSep: false, tailBlank })
     return
   }
   renderHistory(ctx.state.messages, {
     markdown: ctx.state.markdown,
     stdout: ctx.stdout,
     compactThinking: ctx.state.compactThinking,
-    tailBlank: false,
+    tailBlank,
     ...(ctx.rpgMarkers ?? {}),
   })
 }
@@ -469,7 +474,11 @@ const handlers = {
       // footer stay. The stash is never persisted, so there is nothing to
       // save or recompute.
       ctx.state.retryTurn = null
-      rebuildScreen(ctx, { turnFooter: true })
+      // The surviving transcript is followed by the turn-metrics footer, whose
+      // printTurn block opens with its own separator line, so the transcript
+      // keeps its trailing blank row — the separator must not glue to the
+      // last message row.
+      rebuildScreen(ctx, { turnFooter: true, tailBlank: true })
       return
     }
     const userIdx = ctx.state.messages.findLastIndex((m) => m.role === 'user')
@@ -498,7 +507,11 @@ const handlers = {
     // The deleted turn's footer is stale; a later resize must not resurrect
     // it for a turn that no longer exists.
     ctx.lastTurnMetrics = null
-    rebuildScreen(ctx, { turnFooter: false })
+    // Only the loop separator follows the surviving transcript (unlike /retry
+    // and /edit, which rerun and supply their own leading blank row), so the
+    // transcript must keep its trailing blank row or the loop separator lands
+    // glued to the last message row.
+    rebuildScreen(ctx, { turnFooter: false, tailBlank: true })
     return { resetBudgetWarning: true }
   },
 
