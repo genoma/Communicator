@@ -68,6 +68,8 @@ export async function runChatSession(ctx = {}, deps = {}) {
     stdout = process.stdout,
     exit = (code) => process.exit(code),
     onSignal = registerSignalHandlers,
+    input = process.stdin,
+    createStreamKeyMonitor,
   } = deps
 
   const saveSessionFile = deps.saveSession ?? persistSessionFile
@@ -285,6 +287,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
     },
     uncaughtException: (err) => {
       console.error(`\nUnhandled error: ${formatError(err)}`)
+      // Tear the streaming raw mode down before the best-effort save so an
+      // unhandled error mid-stream never leaves the terminal raw.
+      sessionState.streamKeys?.stop()
       void bestEffortSave().finally(() => exit(1))
     },
   })
@@ -321,6 +326,8 @@ export async function runChatSession(ctx = {}, deps = {}) {
     sessionState,
     onRequest,
     postHistoryInstruction: rpgPostHistoryInstruction,
+    input,
+    createStreamKeyMonitor,
   })
   const runTurn = runner.runTurn
 

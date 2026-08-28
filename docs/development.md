@@ -48,6 +48,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 ├── image-sizing.js       — pixel sizing helpers for pixel-based Venice image models
 ├── chat-state.js         — ChatState: session state + pure transitions + final-state snapshot
 ├── turn-runner.js        — per-turn orchestration (stream render, abort, interrupt salvage, usage tracking)
+├── stream-keys.js        — streaming-phase raw-mode key listener (Esc stop / \x03 interrupt)
 ├── signals.js            — process signal registration (SIGINT/beforeExit/uncaughtException) + cleanup
 ├── sessions.js           — session persistence: save, load, list, title generation, delete, sidecar index, resolve
 ├── session-sidecar.js    — sessions .index.json storage layer (read/write, staleness, entry maintenance)

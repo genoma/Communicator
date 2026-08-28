@@ -80,14 +80,23 @@ export function printArtifacts(results, stdout = process.stdout) {
 // styling. `withSources`/`withSkipped` let piped one-shot keep its
 // content-only stdout contract (artifact lines go to stderr instead).
 export function printArtifactsSummary(results, apiResult, stdout = process.stdout, { withSources = true, withSkipped = true } = {}) {
-  if (results.length > 0) printArtifacts(results, stdout)
-  if (withSources && apiResult.sources?.length > 0) printSources(apiResult.sources, stdout)
+  let wrote = false
+  if (results.length > 0) {
+    printArtifacts(results, stdout)
+    wrote = true
+  }
+  if (withSources && apiResult.sources?.length > 0) {
+    printSources(apiResult.sources, stdout)
+    wrote = true
+  }
   if (withSkipped && apiResult.skippedChunks > 0) {
     stdout.write(`${dim(`${apiResult.skippedChunks} malformed stream chunk${apiResult.skippedChunks > 1 ? 's' : ''} skipped`)}\n`)
+    wrote = true
   }
+  return wrote
 }
 
 export async function printPostStreamMetrics(apiResult, { sessionId, imageOutputSupported, stdout = process.stdout, requestFn, withSources = true, withSkipped = true }) {
   const results = await resolveArtifacts(apiResult, { sessionId, imageOutputSupported, requestFn })
-  printArtifactsSummary(results, apiResult, stdout, { withSources, withSkipped })
+  return printArtifactsSummary(results, apiResult, stdout, { withSources, withSkipped })
 }
