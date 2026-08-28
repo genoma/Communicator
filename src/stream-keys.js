@@ -21,7 +21,10 @@ export function createStreamKeyMonitor({ input, onStop, onInterrupt }) {
         onStop()
         return
       }
-      if (seq === CTRL_C) {
+      // A chunk that bundles the interrupt byte with other bytes (a paste
+      // splice, or a held ESC + \x03) still carries an interrupt: an escape
+      // sequence can never contain \x03, so a lone Esc is unaffected.
+      if (seq.includes(CTRL_C)) {
         onInterrupt()
         return
       }

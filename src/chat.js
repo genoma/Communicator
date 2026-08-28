@@ -287,6 +287,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
     },
     uncaughtException: (err) => {
       console.error(`\nUnhandled error: ${formatError(err)}`)
+      // Tear the streaming raw mode down before the best-effort save so an
+      // unhandled error mid-stream never leaves the terminal raw.
+      sessionState.streamKeys?.stop()
       void bestEffortSave().finally(() => exit(1))
     },
   })

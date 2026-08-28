@@ -80,6 +80,30 @@ test('Ctrl+C as the \\x03 byte fires onInterrupt (raw mode disables ISIG)', asyn
   monitor.stop()
 })
 
+test('a chunk bundling \\x03 with another byte still fires onInterrupt', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { input } = fakeInput()
+  const list = []
+  const monitor = monitorFor({ input, list })
+  monitor.start()
+
+  input.emit('data', '\x03X')
+  assert.deepEqual(list, ['interrupt'])
+  monitor.stop()
+})
+
+test('a held ESC bundled with \\x03 (\\x1b\\x03) fires onInterrupt, not a stop', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { input } = fakeInput()
+  const list = []
+  const monitor = monitorFor({ input, list })
+  monitor.start()
+
+  input.emit('data', '\x1b\x03')
+  assert.deepEqual(list, ['interrupt'])
+  monitor.stop()
+})
+
 test('two ESC bytes in one chunk are an escape sequence, not two stops', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const { input } = fakeInput()

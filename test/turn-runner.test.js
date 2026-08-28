@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createTurnRunner, createSessionState } from '../src/turn-runner.js'
 import { ApiError } from '../src/errors.js'
+import { dim } from '../src/ui/style.js'
 
 function fakeState(overrides = {}) {
   const state = {
@@ -84,6 +85,15 @@ function okProvider(overrides = {}) {
 function mockConsole(t) {
   t.mock.method(console, 'log', () => {})
   t.mock.method(console, 'error', () => {})
+}
+
+function enableAnsi(t) {
+  Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
+  process.stdout.getColorDepth = () => 8
+  t.after(() => {
+    delete process.stdout.getColorDepth
+    Object.defineProperty(process.stdout, 'isTTY', { value: false, configurable: true })
+  })
 }
 
 test('a successful turn streams tokens, records usage and appends the message', async (t) => {
@@ -951,4 +961,155 @@ test('an instant reply adds no stray blank row (checkpoint never shown)', async 
   assert.ok(!live.includes('Waiting for response'), 'no waiting line may appear for an instant reply')
   assert.equal(live, '\n\nHello\n\n', 'the answer must follow the turn-start newlines directly')
   assert.equal(state.messages[2].waitLine, 'Waiting for response')
+})
+
+test('Esc stop persists accumulated content AND reasoning in the partial', async (t) => {
+  mockConsole(t)
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  const provider = okProvider({
+    async chatCompletion(opts) {
+      opts.onToken('think', 'reasoning')
+      opts.onToken('Hel', 'content')
+      opts.signal.addEventListener('abort', () => rejectCompletion(new Error('aborted')))
+      return pending
+    },
+  })
+  const state = fakeState()
+  const sessionState = createSessionState()
+  sessionState.streaming = true
+  sessionState.streamController = new AbortController()
+  const { deps, exitCodes, saves } = makeDeps({ provider, sessionState })
+
+  const turn = runTurn(deps, state)
+  sessionState.stopped = true
+  sessionState.streamController.abort()
+  const produced = await turn
+
+  assert.deepEqual(exitCodes, [])
+  assert.deepEqual(saves, ['session'])
+  assert.equal(state.messages[2].content, 'Hel')
+  assert.equal(state.messages[2].reasoning, 'think')
+  assert.equal(produced, true)
+})
+
+test('a stopped turn writes the Stopped note with a blank row above and below', async (t) => {
+  enableAnsi(t)
+  mockConsole(t)
+  const writes = []
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  const provider = okProvider({
+    async chatCompletion(opts) {
+      opts.signal.addEventListener('abort', () => rejectCompletion(new Error('aborted')))
+      return pending
+    },
+  })
+  const state = fakeState()
+  const sessionState = createSessionState()
+  sessionState.streaming = true
+  sessionState.streamController = new AbortController()
+  const { deps, exitCodes } = makeDeps({
+    provider,
+    sessionState,
+    stdout: { write: (s) => writes.push(String(s)) },
+  })
+
+  const turn = runTurn(deps, state)
+  sessionState.stopped = true
+  sessionState.streamController.abort()
+  await turn
+
+  assert.deepEqual(exitCodes, [])
+  assert.deepEqual(writes, ['\n', '\n\n', `${dim('Stopped')}\n\n`])
+})
+
+test('Esc during the post-stream drain finalizes as stopped without exiting', async (t) => {
+  enableAnsi(t)
+  mockConsole(t)
+  const writes = []
+  let flushResolve
+  const render = () => {}
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => new Promise((resolve) => { flushResolve = resolve })
+  const provider = {
+    async chatCompletion(opts) {
+      opts.onToken('Hello!', 'content')
+      return { content: 'Hello!', usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }
+    },
+  }
+  const state = fakeState()
+  const sessionState = createSessionState()
+  const { deps, exitCodes, saves } = makeDeps({
+    render,
+    provider,
+    sessionState,
+    stdout: { write: (s) => writes.push(String(s)) },
+  })
+
+  const turn = runTurn(deps, state)
+  while (!flushResolve) await new Promise((resolve) => setTimeout(resolve, 0))
+  sessionState.stopped = true
+  flushResolve()
+  await turn
+
+  assert.deepEqual(exitCodes, [])
+  assert.deepEqual(saves, ['session'])
+  assert.equal(state.messages[2].content, 'Hello!')
+  assert.equal(state.messages.length, 3)
+  assert.ok(writes.join('').includes(`${dim('Stopped')}\n\n`), 'the drain-phase stop still writes the Stopped note')
+})
+
+test('Esc then Ctrl+C during finalize stays stopped and does not exit 130', async (t) => {
+  mockConsole(t)
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  const provider = okProvider({
+    async chatCompletion(opts) {
+      opts.onToken('Hel', 'content')
+      opts.signal.addEventListener('abort', () => {
+        rejectCompletion(Object.assign(new Error('aborted'), { pendingBuffer: 'data: {"choices":[{"delta":{"content":"Hel' }))
+      })
+      return pending
+    },
+  })
+  const state = fakeState()
+  const sessionState = createSessionState()
+  let onStop
+  let onInterrupt
+  const streamMonitor = { start() {}, stop() {} }
+  const createStreamKeyMonitor = (opts) => {
+    onStop = opts.onStop
+    onInterrupt = opts.onInterrupt
+    return streamMonitor
+  }
+  const { deps, exitCodes, saves } = makeDeps({ provider, sessionState })
+  const runner = createTurnRunner({
+    state,
+    provider,
+    apiKey: 'test-key',
+    render: deps.render,
+    loader: deps.loader,
+    stdout: deps.stdout,
+    tty: true,
+    saveCurrentSession: deps.saveCurrentSession,
+    interruptSave: deps.interruptSave,
+    exit: deps.exit,
+    sessionState,
+    input: { isTTY: true },
+    createStreamKeyMonitor,
+  })
+
+  const turn = runner.runTurn()
+  onStop() // first Esc: abort + mark stopped (stop finalizing)
+  onInterrupt() // Ctrl+C arriving right after Esc must NOT flip to interrupted/exit-130
+  await turn
+
+  assert.deepEqual(exitCodes, [])
+  assert.deepEqual(saves, ['session'])
+  const assistants = state.messages.filter((m) => m.role === 'assistant')
+  assert.equal(assistants.length, 1)
+  assert.equal(sessionState.stopped, false)
+  assert.equal(sessionState.stopping, false)
 })

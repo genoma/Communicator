@@ -15,6 +15,7 @@ export function createSessionState() {
     budgetWarned: false,
     streaming: false,
     streamController: null,
+    streamKeys: null,
     interrupted: false,
     stopped: false,
     stopping: false,
@@ -49,6 +50,8 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
     const reasoningParts = []
     // Streaming-phase raw-mode key listener (Esc stop / \x03 interrupt), torn
     // down in the finally and before exit so the terminal is never left raw.
+    // Mirrored onto sessionState.streamKeys so the process-level
+    // uncaughtException teardown can stop it even when the turn is mid-stream.
     let streamKeys = null
 
     render.sources = []
@@ -62,7 +65,9 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
     // Ctrl+C (SIGINT while streaming, or the \x03 byte once raw mode disables
     // ISIG) aborts the stream; the runner salvages the partial and exits 130.
     const requestInterrupt = () => {
-      if (!sessionState.streaming) return
+      // A Ctrl+C landing while an Esc stop is finalizing must not flip the
+      // catch to the interrupted/exit-130 branch: first keypress intent wins.
+      if (!sessionState.streaming || sessionState.stopping) return
       sessionState.interrupted = true
       sessionState.streamController?.abort()
     }
@@ -87,8 +92,10 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       if (message.content || message.reasoning) {
         state.appendAssistant(message)
       }
-      await interruptSave()
+      // Tear the raw mode down before the best-effort save so the terminal is
+      // not left raw if that save is slow (or the process exits mid-save).
       streamKeys?.stop()
+      await interruptSave()
       exit(130)
     }
 
@@ -143,6 +150,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       if (tty && input.isTTY) {
         streamKeys = createStreamKeyMonitor({ input, onStop: requestStop, onInterrupt: requestInterrupt })
         streamKeys.start()
+        sessionState.streamKeys = streamKeys
       }
       apiResult = await provider.chatCompletion({
         apiKey,
@@ -201,6 +209,12 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         await interruptedExit(apiResultMessage(apiResult))
         return
       }
+      if (sessionState.stopped) {
+        stdout.write('\n\n')
+        stdout.write(`${dim('Stopped')}\n\n`)
+        await finishStopped(buildPartial(null))
+        return
+      }
       stdout.write('\n\n')
 
       await printPostStreamMetrics(apiResult, {
@@ -212,6 +226,12 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
 
       if (sessionState.interrupted) {
         await interruptedExit(apiResultMessage(apiResult))
+        return
+      }
+      if (sessionState.stopped) {
+        stdout.write('\n\n')
+        stdout.write(`${dim('Stopped')}\n\n`)
+        await finishStopped(buildPartial(null))
         return
       }
 
@@ -246,7 +266,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       if (sessionState.stopped) {
         render.flush({ sync: true })
         stdout.write('\n\n')
-        stdout.write(`${dim('Stopped')}\n`)
+        stdout.write(`${dim('Stopped')}\n\n`)
         return await finishStopped(buildPartial(err))
       }
       render.flush({ sync: true })
@@ -265,6 +285,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
     } finally {
       streamKeys?.stop()
       streamKeys = null
+      sessionState.streamKeys = null
       sessionState.streaming = false
       sessionState.streamController = null
       sessionState.interrupted = false
