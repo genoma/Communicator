@@ -772,7 +772,7 @@ test('/edit rerun leaves exactly one blank row between the rebuilt transcript an
   const { ctx } = harness
   ctx.runTurn = async () => {
     stdout.write('\n\n')
-    stdout.write('✓ Waiting for response\n')
+    stdout.write('✓ Waiting for response\n\n')
     ctx.state.appendAssistant({ role: 'assistant', content: 'new answer' })
     return true
   }

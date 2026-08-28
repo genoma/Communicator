@@ -223,6 +223,21 @@ test('renderHistory keeps Thinking/Answer and puts the char marker before conten
   assert.equal(plain(), '\n❯ Kael\n\nquestion\n\n❯ Thinking\n\nthinking text\n\n❯ Answer\n\n❯ Zara\n\nAnswer here\n\n')
 })
 
+test('renderHistory puts the waitLine checkpoint one blank above and below the RPG char marker', (t) => {
+  // A reasoning-less turn in RPG mode resolves the loader row to the green
+  // checkpoint BEFORE the char marker, mirroring the live writeSegment order
+  // (checkpoint + one blank row, then assistantMarker). Pins the real
+  // renderHistory path with waitLine + assistantMarker together.
+  enableAnsi(t)
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'You are helpful.' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: 'Answer here', waitLine: 'Waiting for response' },
+  ], { markdown: false, stdout, userMarker: '❯ Kael', assistantMarker: '❯ Zara' })
+  assert.equal(plain(), '\n❯ Kael\n\nquestion\n\n✓ Waiting for response\n\n❯ Zara\n\nAnswer here\n\n')
+})
+
 test('smooth renderer writes nothing before the first tick and paces at the char cap', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const { stdout, plain } = capture()

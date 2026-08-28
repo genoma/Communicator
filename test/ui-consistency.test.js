@@ -146,7 +146,7 @@ test('renderHistory tailBlank: false flushes through attachments and sources', (
     { role: 'user', content: [{ type: 'text', text: 'question' }, { type: 'file', file: { filename: 'r.pdf', file_data: 'data:application/pdf;base64,AA==' } }] },
     { role: 'assistant', content: 'answer', waitLine: 'Waiting for response', sources: [{ title: 'One', url: 'https://one.example' }] },
   ], { markdown: false, stdout: history.stdout, tailBlank: false })
-  assert.equal(history.plain(), '\n❯ You\n\nquestion\n\nattached: r.pdf (file)\n✓ Waiting for response\nanswer\n\n\nSources (1)\n[1] One')
+  assert.equal(history.plain(), '\n❯ You\n\nquestion\n\nattached: r.pdf (file)\n✓ Waiting for response\n\nanswer\n\n\nSources (1)\n[1] One')
 })
 
 test('attachmentLine styles the word, label, meta and note with one dim note', (t) => {

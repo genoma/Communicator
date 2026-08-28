@@ -79,15 +79,21 @@ export function createLoader({ stdout = process.stdout, graceMs = LOADER_GRACE_M
       label = nextLabel
       spinner.start()
     },
+    // Returns true only when `done` actually wrote the green checkpoint
+    // line (the spinner was visible): a bare stop, a stop after an instant
+    // reply (nothing within the grace window) and a non-TTY stop all return
+    // false, so callers can add the one blank row below the checkpoint
+    // exactly once and never introduce a stray blank in those cases.
     stop({ done = false } = {}) {
       spinner.stopTimers()
-      if (!spinner.isShown()) return
+      if (!spinner.isShown()) return false
       spinner.hide()
       if (done) {
         stdout.write(`\r${green('✓')} ${label}\x1b[K\n`)
-        return
+        return true
       }
       stdout.write('\r\x1b[K')
+      return false
     },
   }
 }

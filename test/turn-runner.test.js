@@ -634,3 +634,165 @@ test('full mode starts the turn with a blank row above the marker and never chec
   assert.deepEqual(writes.slice(0, 2), ['\n', '\n'])
   assert.deepEqual(calls, [{}, { done: true }, {}])
 })
+
+test('a reasoning-less turn adds one blank row under the resolved checkpoint', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const stdout = { write: (chunk) => writes.push(String(chunk)) }
+  // A fake loader that reports the checkpoint was written when the spinner was
+  // visibly spinning (done stop that wrote the line) so the runner adds the
+  // blank row. This isolates turn-runner's `\n` decision from the real loader's
+  // timer/grace behaviour (covered in loader.test.js). The label is captured
+  // from `start`, so both `Waiting for response` and `Searching the web` go
+  // through the same decision.
+  let shown = true
+  let label = ''
+  const loader = {
+    start(next) { label = next },
+    stop({ done } = {}) {
+      if (!shown) return false
+      if (done) {
+        stdout.write(`\r✓ ${label}\x1b[K\n`)
+        shown = false
+        return true
+      }
+      stdout.write('\r\x1b[K')
+      shown = false
+      return false
+    },
+  }
+  const render = (token, type) => { if (type === 'content') stdout.write(token) }
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => {}
+  const state = fakeState()
+  const provider = {
+    async chatCompletion(opts) {
+      opts.onToken('Hello', 'content')
+      return { content: 'Hello' }
+    },
+  }
+  const { deps } = makeDeps({
+    render,
+    loader,
+    provider,
+    tty: true,
+    stdout,
+  })
+
+  await runTurn(deps, state)
+
+  // `stop({done:true})` reported true, so exactly one blank row (`\n`) was
+  // written between the checkpoint row and the answer, matching history replay.
+  const live = writes.join('')
+  const norm = live.replace(/\r/g, '').replace(/\x1b\[K/g, '').replace(/\x1b\[[0-9;]*m/g, '') // eslint-disable-line no-control-regex
+  const cIdx = norm.indexOf('Waiting for response')
+  const aIdx = norm.indexOf('Hello')
+  assert.ok(cIdx !== -1 && aIdx !== -1, 'both the checkpoint and the answer must appear')
+  const between = norm.slice(cIdx + 'Waiting for response'.length, aIdx)
+  assert.equal(between, '\n\n', 'exactly one blank row must sit between the checkpoint and the answer')
+  // The waitLine label is stashed for history replay, and replay emits it with
+  // the same one blank row below (parity with the live layout).
+  assert.equal(state.messages[2].waitLine, 'Waiting for response')
+})
+
+test('a web-search-always turn uses the Searching the web checkpoint with one blank row', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const stdout = { write: (chunk) => writes.push(String(chunk)) }
+  let shown = true
+  let label = ''
+  const loader = {
+    start(next) { label = next },
+    stop({ done } = {}) {
+      if (!shown) return false
+      if (done) {
+        stdout.write(`\r✓ ${label}\x1b[K\n`)
+        shown = false
+        return true
+      }
+      stdout.write('\r\x1b[K')
+      shown = false
+      return false
+    },
+  }
+  const render = (token, type) => { if (type === 'content') stdout.write(token) }
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => {}
+  const state = fakeState({ webSearch: 'always' })
+  const provider = {
+    async chatCompletion(opts) {
+      opts.onToken('Hello', 'content')
+      return { content: 'Hello' }
+    },
+  }
+  const { deps } = makeDeps({
+    render,
+    loader,
+    provider,
+    tty: true,
+    stdout,
+  })
+
+  await runTurn(deps, state)
+
+  const live = writes.join('')
+  const norm = live.replace(/\r/g, '').replace(/\x1b\[K/g, '').replace(/\x1b\[[0-9;]*m/g, '') // eslint-disable-line no-control-regex
+  const cIdx = norm.indexOf('Searching the web')
+  const aIdx = norm.indexOf('Hello')
+  assert.ok(cIdx !== -1 && aIdx !== -1, 'the web-search checkpoint and the answer must appear')
+  const between = norm.slice(cIdx + 'Searching the web'.length, aIdx)
+  assert.equal(between, '\n\n', 'exactly one blank row must sit between the web-search checkpoint and the answer')
+  assert.equal(state.messages[2].waitLine, 'Searching the web')
+})
+
+test('an instant reply adds no stray blank row (checkpoint never shown)', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const stdout = { write: (chunk) => writes.push(String(chunk)) }
+  let shown = false
+  let label = ''
+  const loader = {
+    start(next) { label = next },
+    stop({ done } = {}) {
+      if (!shown) return false
+      if (done) {
+        stdout.write(`\r✓ ${label}\x1b[K\n`)
+        shown = false
+        return true
+      }
+      stdout.write('\r\x1b[K')
+      shown = false
+      return false
+    },
+  }
+  const render = (token, type) => { if (type === 'content') stdout.write(token) }
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => {}
+  const state = fakeState()
+  const provider = {
+    async chatCompletion(opts) {
+      opts.onToken('Hello', 'content')
+      return { content: 'Hello' }
+    },
+  }
+  const { deps } = makeDeps({
+    render,
+    loader,
+    provider,
+    tty: true,
+    stdout,
+  })
+
+  await runTurn(deps, state)
+
+  // The spinner was never shown, so `stop({done:true})` returned false: the
+  // runner wrote no checkpoint and no extra blank row — the answer follows the
+  // turn-start `\n\n` directly.
+  const live = writes.join('')
+  assert.ok(!live.includes('Waiting for response'), 'no waiting line may appear for an instant reply')
+  assert.equal(live, '\n\nHello\n\n', 'the answer must follow the turn-start newlines directly')
+  assert.equal(state.messages[2].waitLine, 'Waiting for response')
+})

@@ -54,7 +54,7 @@ test('stop before grace writes nothing and cancels pending frames', async (t) =>
   const stdout = { write(chunk) { chunks.push(String(chunk)); return true } }
   const loader = createLoader({ stdout, graceMs: 200, tickMs: 150 })
   loader.start('Waiting')
-  loader.stop()
+  assert.equal(loader.stop(), false, 'an unshown stop reports no checkpoint was written')
   t.mock.timers.tick(1000)
   assert.deepEqual(chunks, [])
 })
@@ -79,11 +79,11 @@ test('stop with done writes a green check line once and is idempotent', async (t
   const loader = createLoader({ stdout, graceMs: 200, tickMs: 150 })
   loader.start('Waiting for response')
   t.mock.timers.tick(200)
-  loader.stop({ done: true })
+  assert.equal(loader.stop({ done: true }), true, 'a shown done stop reports the checkpoint was written')
   const doneLine = `\r${green('✓')} Waiting for response\x1b[K\n`
   assert.deepEqual(chunks, [`\r${dim('Waiting for response')} ${frameAt(0)}\x1b[K`, doneLine])
-  loader.stop()
-  loader.stop({ done: true })
+  assert.equal(loader.stop(), false, 'a second stop writes nothing and reports no checkpoint')
+  assert.equal(loader.stop({ done: true }), false, 'a third done stop is idempotent and reports no checkpoint')
   t.mock.timers.tick(1000)
   assert.deepEqual(chunks, [`\r${dim('Waiting for response')} ${frameAt(0)}\x1b[K`, doneLine])
 })
@@ -94,7 +94,7 @@ test('stop with done before grace writes nothing', async (t) => {
   const stdout = { write(chunk) { chunks.push(String(chunk)); return true } }
   const loader = createLoader({ stdout, graceMs: 200, tickMs: 150 })
   loader.start('Waiting')
-  loader.stop({ done: true })
+  assert.equal(loader.stop({ done: true }), false, 'an instant reply writes no checkpoint and reports it')
   t.mock.timers.tick(1000)
   assert.deepEqual(chunks, [])
 })

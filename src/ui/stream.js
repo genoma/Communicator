@@ -240,11 +240,12 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
       }
       // A reasoning-less turn resolved its loader row to a green checkpoint
       // (`✓ Waiting for response`/`✓ Searching the web`): replay it exactly
-      // as the live stream showed it (no blank row between the checkpoint and
-      // the answer). Never stored on reasoning turns — the thinking marker or
-      // the compact meter checkpoint owns that row instead.
+      // as the live stream showed it — one blank row between the checkpoint
+      // and the answer, the same one-blank-above-and-below marker spacing the
+      // thinking markers get. Never stored on reasoning turns — the thinking
+      // marker or the compact meter checkpoint owns that row instead.
       if (msg.waitLine) {
-        out += `${green('✓')} ${sanitizeSingleLine(msg.waitLine)}\n`
+        out += `${green('✓')} ${sanitizeSingleLine(msg.waitLine)}\n\n`
       }
       if (assistantMarker) out += `${assistantMarker}\n\n`
       out += `${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), msg.sources || [], cols) : wrapPlain(sanitizeAnsi(contentText(msg.content)))}\n\n`

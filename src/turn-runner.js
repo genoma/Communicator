@@ -94,7 +94,14 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
           if (type === 'start_reasoning') {
             if (tty) loader.stop()
           } else if (type === 'content') {
-            loader.stop({ done: true })
+            // Resolve the waiting loader row to the green checkpoint, then
+            // add exactly one blank row before the answer — the same
+            // one-blank-above-and-below marker spacing the thinking markers
+            // get. `stop({ done: true })` returns true only when it actually
+            // wrote the checkpoint (spinner was visible), so an instant reply
+            // (nothing within the grace window) and non-TTY output never gain
+            // a stray blank row.
+            if (loader.stop({ done: true })) stdout.write('\n')
           }
           if (type === 'reasoning') reasoningParts.push(token)
           else if (type === 'content') contentParts.push(token)
@@ -211,11 +218,12 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
     if (apiResult.content) {
       const message = apiResultMessage(apiResult)
       // A reasoning-less turn owns the loader row: it resolved to the green
-      // checkpoint (`✓ Waiting for response` / `✓ Searching the web`) and the
-      // answer started on the next row. Stash the label on the message so
-      // history replay (resize rebuild, resume) shows the same line instead
-      // of silently dropping it. With reasoning, the thinking marker (or the
-      // compact meter checkpoint) owns that row and no label is stored.
+      // checkpoint (`✓ Waiting for response` / `✓ Searching the web`) with
+      // one blank row below it before the answer. Stash the label on the
+      // message so history replay (resize rebuild, resume) shows the same
+      // line instead of silently dropping it. With reasoning, the thinking
+      // marker (or the compact meter checkpoint) owns that row and no label
+      // is stored.
       if (tty && !apiResult.reasoning) {
         message.waitLine = state.webSearch === 'always' ? 'Searching the web' : 'Waiting for response'
       }
