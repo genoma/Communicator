@@ -25,7 +25,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   const s = makeState()
   assert.deepEqual(
     Object.keys(s).sort(),
-    ['budget', 'compactThinking', 'contextLength', 'createdAt', 'e2ee', 'e2eeContext', 'endpointProviderName', 'fileSupported', 'imageOutputSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'reasoningMandatory', 'retryTurn', 'scrapes', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'topP', 'updatedAt', 'visionSupported', 'webResults', 'webSearch', 'webSearchSupported', 'zdr']
+    ['budget', 'compactThinking', 'contextLength', 'createdAt', 'e2ee', 'e2eeContext', 'endpointProviderName', 'fileSupported', 'imageOutputSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'reasoningMandatory', 'retryTurn', 'scrapes', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'topP', 'updatedAt', 'visionSupported', 'webResults', 'webSearch', 'webSearchExplicit', 'webSearchSupported', 'zdr']
   )
   assert.equal(s.modelId, 'org/model')
   assert.equal(s.endpointProviderName, 'Provider')
@@ -97,6 +97,7 @@ test('toFinalState returns exactly the old finalState field list', () => {
     'visionSupported',
     'webResults',
     'webSearch',
+    'webSearchExplicit',
     'webSearchSupported',
   ])
   assert.equal(state.messages, s.messages)
@@ -223,6 +224,32 @@ test('applyModelSelection gates web search off for unsupported models', () => {
     { temperature: {}, webSearch: { m: true } }
   )
   assert.equal(s.webSearch, 'off')
+})
+
+test('applyModelSelection resets the explicit web search marker', () => {
+  const s = makeState({ webSearchExplicit: true })
+  s.applyModelSelection(
+    { modelId: 'm', endpointProviderName: 'P', pricing: null, reasoningEffort: null, supportsReasoning: false, modelReasoning: null, webSearchSupported: true },
+    { temperature: {}, webSearch: { m: 'auto' } }
+  )
+  // A /model switch re-derives web search; it is not an explicit choice, so
+  // the exit writers must not persist the re-derived value over the pref.
+  assert.equal(s.webSearch, 'auto')
+  assert.equal(s.webSearchExplicit, false)
+})
+
+test('setWebSearch marks web search as explicitly chosen', () => {
+  const s = makeState()
+  assert.equal(s.webSearchExplicit, false)
+  s.setWebSearch('always')
+  assert.equal(s.webSearch, 'always')
+  assert.equal(s.webSearchExplicit, true)
+})
+
+test('constructor keeps webSearchExplicit off for e2ee sessions regardless of input', () => {
+  const s = new ChatState({ modelId: 'm', webSearch: 'auto', webSearchExplicit: true, e2ee: true })
+  assert.equal(s.webSearch, 'off')
+  assert.equal(s.webSearchExplicit, false)
 })
 
 test('constructor derives reasoningMandatory from the explicit field or the model reasoning metadata', () => {

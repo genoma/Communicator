@@ -16,6 +16,11 @@ export async function resumeCmd(partialId) {
     topP: sessionData.topP,
     budget: sessionData.budget ?? null,
     webSearch: normalizeWebSearchMode(sessionData.webSearch),
+    // Raw snapshot presence: legacy sessions saved before the field existed have
+    // no webSearch, so normalizeWebSearchMode(undefined) would report 'off'. The
+    // caller prefers the per-model pref and only falls back to the snapshot when
+    // it is actually present.
+    webSearchSnapshot: sessionData.webSearch ?? null,
     webResults: sessionData.webResults ?? null,
     pricing: sessionData.pricing || null,
     contextLength: sessionData.contextLength || null,

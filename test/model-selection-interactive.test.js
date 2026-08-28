@@ -91,6 +91,31 @@ test('interactive selection picks a provider among multiple endpoints', async (t
   assert.deepEqual(sel.pricing, chosen.pricing)
 })
 
+test('interactive selection canonicalizes alias rows to the model id for prefs', async (t) => {
+  searchQueue = [{ id: '~test/model-a-latest', name: 'Model A (latest)' }, chosen]
+  searchMessages = []
+  searchChoices = []
+  t.mock.method(console, 'log', () => {})
+
+  const provider = {
+    meta: { name: 'openrouter', hasEndpoints: true, supportsWebSearchOnAll: true },
+    async fetchModels() {
+      return [
+        { id: 'test/model-a', name: 'Model A', aliasTarget: null, contextLength: 1000, reasoning: { supported: true, supportsEffort: false }, architecture: { input_modalities: [] }, supportedParameters: [] },
+        { id: '~test/model-a-latest', name: 'Model A (latest)', aliasTarget: 'test/model-a', contextLength: 1000, reasoning: { supported: true, supportsEffort: false }, architecture: { input_modalities: [] }, supportedParameters: [] },
+      ]
+    },
+    async fetchEndpoints() {
+      return [chosen]
+    },
+  }
+
+  const sel = await selectModelAndEndpoint({ provider, apiKey: 'k', prefs: {}, reasoningEffort: undefined })
+
+  assert.equal(sel.modelId, 'test/model-a')
+  assert.equal(sel.endpointProviderName, 'SecondProvider')
+})
+
 test('interactive selection with zdr shows only zero-retention models and endpoints', async (t) => {
   searchQueue = [{ id: 'org/zdr-model', name: 'ZDR Model' }, zdrChosen]
   searchMessages = []

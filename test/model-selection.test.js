@@ -49,6 +49,20 @@ test('non-interactive selection uses saved pref before model default', async () 
   assert.equal(sel.reasoningEffort, 'high')
 })
 
+test('non-interactive selection resolves alias rows to the canonical model id for prefs', async () => {
+  const provider = fakeProvider({
+    async fetchModels() {
+      return [
+        { id: 'test/model-a', aliasTarget: null, reasoning: { supported: true, supportsEffort: true, default_effort: 'low' }, pricing: { prompt: 1e-6, completion: 2e-6 }, contextLength: 128000 },
+        { id: '~test/model-a-latest', aliasTarget: 'test/model-a', reasoning: { supported: true, supportsEffort: true, default_effort: 'low' }, pricing: { prompt: 1e-6, completion: 2e-6 }, contextLength: 128000 },
+      ]
+    },
+  })
+  const sel = await selectModelNonInteractive({ provider, apiKey: '', prefs: { reasoningEffort: { 'test/model-a': 'high' } }, modelId: '~test/model-a-latest' })
+  assert.equal(sel.modelId, 'test/model-a')
+  assert.equal(sel.reasoningEffort, 'high')
+})
+
 test('non-interactive selection falls back to model default effort', async () => {
   const sel = await selectModelNonInteractive({ provider: fakeProvider(), apiKey: '', prefs: {}, modelId: 'effort-model' })
   assert.equal(sel.reasoningEffort, 'low')

@@ -32,6 +32,7 @@ function finalState(overrides = {}) {
     temperature: 1.1,
     budget: 5,
     webSearch: 'auto',
+    webSearchExplicit: true,
     webResults: null,
     pricing: { prompt: 0.000001, completion: 0.000002 },
     ...overrides,
@@ -59,6 +60,18 @@ test('persistSession saves the session file and merges preferences', async (t) =
   assert.equal(prefs.temperature['org/model'], 1.1)
   assert.equal(prefs.reasoningEffort['org/model'], 'high')
   assert.equal(prefs.webSearch['org/model'], 'auto')
+})
+
+test('persistSession does not write webSearch when the session never set it explicitly', async (t) => {
+  const { persistSession } = await import('../src/session-setup.js')
+  const file = await tempConfig(t)
+  const prefs = { webSearch: { 'org/model': 'auto' } }
+  // finalState.webSearchExplicit is false (no /web-search, no --web-search);
+  // a default/forced 'off' must not overwrite the user's per-model pref.
+  await persistSession({ finalState: finalState({ webSearch: 'off', webSearchExplicit: false }), prefs, config: file })
+
+  const saved = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(saved.webSearch['org/model'], 'auto')
 })
 
 test('persistSession skips the session file for empty sessions but still saves prefs', async (t) => {

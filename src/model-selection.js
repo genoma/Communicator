@@ -133,7 +133,13 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
 
     const modelData = models.find((m) => m.id === modelId)
 
-    const endpoints = await provider.fetchEndpoints(apiKey, modelId, models)
+    // Alias rows (e.g. `~deepseek/...` with alias_target) resolve to the same
+    // physical model as their canonical row; key per-model prefs by the
+    // canonical id so a model always occupies one pref slot regardless of
+    // which row was picked.
+    const prefModelId = modelData?.aliasTarget || modelId
+
+    const endpoints = await provider.fetchEndpoints(apiKey, prefModelId, models)
     if (provider.meta.hasEndpoints && endpoints.length === 0) {
       throw new CliError(`Error: No providers found for model: ${modelId}`)
     }
@@ -156,7 +162,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
 
     let effort = reasoningEffort
     if (effort === undefined) {
-      const lastEffort = prefs.reasoningEffort?.[modelId]
+      const lastEffort = prefs.reasoningEffort?.[prefModelId]
       if (modelData?.reasoning?.supportsEffort === false) {
         // models that reason automatically without effort control
         effort = undefined
@@ -176,7 +182,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
     const endpointSupportsEffort = endpointSupportsReasoning(ep)
 
     return {
-      modelId,
+      modelId: prefModelId,
       reasoningEffort: effort,
       endpointProviderName: ep?.providerName || provider.meta.name,
       pricing: ep?.pricing || null,
@@ -238,13 +244,17 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
   }
   const reasoning = modelData?.reasoning || null
 
-  const effort = resolveEffortDefault({ reasoning, forcedEffort, prefs, modelId })
+  // Alias rows resolve to their canonical row id; key per-model prefs by the
+  // canonical id (see selectModelAndEndpoint).
+  const prefModelId = modelData ? (modelData.aliasTarget || modelId) : modelId
+
+  const effort = resolveEffortDefault({ reasoning, forcedEffort, prefs, modelId: prefModelId })
 
   if (effort === null && reasoning?.mandatory === true) {
     console.log(`Note: reasoning is mandatory for ${modelId}; it cannot be disabled.`)
   }
 
-  const endpoints = await provider.fetchEndpoints(apiKey, modelId, models)
+  const endpoints = await provider.fetchEndpoints(apiKey, prefModelId, models)
   const zdrEndpoints = zdrActive ? endpoints.filter((ep) => ep.zdr === true) : endpoints
   if (zdrActive && zdrEndpoints.length === 0) {
     throw new CliError(`Error: model ${modelId} has no zero-retention providers. Pick a ZDR-capable model or retry without --zdr.`)
@@ -254,7 +264,7 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
     : zdrEndpoints[0]
 
   return {
-    modelId,
+    modelId: prefModelId,
     reasoningEffort: effort,
     endpointProviderName: ep?.providerName || provider.meta.name,
     pricing: ep?.pricing || null,

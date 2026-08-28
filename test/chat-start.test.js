@@ -244,6 +244,29 @@ test('chatStart resume branch applies --temperature, --top-p, --budget and --web
   assert.equal(call.opts.webSearch, 'always')
 })
 
+test('chatStart resume branch prefers the per-model pref over a stale web-search snapshot', async (t) => {
+  withApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(console, 'log', () => {})
+
+  // Snapshot says 'off' (written by an older version for a session that never
+  // touched web search) but the per-model pref is the user's deliberate 'auto'.
+  resumeResult = resumeSession({ webSearch: 'off', webSearchSnapshot: 'off' })
+  await chatStart({
+    apiKey: 'k',
+    opts: baseOpts({ resume: 'x', config: configFile }),
+    prefs: { webSearch: { 'test/model': 'auto' } },
+    systemPrompt: null,
+    providerType: 'openrouter',
+  })
+  assert.equal(startChatCalls[startChatCalls.length - 1].opts.webSearch, 'auto')
+
+  // No per-model pref: fall back to the snapshot when it is present.
+  resumeResult = resumeSession({ webSearch: 'always', webSearchSnapshot: 'always' })
+  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'openrouter' })
+  assert.equal(startChatCalls[startChatCalls.length - 1].opts.webSearch, 'always')
+})
+
 test('chatStart resume branch --temperature default / --top-p default override the session values and clear the persisted prefs', async (t) => {
   resumeResult = resumeSession()
   withApiKey(t)

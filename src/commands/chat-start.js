@@ -71,7 +71,11 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
       temperature: forcedTemperature === null ? undefined : (forcedTemperature ?? result.temperature),
       topP: forcedTopP === null ? undefined : (forcedTopP ?? result.topP),
       budget: forcedBudget ?? resolvePrefOrNull(resolveBudget, result.budget) ?? null,
-      webSearch: e2ee ? 'off' : resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: result.webSearch }),
+      webSearch: e2ee ? 'off' : resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: prefs.webSearch?.[result.modelId] ?? (result.webSearchSnapshot != null ? result.webSearch : undefined) }),
+      // The per-model pref wins over a session snapshot (which may be a stale
+      // default 'off' written by an older version); the snapshot is only a
+      // fallback when the pref has never been set for that model.
+      webSearchExplicit: !e2ee && (opts.webSearch !== undefined || forcedWebResults != null),
       webResults: e2ee ? null : forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), result.webResults) ?? null,
       zdr,
       e2ee,
@@ -102,7 +106,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
 
   const provider = getProvider(providerType)
 
-  const { selection, temperature, topP, webSearch, webResults } = await buildSessionContext({
+  const { selection, temperature, topP, webSearch, webSearchExplicit, webResults } = await buildSessionContext({
     provider,
     apiKey,
     opts,
@@ -140,6 +144,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     topP,
     budget,
     webSearch,
+    webSearchExplicit,
     webResults,
     zdr,
     e2ee,
@@ -203,6 +208,7 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
     modelReasoning: ctx.modelReasoning,
     budget: ctx.budget,
     webSearch: ctx.webSearch,
+    webSearchExplicit: ctx.webSearchExplicit,
     webResults: ctx.webResults,
     zdr: ctx.zdr,
     e2ee: ctx.e2ee,

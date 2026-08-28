@@ -477,9 +477,25 @@ test('idle SIGINT flushes preference updates before exiting', async (t) => {
     reasoningEffort: 'high',
     temperature: 1.1,
     topP: undefined,
-    webSearch: 'off',
     webResults: null,
   })
+  assert.deepEqual(harness.exitCodes, [130])
+})
+
+test('idle SIGINT persists webSearch when the session set it explicitly', async (t) => {
+  mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['hi', neverResolving()]) })
+
+  runChatSession(baseCtx(provider, { webSearch: 'auto', webSearchExplicit: true }), harness.deps)
+  await tick()
+  harness.signalHandlers.sigint()
+  await tick()
+  await tick()
+
+  assert.equal(harness.prefsCalls.length, 1)
+  assert.equal(harness.prefsCalls[0].modelId, 'org/model')
+  assert.equal(harness.prefsCalls[0].webSearch, 'auto')
   assert.deepEqual(harness.exitCodes, [130])
 })
 

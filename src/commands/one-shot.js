@@ -52,7 +52,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     if (err instanceof CliError || err instanceof ExitPromptError) throw err
     fail(`Error: ${formatError(err)}`)
   }
-  const { selection, temperature, topP, webSearch, webResults } = context
+  const { selection, temperature, topP, webSearch, webSearchExplicit, webResults } = context
 
   if (selection.isImageModel === true) {
     if (opts.attach?.length) {
@@ -235,6 +235,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     topP,
     budget,
     webSearch,
+    webSearchExplicit,
     webResults,
     zdr,
     e2ee,

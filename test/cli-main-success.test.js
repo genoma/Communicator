@@ -343,7 +343,9 @@ test('--resume with a unique partial id rebuilds the context from the session', 
   assert.equal(saved.lastProvider, 'ProviderX')
   assert.equal(saved.temperature['test/model'], 0.9)
   assert.equal(saved.reasoningEffort['test/model'], 'low')
-  assert.equal(saved.webSearch['test/model'], 'off')
+  // The resumed session never explicitly set web search, so its default/restored
+  // 'off' must not pollute the per-model pref.
+  assert.equal(saved.webSearch, undefined)
 })
 
 test('--resume --reasoning-effort overrides the stored session effort', async (t) => {

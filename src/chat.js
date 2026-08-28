@@ -40,6 +40,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     reasoningMandatory = false,
     budget = null,
     webSearch = 'off',
+    webSearchExplicit = false,
     webResults = null,
     zdr = false,
     e2ee = false,
@@ -102,6 +103,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     contextLength,
     supportsReasoning,
     webSearch,
+    webSearchExplicit,
     webResults,
     zdr,
     e2ee,
@@ -258,7 +260,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
         reasoningEffort: finalState.reasoningEffort,
         temperature: finalState.temperature,
         topP: finalState.topP,
-        webSearch: finalState.webSearch,
+        // Only persist webSearch for an explicit session choice; a forced
+        // 'off' must not overwrite the user's per-model pref.
+        ...(finalState.webSearchExplicit ? { webSearch: finalState.webSearch } : {}),
         webResults: finalState.webResults,
       }),
     ])

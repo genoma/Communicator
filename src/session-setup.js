@@ -57,6 +57,7 @@ export async function buildSessionContext({ provider, apiKey, opts, prefs, force
   }
 
   const webSearch = e2ee ? 'off' : resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: prefs.webSearch?.[selection.modelId] })
+  const webSearchExplicit = !e2ee && (opts.webSearch !== undefined || forcedWebResults != null)
   const gateError = webSearchGate(webSearch, selection.webSearchSupported)
   if (gateError) throw new CliError(`Error: ${gateError}`)
 
@@ -69,6 +70,7 @@ export async function buildSessionContext({ provider, apiKey, opts, prefs, force
     temperature: samplingPrefValue(forcedTemperature, prefs.temperature?.[selection.modelId], prefs, 'temperature', selection.modelId),
     topP: samplingPrefValue(forcedTopP, prefs.topP?.[selection.modelId], prefs, 'topP', selection.modelId),
     webSearch,
+    webSearchExplicit,
     webResults: e2ee ? null : forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), prefs.webResults) ?? null,
   }
 }
@@ -86,6 +88,8 @@ export async function persistSession({ finalState, prefs, config }) {
     reasoningEffort: finalState.reasoningEffort,
     temperature: finalState.temperature,
     topP: finalState.topP,
-    webSearch: finalState.webSearch,
+    // Only persist webSearch when the session explicitly chose it; otherwise a
+    // default/forced 'off' would overwrite a user's per-model pref on exit.
+    ...(finalState.webSearchExplicit ? { webSearch: finalState.webSearch } : {}),
   }))
 }

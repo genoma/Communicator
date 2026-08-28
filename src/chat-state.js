@@ -2,7 +2,7 @@ import { DEFAULT_SYSTEM_PROMPT } from './constants.js'
 import { normalizeSmoothSpeed, normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
-  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, topP, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, updatedAt = null, modelReasoning, reasoningMandatory, markdown = true, smoothStreaming = true, smoothSpeed, compactThinking = false, messages, systemContent, scrapes = 0 }) {
+  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, topP, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, webSearchExplicit = false, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, updatedAt = null, modelReasoning, reasoningMandatory, markdown = true, smoothStreaming = true, smoothSpeed, compactThinking = false, messages, systemContent, scrapes = 0 }) {
     this.modelId = modelId
     this.endpointProviderName = endpointProviderName
     this.reasoningEffort = reasoningEffort
@@ -13,6 +13,10 @@ export class ChatState {
     this.contextLength = contextLength
     this.supportsReasoning = supportsReasoning
     this.webSearch = e2ee ? 'off' : normalizeWebSearchMode(webSearch)
+    // Only exit prefs writers persist webSearch when the session explicitly
+    // set it (via /web-search or --web-search/--web-results); a forced/default
+    // 'off' must never overwrite a user's per-model pref.
+    this.webSearchExplicit = e2ee ? false : webSearchExplicit === true
     this.webResults = e2ee ? null : webResults
     this.zdr = zdr === true
     this.e2ee = e2ee === true
@@ -56,6 +60,7 @@ export class ChatState {
       topP: this.topP,
       budget: this.budget,
       webSearch: this.webSearch,
+      webSearchExplicit: this.webSearchExplicit,
       webResults: this.webResults,
       pricing: this.pricing,
       contextLength: this.contextLength,
@@ -96,6 +101,7 @@ export class ChatState {
 
   setWebSearch(value) {
     this.webSearch = normalizeWebSearchMode(value)
+    this.webSearchExplicit = true
   }
 
   setWebResults(value) {
@@ -119,6 +125,10 @@ export class ChatState {
     this.topP = prefs.topP?.[sel.modelId]
     this.webSearchSupported = sel.webSearchSupported
     this.webSearch = this.e2ee ? 'off' : (sel.webSearchSupported === false ? 'off' : normalizeWebSearchMode(prefs.webSearch?.[sel.modelId]))
+    // A /model switch re-derives web search from the new model's pref; it is
+    // never an explicit choice in its own right, so the exit writers must not
+    // persist the re-derived value (including a forced 'off') over that pref.
+    this.webSearchExplicit = false
     this.visionSupported = sel.visionSupported
     this.fileSupported = sel.fileSupported
     this.imageOutputSupported = sel.imageOutputSupported

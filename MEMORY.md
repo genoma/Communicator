@@ -14,7 +14,7 @@
 - `src/turn-runner.js` — `createTurnRunner` + `createSessionState`: per-turn orchestration (stream render, loader, abort, partial salvage, usage/budget tracking). Runner and SIGINT handler share `sessionState`; `/new` resets tracker/budgetWarned. Resolves model-produced artifacts post-stream. Stamps the resolved loader label onto reasoning-less completed messages as `waitLine` (tty only) — the `renderHistory` replay contract, see the `src/chat.js` entry.
 - `src/artifacts.js` — shared artifact handling: `extractMarkdownImageUrls`, `produceParts` (parallel downloads), `resolveArtifacts` (single shared gate), `buildPartsContent`, `printArtifacts`, `printArtifactsSummary`, `printPostStreamMetrics`.
 - `src/commands/chat/index.js` — slash command registry (21 commands, no `/exit` alias), `CHAT_COMMANDS`, `budgetGuard`, `showStatus`. Handlers return `{ exit }` / `{ reset }` / `{ resetBudgetWarning }` signals; never `process.exit`. Picker deps injectable for tests.
-- `src/chat-state.js` — `ChatState`: 30-field session state plus pure transitions; `toFinalState(providerType)` returns the exact 23-field session snapshot (omits `pendingAttachments`, `modelReasoning`, `markdown`, `smoothStreaming`, `smoothSpeed`, `compactThinking`); `reasoningMandatory` rides through for OpenRouter/Venice.
+- `src/chat-state.js` — `ChatState`: 31-field session state plus pure transitions; `toFinalState(providerType)` returns the exact 24-field session snapshot (omits `pendingAttachments`, `modelReasoning`, `markdown`, `smoothStreaming`, `smoothSpeed`, `compactThinking`); `reasoningMandatory` rides through for OpenRouter/Venice.
 - `src/attachments.js` — classification, loading, capability gates, content/part helpers, `partUrl`/`partLabel`, `formatBytes`.
 - `src/session-setup.js` — shared session setup: `resolveSessionFlags`, `attachGateOptions`, `buildSessionContext`, `persistSession` (save + merged prefs).
 - `src/rpg.js` — RPG mode provisioning/assembly (see RPG mode).
@@ -60,7 +60,10 @@
 ## Web search semantics
 
 - Pref `webSearch` per model: `off`/`auto`/`always`; `true`/`on` normalize to `auto`.
+- Per-model pref keys are CANONICAL model ids: OpenRouter/DeepInfra list alias rows (`~deepseek/...` with `alias_target`) as separate entries for the same physical model, so selection (`selectModelAndEndpoint`/`selectModelNonInteractive`/`config-set`) resolves them to `alias_target.slug` before keying `prefs.webSearch`/`temperature`/`topP`/`reasoningEffort` (mirrors `fetchEndpoints`' `aliasTarget || modelId`). One physical model always occupies one pref slot.
+- Resume resolution: flag > `prefs.webSearch[modelId]` > session snapshot > off; the per-model pref wins over a stale snapshot (older versions wrote a default `off` to every session).
 - Precedence: flag > pref > off; `--web-results` implies `auto`.
+- Exit prefs writers (`persistSession`, `bestEffortExitSave`) persist `webSearch` only when the session explicitly set it (via `/web-search` or `--web-search`/`--web-results`, tracked by `ChatState.webSearchExplicit`); a default/forced `off` (unsupported model, `--e2ee`) never overwrites the user's per-model pref.
 - OpenRouter: `auto` uses server tool with `max_results` + `max_total_results`; `always` uses legacy `plugins: [{ id: 'web', max_results }]`; `off` sends neither. Default N = 10, cap 20 (OpenRouter allows max_results 1–25, 1–20 on the Perplexity engine; 20 also matches Venice's standalone search limit).
 - Venice: `venice_parameters.enable_web_search` (`auto`/`on`/`off`) + `enable_web_citations`; no result-count knob.
 - Sources are persisted on assistant messages when non-empty and replayed/exported; cite markers `^n^`.

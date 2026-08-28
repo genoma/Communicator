@@ -35,6 +35,9 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
   let provider = null
   let modelData = null
   let endpoint = null
+  // Per-model prefs are keyed by the canonical id, so an alias row pick never
+  // writes to a second pref slot (mirrors model-selection.js).
+  let prefModelId = null
 
   if (opts.model !== undefined) {
     provider = getProvider(providerType)
@@ -43,6 +46,7 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
     if (!modelData) {
       throw new CliError(`Error: Model "${opts.model}" not found. Use --list-models to list available models.`)
     }
+    prefModelId = modelData.aliasTarget || opts.model
     const endpoints = await provider.fetchEndpoints(apiKey, opts.model, models)
     endpoint = provider.meta.hasEndpoints && endpoints.length > 1 ? cheapestEndpoint(endpoints) : endpoints[0]
 
@@ -55,8 +59,8 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
   }
 
   const updates = {
-    modelId: opts.model,
-    lastModel: opts.model,
+    modelId: prefModelId ?? opts.model,
+    lastModel: prefModelId ?? opts.model,
     lastProvider: opts.model !== undefined ? (endpoint?.providerName || provider.meta.name) : undefined,
     temperature: values.temperature,
     topP: values.topP,
