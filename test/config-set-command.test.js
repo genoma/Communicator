@@ -166,3 +166,21 @@ test('configSetCmd without image flags adds no imageDefaults key', async () => {
 
   assert.equal(saveCalls[0].prefs.imageDefaults, undefined)
 })
+
+test('configSetCmd keys per-model prefs under the canonical id for alias rows', async (t) => {
+  t.mock.method(console, 'log', () => {})
+  saveCalls.length = 0
+  fetchModelsImpl = async () => [
+    { id: '~test/model-alias', name: 'Model A (alias)', aliasTarget: 'test/model-a', contextLength: 1000, reasoning: { supported: true, supportsEffort: false } },
+  ]
+  fetchEndpointsImpl = async () => [
+    { providerName: 'ProviderX', pricing: { prompt: 1e-6, completion: 2e-6 }, supportedParameters: {} },
+  ]
+
+  await configSetCmd({ opts: opts({ model: '~test/model-alias', webSearch: 'on' }), prefs: {}, providerType: 'openrouter', apiKey: 'k' })
+
+  assert.equal(saveCalls.length, 1)
+  assert.equal(saveCalls[0].prefs.modelId, 'test/model-a')
+  assert.equal(saveCalls[0].prefs.lastModel, 'test/model-a')
+  assert.equal(saveCalls[0].prefs.webSearch, 'auto')
+})

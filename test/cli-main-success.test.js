@@ -36,6 +36,7 @@ mock.module(new URL('../src/chat.js', import.meta.url).href, {
         budget: opts.budget,
         webSearch: opts.webSearch,
         webResults: opts.webResults,
+        webSearchExplicit: opts.webSearchExplicit,
         pricing,
         messages: [
           { role: 'system', content: 'You are a helpful assistant.' },
@@ -396,6 +397,11 @@ test('--resume --web-search always overrides the stored mode', async (t) => {
 
   const call = startChatCalls[startChatCalls.length - 1]
   assert.equal(call.opts.webSearch, 'always')
+
+  // The explicit --web-search flag marks the choice as deliberate, so the
+  // exit snapshot must persist it to the per-model pref.
+  const saved = JSON.parse(await readFile(configFile, 'utf-8'))
+  assert.equal(saved.webSearch['test/model'], 'always')
 })
 
 test('--resume with no matching sessions exits 1 with a friendly error', async (t) => {

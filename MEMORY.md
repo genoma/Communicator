@@ -61,8 +61,9 @@
 
 - Pref `webSearch` per model: `off`/`auto`/`always`; `true`/`on` normalize to `auto`.
 - Per-model pref keys are CANONICAL model ids: OpenRouter/DeepInfra list alias rows (`~deepseek/...` with `alias_target`) as separate entries for the same physical model, so selection (`selectModelAndEndpoint`/`selectModelNonInteractive`/`config-set`) resolves them to `alias_target.slug` before keying `prefs.webSearch`/`temperature`/`topP`/`reasoningEffort` (mirrors `fetchEndpoints`' `aliasTarget || modelId`). One physical model always occupies one pref slot.
+- Canonical-key edge: sessions written by pre-fix versions that stored an alias row id as their `model` field keep that id on resume (no re-canonicalization without a model-list fetch); sessions written by the current code store canonical ids.
 - Resume resolution: flag > `prefs.webSearch[modelId]` > session snapshot > off; the per-model pref wins over a stale snapshot (older versions wrote a default `off` to every session).
-- Precedence: flag > pref > off; `--web-results` implies `auto`.
+- Precedence: flag > pref > off; `--web-results` implies `auto`. A `--web-results` (or `--web-search`) run is an explicit per-model choice, so the exit prefs writer persists it (`auto` for `--web-results`) — mirrors the `--web-search` flag persistence contract.
 - Exit prefs writers (`persistSession`, `bestEffortExitSave`) persist `webSearch` only when the session explicitly set it (via `/web-search` or `--web-search`/`--web-results`, tracked by `ChatState.webSearchExplicit`); a default/forced `off` (unsupported model, `--e2ee`) never overwrites the user's per-model pref.
 - OpenRouter: `auto` uses server tool with `max_results` + `max_total_results`; `always` uses legacy `plugins: [{ id: 'web', max_results }]`; `off` sends neither. Default N = 10, cap 20 (OpenRouter allows max_results 1–25, 1–20 on the Perplexity engine; 20 also matches Venice's standalone search limit).
 - Venice: `venice_parameters.enable_web_search` (`auto`/`on`/`off`) + `enable_web_citations`; no result-count knob.

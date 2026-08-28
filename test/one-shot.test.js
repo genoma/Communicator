@@ -177,6 +177,21 @@ test('one-shot success path writes plain output, the session file and persisted 
   assert.equal(prefs.budget, 5)
 })
 
+test('one-shot with --web-search on persists the per-model webSearch pref', async (t) => {
+  mockOpenRouterStream(t)
+  withApiKey(t)
+  const file = await tempConfig(t)
+  const getExitCode = mockExit(t)
+
+  const { exited } = await runOneShot(t, { overrides: { config: file, webSearch: 'on' } })
+
+  assert.equal(exited, false)
+  assert.equal(getExitCode(), null)
+
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.webSearch['test/model-a'], 'auto')
+})
+
 test('one-shot sends the RPG first message as the opening assistant turn', async (t) => {
   const bodies = []
   mockOpenRouterStream(t, [], bodies)

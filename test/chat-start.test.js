@@ -32,6 +32,7 @@ mock.module(new URL('../src/chat.js', import.meta.url).href, {
         budget: opts.budget,
         webSearch: opts.webSearch,
         webResults: opts.webResults,
+        webSearchExplicit: opts.webSearchExplicit,
         pricing,
         messages: [
           { role: 'system', content: 'You are a helpful assistant.' },

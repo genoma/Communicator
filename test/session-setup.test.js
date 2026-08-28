@@ -9,6 +9,14 @@ after(() => rm(tempHome, { recursive: true, force: true }))
 
 mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 
+const sessionSelection = { modelId: 'org/model', webSearchSupported: true, isImageModel: false }
+mock.module(new URL('../src/model-selection.js', import.meta.url).href, {
+  namedExports: {
+    selectModelAndEndpoint: async () => sessionSelection,
+    selectModelNonInteractive: async () => sessionSelection,
+  },
+})
+
 async function tempConfig(t) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-config-'))
   const file = join(dir, 'config.json')
@@ -72,6 +80,25 @@ test('persistSession does not write webSearch when the session never set it expl
 
   const saved = JSON.parse(await readFile(file, 'utf-8'))
   assert.equal(saved.webSearch['org/model'], 'auto')
+})
+
+test('buildSessionContext treats a --web-results run as an explicit web-search choice', async () => {
+  const { buildSessionContext } = await import('../src/session-setup.js')
+  const ctx = await buildSessionContext({
+    provider: {},
+    apiKey: 'k',
+    opts: { model: 'org/model' },
+    prefs: {},
+    forcedEffort: undefined,
+    forcedTemperature: undefined,
+    forcedTopP: undefined,
+    forcedWebResults: 5,
+    zdr: false,
+    e2ee: false,
+  })
+
+  assert.equal(ctx.webSearch, 'auto')
+  assert.equal(ctx.webSearchExplicit, true)
 })
 
 test('persistSession skips the session file for empty sessions but still saves prefs', async (t) => {

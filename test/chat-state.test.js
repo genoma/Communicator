@@ -70,7 +70,7 @@ test('constructor keeps provided messages untouched', () => {
   assert.equal(s.messages, messages)
 })
 
-test('toFinalState returns exactly the old finalState field list', () => {
+test('toFinalState returns exactly the finalState field list', () => {
   const s = makeState({ messages: [{ role: 'user', content: 'hi' }] })
   const state = s.toFinalState('openrouter')
 
