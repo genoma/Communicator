@@ -1045,6 +1045,73 @@ test('a retryable error pops the last user message', async (t) => {
   assert.deepEqual(callRoles[1], ['system', 'user'])
 })
 
+function assertNoDoubledSeparators(lines) {
+  for (let i = 1; i < lines.length; i++) {
+    assert.ok(
+      !(lines[i - 1].includes(THIN_SEP) && lines[i].includes(THIN_SEP)),
+      `doubled separator at lines ${i - 1} and ${i}: ${JSON.stringify(lines[i - 1])} / ${JSON.stringify(lines[i])}`
+    )
+  }
+}
+
+// Interleave console.log with stdout writes in submission order: the live
+// turn's transcript and markers go to stdout while the banner/seps/footer go
+// through console.log, so a console.log-only stream shows the printTurn sep
+// and the loop sep as adjacent even though the transcript sits between them
+// on screen. The combined ordered stream is what the user sees.
+function makeOrderedCapture(t) {
+  const ordered = []
+  const stdout = {
+    isTTY: true,
+    write(chunk) {
+      ordered.push(String(chunk))
+      return true
+    },
+  }
+  // console.log entries get a trailing newline so the combined stream has
+  // real line structure (stdout writes already carry their own newlines).
+  t.mock.method(console, 'log', (...args) => { ordered.push(`${String(args[0] ?? '')}\n`) })
+  t.mock.method(console, 'error', () => {})
+  return { ordered, stdout }
+}
+
+test('/delete rebuilds the empty session with a single separator (no banner/loop double)', async (t) => {
+  const { ordered, stdout } = makeOrderedCapture(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['hello', '/delete', '/quit']), stdout })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  // The rebuild (loopSep: false) must not reproduce the banner separator in
+  // an empty session: the chat loop prints its own sep right after the
+  // handler returns, and a second one would double the row under the banner.
+  assertNoDoubledSeparators(ordered.join('').split('\n'))
+  const rebuild = ordered.join('').split('\x1b[2J\x1b[3J\x1b[H').at(-1)
+  assert.ok(rebuild.includes('Connected to'), 'the rebuild reprints the banner')
+  assert.doesNotMatch(rebuild, /Tokens/, 'the deleted turn footer must not reappear')
+})
+
+test('/delete keeping the footer does not double the closing separator', async (t) => {
+  const { ordered, stdout } = makeOrderedCapture(t)
+  const { ApiError } = await import('../src/errors.js')
+  const { provider } = fakeProvider()
+  let calls = 0
+  provider.chatCompletion = async () => {
+    calls += 1
+    if (calls === 2) throw new ApiError('Rate limited', { status: 429, retryable: true })
+    return { content: 'recovered', usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 } }
+  }
+  const harness = makeDeps({ readInput: scriptedInput(['hello', 'again', '/delete', '/quit']), stdout })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  // Stash-drop rebuild keeps the turn-metrics footer but must not reproduce
+  // the loop's closing separator, or the row below the footer doubles.
+  assertNoDoubledSeparators(ordered.join('').split('\n'))
+  const rebuild = ordered.join('').split('\x1b[2J\x1b[3J\x1b[H').at(-1)
+  assert.ok(rebuild.includes('Tokens'), 'the stash-drop rebuild keeps the surviving footer')
+})
+
 test('onSources populates render.sources and the next turn resets it', async (t) => {
   mockConsole(t)
   let liveRender

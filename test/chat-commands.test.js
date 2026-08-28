@@ -957,12 +957,40 @@ test('/delete drops the stashed failed turn and leaves messages, save, tracker a
 
 test('/delete reports nothing to delete on a fresh session', async (t) => {
   const consoleSpy = mockConsole(t)
-  const harness = makeCtx(); const { ctx } = harness
+  const harness = makeCtx(); const { ctx, savedSessions } = harness
 
   const outcome = await chatCommands['/delete'](ctx)
 
   assert.equal(consoleSpy.log(0), 'Nothing to delete yet.\n')
   assert.equal(outcome, undefined)
+  assert.deepEqual(savedSessions, [], 'the no-op must not persist')
+})
+
+test('/delete reports nothing to delete on a TTY without wiping', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const writes = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  const harness = makeCtx({ stdout }); const { ctx } = harness
+
+  await chatCommands['/delete'](ctx)
+
+  assert.equal(consoleSpy.log(0), 'Nothing to delete yet.\n')
+  assert.equal(writes.length, 0, 'the no-op must not wipe the screen')
+})
+
+test('/delete deletes even when the budget is exhausted (no generation, no guard)', async (t) => {
+  mockConsole(t)
+  const harness = makeCtx(); const { ctx } = harness
+  ctx.state.setBudget(5)
+  ctx.tracker.cost = 6
+  ctx.state.appendUser('hello')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'answer' })
+
+  const outcome = await chatCommands['/delete'](ctx)
+
+  assert.equal(ctx.state.messages.length, 1)
+  assert.equal(ctx.state.messages[0].role, 'system')
+  assert.deepEqual(outcome, { resetBudgetWarning: true }, 'deleting reduces cost, so the budget warning latch resets')
 })
 
 test('/delete reports nothing to delete on assistant-only history', async (t) => {
@@ -997,7 +1025,7 @@ test('/delete on a TTY wipes and rebuilds with the footer when dropping the stas
   const output = writes.join('')
   assert.ok(output.includes('\x1b[2J\x1b[3J\x1b[H'))
   assert.equal(resizeOpts.length, 1)
-  assert.deepEqual(resizeOpts[0], { turnFooter: true })
+  assert.deepEqual(resizeOpts[0], { turnFooter: true, loopSep: false })
   assert.match(output, /TOKENS\/COST FOOTER/)
 })
 
@@ -1022,7 +1050,7 @@ test('/delete on a TTY wipes and rebuilds without the footer after deleting the 
   const output = writes.join('')
   assert.ok(output.includes('\x1b[2J\x1b[3J\x1b[H'))
   assert.equal(resizeOpts.length, 1)
-  assert.deepEqual(resizeOpts[0], { turnFooter: false })
+  assert.deepEqual(resizeOpts[0], { turnFooter: false, loopSep: false })
   assert.doesNotMatch(output, /TOKENS\/COST FOOTER/)
 })
 

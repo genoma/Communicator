@@ -149,24 +149,34 @@ export async function runChatSession(ctx = {}, deps = {}) {
   const renderAboveEditor = (opts = {}) => {
     printBanner()
     if (resumeSummary) console.log(resumeSummary)
-    console.log(sep())
+    // The separator before the transcript doubles as the loop's own separator
+    // when there is no transcript yet: the resize path must reproduce it (the
+    // loop sep was printed before the editor opened), but a command rebuild
+    // (rebuildScreen, loopSep: false) runs BEFORE the chat loop prints its
+    // separator for the next prompt, so an empty session must not get a
+    // second one — its loop sep closes the frame. With a transcript the
+    // separator is the banner/transcript divider and always printed.
+    if (opts.loopSep !== false || state.messages.length > 1) console.log(sep())
     if (state.messages.length > 1) {
       renderHistory(state.messages, { markdown: state.markdown, stdout, compactThinking: tty && state.compactThinking, tailBlank: opts.turnFooter !== false, ...rpgMarkers })
     }
     // The pre-resize layout ends a completed turn with the loop sep, the
     // printTurn Tokens/Cost footer and the loop sep again (see the chat loop
-    // below): the rebuild must reproduce all three, or a resize strands the
-    // transcript without its separators and metrics. A session with no turn
-    // yet only ever shows the single loop sep, so it must not get a second.
-    // /retry and /edit redraw with turnFooter: false instead: their
-    // replacement stream owns everything below the transcript, so neither the
-    // stale footer nor a closing sep may sit between them.
+    // below): the resize rebuild must reproduce all three, or a resize
+    // strands the transcript without its separators and metrics. A session
+    // with no turn yet only ever shows the single loop sep, so it must not
+    // get a second. /retry and /edit redraw with turnFooter: false instead:
+    // their replacement stream owns everything below the transcript, so
+    // neither the stale footer nor a closing sep may sit between them. A
+    // command rebuild (loopSep: false: /retry, /edit, /delete) skips the
+    // closing sep too — the chat loop prints its own separator right after
+    // the command handler returns, so a second one would double the row.
     if (opts.turnFooter !== false) {
       const metrics = sessionState.lastTurnMetrics
       if (metrics) {
         sessionState.tracker.printTurn(metrics.usage, metrics.pricing, metrics.contextLength, metrics.budgetNote)
       }
-      if (state.messages.length > 1 || metrics) console.log(sep())
+      if (opts.loopSep !== false && (state.messages.length > 1 || metrics)) console.log(sep())
     }
   }
   if (initialMessages && sessionState.tracker.requests > 0) {

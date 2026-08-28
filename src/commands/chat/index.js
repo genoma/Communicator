@@ -48,15 +48,18 @@ function rewriteUserContent(content, text) {
 // replacement stream owns everything below the transcript and prints its own
 // Tokens/Cost block), /delete passes true when it only drops the failed-turn
 // stash (the surviving transcript and its footer stay) and false when it
-// deletes the last turn (the footer is moot). The transcript is rebuilt
-// flush-ended (tailBlank: false) so a rerun's leading blank leaves exactly one
-// blank row under the last message. Non-TTY output (pipes/tests) is left
-// untouched so the plain transcript stays mechanical.
+// deletes the last turn (the footer is moot). Unlike the editor resize path,
+// a command rebuild runs BEFORE the chat loop prints its own separator for
+// the next prompt, so `loopSep: false` keeps the frame from reproducing that
+// separator (an empty session would otherwise get a doubled row). The
+// transcript is rebuilt flush-ended (tailBlank: false) so a rerun's leading
+// blank leaves exactly one blank row under the last message. Non-TTY output
+// (pipes/tests) is left untouched so the plain transcript stays mechanical.
 function rebuildScreen(ctx, { turnFooter }) {
   if (ctx.stdout?.isTTY !== true) return
   ctx.stdout.write('\x1b[2J\x1b[3J\x1b[H')
   if (typeof ctx.onResizeRepaint === 'function') {
-    ctx.onResizeRepaint({ turnFooter })
+    ctx.onResizeRepaint({ turnFooter, loopSep: false })
     return
   }
   renderHistory(ctx.state.messages, {
