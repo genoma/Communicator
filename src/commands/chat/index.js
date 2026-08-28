@@ -4,7 +4,7 @@ import { selectModelAndEndpoint } from '../../model-selection.js'
 import { getEffortLabel, selectReasoningEffort } from '../../prompts.js'
 import { resolveTemperatureFlag, resolveTopPFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, webSearchGate } from '../../flags.js'
 import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed, formatSamplingValue, SCRAPE_COST_USD } from '../../constants.js'
-import { budgetStatusLine, budgetExhaustedMessage } from '../../tracker.js'
+import { budgetStatusLine, budgetExhaustedMessage, UsageTracker, seedTracker } from '../../tracker.js'
 import { sessionLabel } from '../../ui/format.js'
 import { dim } from '../../ui/style.js'
 import { attachmentLine, renderHistory } from '../../ui/stream.js'
@@ -40,20 +40,23 @@ function rewriteUserContent(content, text) {
   return edited
 }
 
-// On TTY retries, replace the previous answer visually instead of leaving it
-// in place while the new one streams below. The wipe + rebuild must reproduce
-// the exact app-owned layout the resize path uses (banner + transcript via
-// onResizeRepaint) so the connection header is never stranded off-screen; the
-// turn-metrics footer is skipped because the upcoming rerun streams its own
-// answer and prints its own Tokens/Cost block at the end. The transcript is
-// rebuilt flush-ended (tailBlank: false) so the rerun's leading blank leaves
-// exactly one blank row under the last message. Non-TTY output (pipes/tests)
-// is left untouched so the plain transcript stays mechanical.
-function redrawForRetry(ctx) {
+// On TTY redraws, replace the previous view visually instead of leaving it in
+// place. The wipe + rebuild must reproduce the exact app-owned layout the
+// resize path uses (banner + transcript via onResizeRepaint) so the connection
+// header is never stranded off-screen. `turnFooter` governs whether the
+// turn-metrics footer is reproduced: /retry and /edit pass false (their
+// replacement stream owns everything below the transcript and prints its own
+// Tokens/Cost block), /delete passes true when it only drops the failed-turn
+// stash (the surviving transcript and its footer stay) and false when it
+// deletes the last turn (the footer is moot). The transcript is rebuilt
+// flush-ended (tailBlank: false) so a rerun's leading blank leaves exactly one
+// blank row under the last message. Non-TTY output (pipes/tests) is left
+// untouched so the plain transcript stays mechanical.
+function rebuildScreen(ctx, { turnFooter }) {
   if (ctx.stdout?.isTTY !== true) return
   ctx.stdout.write('\x1b[2J\x1b[3J\x1b[H')
   if (typeof ctx.onResizeRepaint === 'function') {
-    ctx.onResizeRepaint({ turnFooter: false })
+    ctx.onResizeRepaint({ turnFooter })
     return
   }
   renderHistory(ctx.state.messages, {
@@ -70,7 +73,7 @@ function redrawForRetry(ctx) {
 // after the pre-run redraw, so a second wipe would erase them.
 function rerunTurn(ctx) {
   return ctx.runTurn().then((produced) => {
-    if (!produced) redrawForRetry(ctx)
+    if (!produced) rebuildScreen(ctx, { turnFooter: false })
     return produced
   })
 }
@@ -394,7 +397,7 @@ const handlers = {
       // turn — never the one that preceded it.
       ctx.state.retryTurn = null
       ctx.state.appendUser(retryTurn)
-      redrawForRetry(ctx)
+      rebuildScreen(ctx, { turnFooter: false })
       await rerunTurn(ctx)
       return
     }
@@ -403,12 +406,12 @@ const handlers = {
       ctx.state.popLastMessage()
       // Wipe the stale answer before starting the replacement so the old
       // response is not left on screen while the new one streams.
-      redrawForRetry(ctx)
+      rebuildScreen(ctx, { turnFooter: false })
       await rerunTurn(ctx)
     } else if (last?.role === 'user') {
       // A failed attempt can leave partial output on screen without a saved
       // assistant message. Clear that stale view before re-running the turn.
-      redrawForRetry(ctx)
+      rebuildScreen(ctx, { turnFooter: false })
       await rerunTurn(ctx)
     } else {
       console.log('Nothing to retry yet.\n')
@@ -451,8 +454,49 @@ const handlers = {
     // The edited turn is persisted right away so the edit survives a failed
     // rerun.
     await ctx.saveSession()
-    redrawForRetry(ctx)
+    rebuildScreen(ctx, { turnFooter: false })
     await rerunTurn(ctx)
+  },
+
+  '/delete': async (ctx) => {
+    if (ctx.state.retryTurn) {
+      // The last attempt failed retryably and its turn was stashed instead of
+      // dropped: /delete discards that pending turn and shows the session as
+      // it was before it — the surviving transcript and its turn-metrics
+      // footer stay. The stash is never persisted, so there is nothing to
+      // save or recompute.
+      ctx.state.retryTurn = null
+      rebuildScreen(ctx, { turnFooter: true })
+      return
+    }
+    const userIdx = ctx.state.messages.findLastIndex((m) => m.role === 'user')
+    if (userIdx === -1) {
+      console.log('Nothing to delete yet.\n')
+      return
+    }
+    // Removes the last user prompt and everything after it — the assistant
+    // response that completed the turn.
+    ctx.state.messages.splice(userIdx)
+    await ctx.saveSession()
+    // Recompute the tracker from the surviving messages exactly like a
+    // resumed session, so /cost matches what a resume would show.
+    const fresh = new UsageTracker()
+    seedTracker(fresh, ctx.state.messages, ctx.state.pricing, ctx.state.scrapes)
+    const live = ctx.tracker
+    live.promptTokens = fresh.promptTokens
+    live.completionTokens = fresh.completionTokens
+    live.totalTokens = fresh.totalTokens
+    live.cost = fresh.cost
+    live.requests = fresh.requests
+    live.cacheHits = fresh.cacheHits
+    live.cachedTokens = fresh.cachedTokens
+    live.scrapes = fresh.scrapes
+    live.peakContext = fresh.peakContext
+    // The deleted turn's footer is stale; a later resize must not resurrect
+    // it for a turn that no longer exists.
+    ctx.lastTurnMetrics = null
+    rebuildScreen(ctx, { turnFooter: false })
+    return { resetBudgetWarning: true }
   },
 
   '/copy': async (ctx) => {

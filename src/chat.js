@@ -1,5 +1,5 @@
-import { UsageTracker, contextSegment } from './tracker.js'
-import { cpsToCharsPerTick, SCRAPE_COST_USD, DEFAULT_SYSTEM_PROMPT, SESSIONS_DIR } from './constants.js'
+import { UsageTracker, contextSegment, seedTracker } from './tracker.js'
+import { cpsToCharsPerTick, DEFAULT_SYSTEM_PROMPT, SESSIONS_DIR } from './constants.js'
 import { buildStatusLine, connectedBanner } from './status-line.js'
 import { chatCommands, budgetGuard, commandAcceptsArgs, visibleChatCommands } from './commands/chat/index.js'
 import { buildContent } from './attachments.js'
@@ -125,22 +125,10 @@ export async function runChatSession(ctx = {}, deps = {}) {
 
   const sessionState = createSessionState()
 
-  let lastUsage = null
-  if (initialMessages) {
-    for (const msg of initialMessages) {
-      if (msg.role === 'assistant' && msg.usage) {
-        sessionState.tracker.record(msg.usage, pricing)
-        lastUsage = msg.usage
-      }
-    }
-  }
-
-  // Flat-fee scrapes are not token usage: a launch-time --scrape and resumed
-  // sessions both carry the count on state, so seed it here exactly once
-  // (interactive /scrape calls add cost live and increment the counter).
-  if (state.scrapes > 0) {
-    sessionState.tracker.addScrapeCost(SCRAPE_COST_USD * state.scrapes, state.scrapes)
-  }
+  // Seed the tracker exactly once from the history, like a resumed session:
+  // every assistant message's usage plus the flat-fee scrape count carried on
+  // state. /delete recomputes the same way from the surviving messages.
+  const lastUsage = seedTracker(sessionState.tracker, initialMessages, pricing, state.scrapes)
 
   const hintParts = []
   if (state.visionSupported !== false && !state.e2ee) hintParts.push('/attach <path> to queue files')
@@ -340,6 +328,16 @@ export async function runChatSession(ctx = {}, deps = {}) {
     exit: exitCleanly,
   }
   Object.defineProperty(chatCtx, 'tracker', { get: () => sessionState.tracker, enumerable: true })
+  // The turn-metrics footer snapshot is writable so command handlers (which
+  // only see chatCtx, not sessionState) can drop a stale footer: /delete nulls
+  // it after removing the last turn, without going through the { reset }
+  // outcome (which would replace the whole tracker). The getter mirrors the
+  // tracker pattern.
+  Object.defineProperty(chatCtx, 'lastTurnMetrics', {
+    get: () => sessionState.lastTurnMetrics,
+    set: (value) => { sessionState.lastTurnMetrics = value },
+    enumerable: true,
+  })
 
   while (true) {
     console.log(sep())

@@ -5,7 +5,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createECDH } from 'node:crypto'
-import { chatCommands, budgetGuard, CHAT_COMMANDS, visibleChatCommands } from '../src/commands/chat/index.js'
+import { chatCommands, budgetGuard, CHAT_COMMANDS, visibleChatCommands, commandAcceptsArgs } from '../src/commands/chat/index.js'
 import { ChatState } from '../src/chat-state.js'
 import { UsageTracker } from '../src/tracker.js'
 import { connectedBanner, buildStatusLine } from '../src/status-line.js'
@@ -889,6 +889,165 @@ test('/edit is blocked by the budget guard', async (t) => {
   assert.equal(consoleSpy.log(0), 'Budget exhausted ($6.000000 of $5.000000). /new to start fresh or /quit.\n')
 })
 
+test('/delete removes the last complete turn and recomputes the tracker', async (t) => {
+  mockConsole(t)
+  const harness = makeCtx(); const { ctx, savedSessions } = harness
+  ctx.state.appendUser('first question')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'first answer', usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 } })
+  ctx.state.appendUser('second question')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'second answer', usage: { prompt_tokens: 200, completion_tokens: 100, total_tokens: 300 } })
+  ctx.tracker.record({ prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 }, ctx.state.pricing)
+  ctx.tracker.record({ prompt_tokens: 200, completion_tokens: 100, total_tokens: 300 }, ctx.state.pricing)
+  ctx.lastTurnMetrics = { usage: { prompt_tokens: 200, completion_tokens: 100, total_tokens: 300 }, pricing: ctx.state.pricing, contextLength: null, budgetNote: null }
+
+  const outcome = await chatCommands['/delete'](ctx)
+
+  assert.deepEqual(ctx.state.messages, [
+    ctx.state.messages[0],
+    { role: 'user', content: 'first question' },
+    { role: 'assistant', content: 'first answer', usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 } },
+  ])
+  assert.equal(ctx.state.messages.length, 3)
+  assert.deepEqual(savedSessions, [3])
+  assert.equal(ctx.tracker.requests, 1)
+  assert.equal(ctx.tracker.promptTokens, 100)
+  assert.equal(ctx.tracker.completionTokens, 50)
+  assert.equal(ctx.tracker.totalTokens, 150)
+  assert.ok(Math.abs(ctx.tracker.cost - 0.0002) < 1e-9, 'the deleted turn cost is no longer counted')
+  assert.equal(ctx.lastTurnMetrics, null)
+  assert.deepEqual(outcome, { resetBudgetWarning: true })
+})
+
+test('/delete removes a trailing user message with no response', async (t) => {
+  mockConsole(t)
+  const harness = makeCtx(); const { ctx, savedSessions } = harness
+  ctx.state.appendUser('hello')
+
+  const outcome = await chatCommands['/delete'](ctx)
+
+  assert.equal(ctx.state.messages.length, 1)
+  assert.equal(ctx.state.messages[0].role, 'system')
+  assert.deepEqual(savedSessions, [1])
+  assert.deepEqual(outcome, { resetBudgetWarning: true })
+})
+
+test('/delete drops the stashed failed turn and leaves messages, save, tracker and footer untouched', async (t) => {
+  mockConsole(t)
+  const harness = makeCtx(); const { ctx, savedSessions } = harness
+  ctx.state.appendUser('earlier')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'answer', usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } })
+  ctx.tracker.record({ prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }, ctx.state.pricing)
+  const footer = { usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }, pricing: ctx.state.pricing, contextLength: null, budgetNote: null }
+  ctx.lastTurnMetrics = footer
+  ctx.state.retryTurn = 'failed prompt'
+
+  const beforeMessages = structuredClone(ctx.state.messages)
+  const beforeRequests = ctx.tracker.requests
+  const beforeCost = ctx.tracker.cost
+  const outcome = await chatCommands['/delete'](ctx)
+
+  assert.equal(ctx.state.retryTurn, null)
+  assert.deepEqual(ctx.state.messages, beforeMessages)
+  assert.deepEqual(savedSessions, [])
+  assert.equal(ctx.tracker.requests, beforeRequests)
+  assert.equal(ctx.tracker.cost, beforeCost)
+  assert.equal(ctx.lastTurnMetrics, footer)
+  assert.equal(outcome, undefined)
+})
+
+test('/delete reports nothing to delete on a fresh session', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx(); const { ctx } = harness
+
+  const outcome = await chatCommands['/delete'](ctx)
+
+  assert.equal(consoleSpy.log(0), 'Nothing to delete yet.\n')
+  assert.equal(outcome, undefined)
+})
+
+test('/delete reports nothing to delete on assistant-only history', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx(); const { ctx } = harness
+  ctx.state.appendAssistant({ role: 'assistant', content: 'open the story' })
+
+  await chatCommands['/delete'](ctx)
+
+  assert.equal(consoleSpy.log(0), 'Nothing to delete yet.\n')
+})
+
+test('/delete on a TTY wipes and rebuilds with the footer when dropping the stash', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const resizeOpts = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  const harness = makeCtx({ stdout }); const { ctx } = harness
+  ctx.onResizeRepaint = (opts = {}) => {
+    resizeOpts.push(opts)
+    stdout.write(`${connectedBanner(buildStatusLine(ctx.state))}\n`)
+    renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout, compactThinking: ctx.state.compactThinking, tailBlank: opts.turnFooter !== false })
+    if (opts.turnFooter !== false) stdout.write('TOKENS/COST FOOTER\n')
+  }
+  ctx.state.appendUser('earlier')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'answer' })
+  ctx.lastTurnMetrics = { usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }, pricing: ctx.state.pricing, contextLength: null, budgetNote: null }
+  ctx.state.retryTurn = 'failed prompt'
+
+  await chatCommands['/delete'](ctx)
+
+  const output = writes.join('')
+  assert.ok(output.includes('\x1b[2J\x1b[3J\x1b[H'))
+  assert.equal(resizeOpts.length, 1)
+  assert.deepEqual(resizeOpts[0], { turnFooter: true })
+  assert.match(output, /TOKENS\/COST FOOTER/)
+})
+
+test('/delete on a TTY wipes and rebuilds without the footer after deleting the last turn', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const resizeOpts = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  const harness = makeCtx({ stdout }); const { ctx } = harness
+  ctx.onResizeRepaint = (opts = {}) => {
+    resizeOpts.push(opts)
+    stdout.write(`${connectedBanner(buildStatusLine(ctx.state))}\n`)
+    renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout, compactThinking: ctx.state.compactThinking, tailBlank: opts.turnFooter !== false })
+    if (opts.turnFooter !== false) stdout.write('TOKENS/COST FOOTER\n')
+  }
+  ctx.state.appendUser('hello')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'answer' })
+  ctx.lastTurnMetrics = { usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }, pricing: ctx.state.pricing, contextLength: null, budgetNote: null }
+
+  await chatCommands['/delete'](ctx)
+
+  const output = writes.join('')
+  assert.ok(output.includes('\x1b[2J\x1b[3J\x1b[H'))
+  assert.equal(resizeOpts.length, 1)
+  assert.deepEqual(resizeOpts[0], { turnFooter: false })
+  assert.doesNotMatch(output, /TOKENS\/COST FOOTER/)
+})
+
+test('/delete on a non-TTY does not wipe', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const stdout = { isTTY: false, write(chunk) { writes.push(String(chunk)); return true } }
+  const harness = makeCtx({ stdout }); const { ctx } = harness
+  ctx.state.appendUser('hello')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'answer' })
+  ctx.lastTurnMetrics = { usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }, pricing: ctx.state.pricing, contextLength: null, budgetNote: null }
+
+  await chatCommands['/delete'](ctx)
+
+  assert.equal(writes.length, 0)
+  assert.equal(ctx.state.messages.length, 1)
+})
+
+test('/delete is a chat command, visible, and not an arg command', () => {
+  assert.ok(CHAT_COMMANDS.includes('/delete'))
+  assert.ok(visibleChatCommands({ visionSupported: true, providerName: 'openrouter' }).includes('/delete'))
+  assert.ok(visibleChatCommands({ visionSupported: false, providerName: 'venice' }).includes('/delete'))
+  assert.equal(commandAcceptsArgs('/delete'), false)
+})
+
 test('/copy reports no response to copy and leaves the clipboard untouched', async (t) => {
   const consoleSpy = mockConsole(t)
   const harness = makeCtx(); const { ctx } = harness
@@ -1297,7 +1456,7 @@ test('/model keeps compatible attachments on switch', async (t) => {
   assert.equal(consoleSpy.log(0), '\nSwitched to NewProvider / new/model\n')
 })
 
-test('CHAT_COMMANDS keeps the 20-command order', () => {
+test('CHAT_COMMANDS keeps the 21-command order', () => {
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/status',
@@ -1314,6 +1473,7 @@ test('CHAT_COMMANDS keeps the 20-command order', () => {
     '/scrape',
     '/retry',
     '/edit',
+    '/delete',
     '/copy',
     '/markdown',
     '/smooth',

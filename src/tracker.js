@@ -1,4 +1,4 @@
-import { formatCost } from './constants.js'
+import { formatCost, SCRAPE_COST_USD } from './constants.js'
 import { sep, green, cyan, yellow, red } from './ui/style.js'
 
 const BAR_WIDTH = 10
@@ -175,4 +175,25 @@ export class UsageTracker {
     }
     return s
   }
+}
+
+// Seed a tracker from a message history exactly like a resumed session: every
+// surviving assistant message's usage is replayed, then the flat-fee scrape
+// cost is added from the surviving scrape count. Shared by the resume path in
+// runChatSession and the /delete recompute (which replays the messages left
+// after the last turn is removed).
+export function seedTracker(tracker, messages, pricing, scrapes) {
+  let lastUsage = null
+  if (messages) {
+    for (const msg of messages) {
+      if (msg.role === 'assistant' && msg.usage) {
+        tracker.record(msg.usage, pricing)
+        lastUsage = msg.usage
+      }
+    }
+  }
+  if (scrapes > 0) {
+    tracker.addScrapeCost(SCRAPE_COST_USD * scrapes, scrapes)
+  }
+  return lastUsage
 }

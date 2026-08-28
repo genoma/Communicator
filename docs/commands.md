@@ -151,6 +151,7 @@ communicator --no-watermark                                            # hide th
 | `/attachments` | List the queued attachments, or clear them with `/attachments clear` |
 | `/retry`       | Re-run the last user turn (regenerates the last answer and replaces it in the TTY transcript) |
 | `/edit`        | Re-open the last user message in the editor; on Enter it replaces the message, drops the stale answer, and re-runs the turn (attachments are kept) |
+| `/delete`      | Delete the turn that was just sent: the last user prompt and its assistant response (cost is recomputed) |
 | `/copy`        | Copy the last assistant response to the clipboard                                   |
 | `/markdown`    | Toggle terminal markdown rendering (default on)                                     |
 | `/smooth`      | Show smooth streaming state and speed, or set them with `/smooth on|off|<level>|<cps>` (a speed value implies on) |
