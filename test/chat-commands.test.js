@@ -74,7 +74,7 @@ function makeCtx(overrides = {}) {
     const stdout = ctx.stdout
     if (!stdout?.write) return
     stdout.write(`${connectedBanner(buildStatusLine(ctx.state))}\n`)
-    renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout, compactThinking: ctx.state.compactThinking, tailBlank: opts.turnFooter !== false })
+    renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout, compactThinking: ctx.state.compactThinking, tailBlank: opts.tailBlank ?? (opts.turnFooter !== false) })
   }
 
   return {
@@ -1012,7 +1012,7 @@ test('/delete on a TTY wipes and rebuilds with the footer when dropping the stas
   ctx.onResizeRepaint = (opts = {}) => {
     resizeOpts.push(opts)
     stdout.write(`${connectedBanner(buildStatusLine(ctx.state))}\n`)
-    renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout, compactThinking: ctx.state.compactThinking, tailBlank: opts.turnFooter !== false })
+    renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout, compactThinking: ctx.state.compactThinking, tailBlank: opts.tailBlank ?? (opts.turnFooter !== false) })
     if (opts.turnFooter !== false) stdout.write('TOKENS/COST FOOTER\n')
   }
   ctx.state.appendUser('earlier')
@@ -1038,7 +1038,7 @@ test('/delete on a TTY wipes and rebuilds without the footer after deleting the 
   ctx.onResizeRepaint = (opts = {}) => {
     resizeOpts.push(opts)
     stdout.write(`${connectedBanner(buildStatusLine(ctx.state))}\n`)
-    renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout, compactThinking: ctx.state.compactThinking, tailBlank: opts.turnFooter !== false })
+    renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout, compactThinking: ctx.state.compactThinking, tailBlank: opts.tailBlank ?? (opts.turnFooter !== false) })
     if (opts.turnFooter !== false) stdout.write('TOKENS/COST FOOTER\n')
   }
   ctx.state.appendUser('hello')
