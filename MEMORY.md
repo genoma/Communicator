@@ -21,7 +21,7 @@
 - `src/rpg.js` — RPG mode provisioning/assembly (see RPG mode).
 - `src/flags.js` — flag resolvers and webs/search/reasoning/smooth/budget validation; `prompts.js` keeps pickers only.
 - `src/reasoning.js` — `resolveEffortDefault`, `isWebSearchSupported`.
-- `src/commands/one-shot.js` — non-interactive one-shot.
+- `src/commands/one-shot.js` — non-interactive one-shot. Piped stdout is streamed: content deltas are written to stdout as they arrive (each chunk `sanitizeAnsi`-cleaned, same per-chunk level as the TTY renderer; reasoning/markers/sources/parts never emitted), and the trailing-newline contract is preserved (a bare newline for an empty answer). TTY one-shot keeps the banner + renderer path unchanged.
 - `src/commands/export-cmd.js`, `delete-cmd.js`, `delete-all-cmd.js` — CLI handlers.
 - `src/clipboard.js` — probe `pbcopy`/`clip`/`wl-copy`/`xclip`/`xsel`; testable platform override.
 - `src/ui/` — style, format, io, stream, markdown, md-it, wrap.
@@ -207,7 +207,7 @@ Cross-path invariants pinned by `test/ui-consistency.test.js`. Every change must
 - **Per-turn metrics**: `UsageTracker.printTurn` (sep + Tokens/Cache/Cost + CTX/budget). Resume uses `tracker.summary()`.
 - **Money tiers**: `formatCost` for session/turn (three display forms), `formatUsd` image-only, scrape `$0.01`.
 - **Budget phrasing**: `budgetStatusLine` vs `budgetLine` not interchangeable.
-- **Piped one-shot**: stdout only answer; stderr for artifacts/notices; banner/sources/metrics suppressed.
+- **Piped one-shot**: stdout only answer; stderr for artifacts/notices; banner/sources/metrics suppressed. Content streams to stdout as deltas arrive (raw, per-chunk `sanitizeAnsi`, no reasoning/markers/sources); TTY one-shot keeps its banner + renderer path.
 - **Channels**: errors/warnings/notes via console methods; image blur warning to stderr.
 
 ## Reasoning effort semantics

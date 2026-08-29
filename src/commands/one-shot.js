@@ -8,7 +8,7 @@ import { UsageTracker, budgetLine } from '../tracker.js'
 import { ChatState } from '../chat-state.js'
 import { CliError, formatError } from '../errors.js'
 import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
-import { loadAttachments, buildContent, contentText } from '../attachments.js'
+import { loadAttachments, buildContent } from '../attachments.js'
 import { resolveArtifacts, printArtifactsSummary } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
 import { saveRpgHistory, logRpgPrompt } from '../rpg.js'
@@ -98,6 +98,10 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   }
 
   const ttyOut = process.stdout.isTTY === true
+  // Piped stdout buffers nothing: content deltas stream to stdout as they
+  // arrive. Track the last emitted char so the trailing-newline contract is
+  // preserved exactly (a bare newline for an empty answer).
+  let pipedLastChar = ''
   const controller = new AbortController()
   const onSigint = () => controller.abort()
   process.on('SIGINT', onSigint)
@@ -170,7 +174,19 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
       })
       await render.flush()
     } else {
-      result = await provider.chatCompletion({ ...completionOpts, onToken: () => {} })
+      result = await provider.chatCompletion({
+        ...completionOpts,
+        onToken: (text, type) => {
+          // Piped stdout stays raw answer-only: stream content deltas, sanitize
+          // each chunk (same per-chunk level as the TTY renderer), and never
+          // emit reasoning, markers, sources or non-text parts.
+          if (type !== 'content') return
+          const clean = sanitizeAnsi(text)
+          if (!clean) return
+          process.stdout.write(clean)
+          pipedLastChar = clean.slice(-1)
+        },
+      })
     }
   } catch (err) {
     await removeEmptySessionClaim(dir, sessionId)
@@ -222,9 +238,10 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
       }
     }
   } else {
-    const content = Array.isArray(result.content) ? contentText(result.content) : (result.content || '')
-    process.stdout.write(sanitizeAnsi(content))
-    if (!content.endsWith('\n')) process.stdout.write('\n')
+    // The content was already streamed to stdout as the deltas arrived; only
+    // guarantee the trailing-newline contract (a bare newline for an empty
+    // answer, matching the pre-stream behavior).
+    if (pipedLastChar !== '\n') process.stdout.write('\n')
   }
 
   const state = new ChatState({

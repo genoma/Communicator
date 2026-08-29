@@ -151,8 +151,10 @@ test('one-shot success path writes plain output, the session file and persisted 
   assert.equal(exited, false)
   assert.equal(getExitCode(), null)
 
-  const answerWrites = writes.filter((w) => w.includes('Hello world'))
-  assert.ok(answerWrites.length >= 1)
+  // Piped stdout streams content deltas as they arrive; assert the full
+  // answer accumulates across writes, and the trailing newline is emitted.
+  assert.ok(writes.join('').includes('Hello world'))
+  assert.ok(writes.includes('Hello'), 'content is streamed, not buffered to the end')
   assert.ok(writes.some((w) => w === '\n'))
 
   const sessionsDir = join(tempHome, '.communicator', 'sessions')
@@ -175,6 +177,37 @@ test('one-shot success path writes plain output, the session file and persisted 
   assert.equal(prefs.temperature?.['test/model-a'], undefined)
   assert.equal(prefs.topP?.['test/model-a'], undefined)
   assert.equal(prefs.budget, 5)
+})
+
+test('one-shot piped stdout streams content but never reasoning', async (t) => {
+  resetOpenRouterModelCaches()
+  const models = [{ id: 'test/model-a', name: 'Model A', context_length: 1000, description: 'd', reasoning: null }]
+  const endpoints = [{ provider_name: 'ProviderX', tag: 't', status: 'available', uptime_last_30m: null, pricing: { prompt: 1e-6, completion: 2e-6 }, context_length: 1000, max_completion_tokens: null, supported_parameters: {} }]
+  const stream = [
+    event({ choices: [{ delta: { reasoning_content: 'SECRET_SECRET' } }] }),
+    event({ choices: [{ delta: { content: 'Hello' } }] }),
+    event({ choices: [{ delta: { content: ' world' } }] }),
+    event({ choices: [{ delta: {}, usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }] }),
+    'data: [DONE]\n\n',
+  ]
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (String(url).includes('/chat/completions')) return sseResponse(stream)
+    if (String(url).includes('/endpoints')) return jsonResponse({ data: { endpoints } })
+    return jsonResponse({ data: models })
+  })
+  withApiKey(t)
+  const file = await tempConfig(t)
+  const writes = []
+  t.mock.method(process.stdout, 'write', (chunk) => { writes.push(String(chunk)); return true })
+  mockExit(t)
+
+  const { oneShotCmd } = await import('../src/commands/one-shot.js')
+  await oneShotCmd({ apiKey: 'test-key', opts: opts({ config: file }), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: 'Hello' })
+
+  assert.ok(writes.join('').includes('Hello world'), 'content accumulates to stdout')
+  assert.ok(writes.includes('Hello') && writes.includes(' world'), 'content is streamed as deltas')
+  assert.ok(!writes.join('').includes('SECRET_SECRET'), 'reasoning never reaches piped stdout')
+  assert.ok(writes.some((w) => w === '\n'), 'trailing newline preserved')
 })
 
 test('one-shot with --web-search on persists the per-model webSearch pref', async (t) => {
@@ -472,7 +505,7 @@ test('one-shot reads the prompt from piped stdin when no prompt is given', async
   const { oneShotCmd } = await import('../src/commands/one-shot.js')
   await oneShotCmd({ apiKey: 'test-key', opts: opts({ config: file }), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: '' })
 
-  assert.ok(writes.some((w) => w.includes('Hello world')))
+  assert.ok(writes.join('').includes('Hello world'))
   const sessionsDir = join(tempHome, '.communicator', 'sessions')
   const files = (await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.'))
   const matches = []
