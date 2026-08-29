@@ -1,16 +1,18 @@
 import { checkbox } from '@inquirer/prompts'
 import { formatSessionItem } from './ui/format.js'
+import { formatCost } from './constants.js'
 import { searchPrompt, pickerTheme } from './prompts.js'
 import { sanitizeAnsi } from './ui/hyperlink.js'
 
 function buildSessionChoices(sessions) {
   return sessions.map((s) => {
-    const { time, model, preview } = formatSessionItem(s)
+    const { time, model, preview, costSummary } = formatSessionItem(s)
     const previewText = preview ? `  "${preview.slice(0, 60)}${preview.length > 60 ? '...' : ''}"` : ''
+    const costText = costSummary?.cost > 0 ? `  · ${formatCost(costSummary.cost)}` : ''
     const desc = sanitizeAnsi(`${s.messageCount} messages  •  ${s.providerName}${s.providerType && s.providerType !== 'openrouter' ? ` (${s.providerType})` : ''}`)
 
     return {
-      name: sanitizeAnsi(`${time}  ${model}${previewText}`),
+      name: sanitizeAnsi(`${time}  ${model}${costText}${previewText}`),
       value: s.id,
       description: desc,
     }
