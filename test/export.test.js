@@ -64,6 +64,30 @@ test('formatJsonl emits a session header and one object per message', () => {
   assert.deepEqual(lines[3], { role: 'assistant', content: 'Paris.', reasoning: 'The user asks a geography question.', usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17 } })
 })
 
+test('formatMarkdown prefers the persisted costSummary over the replay calculation', () => {
+  // The replay from usage would be 12*2.5e-6 + 5*1e-5 = 0.00008, but the
+  // persisted summary (the authoritative total incl. scrapes) is preferred.
+  const md = formatMarkdown(session({
+    costSummary: { promptTokens: 12, completionTokens: 5, totalTokens: 17, cost: 0.99, requests: 1, cacheHits: 0, cachedTokens: 0, scrapes: 0 },
+  }))
+  assert.match(md, /\*\*Cost:\*\* \$0\.990000/)
+})
+
+test('formatJsonl escapes embedded newlines/control char keeping one object per line', () => {
+  const jsonl = formatJsonl(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'line one\nline two\u0007\u001b[31mred\u001b[0m' },
+      { role: 'assistant', content: 'ok', usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } },
+    ],
+  }), 'sess-esc')
+  const lines = jsonl.trim().split('\n')
+  assert.equal(lines.length, 4) // header + system + user + assistant, never split by content
+  const parsed = lines.map(JSON.parse)
+  assert.ok(parsed.every((l) => typeof l === 'object'))
+  assert.equal(parsed[2].content, 'line one\nline two\u0007\u001b[31mred\u001b[0m')
+})
+
 test('jsonl export writes a .jsonl file and does not materialize attachments', async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
