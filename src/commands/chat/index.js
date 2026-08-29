@@ -15,6 +15,57 @@ import { buildStatusLine, wrapStatusLine } from '../../status-line.js'
 import { scrapeContext, scrapeMessage } from '../../scrape.js'
 const ARG_COMMANDS = new Set(['/temp', '/top-p', '/budget', '/web-search', '/web-results', '/smooth', '/compact-thinking', '/attach', '/attachments', '/scrape'])
 
+// Single source for the /help index and the in-editor command suggestions.
+// `COMMAND_DESCRIPTIONS` covers every command; `COMMAND_USAGE` adds the
+// argument form only for the commands that accept arguments.
+const COMMAND_DESCRIPTIONS = {
+  '/help': 'Show this command list',
+  '/quit': 'Save the session and exit the chat',
+  '/status': 'Show the current settings snapshot',
+  '/new': 'Save the session and start a fresh one',
+  '/model': 'Switch models mid-chat (re-picks effort and endpoint)',
+  '/attach': 'Queue a file for the next message',
+  '/attachments': 'List or clear the queued attachments',
+  '/reasoning': 'Re-run the reasoning-effort picker',
+  '/temp': 'Set the session temperature',
+  '/top-p': 'Set the session top-p',
+  '/budget': 'Show or set the per-session budget cap',
+  '/web-search': 'Set the web search mode',
+  '/web-results': 'Set the web search result count',
+  '/scrape': 'Scrape a web page into the conversation as context',
+  '/retry': 'Re-run the last user turn',
+  '/edit': 'Edit the last user message and re-run the turn',
+  '/delete': 'Delete the last turn (cost is recomputed)',
+  '/copy': 'Copy the last assistant response to the clipboard',
+  '/markdown': 'Toggle terminal markdown rendering',
+  '/smooth': 'Show or set smooth streaming state and speed',
+  '/compact-thinking': 'Show or set whether reasoning streams as a meter',
+  '/cost': 'Print the running session cost/token totals',
+}
+
+const COMMAND_USAGE = {
+  '/temp': '/temp [0-2|default]',
+  '/top-p': '/top-p [0-1|default]',
+  '/budget': '/budget <usd>',
+  '/web-search': '/web-search [auto|always|on|off]',
+  '/web-results': '/web-results <n>',
+  '/smooth': '/smooth [on|off|<level>|<cps>]',
+  '/compact-thinking': '/compact-thinking [on|off]',
+  '/attach': '/attach <path>...',
+  '/attachments': '/attachments [clear]',
+  '/scrape': '/scrape <url>',
+}
+
+const QUIT_ALIASES = ['/exit', '/q']
+
+export function commandDescription(command) {
+  return COMMAND_DESCRIPTIONS[command] || ''
+}
+
+export function commandUsage(command) {
+  return COMMAND_USAGE[command] || ''
+}
+
 function showStatus(ctx) {
   console.log(`${wrapStatusLine(dim('Current settings:'), buildStatusLine(ctx.state))}\n`)
 }
@@ -589,7 +640,26 @@ const handlers = {
     console.log(`${dim('Current session:')} ${ctx.tracker.summary()}`)
     console.log(`${dim('Reasoning:')} ${ctx.state.reasoningEffort === undefined ? 'auto' : getEffortLabel(ctx.state.reasoningEffort)}\n`)
   },
+
+  '/help': async (ctx) => {
+    // /exit and /q are aliases of /quit, not separate commands: list every
+    // command (respecting the same visibility rules the suggestion list and
+    // the Unknown-command hint use) but never repeat an alias entry.
+    const visible = visibleChatCommands({ visionSupported: ctx.state.visionSupported, e2ee: ctx.state.e2ee, providerName: ctx.provider.meta.name })
+      .filter((cmd) => !QUIT_ALIASES.includes(cmd))
+    const width = Math.max(...visible.map((cmd) => cmd.length), 0)
+    console.log('Commands:')
+    for (const cmd of visible) {
+      const hint = commandUsage(cmd) || commandDescription(cmd)
+      console.log(`${cmd.padEnd(width + 2)} ${hint}`)
+    }
+    console.log(`\nQuit aliases: ${QUIT_ALIASES.join(', ')} (same as /quit)\n`)
+  },
 }
+
+// Quit aliases point at the same handler, so CHAT_COMMANDS (and therefore the
+// suggestion list and the Unknown-command hint) exposes them.
+for (const alias of QUIT_ALIASES) handlers[alias] = handlers['/quit']
 
 export const chatCommands = handlers
 

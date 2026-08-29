@@ -102,6 +102,33 @@ test('/quit returns the exit signal', async (t) => {
   assert.deepEqual(outcome, { exit: true })
 })
 
+test('/exit and /q are aliases of /quit', async (t) => {
+  mockConsole(t)
+  const { ctx } = makeCtx()
+  assert.deepEqual(await chatCommands['/exit'](ctx), { exit: true })
+  assert.deepEqual(await chatCommands['/q'](ctx), { exit: true })
+})
+
+test('/help lists the commands and the quit aliases without repeating an alias row', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+  const outcome = await chatCommands['/help'](ctx)
+  assert.equal(outcome, undefined)
+  const lines = []
+  for (let i = 0; i < 60; i++) {
+    const line = consoleSpy.log(i)
+    if (line == null) break
+    lines.push(String(line))
+  }
+  assert.ok(lines.some((l) => l.includes('Commands:')), 'help has a header')
+  assert.ok(lines.some((l) => l.includes('/help')), 'help lists itself')
+  assert.ok(lines.some((l) => l.includes('Quit aliases: /exit, /q')), 'help notes the quit aliases')
+  assert.ok(lines.some((l) => l.includes('/quit')), 'help lists /quit')
+  // Aliases appear only in the footer note, not as their own command rows.
+  assert.ok(!lines.some((l) => l.trim().startsWith('/exit ')))
+  assert.ok(!lines.some((l) => l.trim().startsWith('/q ')))
+})
+
 test('/new saves the session, requests a fresh id, resets state', async (t) => {
   const consoleSpy = mockConsole(t)
   const harness = makeCtx(); const { ctx, savedSessions } = harness; const { prefsUpdates } = harness
@@ -1484,7 +1511,7 @@ test('/model keeps compatible attachments on switch', async (t) => {
   assert.equal(consoleSpy.log(0), '\nSwitched to NewProvider / new/model\n')
 })
 
-test('CHAT_COMMANDS keeps the 21-command order', () => {
+test('CHAT_COMMANDS keeps the 24-command order', () => {
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/status',
@@ -1507,6 +1534,9 @@ test('CHAT_COMMANDS keeps the 21-command order', () => {
     '/smooth',
     '/compact-thinking',
     '/cost',
+    '/help',
+    '/exit',
+    '/q',
   ])
 })
 

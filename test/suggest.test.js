@@ -12,8 +12,8 @@ test('matchCommands filters commands by prefix', () => {
   assert.deepEqual(matchCommands('', CHAT_COMMANDS), CHAT_COMMANDS)
 })
 
-test('CHAT_COMMANDS has 21 commands', () => {
-  assert.equal(CHAT_COMMANDS.length, 21)
+test('CHAT_COMMANDS has 24 commands', () => {
+  assert.equal(CHAT_COMMANDS.length, 24)
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/status',
@@ -36,7 +36,15 @@ test('CHAT_COMMANDS has 21 commands', () => {
     '/smooth',
     '/compact-thinking',
     '/cost',
+    '/help',
+    '/exit',
+    '/q',
   ])
+})
+
+test('matchCommands exposes aliases in autocomplete', () => {
+  assert.deepEqual(matchCommands('/e', CHAT_COMMANDS), ['/edit', '/exit'])
+  assert.deepEqual(matchCommands('/ex', CHAT_COMMANDS), ['/exit'])
 })
 
 function sessionFor(value, previousSession) {
