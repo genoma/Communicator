@@ -27,10 +27,11 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--list-endpoints`    | `[model]`| List providers for a model (pricing, uptime, ZDR support, privacy policy link). No arg = picker, partial ID = fuzzy match |
 |       | `--list-sessions`     | —        | List saved sessions (ID, last-activity timestamp, model, message count, title) and exit                |
 | `-r`  | `--resume`            | `[partial-id]` | Resume a saved session. No arg = picker, partial ID = prefix match. With `--rpg`, must be bare: continues the story from the RPG directory's `history.json` |
-| `-x`  | `--export`            | `[partial-id]` | Export saved session(s) to markdown. No arg = multi-select checkbox; partial ID = prefix match, unique prefix exports directly |
+| `-x`  | `--export`            | `[partial-id]` | Export saved session(s). No arg = multi-select checkbox; partial ID = prefix match, unique prefix exports directly |
+|       | `--export-format`     | `<markdown\|jsonl>` | Export format: `markdown` (default) or `jsonl` |
 |       | `--delete`            | `[partial-id]` | Delete saved session(s) (asks for confirmation). No arg = multi-select checkbox; partial ID = prefix match, unique prefix deletes directly |
 |       | `--delete-all-sessions` | `[y/N]` | Delete ALL saved sessions. Pass `y` (or `yes`) to confirm; bare flag or anything else does nothing. Asks "Are you sure?" again on a terminal |
-|       | `--output-dir`        | `<path>` | Set export directory for markdown files (saved in preferences). Bare use saves it as the default (requires a TTY and no prompt). With `--image`, generated images are also copied there |
+|       | `--output-dir`        | `<path>` | Set export directory for exported files (saved in preferences). Bare use saves it as the default (requires a TTY and no prompt). With `--image`, generated images are also copied there |
 |       | `--config`            | `[path]` | Custom path for the preferences JSON file (default: `~/.communicator.json`). Bare flag prints the current config |
 |       | `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
 |       | `--rpg`              | `<dir>`  | Enable RPG mode using `char.md`, `user.md`, `prompt.md`, `scenario.md`, and `first-message.md` from a directory. Missing files are created as fill-in templates; edit them, delete the HTML comment at the top, and rerun. The conversation is saved to `history.json` in the directory; continue a story with `--rpg <dir> --resume` |
@@ -100,6 +101,7 @@ communicator --list-sessions                                   # list saved sess
 communicator --resume                                   # resume a saved session
 communicator --export                                   # pick one or more sessions to export to cwd (multi-select)
 communicator --export --output-dir ~/Documents          # export to custom directory
+communicator --export --export-format jsonl             # export as JSONL (one JSON object per line) instead of markdown
 communicator --delete                                   # pick one or more sessions to delete (with confirmation)
 communicator --delete 2026-07-30T19-11-45               # delete a specific session
 communicator --delete-all-sessions y                    # delete ALL saved sessions (asks "Are you sure?" on a terminal)

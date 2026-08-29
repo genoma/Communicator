@@ -1,6 +1,6 @@
 # Communicator
 
-A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream responses with visible reasoning, pick models and providers interactively, track live usage and cost with per-session budget caps, search the web with clickable sources, and resume or export any conversation as markdown.
+A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream responses with visible reasoning, pick models and providers interactively, track live usage and cost with per-session budget caps, search the web with clickable sources, and resume or export any conversation as markdown or JSONL.
 
 ## Features
 
@@ -30,7 +30,7 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/` with an auto-generated title, on quit, model switch, new session, or `Ctrl+C` — the last exchange is never lost
 - **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, reasoning effort, temperature, top-p, and budget
 - **Session deletion** — remove one or more saved sessions with `--delete` (multi-select checkbox with confirmation), or wipe everything with `--delete-all-sessions y` (default no)
-- **Markdown export** — export one or more saved sessions with `--export` (multi-select checkbox) into per-session folders (`session-{id}/`), with separate thinking sections, cost summary, and attachments materialized as linked files
+- **Markdown / JSONL export** — export one or more saved sessions with `--export` (multi-select checkbox) into per-session folders (`session-{id}/`). Default is `markdown` (separate thinking sections, cost summary, attachments materialized as linked files); `--export-format jsonl` writes one JSON object per line (session header + messages) instead
 - **Session persistence** — last model, provider, and per-model reasoning effort, temperature and top-p are saved to `~/.communicator.json` and restored on next launch
 - **CLI flags to skip pickers** — `-m` skips *all* pickers for fully non-interactive use; `--reasoning-effort` skips only the reasoning picker
 - **Lightweight** — five runtime dependencies, pure Node.js ESM

@@ -168,6 +168,14 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --scrape is only available with --provider venice.')
   }
 
+  if (opts.exportFormat !== undefined && opts.export === undefined) {
+    errors.push('Error: --export-format requires --export.')
+  }
+
+  if (opts.exportFormat !== undefined && opts.exportFormat !== 'markdown' && opts.exportFormat !== 'jsonl') {
+    errors.push('Error: --export-format expects "markdown" or "jsonl".')
+  }
+
   if (opts.resume !== undefined && opts.export !== undefined) {
     errors.push('Error: Cannot use --resume and --export together. Use one at a time.')
   }

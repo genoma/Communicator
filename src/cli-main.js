@@ -147,8 +147,9 @@ async function main(opts, promptArg) {
     const prefs = await loadPreferences(opts.config)
     const outputDir = opts.outputDir || prefs.outputDir || null
     const partialId = typeof opts.export === 'string' ? opts.export : null
+    const exportFormat = opts.exportFormat || 'markdown'
     const { exportCmd } = await import('./commands/export-cmd.js')
-    await exportCmd(partialId, outputDir)
+    await exportCmd(partialId, outputDir, exportFormat)
     if (opts.outputDir && opts.outputDir !== prefs.outputDir) {
       try {
         await savePreferences({ ...prefs, outputDir: opts.outputDir }, opts.config)

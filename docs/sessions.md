@@ -92,7 +92,8 @@ ones), the `.index.json` sidecar, and the whole `attachments/` directory.
 
 ## Exporting sessions
 
-Export any saved session as a clean, readable markdown file:
+Export any saved session as a clean, readable markdown file (or JSONL for
+machine-readable interchange):
 
 ```bash
 # Multi-select checkbox — pick one or more sessions to export
@@ -106,6 +107,9 @@ communicator --export 2026-07-30T19-11-45
 
 # Export to a custom directory (persisted in preferences)
 communicator --export --output-dir ~/Documents/CommunicatorExports
+
+# Export as JSONL (one JSON object per line: session header + messages)
+communicator --export --export-format jsonl
 ```
 
 Selecting multiple sessions exports each one into its own folder, printing one
@@ -113,9 +117,10 @@ Selecting multiple sessions exports each one into its own folder, printing one
 and exits without changes.
 
 Each session is exported into its own folder: `session-{id}/` in the current
-working directory by default, containing the conversation as `session-{id}.md`.
-Use `--output-dir` to set a custom base directory — once set, it's saved in
-your preferences and used for all future exports until you override it again.
+working directory by default, containing the conversation as `session-{id}.md`
+(or `session-{id}.jsonl` with `--export-format jsonl`). Use `--output-dir` to
+set a custom base directory — once set, it's saved in your preferences and
+used for all future exports until you override it again.
 
 - **Header** — timestamp, title, model, provider, message count, reasoning effort, and accumulated cost
 - **User messages** — blockquoted under a `## You` heading

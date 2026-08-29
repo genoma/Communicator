@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { formatMarkdown, exportSession } from '../src/export.js'
+import { formatMarkdown, exportSession, formatJsonl } from '../src/export.js'
 
 function session(overrides = {}) {
   return {
@@ -48,6 +48,41 @@ test('hides system messages and omits cost when pricing is missing', () => {
   assert.doesNotMatch(md, /You are helpful\./)
   assert.match(md, /\*\*Cost:\*\* N\/A/)
   assert.doesNotMatch(md, /\*\*Reasoning:\*\*/)
+})
+
+test('formatJsonl emits a session header and one object per message', () => {
+  const jsonl = formatJsonl(session(), 'sess-1')
+  const lines = jsonl.trim().split('\n').map(JSON.parse)
+  assert.equal(lines.length, 4) // header + system + user + assistant
+  assert.equal(lines[0].type, 'session')
+  assert.equal(lines[0].id, 'sess-1')
+  assert.equal(lines[0].model, 'test/model')
+  assert.equal(lines[0].providerName, 'TestProvider')
+  assert.equal(lines[0].costSummary, null)
+  assert.deepEqual(lines[1], { role: 'system', content: 'You are helpful.' })
+  assert.deepEqual(lines[2], { role: 'user', content: 'What is the capital of France?' })
+  assert.deepEqual(lines[3], { role: 'assistant', content: 'Paris.', reasoning: 'The user asks a geography question.', usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17 } })
+})
+
+test('jsonl export writes a .jsonl file and does not materialize attachments', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const data = session({
+    costSummary: { promptTokens: 12, completionTokens: 5, totalTokens: 17, cost: 0.00008, requests: 1, cacheHits: 0, cachedTokens: 0, scrapes: 0 },
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'hello', usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17 } },
+    ],
+  })
+  const folder = await exportSession(data, dir, 'sess-1', 'jsonl')
+  const folderEntries = await readdir(folder)
+  assert.ok(folderEntries.includes('session-sess-1.jsonl'))
+  assert.ok(!folderEntries.includes('attachments'), 'jsonl does not materialize attachments')
+  const raw = await readFile(join(folder, 'session-sess-1.jsonl'), 'utf-8')
+  const lines = raw.trim().split('\n').map(JSON.parse)
+  assert.equal(lines[0].costSummary.cost, 0.00008)
+  assert.equal(lines[3].content, 'hello')
 })
 
 test('exports a cost when the prompt price is zero', () => {

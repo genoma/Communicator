@@ -171,13 +171,50 @@ export function formatMarkdown(sessionData, attachmentLink = null) {
   return md.trimEnd() + '\n'
 }
 
-// Writes the session markdown plus every materializable attachment into
-// <outDir>/session-<id>/, returns the created folder path. Remote http(s)
-// parts stay clickable links; a decode/write failure warns and skips the part.
-export async function exportSession(sessionData, outDir, sessionId) {
+// One JSON object per line: a `session` header (id, model, provider, pricing,
+// createdAt, title, cost summary) followed by one object per message (role,
+// content, reasoning, usage, sources, parts). Keeps the whole conversation,
+// including system messages, as a machine-readable interchange format.
+export function formatJsonl(sessionData, sessionId = null) {
+  const { model, providerName, pricing, createdAt, title, messages, costSummary } = sessionData
+  const lines = []
+  lines.push(JSON.stringify({
+    type: 'session',
+    id: sessionId || sessionData.sessionId || null,
+    model: model || null,
+    providerName: providerName || null,
+    pricing: pricing ?? null,
+    createdAt: createdAt || null,
+    title: title || null,
+    costSummary: costSummary ?? null,
+  }))
+  for (const msg of messages || []) {
+    const obj = { role: msg.role }
+    if (msg.content !== undefined) obj.content = msg.content
+    if (msg.reasoning != null) obj.reasoning = msg.reasoning
+    if (msg.reasoningMs != null) obj.reasoningMs = msg.reasoningMs
+    if (msg.usage != null) obj.usage = msg.usage
+    if (msg.sources?.length) obj.sources = msg.sources
+    lines.push(JSON.stringify(obj))
+  }
+  return lines.join('\n') + '\n'
+}
+
+// Writes the session export (markdown or jsonl) into <outDir>/session-<id>/,
+// returns the created folder path. Markdown additionally materializes every
+// decodable data-URL attachment under an attachments/ subfolder; remote
+// http(s) parts stay clickable links and a decode/write failure warns and
+// skips the part. Jsonl embeds the content parts directly (no materialization).
+export async function exportSession(sessionData, outDir, sessionId, format = 'markdown') {
   const folder = join(outDir, `session-${sessionId}`)
   const attachmentsDir = join(folder, 'attachments')
   await mkdir(folder, { recursive: true })
+
+  if (format !== 'markdown') {
+    const jsonl = formatJsonl(sessionData, sessionId)
+    await writeFile(join(folder, `session-${sessionId}.jsonl`), jsonl)
+    return folder
+  }
 
   const links = new Map()
   const used = new Set()
