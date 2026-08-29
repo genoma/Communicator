@@ -150,6 +150,20 @@ function sessionRecency(item) {
 // falling back to createdAt, then the creation-time id for legacy sessions.
 const byActivityDesc = (a, b) => sessionRecency(b) - sessionRecency(a) || byIdDesc(a, b)
 
+// Reads a single session file and replays its usage for a sidecar entry that
+// predates the cost-summary schema, so the list/picker fast path shows the
+// same cost the slow path (parseSessionFiles) would.
+async function costFromFile(dir, id) {
+  try {
+    const parsed = JSON.parse(await readFile(join(dir, `${id}.json`), 'utf-8'))
+    if (!Array.isArray(parsed.messages) || parsed.messages.length <= 1) return null
+    return computeCostSummary({ pricing: parsed.pricing, messages: parsed.messages, scrapes: parsed.scrapes ?? 0 })
+  } catch {
+    // corrupt/unreadable session file: nothing to compute
+    return null
+  }
+}
+
 async function parseSessionFiles(dir, jsonFiles) {
   const sessions = await Promise.all(jsonFiles.map(async (file) => {
     const id = basename(file, '.json')
@@ -205,8 +219,14 @@ export async function listSessions(dir) {
     const valid = []
     const ghosts = []
     for (const [id, meta] of Object.entries(index)) {
-      if (present.has(`${id}.json`)) valid.push(toSessionItem(id, meta))
-      else ghosts.push(id)
+      if (present.has(`${id}.json`)) {
+        const item = toSessionItem(id, meta)
+        // A legacy sidecar entry has no cost summary; recompute from the
+        // session file so the list and picker show a consistent cost (the
+        // session is backfilled on its next save).
+        if (!item.costSummary) item.costSummary = await costFromFile(dir, id)
+        valid.push(item)
+      } else ghosts.push(id)
     }
     if (ghosts.length > 0) await dropSidecarEntries(dir, ghosts)
     return valid.sort(byActivityDesc)

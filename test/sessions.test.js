@@ -70,6 +70,28 @@ test('listSessions reads from sidecar without parsing session bodies', async (t)
   assert.equal(sessions[0].preview, 'First question')
 })
 
+test('listSessions computes a cost for a sidecar entry that lacks costSummary', async (t) => {
+  const dir = await tempDir(t)
+  const data = sessionData({ pricing: { prompt: 0.000001, completion: 0.000002 } })
+  data.messages[2].usage = { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 }
+  data.costSummary = undefined // legacy session file: no cost summary written
+  await saveSession(dir, 'legacy-cost', data)
+
+  // Simulate a pre-summary sidecar entry (no costSummary key at all): the
+  // fast path must still recompute from the session file, matching the slow
+  // path, so list and picker show a consistent cost until the next save.
+  const index = JSON.parse(await readFile(join(dir, '.index.json'), 'utf-8'))
+  delete index['legacy-cost'].costSummary
+  await writeFile(join(dir, '.index.json'), JSON.stringify(index))
+
+  const sessions = await listSessions(dir)
+  assert.equal(sessions.length, 1)
+  assert.ok(sessions[0].costSummary)
+  assert.equal(sessions[0].costSummary.promptTokens, 100)
+  assert.equal(sessions[0].costSummary.requests, 1)
+  assert.ok(sessions[0].costSummary.cost > 0)
+})
+
 test('rebuilds sidecar from legacy session files when missing', async (t) => {
   const dir = await tempDir(t)
   await writeFile(join(dir, 'legacy-1.json'), JSON.stringify(sessionData({ model: 'legacy' })))
