@@ -228,9 +228,14 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     messages.push(msg)
   }
 
+  // Record usage in both the TTY and piped paths so the persisted
+  // cost summary below is authoritative (the resume/list/export paths
+  // prefer it over replay); the turn metrics footer stays TTY-only.
+  if (result.usage) {
+    tracker.record(result.usage, selection.pricing)
+  }
   if (ttyOut) {
     if (result.usage) {
-      tracker.record(result.usage, selection.pricing)
       tracker.printTurn(result.usage, selection.pricing, selection.contextLength)
       if (budget != null) {
         const line = budgetLine(tracker.cost, budget)

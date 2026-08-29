@@ -64,10 +64,12 @@ function mockOpenRouterStream(t, fetchCalls = [], bodies = []) {
     max_completion_tokens: null,
     supported_parameters: {},
   }]
+  // Usage is the top-level `parsed.usage` the SSE parser reads (matching the
+  // real provider response); it must not be nested under choices/delta.
   const stream = [
     event({ choices: [{ delta: { content: 'Hello' } }] }),
     event({ choices: [{ delta: { content: ' world' } }] }),
-    event({ choices: [{ delta: {}, usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }] }),
+    event({ usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }),
     'data: [DONE]\n\n',
   ]
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
@@ -170,6 +172,15 @@ test('one-shot success path writes plain output, the session file and persisted 
   assert.equal(saved.webSearch, 'off')
   assert.equal(saved.messages.length, 3)
   assert.equal(saved.messages[2].content, 'Hello world')
+  // The piped path records usage so the persisted cost summary is real (not
+  // zeroed): resume/list/export prefer it, so a zeroed summary would
+  // under-count the session forever.
+  assert.ok(saved.costSummary)
+  assert.equal(saved.costSummary.promptTokens, 10)
+  assert.equal(saved.costSummary.completionTokens, 5)
+  assert.equal(saved.costSummary.totalTokens, 15)
+  assert.equal(saved.costSummary.requests, 1)
+  assert.ok(saved.costSummary.cost > 0)
 
   const prefs = JSON.parse(await readFile(file, 'utf-8'))
   assert.equal(prefs.lastModel, 'test/model-a')
