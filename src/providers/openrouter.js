@@ -404,6 +404,10 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
 
   onRequest?.(body)
 
+  // Anchor the thinking clock at the moment the request is dispatched, so
+  // parseSSEStream reports real user-wait time even when the endpoint flushes
+  // the reasoning in a single burst (the sub-millisecond delta-span bug).
+  const requestStartedAt = performance.now()
   let res
   try {
     res = await fetchWithRetry(`${OPENROUTER_BASE}/chat/completions`, {
@@ -424,7 +428,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
   const cacheStatus = res.headers.get(CACHE_HEADER)
   const reader = res.body.getReader()
 
-  const { fullText, fullReasoning, finalUsage, fullSources, skippedChunks, fullParts, reasoningMs } = await parseSSEStream(reader, onToken, onSources)
+  const { fullText, fullReasoning, finalUsage, fullSources, skippedChunks, fullParts, reasoningMs } = await parseSSEStream(reader, onToken, onSources, { requestStartedAt })
 
   const usage = finalUsage
 

@@ -107,7 +107,9 @@ test('compact live streaming and history replay emit the same checkpoint block',
   liveRender('thinking text', 'reasoning')
   liveRender('', 'end_reasoning')
   liveRender('answer', 'content')
-  const checkpointBlock = '✓ Thinking · 13 · 0s\n\n❯ Answer\n\nanswer'
+  // 0 elapsed rounds to 0s, so both sides report the count-only checkpoint
+  // (never `· 0s`) and stay identical.
+  const checkpointBlock = '✓ Thinking · 13\n\n❯ Answer\n\nanswer'
   // The meter redraws one line with \r + erase sequences; normalized, the
   // live transcript and the history replay carry the identical block.
   const norm = (s) => s.replace(/\r/g, '').replace(/\x1b\[K/g, '')

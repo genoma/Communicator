@@ -102,18 +102,39 @@ export function createLoader({ stdout = process.stdout, graceMs = LOADER_GRACE_M
 // label + cyan braille spinner), but the label carries a live count of the
 // reasoning characters received so far and the elapsed thinking time. `update`
 // only bumps the counter; the next tick paints it (and the seconds), so
-// reasoning bursts never flood the terminal with rewrites. `stop({ done: true
-// })` always resolves the line to a green checkpoint — even when thinking
-// finished inside the grace window, so the final transcript is deterministic
-// (`✓ Thinking · N · 3s`).
+// reasoning bursts never flood the terminal with rewrites.
+//
+// The meter owns the turn's status line from turn start in compact mode: it
+// starts in a waiting phase (`Waiting for response · <seconds>`, so the wait
+// itself shows a live clock — an endpoint that flushes the whole reasoning
+// block in one burst otherwise leaves the row frozen on the plain spinner) and
+// `toThinking()` switches it to the counting phase at the first reasoning
+// delta, keeping the clock anchored at turn start. `stop({ done: true })`
+// always resolves the line to a green checkpoint:
+// - thinking phase: `✓ Thinking · N · <seconds>` — even when thinking finished
+//   inside the grace window, so the final transcript is deterministic. A
+//   duration that would render as `0s` (< 50ms of user-wait) is suppressed and
+//   the line stays count-only (`✓ Thinking · N`), matching the legacy
+//   pre-duration look instead of a misleading `0s`.
+// - waiting phase (reasoning-less turn): `✓ <waitLabel>`, only when the
+//   spinner was shown (same contract as the loader, so the runner adds the
+//   one blank row exactly once and instant replies never gain one).
 export function createThinkingMeter({ stdout = process.stdout, graceMs = LOADER_GRACE_MS, tickMs = LOADER_TICK_MS, label = 'Thinking', now = () => performance.now() } = {}) {
   let count = 0
   let startedAt = 0
   let elapsed = 0
   let stopped = true
+  let waiting = true
+  let currentLabel = label
   const meterLine = (running) => {
     const seconds = formatElapsedSeconds(running ? now() - startedAt : elapsed)
-    return `${label} · ${formatCompactCount(count)} · ${seconds}`
+    if (waiting) return `${currentLabel} · ${seconds}`
+    return `${currentLabel} · ${formatCompactCount(count)} · ${seconds}`
+  }
+  const checkpointLine = () => {
+    if (waiting) return currentLabel
+    const seconds = formatElapsedSeconds(elapsed)
+    return `${currentLabel} · ${formatCompactCount(count)}${seconds === '0s' ? '' : ` · ${seconds}`}`
   }
   const spinner = createSpinner({
     stdout,
@@ -122,27 +143,52 @@ export function createThinkingMeter({ stdout = process.stdout, graceMs = LOADER_
     drawLine: (frame) => `\r${dim(meterLine(true))} ${cyan(frame)}`,
   })
   return {
-    start() {
+    start({ startedAt: startedAtOverride } = {}) {
       count = 0
-      startedAt = now()
+      startedAt = startedAtOverride ?? now()
       stopped = false
+      waiting = false
+      currentLabel = label
       spinner.start()
+    },
+    // Turn-start phase: the line runs as `<waitLabel> · <seconds>` until the
+    // first reasoning delta flips it to the counting phase.
+    beginWait({ startedAt: startedAtOverride, label: waitLabel } = {}) {
+      count = 0
+      startedAt = startedAtOverride ?? now()
+      stopped = false
+      waiting = true
+      currentLabel = waitLabel
+      spinner.start()
+    },
+    toThinking() {
+      if (stopped) return
+      waiting = false
+      currentLabel = label
+    },
+    isWaiting() {
+      return !stopped && waiting
     },
     update(chars) {
       count += chars
     },
     stop({ done = false } = {}) {
-      if (stopped) return
+      if (stopped) return false
       stopped = true
       elapsed = now() - startedAt
       spinner.stopTimers()
       if (done) {
-        stdout.write(`\r${green('✓')} ${meterLine(false)}\x1b[K\n`)
+        if (waiting && !spinner.isShown()) {
+          spinner.hide()
+          return false
+        }
+        stdout.write(`\r${green('✓')} ${checkpointLine()}\x1b[K\n`)
         spinner.hide()
-        return
+        return true
       }
       if (spinner.isShown()) stdout.write('\r\x1b[K')
       spinner.hide()
+      return false
     },
   }
 }

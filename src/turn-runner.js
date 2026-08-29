@@ -56,6 +56,11 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
 
     render.sources = []
     render.resetMessage()
+    // Anchor the compact-thinking meter clock at turn start (the user pressed
+    // send): the checkpoint then reports the real wait even when the endpoint
+    // flushes the reasoning in one burst. The renderer falls back to its own
+    // clock when this is absent (one-shot / tests).
+    render.turnStartedAt = performance.now()
     sessionState.streaming = true
     sessionState.streamController = new AbortController()
     sessionState.interrupted = false
@@ -86,7 +91,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
     // rendering, artifact downloads): save the response produced so far,
     // persist and exit 130.
     const interruptedExit = async (message) => {
-      loader.stop()
+      stopLoader()
       render.flush({ sync: true })
       stdout.write('\n')
       if (message.content || message.reasoning) {
@@ -137,6 +142,14 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       return partial
     }
 
+    // The wait indicator is the loader in full mode, the meter's waiting
+    // phase in compact mode: the loader is only ever started (and therefore
+    // only ever stopped) on the non-compact path — in compact mode the meter
+    // owns the line and the subsequent render.flush() clears it.
+    const stopLoader = () => {
+      if (!render.compactThinking) loader.stop()
+    }
+
     try {
       stdout.write('\n')
       if (tty) {
@@ -145,7 +158,15 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         // line (or the compact meter checkpoint on it) is the first row of
         // the marker block, never glued to the user line.
         stdout.write('\n')
-        loader.start(state.webSearch === 'always' ? 'Searching the web' : 'Waiting for response')
+        if (render.compactThinking) {
+          // Compact mode: the meter owns the line from turn start, showing
+          // the wait label with a live clock (`Waiting for response · 2.3s`),
+          // so a burst-delivered reasoning block never leaves the row frozen
+          // on the plain spinner and the checkpoint counts from the send.
+          render.startTurn(state.webSearch === 'always' ? 'Searching the web' : 'Waiting for response')
+        } else {
+          loader.start(state.webSearch === 'always' ? 'Searching the web' : 'Waiting for response')
+        }
       }
       if (tty && input.isTTY) {
         streamKeys = createStreamKeyMonitor({ input, onStop: requestStop, onInterrupt: requestInterrupt })
@@ -163,23 +184,31 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
           : state.messages,
         onToken: (token, type) => {
           // When a thought block opens, the marker owns the loader's line in
-          // BOTH modes: bare stop, no checkmark, so the `❯ Thinking` label
-          // (or the compact meter checkpoint) is never appended to a live
-          // spinner row and the waiting checkmark never leaks into a
-          // reasoning transcript. Reasoning tokens arrive after
-          // start_reasoning, so they never stop the loader again; only
+          // FULL mode: bare stop, no checkmark, so the `❯ Thinking` label is
+          // never appended to a live spinner row and the waiting checkmark
+          // never leaks into a reasoning transcript. Reasoning tokens arrive
+          // after start_reasoning, so they never stop the loader again; only
           // content resolves the waiting line when no reasoning intervened.
+          // In compact mode the meter owns the line from turn start (startTurn
+          // instead of loader.start), so the loader is never touched and
+          // `start_reasoning` flips the meter to the counting phase inside the
+          // renderer (keep the clock anchored); content with no reasoning
+          // resolves the waiting phase through the renderer.
           if (type === 'start_reasoning') {
-            if (tty) loader.stop()
+            if (tty && !render.compactThinking) loader.stop()
           } else if (type === 'content') {
-            // Resolve the waiting loader row to the green checkpoint, then
-            // add exactly one blank row before the answer — the same
+            // Resolve the waiting row to the green checkpoint, then add
+            // exactly one blank row before the answer — the same
             // one-blank-above-and-below marker spacing the thinking markers
-            // get. `stop({ done: true })` returns true only when it actually
-            // wrote the checkpoint (spinner was visible), so an instant reply
-            // (nothing within the grace window) and non-TTY output never gain
-            // a stray blank row.
-            if (loader.stop({ done: true })) stdout.write('\n')
+            // get. The stop returns true only when it actually wrote the
+            // checkpoint (spinner was visible), so an instant reply (nothing
+            // within the grace window) and non-TTY output never gain a stray
+            // blank row.
+            if (render.compactThinking) {
+              if (render.resolveWaitingLine()) stdout.write('\n')
+            } else if (loader.stop({ done: true })) {
+              stdout.write('\n')
+            }
           }
           if (type === 'reasoning') reasoningParts.push(token)
           else if (type === 'content') contentParts.push(token)
@@ -203,7 +232,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         signal: sessionState.streamController.signal,
         onRequest,
       })
-      loader.stop()
+      stopLoader()
       await render.flush()
       if (sessionState.interrupted) {
         await interruptedExit(apiResultMessage(apiResult))
@@ -258,7 +287,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         sessionState.tracker.printTurn(apiResult.usage, state.pricing, state.contextLength, budgetNote)
       }
     } catch (err) {
-      loader.stop()
+      stopLoader()
       if (sessionState.interrupted) {
         render.flush({ sync: true })
         stdout.write('\n')

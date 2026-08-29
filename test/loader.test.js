@@ -219,8 +219,107 @@ test('thinking meter start resets the count and seconds and keeps accumulating u
   meter.stop({ done: true })
   assert.deepEqual(chunks, [
     `\r${green('✓')} Thinking · 500 · 0.5s\x1b[K\n`,
-    `\r${green('✓')} Thinking · 1k · 0s\x1b[K\n`,
+    `\r${green('✓')} Thinking · 1k\x1b[K\n`,
   ])
+})
+
+test('thinking meter start honors an explicit startedAt override (turn clock)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { write(chunk) { chunks.push(String(chunk)); return true } }
+  let nowMs = 3000
+  const meter = createThinkingMeter({ stdout, graceMs: 200, tickMs: 150, now: () => nowMs })
+  meter.start({ startedAt: 800 })
+  meter.update(999)
+  meter.stop({ done: true })
+  // Elapsed measured from the override anchor: 3000 - 800 = 2.2s.
+  assert.deepEqual(chunks, [`\r${green('✓')} Thinking · 999 · 2.2s\x1b[K\n`])
+})
+
+test('thinking meter checkpoint suppresses a sub-50ms (0s) duration', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { write(chunk) { chunks.push(String(chunk)); return true } }
+  let nowMs = 0
+  const meter = createThinkingMeter({ stdout, graceMs: 200, tickMs: 150, now: () => nowMs })
+  meter.start()
+  meter.update(999)
+  nowMs = 30
+  meter.stop({ done: true })
+  // 30ms rounds to 0s: checkpoint reports count-only, never `· 0s`.
+  assert.deepEqual(chunks, [`\r${green('✓')} Thinking · 999\x1b[K\n`])
+})
+
+test('thinking meter checkpoint still reports substantive seconds', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { write(chunk) { chunks.push(String(chunk)); return true } }
+  let nowMs = 0
+  const meter = createThinkingMeter({ stdout, graceMs: 200, tickMs: 150, now: () => nowMs })
+  meter.start()
+  meter.update(999)
+  nowMs = 3400
+  meter.stop({ done: true })
+  assert.deepEqual(chunks, [`\r${green('✓')} Thinking · 999 · 3.4s\x1b[K\n`])
+})
+
+test('thinking meter waiting phase paints the live wait clock and flips to thinking', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { write(chunk) { chunks.push(String(chunk)); return true } }
+  let nowMs = 0
+  const meter = createThinkingMeter({ stdout, graceMs: 200, tickMs: 150, now: () => nowMs })
+  meter.beginWait({ startedAt: 0, label: 'Waiting for response' })
+  nowMs = 2300
+  t.mock.timers.tick(200)
+  assert.deepEqual(chunks, [`\r${dim('Waiting for response · 2.3s')} ${frameAt(0)}\x1b[K`])
+  meter.toThinking()
+  meter.update(1234)
+  nowMs = 3400
+  t.mock.timers.tick(150)
+  assert.deepEqual(chunks, [
+    `\r${dim('Waiting for response · 2.3s')} ${frameAt(0)}\x1b[K`,
+    `\r${dim('Thinking · 1.2k · 3.4s')} ${frameAt(1)}\x1b[K`,
+  ])
+  nowMs = 4300
+  meter.stop({ done: true })
+  assert.deepEqual(chunks, [
+    `\r${dim('Waiting for response · 2.3s')} ${frameAt(0)}\x1b[K`,
+    `\r${dim('Thinking · 1.2k · 3.4s')} ${frameAt(1)}\x1b[K`,
+    `\r${green('✓')} Thinking · 1.2k · 4.3s\x1b[K\n`,
+  ])
+})
+
+test('thinking meter waiting phase resolves to the wait checkpoint when shown', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { write(chunk) { chunks.push(String(chunk)); return true } }
+  let nowMs = 0
+  const meter = createThinkingMeter({ stdout, graceMs: 200, tickMs: 150, now: () => nowMs })
+  meter.beginWait({ startedAt: 0, label: 'Waiting for response' })
+  nowMs = 500
+  t.mock.timers.tick(200)
+  assert.equal(meter.isWaiting(), true)
+  const wrote = meter.stop({ done: true })
+  assert.equal(wrote, true)
+  assert.deepEqual(chunks, [
+    `\r${dim('Waiting for response · 0.5s')} ${frameAt(0)}\x1b[K`,
+    `\r${green('✓')} Waiting for response\x1b[K\n`,
+  ])
+})
+
+test('thinking meter waiting-phase done stop before the grace window writes nothing', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { write(chunk) { chunks.push(String(chunk)); return true } }
+  const meter = createThinkingMeter({ stdout, graceMs: 200, tickMs: 150, now: () => 0 })
+  meter.beginWait({ startedAt: 0, label: 'Waiting for response' })
+  // Nothing within the grace window: no checkpoint, no residual row.
+  const wrote = meter.stop({ done: true })
+  assert.equal(wrote, false)
+  assert.deepEqual(chunks, [])
+  t.mock.timers.tick(1000)
+  assert.deepEqual(chunks, [])
 })
 
 test('thinking meter restarts cleanly after a checkpointed turn (retry path)', async (t) => {

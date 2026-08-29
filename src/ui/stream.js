@@ -64,7 +64,13 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   // and below every marker.
   const writeCompact = (type, text) => {
     if (type === 'start_reasoning') {
-      meter.start()
+      // The meter was already started by startTurn (waiting phase) when the
+      // runner owns the line: flip it to the counting phase without touching
+      // the clock, so the checkpoint counts from turn start even when the
+      // endpoint flushes the whole reasoning block in one burst. Without a
+      // started meter (one-shot / tests) start one anchored at the turn.
+      if (meter.isWaiting()) meter.toThinking()
+      else meter.start({ startedAt: render.turnStartedAt })
     } else if (type === 'reasoning') {
       meter.update(text.length)
     } else if (type === 'end_reasoning') {
@@ -136,6 +142,24 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   render.sources = []
   render.resetMessage = () => {
     messageStarted = false
+  }
+  // Compact mode: the meter owns the turn's status line, so the runner starts
+  // it at turn start (waiting phase) instead of the loader. The clock is
+  // anchored at turn start and the wait label is the caller's (Waiting for
+  // response / Searching the web), so the reasoning-less checkpoint matches
+  // the loader's exactly. Non-compact turns never call this.
+  render.startTurn = (waitLabel) => {
+    meter.beginWait({ startedAt: render.turnStartedAt, label: waitLabel })
+  }
+  // Resolves a live waiting meter line to its green checkpoint (`✓ <wait
+  // label>`), like the loader's `stop({done:true})`: returns true only when it
+  // actually wrote the line (the spinner was visible), so the runner adds the
+  // one blank row below exactly once and instant replies never gain a stray
+  // one. No-op once reasoning started (the thinking checkpoint already owns
+  // the row).
+  render.resolveWaitingLine = () => {
+    if (!render.compactThinking || !meter.isWaiting()) return false
+    return meter.stop({ done: true })
   }
   const flushBodies = () => {
     reasoningWrap.flush()
@@ -226,11 +250,18 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
       // Same marker sequence as the live stream (writeSegment): one blank
       // line above and below every marker.
       // Compact mode replays the live checkpoint (`✓ Thinking · N`) with the
-      // count derived from the stored reasoning, never the body.
+      // count derived from the stored reasoning, never the body. Seconds are
+      // suppressed when the stored duration renders as `0s` (a one-burst /
+      // instant reasoning block), so a resumed session shows the same
+      // count-only line the live stream did and never a misleading `· 0s`.
       if (msg.reasoning) {
         if (compactThinking) {
           const count = formatCompactCount(sanitizeAnsi(msg.reasoning).length)
-          const duration = msg.reasoningMs != null ? ` · ${formatElapsedSeconds(msg.reasoningMs)}` : ''
+          let duration = ''
+          if (msg.reasoningMs != null) {
+            const seconds = formatElapsedSeconds(msg.reasoningMs)
+            if (seconds !== '0s') duration = ` · ${seconds}`
+          }
           out += `${green('✓')} Thinking · ${count}${duration}\n\n${answer()}\n\n`
         } else {
           out += `${thinking()}\n\n`

@@ -434,7 +434,9 @@ test('compact renderer hides reasoning and emits the checkpoint with the final c
   render('thinking text', 'reasoning')
   render('', 'end_reasoning')
   render('Answer here', 'content')
-  assert.equal(plain(), '\r✓ Thinking · 13 · 0s\x1b[K\n\n❯ Answer\n\nAnswer here')
+  // A constant 0 clock means the thinking had no elapsed time, so the
+  // checkpoint reports count-only (`✓ Thinking · N`), never a misleading `0s`.
+  assert.equal(plain(), '\r✓ Thinking · 13\x1b[K\n\n❯ Answer\n\nAnswer here')
 })
 
 test('compact renderer checkpoints once per thinking block, not per reasoning delta', () => {
@@ -448,7 +450,7 @@ test('compact renderer checkpoints once per thinking block, not per reasoning de
   render('mm,', 'reasoning')
   render('', 'end_reasoning')
   render('Hi!', 'content')
-  assert.equal(plain(), '\r✓ Thinking · 4 · 0s\x1b[K\n\n❯ Answer\n\nHi!')
+  assert.equal(plain(), '\r✓ Thinking · 4\x1b[K\n\n❯ Answer\n\nHi!')
 })
 
 test('compact renderer puts the assistant marker after the Answer label', () => {
@@ -458,7 +460,7 @@ test('compact renderer puts the assistant marker after the Answer label', () => 
   render('thinking text', 'reasoning')
   render('', 'end_reasoning')
   render('Hi', 'content')
-  assert.equal(plain(), '\r✓ Thinking · 13 · 0s\x1b[K\n\n❯ Answer\n\n❯ Zara\n\nHi')
+  assert.equal(plain(), '\r✓ Thinking · 13\x1b[K\n\n❯ Answer\n\n❯ Zara\n\nHi')
 })
 
 test('compact renderer keeps content paced while the checkpoint is immediate', async (t) => {
@@ -469,11 +471,11 @@ test('compact renderer keeps content paced while the checkpoint is immediate', a
   render('thinking text', 'reasoning')
   render('', 'end_reasoning')
   render('HELLO', 'content')
-  assert.equal(plain(), '\r✓ Thinking · 13 · 0s\x1b[K\n\n❯ Answer\n\n')
+  assert.equal(plain(), '\r✓ Thinking · 13\x1b[K\n\n❯ Answer\n\n')
   t.mock.timers.tick(20)
-  assert.equal(plain(), '\r✓ Thinking · 13 · 0s\x1b[K\n\n❯ Answer\n\nHELLO')
+  assert.equal(plain(), '\r✓ Thinking · 13\x1b[K\n\n❯ Answer\n\nHELLO')
   t.mock.timers.tick(1000)
-  assert.equal(plain(), '\r✓ Thinking · 13 · 0s\x1b[K\n\n❯ Answer\n\nHELLO')
+  assert.equal(plain(), '\r✓ Thinking · 13\x1b[K\n\n❯ Answer\n\nHELLO')
 })
 
 test('compact renderer paints the live count on each meter tick', async (t) => {
@@ -488,7 +490,7 @@ test('compact renderer paints the live count on each meter tick', async (t) => {
   t.mock.timers.tick(150)
   assert.equal(text(), '\rThinking · 1.2k · 0s ⠋\x1b[K\rThinking · 1.3k · 0s ⠙\x1b[K')
   render('', 'end_reasoning')
-  assert.equal(text(), '\rThinking · 1.2k · 0s ⠋\x1b[K\rThinking · 1.3k · 0s ⠙\x1b[K\r✓ Thinking · 1.3k · 0s\x1b[K\n\n❯ Answer\n\n')
+  assert.equal(text(), '\rThinking · 1.2k · 0s ⠋\x1b[K\rThinking · 1.3k · 0s ⠙\x1b[K\r✓ Thinking · 1.3k\x1b[K\n\n❯ Answer\n\n')
 })
 
 test('compact renderer flush clears a live meter line (interrupt path)', async (t) => {
@@ -515,7 +517,84 @@ test('compact renderer toggling off between turns restores the thinking text', (
   render('now visible', 'reasoning')
   render('', 'end_reasoning')
   render('done', 'content')
-  assert.equal(plain(), '\r✓ Thinking · 6 · 0s\x1b[K\n\n❯ Answer\n\n❯ Thinking\n\nnow visible\n\n❯ Answer\n\ndone')
+  assert.equal(plain(), '\r✓ Thinking · 6\x1b[K\n\n❯ Answer\n\n❯ Thinking\n\nnow visible\n\n❯ Answer\n\ndone')
+})
+
+test('compact renderer reports honest seconds from the turn clock on a one-burst reasoning block', () => {
+  // The regression: an endpoint that flushes the whole reasoning block in a
+  // single burst (start + all deltas + end in one tick) used to yield a
+  // checkpoint of `✓ Thinking · N · 0s`. With the clock anchored at turn start,
+  // the checkpoint reflects the time the user actually waited.
+  let nowMs = 0
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true, now: () => nowMs })
+  render.turnStartedAt = 0
+  nowMs = 2400
+  render('', 'start_reasoning')
+  render('thinking text', 'reasoning')
+  render('', 'end_reasoning')
+  render('Answer here', 'content')
+  assert.equal(plain(), '\r✓ Thinking · 13 · 2.4s\x1b[K\n\n❯ Answer\n\nAnswer here')
+})
+
+test('compact renderer startTurn owns the line with a live wait clock', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let nowMs = 0
+  const { stdout, text } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true, now: () => nowMs })
+  render.turnStartedAt = 0
+  render.startTurn('Waiting for response')
+  nowMs = 2300
+  t.mock.timers.tick(200)
+  assert.equal(text(), '\rWaiting for response · 2.3s ⠋\x1b[K')
+  // The burst lands: the meter flips to the counting phase without losing
+  // the anchored clock.
+  render('', 'start_reasoning')
+  render('thinking text', 'reasoning')
+  render('', 'end_reasoning')
+  render('Answer here', 'content')
+  assert.equal(text(), '\rWaiting for response · 2.3s ⠋\x1b[K\r✓ Thinking · 13 · 2.3s\x1b[K\n\n❯ Answer\n\nAnswer here')
+})
+
+test('compact renderer resolveWaitingLine checkpoints the wait label when shown', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let nowMs = 0
+  const { stdout, text } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true, now: () => nowMs })
+  render.turnStartedAt = 0
+  render.startTurn('Waiting for response')
+  nowMs = 500
+  t.mock.timers.tick(200)
+  assert.equal(text(), '\rWaiting for response · 0.5s ⠋\x1b[K')
+  const wrote = render.resolveWaitingLine()
+  assert.equal(wrote, true)
+  assert.equal(text(), '\rWaiting for response · 0.5s ⠋\x1b[K\r✓ Waiting for response\x1b[K\n')
+})
+
+test('compact renderer resolveWaitingLine returns false for instant replies', () => {
+  const { stdout, text } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true, now: () => 0 })
+  render.turnStartedAt = 0
+  render.startTurn('Waiting for response')
+  const wrote = render.resolveWaitingLine()
+  assert.equal(wrote, false)
+  assert.equal(text(), '')
+})
+
+test('compact renderer resolveWaitingLine no-ops when reasoning already owned the line', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let nowMs = 0
+  const { stdout, text } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true, now: () => nowMs })
+  render.turnStartedAt = 0
+  render.startTurn('Waiting for response')
+  nowMs = 500
+  t.mock.timers.tick(200)
+  render('', 'start_reasoning')
+  render('thinking', 'reasoning')
+  render('', 'end_reasoning')
+  assert.equal(render.resolveWaitingLine(), false)
+  assert.equal(text(), '\rWaiting for response · 0.5s ⠋\x1b[K\r✓ Thinking · 8 · 0.5s\x1b[K\n\n❯ Answer\n\n')
 })
 
 test('renderHistory compact replays the checkpoint derived from stored reasoning', () => {
@@ -526,4 +605,25 @@ test('renderHistory compact replays the checkpoint derived from stored reasoning
     { role: 'assistant', content: 'answer', reasoning: 'thinking text' },
   ], { markdown: false, stdout, compactThinking: true })
   assert.equal(plain(), '\n❯ You\n\nquestion\n\n✓ Thinking · 13\n\n❯ Answer\n\nanswer\n\n')
+})
+
+test('renderHistory compact suppresses the seconds token when stored duration renders as 0s', () => {
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: 'answer', reasoning: 'thinking text', reasoningMs: 14 },
+  ], { markdown: false, stdout, compactThinking: true })
+  // 14ms rounds to 0s, so replay shows count-only, never `· 0s`.
+  assert.equal(plain(), '\n❯ You\n\nquestion\n\n✓ Thinking · 13\n\n❯ Answer\n\nanswer\n\n')
+})
+
+test('renderHistory compact replays the real seconds for a substantive thinking duration', () => {
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: 'answer', reasoning: 'thinking text', reasoningMs: 5678 },
+  ], { markdown: false, stdout, compactThinking: true })
+  assert.equal(plain(), '\n❯ You\n\nquestion\n\n✓ Thinking · 13 · 5.7s\n\n❯ Answer\n\nanswer\n\n')
 })

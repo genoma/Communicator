@@ -165,6 +165,10 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
         smoothCharsPerTick: cpsToCharsPerTick(smoothSpeed),
         compactThinking: compactThinking && ttyOut,
       })
+      // Anchor the compact-thinking meter clock at request start so the
+      // checkpoint reports the real wait even when the endpoint flushes the
+      // reasoning in one burst.
+      render.turnStartedAt = performance.now()
       result = await provider.chatCompletion({
         ...completionOpts,
         onToken: render,

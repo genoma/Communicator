@@ -69,7 +69,7 @@ function collectSources(parsed, fullSources, seenUrls, onSources) {
   if (found && onSources) onSources(fullSources)
 }
 
-export async function parseSSEStream(reader, onToken, onSources = null, { idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, decryptToken = null, maxBytes = MAX_STREAM_BYTES } = {}) {
+export async function parseSSEStream(reader, onToken, onSources = null, { idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, decryptToken = null, maxBytes = MAX_STREAM_BYTES, now = () => performance.now(), requestStartedAt = null } = {}) {
   const decoder = new TextDecoder()
   let receivedBytes = 0
   // Text accumulates in arrays and is joined once at the end: `+=` on the
@@ -80,7 +80,13 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
   const seenParts = new Set()
   let buffer = ''
   let inThinking = false
-  let reasoningStartedAt = null
+  // The thinking clock is anchored at request start (the moment the provider
+  // fetch was dispatched, passed by the caller) so a fast/one-burst response
+  // still reports the time the user actually waited, not the sub-millisecond
+  // span between the first and last reasoning delta. Without a request clock
+  // the anchor falls back to the first reasoning delta (byte-identical to the
+  // pre-request-anchor behavior).
+  let reasoningStartedAt = requestStartedAt ?? null
   let reasoningMs = null
   let finalUsage = null
   let skippedChunks = 0
@@ -144,7 +150,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
   const closeThinking = () => {
     if (!inThinking) return
     inThinking = false
-    reasoningMs = reasoningStartedAt !== null ? performance.now() - reasoningStartedAt : null
+    reasoningMs = reasoningStartedAt !== null ? now() - reasoningStartedAt : null
     reasoningStartedAt = null
     onToken(null, 'end_reasoning')
   }
@@ -222,7 +228,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
       fullReasoningParts.push(text)
       if (!inThinking) {
         inThinking = true
-        reasoningStartedAt = performance.now()
+        if (reasoningStartedAt === null) reasoningStartedAt = now()
         onToken('\n', 'start_reasoning')
       }
       onToken(text, 'reasoning')

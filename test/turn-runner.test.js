@@ -679,17 +679,22 @@ test('Ctrl+C via the streaming key monitor (\x03) still saves the partial and ex
 })
 
 
-test('compact thinking hands the loader to the meter without a checkmark', async (t) => {
+test('compact thinking starts the meter at turn start and never touches the loader', async (t) => {
   mockConsole(t)
   const calls = []
   const loader = {
-    start() {},
-    stop(opts) { calls.push(opts ?? {}) },
+    start() { calls.push(['start']) },
+    stop(opts) { calls.push(['stop', opts ?? {}]) },
   }
   const render = () => {}
   render.sources = []
   render.resetMessage = () => {}
   render.flush = () => {}
+  render.compactThinking = true
+  const started = []
+  const resolved = []
+  render.startTurn = (label) => started.push(label)
+  render.resolveWaitingLine = () => { resolved.push(true); return false }
   const state = fakeState({ compactThinking: true })
   const provider = {
     async chatCompletion(opts) {
@@ -704,11 +709,48 @@ test('compact thinking hands the loader to the meter without a checkmark', async
 
   await runTurn(deps, state)
 
-  // start_reasoning clears the waiting line (no done), reasoning does not
-  // touch the loader anymore, content resolves it with the checkmark, and
-  // the post-turn stop is a no-op on the already-stopped waiting loader.
-  assert.deepEqual(calls, [{}, { done: true }, {}])
+  // Compact mode: the meter owns the line from turn start (startTurn instead
+  // of loader.start), the loader is never touched, and the content token
+  // asks the renderer to resolve the waiting line (a no-op here because the
+  // thinking checkpoint already owns the row).
+  assert.deepEqual(calls, [])
+  assert.deepEqual(started, ['Waiting for response'])
+  assert.deepEqual(resolved, [true])
   assert.equal(state.messages[2].reasoning, 'thinking')
+})
+
+test('compact thinking resolves the waiting line for a reasoning-less turn', async (t) => {
+  mockConsole(t)
+  const calls = []
+  const loader = {
+    start() { calls.push(['start']) },
+    stop(opts) { calls.push(['stop', opts ?? {}]) },
+  }
+  const stdout = { write() {} }
+  const render = () => {}
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => {}
+  render.compactThinking = true
+  const started = []
+  const resolved = []
+  render.startTurn = (label) => started.push(label)
+  render.resolveWaitingLine = () => { resolved.push(true); stdout.write('\n'); return true }
+  const state = fakeState({ compactThinking: true })
+  const provider = {
+    async chatCompletion(opts) {
+      opts.onToken('Hello', 'content')
+      return { content: 'Hello' }
+    },
+  }
+  const { deps } = makeDeps({ render, loader, provider, tty: true, stdout })
+
+  await runTurn(deps, state)
+
+  assert.deepEqual(calls, [])
+  assert.deepEqual(started, ['Waiting for response'])
+  assert.deepEqual(resolved, [true])
+  assert.equal(state.messages[2].content, 'Hello')
 })
 
 test('stores the reasoning duration on the assistant message', async (t) => {

@@ -308,6 +308,10 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
   // level as history.json) and must stay readable.
   onRequest?.(e2ee ? { ...body, messages } : body)
 
+  // Anchor the thinking clock at the moment the request is dispatched, so
+  // parseSSEStream reports real user-wait time even when the endpoint flushes
+  // the reasoning in a single burst (the sub-millisecond delta-span bug).
+  const requestStartedAt = performance.now()
   const res = await fetchWithRetry(`${VENICE_BASE}/chat/completions`, {
     method: 'POST',
     headers,
@@ -315,7 +319,12 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
   }, { errorResponse: handleHttpError, signal })
 
   const reader = res.body.getReader()
-  const streamOptions = e2ee ? { decryptToken: (hex) => decryptToken(hex, e2eeContext.clientKey) } : undefined
+  // Anchor the thinking clock at the moment the request is dispatched, so
+  // parseSSEStream reports real user-wait time even when the endpoint flushes
+  // the reasoning in a single burst (the sub-millisecond delta-span bug).
+  const streamOptions = e2ee
+    ? { decryptToken: (hex) => decryptToken(hex, e2eeContext.clientKey), requestStartedAt }
+    : { requestStartedAt }
   const { fullText, fullReasoning, finalUsage, fullSources, skippedChunks, fullParts, reasoningMs } = await parseSSEStream(reader, onToken, onSources, streamOptions)
 
   return { content: fullText, reasoning: fullReasoning || undefined, usage: finalUsage, sources: fullSources, skippedChunks, parts: fullParts.length > 0 ? fullParts : undefined, reasoningMs }

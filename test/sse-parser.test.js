@@ -119,6 +119,49 @@ test('reports null reasoning duration when no reasoning was streamed', async () 
   assert.equal(reasoningMs, null)
 })
 
+test('anchors the thinking clock at request start so a one-burst block reports real wait', async () => {
+  // Regression: an endpoint that flushes the whole reasoning block into a
+  // single synchronous burst (start + reasoning deltas + content in one tick)
+  // produced reasoningMs ~0, so the meter checkpoint showed `· 0s`. With a
+  // request-anchored clock the reported duration reflects the wait the user
+  // actually experienced, not the sub-millisecond delta span.
+  let nowMs = 2400
+  const { fullReasoning, reasoningMs } = await parseSSEStream(
+    // All reasoning deltas and the closing content arrive in the SAME chunk
+    // (one reader read), so the deltas span ~0ms of wall time between them.
+    streamReader([
+      event({ choices: [{ delta: { reasoning_content: 'think' } }] }),
+      event({ choices: [{ delta: { reasoning_content: 'ing hard' } }] }),
+      event({ choices: [{ delta: { content: 'Answer' } }] }),
+    ]),
+    () => {},
+    null,
+    { now: () => nowMs, requestStartedAt: 200 }
+  )
+  assert.equal(fullReasoning, 'thinking hard')
+  // Wait time measured from the request anchor even though all deltas arrived
+  // in a single burst (2400 - 200 = 2.2s).
+  assert.ok(reasoningMs >= 2200 && reasoningMs <= 2400)
+})
+
+test('falls back to the first-delta anchor when no request clock is provided', async () => {
+  // Absent-option callers keep the pre-request-anchor behavior: the duration
+  // is measured from the first reasoning delta.
+  let nowMs = 400
+  const { fullReasoning, reasoningMs } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { reasoning_content: 'think' } }] }),
+      event({ choices: [{ delta: { content: 'Answer' } }] }),
+    ]),
+    () => {},
+    null,
+    { now: () => nowMs }
+  )
+  assert.equal(fullReasoning, 'think')
+  // First-delta anchor: close at 400 minus the first-delta time (400) = ~0.
+  assert.ok(reasoningMs <= 400)
+})
+
 test('captures usage chunk and skips [DONE]', async () => {
   const usage = { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 }
   const { fullText, finalUsage } = await parseSSEStream(
