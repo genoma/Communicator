@@ -6,8 +6,8 @@ import { dim } from '../src/ui/style.js'
 // whether the metrics block emits a line, and gates the await so a stop can
 // land mid-metrics deterministically.
 let metrics = { emits: false, line: null, entered: false, resolve: null }
-mock.module(new URL('../src/artifacts.js', import.meta.url), {
-  exports: {
+mock.module(new URL('../src/artifacts.js', import.meta.url).href, {
+  namedExports: {
     printPostStreamMetrics: async (_apiResult, { stdout }) => {
       metrics.entered = true
       const gate = new Promise((resolve) => { metrics.resolve = resolve })
