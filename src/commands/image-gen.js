@@ -384,7 +384,7 @@ export async function runImageCommand({ provider, apiKey, opts, prefs, providerT
     outcome = await runImageGeneration({ provider, apiKey, prompt, opts, prefs, sessionId, model, stdout })
   } catch (err) {
     await removeEmptySessionClaim(dir, sessionId)
-    if (err instanceof CliError || err instanceof ExitPromptError) throw err
+    if (err instanceof CliError || err instanceof ExitPromptError || err?.name === 'ExitPromptError') throw err
     throw new CliError(`Error: ${formatError(err)}`)
   }
 

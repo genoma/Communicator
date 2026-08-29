@@ -49,7 +49,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
       allowInteractive: !stdinPiped,
     })
   } catch (err) {
-    if (err instanceof CliError || err instanceof ExitPromptError) throw err
+    if (err instanceof CliError || err instanceof ExitPromptError || err?.name === 'ExitPromptError') throw err
     fail(`Error: ${formatError(err)}`)
   }
   const { selection, temperature, topP, webSearch, webSearchExplicit, webResults } = context

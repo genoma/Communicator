@@ -540,6 +540,25 @@ test('Ctrl+C at the picker in one-shot (prompt arg) aborts cleanly with Aborted.
   assert.ok(out.join('\n').includes('Aborted.'))
 })
 
+test('Ctrl+C at the picker with a foreign ExitPromptError-named error still aborts (cross-instance guard)', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  )
+  // A generic Error that is NOT an instanceof the imported ExitPromptError class,
+  // simulating a duplicate @inquirer/core module instance where instanceof fails;
+  // only the name identifies it as a prompt abort. The guard must still catch it.
+  const foreign = Object.assign(new Error('aborted'), { name: 'ExitPromptError' })
+  assert.equal(foreign instanceof ExitPromptError, false, 'fixture must not be an instanceof ExitPromptError')
+  searchImpl = async () => { throw foreign }
+  t.after(() => { searchImpl = async () => { throw new ExitPromptError() } })
+
+  const { out } = await runAndExit(t, { provider: 'openrouter' }, '.', 0)
+
+  assert.ok(out.join('\n').includes('Aborted.'))
+})
+
 test('--no-safe-mode with --resume persists the pref before the chat resumes', async (t) => {
   withTTY(t, true)
   withApiKey(t)

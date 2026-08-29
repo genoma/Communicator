@@ -445,7 +445,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
       try {
         outcome = await handler({ ...chatCtx, input, args: spaceIdx === -1 ? '' : firstLine.slice(spaceIdx + 1).trim() })
       } catch (err) {
-        if (err instanceof ExitPromptError) {
+        if (err instanceof ExitPromptError || err?.name === 'ExitPromptError') {
           console.log('Aborted.')
           continue
         }

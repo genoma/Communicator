@@ -204,7 +204,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       try {
         sel = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: undefined, zdr: false })
       } catch (err) {
-        if (err instanceof ExitPromptError) {
+        if (err instanceof ExitPromptError || err?.name === 'ExitPromptError') {
           console.log('Aborted.')
           continue
         }

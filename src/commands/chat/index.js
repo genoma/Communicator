@@ -184,7 +184,7 @@ const handlers = {
     try {
       sel = await (ctx.selectModelAndEndpoint ?? selectModelAndEndpoint)({ provider: ctx.provider, apiKey: ctx.apiKey, prefs: ctx.prefs, reasoningEffort: undefined, zdr: ctx.state.zdr, e2ee: ctx.state.e2ee })
     } catch (err) {
-      if (err instanceof ExitPromptError) {
+      if (err instanceof ExitPromptError || err?.name === 'ExitPromptError') {
         console.log('Aborted.')
         return
       }

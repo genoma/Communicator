@@ -41,7 +41,7 @@ export async function runCli(opts, promptArg) {
   try {
     await main(opts, promptArg)
   } catch (error) {
-    if (error instanceof ExitPromptError) {
+    if (error instanceof ExitPromptError || error?.name === 'ExitPromptError') {
       console.log('Aborted.')
       process.exit(0)
     }
