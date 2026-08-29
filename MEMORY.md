@@ -237,7 +237,7 @@ Cross-path invariants pinned by `test/ui-consistency.test.js`. Every change must
 
 ## Project strategy
 
-- **Feature freeze** (Aug 2026, after 3.38.2 through 3.40.x): no experimental features; the word-aware wrapping + frame-diffing editor work (3.39.0) was the last feature push. Only bug fixes with regression tests; refactors stay maintenance-shaped (no new flags/options).
+- **Feature freeze lifted** (Aug 2026): the freeze that ran from 3.38.2 through 3.40.x (no experimental features; only bug fixes with regression tests; refactors maintenance-shaped with no new flags/options) is over. New features are allowed again — first feature push planned from 3.46.x (Tier 1: `/help`, command aliases, session-cost persistence, JSONL export, one-shot piped streaming). Preserve the hardening invariants listed under Historical audit notes, keep the display-consistency contract, and follow the same regression-test discipline.
 - The frame-diffing editor (`src/editor/`) is the live implementation (merged Aug 2026): the abandoned buffer-diff design direction from Aug 2026 was revisited and broadened — explicit-grid rendering replaces the old editor's cursor-relative soft-wrap math, and the terminal-emulator test harness (`test/editor-grid.test.js`) pins the desync bug class at screen level. The vendored `read-multiline` copy was removed with the swap; its behaviour lives on as parity facts above.
 - No feature branch exists for RPG mode: it is fully merged into `main` (commits in history, `feat/rpg-mode-wip` deleted).
 - Not scheduled: rewriting the chat/stream renderer itself in Rust or another language.
