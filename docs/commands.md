@@ -141,7 +141,7 @@ communicator --no-watermark                                            # hide th
 | `/help`        | Show this command list (also lists the `/quit` aliases)                                 |
 | `/quit`        | Save the session and exit the chat (`/exit` and `/q` are aliases)                      |
 | `/exit`        | Save the session and exit the chat (alias of `/quit`)                                  |
-| `/q`           | Exit the chat (alias of `/quit`)                                                       |
+| `/q`           | Save the session and exit the chat (alias of `/quit`)                                  |
 | `/status`      | Print the current settings snapshot (`[thinking]`, `[temp]`, `[web]`, `[budget]`, `[smooth]`) — also re-printed after every config change |
 | `/new`         | Save the current session and start a fresh one (same model and reasoning effort)    |
 | `/model`       | Save, then switch models mid-chat — re-picks reasoning effort and endpoint          |

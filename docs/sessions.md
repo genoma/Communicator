@@ -127,7 +127,7 @@ used for all future exports until you override it again.
 - **Assistant responses** — reasoning shown under `### thinking`, final answer under `### Answer`
 - **Attachments** — user-attached images/pdf/office files and assistant-produced artifacts are materialized as real files in `session-{id}/attachments/` and referenced from the markdown by portable relative links (`> **Attachment:**` lines whose `attachments/image.png`-style target resolves to the written file). Filenames are sanitized and deduplicated within the session. Remote artifact URLs (a generation-time download failure) and text-file attachments stay as they are — clickable links / inline text
 - **Sources** — when web search was used, a `**Sources:**` markdown list follows each answer, with inline `^n^` citations converted to `[n](url)` links
-- **Cost** — calculated from token usage and provider pricing (shows "N/A" if pricing is unavailable)
+- **Cost** — from the persisted per-session cost summary (the flat scrape fee included); legacy sessions without a summary fall back to replaying per-message usage, and "N/A" shows when pricing is unavailable
 
 Example output:
 
