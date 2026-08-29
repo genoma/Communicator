@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { createECDH } from 'node:crypto'
 import { chatCommands, budgetGuard, CHAT_COMMANDS, visibleChatCommands, commandAcceptsArgs } from '../src/commands/chat/index.js'
 import { ChatState } from '../src/chat-state.js'
-import { UsageTracker } from '../src/tracker.js'
+import { UsageTracker, trackerCostSummary } from '../src/tracker.js'
 import { connectedBanner, buildStatusLine } from '../src/status-line.js'
 import { renderHistory } from '../src/ui/stream.js'
 
@@ -1094,6 +1094,68 @@ test('/delete on a non-TTY does not wipe', async (t) => {
 
   assert.equal(writes.length, 0)
   assert.equal(ctx.state.messages.length, 1)
+})
+
+test('/delete persists a cost summary that excludes the deleted turn', async (t) => {
+  mockConsole(t)
+  const harness = makeCtx()
+  const { ctx, savedSessions } = harness
+  // Mirror chat.js saveCurrentSession: stamp state.costSummary from the live
+  // tracker so the persisted summary (what list/export/resume prefer) can be
+  // asserted, not just the in-memory tracker.
+  ctx.saveSession = async () => {
+    ctx.state.costSummary = trackerCostSummary(ctx.tracker)
+    savedSessions.push(ctx.state.messages.length)
+  }
+  ctx.state.appendUser('first question')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'first answer', usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 } })
+  ctx.state.appendUser('second question')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'second answer', usage: { prompt_tokens: 200, completion_tokens: 100, total_tokens: 300 } })
+  ctx.tracker.record({ prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 }, ctx.state.pricing)
+  ctx.tracker.record({ prompt_tokens: 200, completion_tokens: 100, total_tokens: 300 }, ctx.state.pricing)
+
+  const outcome = await chatCommands['/delete'](ctx)
+
+  assert.equal(ctx.state.messages.length, 3)
+  assert.deepEqual(savedSessions, [3])
+  // The deleted turn's usage must not be stamped; before the reorder the
+  // save happened first and persisted an inflated summary.
+  assert.ok(ctx.state.costSummary)
+  assert.equal(ctx.state.costSummary.requests, 1)
+  assert.equal(ctx.state.costSummary.totalTokens, 150)
+  assert.ok(Math.abs(ctx.state.costSummary.cost - 0.0002) < 1e-9)
+  assert.deepEqual(outcome, { resetBudgetWarning: true })
+})
+
+test('/edit recomputes the tracker from the surviving messages before persisting', async (t) => {
+  mockConsole(t)
+  const harness = makeCtx({ readInput: async () => ({ value: 'edited prompt' }) })
+  const { ctx, savedSessions } = harness
+  const persisted = []
+  ctx.saveSession = async () => {
+    ctx.state.costSummary = trackerCostSummary(ctx.tracker)
+    persisted.push(ctx.state.costSummary)
+    savedSessions.push(ctx.state.messages.length)
+  }
+  ctx.state.appendUser('original prompt')
+  ctx.state.appendAssistant({ role: 'assistant', content: 'old answer', usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 } })
+  ctx.tracker.record({ prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 }, ctx.state.pricing)
+
+  await chatCommands['/edit'](ctx)
+
+  // The stale answer was removed, so the summary stamped before rerun must
+  // not count it; the rerun mock below records no usage.
+  assert.equal(ctx.state.messages.length, 2)
+  assert.ok(ctx.state.costSummary)
+  assert.equal(ctx.state.costSummary.requests, 0)
+  assert.equal(ctx.state.costSummary.totalTokens, 0)
+  assert.equal(persisted.length, 1)
+})
+
+test('/exit and /q are not arg commands', () => {
+  assert.equal(commandAcceptsArgs('/quit'), false)
+  assert.equal(commandAcceptsArgs('/exit'), false)
+  assert.equal(commandAcceptsArgs('/q'), false)
 })
 
 test('/delete is a chat command, visible, and not an arg command', () => {

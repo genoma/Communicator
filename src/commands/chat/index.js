@@ -15,6 +15,24 @@ import { buildStatusLine, wrapStatusLine } from '../../status-line.js'
 import { scrapeContext, scrapeMessage } from '../../scrape.js'
 const ARG_COMMANDS = new Set(['/temp', '/top-p', '/budget', '/web-search', '/web-results', '/smooth', '/compact-thinking', '/attach', '/attachments', '/scrape'])
 
+// Recompute the live usage tracker from the surviving messages exactly like a
+// resumed session, so /cost and the persisted cost summary (stamped by
+// saveSession) never count a turn that was removed by /edit or /delete.
+function resyncTracker(ctx) {
+  const fresh = new UsageTracker()
+  seedTracker(fresh, ctx.state.messages, ctx.state.pricing, ctx.state.scrapes)
+  const live = ctx.tracker
+  live.promptTokens = fresh.promptTokens
+  live.completionTokens = fresh.completionTokens
+  live.totalTokens = fresh.totalTokens
+  live.cost = fresh.cost
+  live.requests = fresh.requests
+  live.cacheHits = fresh.cacheHits
+  live.cachedTokens = fresh.cachedTokens
+  live.scrapes = fresh.scrapes
+  live.peakContext = fresh.peakContext
+}
+
 // Single source for the /help index and the in-editor command suggestions.
 // `COMMAND_DESCRIPTIONS` covers every command; `COMMAND_USAGE` adds the
 // argument form only for the commands that accept arguments.
@@ -510,6 +528,10 @@ const handlers = {
       // edited prompt; regenerate from here.
       ctx.state.messages.splice(idx + 1)
     }
+    // The removed (or replaced) answer no longer matches the surviving
+    // transcript: recompute before persisting so the stamped cost summary
+    // never counts the old turn, then the rerun below records the new one.
+    resyncTracker(ctx)
     // The edited turn is persisted right away so the edit survives a failed
     // rerun.
     await ctx.saveSession()
@@ -540,24 +562,15 @@ const handlers = {
     // Removes the last user prompt and everything after it — the assistant
     // response that completed the turn.
     ctx.state.messages.splice(userIdx)
-    await ctx.saveSession()
     // Recompute the tracker from the surviving messages exactly like a
-    // resumed session, so /cost matches what a resume would show.
-    const fresh = new UsageTracker()
-    seedTracker(fresh, ctx.state.messages, ctx.state.pricing, ctx.state.scrapes)
-    const live = ctx.tracker
-    live.promptTokens = fresh.promptTokens
-    live.completionTokens = fresh.completionTokens
-    live.totalTokens = fresh.totalTokens
-    live.cost = fresh.cost
-    live.requests = fresh.requests
-    live.cacheHits = fresh.cacheHits
-    live.cachedTokens = fresh.cachedTokens
-    live.scrapes = fresh.scrapes
-    live.peakContext = fresh.peakContext
+    // resumed session, so /cost and the persisted cost summary never count
+    // the deleted turn. This must run before saveSession, which stamps
+    // state.costSummary from the live tracker.
+    resyncTracker(ctx)
     // The deleted turn's footer is stale; a later resize must not resurrect
     // it for a turn that no longer exists.
     ctx.lastTurnMetrics = null
+    await ctx.saveSession()
     // Only the loop separator follows the surviving transcript (unlike /retry
     // and /edit, which rerun and supply their own leading blank row), so the
     // transcript must keep its trailing blank row or the loop separator lands
