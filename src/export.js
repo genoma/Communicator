@@ -119,9 +119,11 @@ function sourcesList(sources) {
 }
 
 export function formatMarkdown(sessionData, attachmentLink = null) {
-  const { model, providerName, reasoningEffort, pricing, createdAt, messages, title } = sessionData
+  const { model, providerName, reasoningEffort, pricing, createdAt, messages, title, costSummary } = sessionData
   const visibleMessages = (messages || []).filter((m) => m.role !== 'system')
-  const cost = calculateCost(pricing, messages)
+  // Prefer the persisted per-session cost summary; legacy sessions shrink to
+  // the replay-based calculation.
+  const cost = costSummary != null ? costSummary.cost : calculateCost(pricing, messages)
 
   let md = ''
 

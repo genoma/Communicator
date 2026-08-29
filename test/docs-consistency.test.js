@@ -341,12 +341,14 @@ test('MEMORY.md field counts match the payload shapes', async () => {
     import('../src/sessions.js'),
   ])
   const finalState = new ChatState({}).toFinalState('openrouter')
-  assert.ok(memory.includes(`toFinalState(providerType)\` returns the exact ${Object.keys(finalState).length}-field`), 'MEMORY.md toFinalState field count is stale')
+  const toOk = memory.includes(`toFinalState(providerType)\` returns the exact ${Object.keys(finalState).length}-field`)
+  assert.ok(toOk, 'MEMORY.md toFinalState field count is stale')
 
   const payload = sessionsModule.buildSessionPayload({
     messages: [], modelId: 'm', endpointProviderName: 'p', providerType: 'openrouter',
     reasoningEffort: 'auto', temperature: null, budget: null, webSearch: 'off', webResults: null,
     pricing: null, contextLength: null, supportsReasoning: false, webSearchSupported: null,
   })
-  assert.ok(memory.includes(`buildSessionPayload\` (single source for the ${Object.keys(payload).length}-field save shape)`), 'MEMORY.md buildSessionPayload field count is stale')
+  const bspOk = memory.includes(`buildSessionPayload\` (single source for the ${Object.keys(payload).length}-field save shape`)
+  assert.ok(bspOk, 'MEMORY.md buildSessionPayload field count is stale')
 })

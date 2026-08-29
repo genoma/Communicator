@@ -5,6 +5,7 @@ import { selectSession, selectSessions } from './session-picker.js'
 import { messageText } from './attachments.js'
 import { attachmentDirFor, externalizeAttachments, hydrateAttachments } from './attachment-store.js'
 import { CliError } from './errors.js'
+import { computeCostSummary } from './tracker.js'
 import { writeFileAtomic } from './fs-utils.js'
 import { readSidecar, writeSidecar, sidecarStale, updateSidecar, dropSidecarEntry, dropSidecarEntries, SIDECAR_FILE } from './session-sidecar.js'
 
@@ -85,7 +86,7 @@ export function generateTitle(messages) {
   return collapsed.length > 50 ? collapsed.slice(0, 50) + '...' : collapsed
 }
 
-export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, topP, budget, webSearch, webResults, pricing, contextLength, supportsReasoning, reasoningMandatory = false, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, isImageModel = false, e2ee = false, scrapes = 0, createdAt, updatedAt }) {
+export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, topP, budget, webSearch, webResults, pricing, contextLength, supportsReasoning, reasoningMandatory = false, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, isImageModel = false, e2ee = false, scrapes = 0, createdAt, updatedAt, costSummary = null }) {
   return {
     model: modelId,
     providerName: endpointProviderName,
@@ -107,6 +108,7 @@ export function buildSessionPayload({ messages, modelId, endpointProviderName, p
     isImageModel,
     e2ee,
     scrapes,
+    costSummary: costSummary ?? null,
     createdAt: createdAt || new Date().toISOString(),
     // Carried by ChatState (and the image REPL): stamped only when new turn
     // content was added, never by an unchanged resume.
@@ -127,6 +129,7 @@ function toSessionItem(id, meta) {
     messageCount: meta.messageCount || 0,
     preview: meta.preview || '',
     title: meta.title || '',
+    costSummary: meta.costSummary || null,
   }
 }
 
@@ -165,6 +168,9 @@ async function parseSessionFiles(dir, jsonFiles) {
         messageCount: msgCount,
         preview: firstUserPreview(parsed.messages),
         title: parsed.title,
+        // Legacy files before the cost summary existed: replay usage so the
+        // list still shows a cost; the next save backfills the summary.
+        costSummary: parsed.costSummary ?? computeCostSummary({ pricing: parsed.pricing, messages: parsed.messages, scrapes: parsed.scrapes ?? 0 }),
       })
     } catch {
       // skip corrupt session files
@@ -268,6 +274,7 @@ async function updateSidecarEntry(dir, id, data) {
     messageCount: data.messages.length,
     preview: firstUserPreview(data.messages),
     title: data.title,
+    costSummary: data.costSummary || null,
   }))
 }
 

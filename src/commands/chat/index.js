@@ -58,11 +58,11 @@ const COMMAND_USAGE = {
 
 const QUIT_ALIASES = ['/exit', '/q']
 
-export function commandDescription(command) {
+function commandDescription(command) {
   return COMMAND_DESCRIPTIONS[command] || ''
 }
 
-export function commandUsage(command) {
+function commandUsage(command) {
   return COMMAND_USAGE[command] || ''
 }
 

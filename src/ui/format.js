@@ -1,4 +1,5 @@
 import { sanitizeAnsi, sanitizeSingleLine } from './hyperlink.js'
+import { formatCost } from '../constants.js'
 
 // Rounds to `decimals` places and returns a plain string (no locale/sign
 // formatting): the money formatter for image prices and the image-generation
@@ -118,6 +119,8 @@ export function formatSessionItem(s) {
   const count = `${s.messageCount} msg${s.messageCount !== 1 ? 's' : ''}`
   const preview = sanitizeSingleLine(s.title || s.preview || '')
   const previewText = preview ? `"${preview}${preview.length >= 60 ? '...' : ''}"` : ''
-  const line = `${time}  ${modelText.padEnd(37)} ${count.padEnd(12)} ${previewText}`
-  return { time, model: modelText, count, preview, line }
+  const costSummary = s.costSummary
+  const costText = costSummary?.cost > 0 ? `  · ${formatCost(costSummary.cost)}` : ''
+  const line = `${time}  ${modelText.padEnd(37)} ${count.padEnd(12)} ${costText}${previewText}`
+  return { time, model: modelText, count, preview, costSummary: costSummary ?? null, line }
 }

@@ -4,7 +4,7 @@ import { cpsToCharsPerTick, SCRAPE_COST_USD, DEFAULT_SYSTEM_PROMPT } from '../co
 import { scrapeMessage } from '../scrape.js'
 import { createNewSession, removeEmptySessionClaim } from '../sessions.js'
 import { createStreamRenderer } from '../ui/stream.js'
-import { UsageTracker, budgetLine } from '../tracker.js'
+import { UsageTracker, budgetLine, trackerCostSummary } from '../tracker.js'
 import { ChatState } from '../chat-state.js'
 import { CliError, formatError } from '../errors.js'
 import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
@@ -264,6 +264,8 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     reasoningMandatory: selection.modelReasoning?.mandatory === true,
     scrapes: scraped ? 1 : 0,
   })
+  // Persist the authoritative cost summary with the session file.
+  state.costSummary = trackerCostSummary(tracker)
   const finalState = state.toFinalState(provider.meta.name)
 
   await persistSession({ finalState, prefs, config: opts.config })

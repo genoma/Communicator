@@ -1,5 +1,5 @@
-import { UsageTracker, contextSegment, seedTracker } from './tracker.js'
-import { cpsToCharsPerTick, DEFAULT_SYSTEM_PROMPT, SESSIONS_DIR } from './constants.js'
+import { UsageTracker, contextSegment, seedTracker, trackerCostSummary } from './tracker.js'
+import { cpsToCharsPerTick, DEFAULT_SYSTEM_PROMPT, SESSIONS_DIR, formatCost } from './constants.js'
 import { buildStatusLine, connectedBanner } from './status-line.js'
 import { chatCommands, budgetGuard, commandAcceptsArgs, visibleChatCommands } from './commands/chat/index.js'
 import { buildContent } from './attachments.js'
@@ -18,6 +18,21 @@ import { CliError, formatError, commandErrorLine } from './errors.js'
 import { registerSignalHandlers } from './signals.js'
 import { createSessionState, createTurnRunner } from './turn-runner.js'
 import { ExitPromptError } from '@inquirer/core'
+
+// Builds a resume summary line from a persisted cost summary (same shape as
+// UsageTracker.summary() minus the live CTX segment, which the snapshot does
+// not carry). Used when a resumed session has a durable cost summary; legacy
+// sessions without one fall back to the replay-based tracker summary.
+function summaryFromCostSummary(costSummary) {
+  const arrowUp = '\u2191'
+  const arrowDown = '\u2193'
+  const eq = '\u003d'
+  let s = `${arrowUp} ${costSummary.promptTokens.toLocaleString()} prompt  ${arrowDown} ${costSummary.completionTokens.toLocaleString()} completion  ${eq} ${costSummary.totalTokens.toLocaleString()} total  |  ${costSummary.requests} request(s)`
+  if (costSummary.scrapes > 0) s += `  |  ${costSummary.scrapes} scrape${costSummary.scrapes > 1 ? 's' : ''}`
+  if (costSummary.cacheHits > 0) s += `  |  ${costSummary.cacheHits} cache hit(s) [${(costSummary.cachedTokens || 0).toLocaleString()} cached tokens]`
+  if (costSummary.cost > 0) s += `  |  ${formatCost(costSummary.cost)} cost`
+  return s
+}
 
 export async function runChatSession(ctx = {}, deps = {}) {
   const {
@@ -60,6 +75,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     rpgUserName = null,
     prefs = {},
     configPath = null,
+    resumeCostSummary = null,
   } = ctx
 
   const {
@@ -189,12 +205,19 @@ export async function runChatSession(ctx = {}, deps = {}) {
       if (opts.loopSep !== false && (state.messages.length > 1 || metrics)) console.log(sep())
     }
   }
-  if (initialMessages && sessionState.tracker.requests > 0) {
-    let summary = sessionState.tracker.summary()
-    if (lastUsage) {
-      const hit = lastUsage.cacheHit || (lastUsage.prompt_tokens_details?.cached_tokens ?? 0) > 0
-      const ctx = contextSegment(sessionState.tracker.peakContext, state.contextLength, hit)
-      if (ctx) summary += `  |  ${ctx}`
+  if (initialMessages && (resumeCostSummary || sessionState.tracker.requests > 0)) {
+    let summary
+    if (resumeCostSummary) {
+      // Prefer the persisted per-session totals; legacy sessions without a
+      // summary fall back to replaying the surviving usage below.
+      summary = summaryFromCostSummary(resumeCostSummary)
+    } else {
+      summary = sessionState.tracker.summary()
+      if (lastUsage) {
+        const hit = lastUsage.cacheHit || (lastUsage.prompt_tokens_details?.cached_tokens ?? 0) > 0
+        const ctx = contextSegment(sessionState.tracker.peakContext, state.contextLength, hit)
+        if (ctx) summary += `  |  ${ctx}`
+      }
     }
     resumeSummary = `${dim('Previous session:')} ${summary}\n`
   }
@@ -228,6 +251,10 @@ export async function runChatSession(ctx = {}, deps = {}) {
       return
     }
     try {
+      // Stamp the authoritative per-session cost totals from the live tracker
+      // right before writing, so the session file and sidecar carry a durable
+      // summary (the resume path reads it / falls back to replay).
+      state.costSummary = trackerCostSummary(sessionState.tracker)
       await saveSessionFile(state.sessionId, buildSessionPayload(state.toFinalState(provider.meta.name)))
       if (rpgDir) {
         await saveRpgHistory(rpgDir, state.messages)

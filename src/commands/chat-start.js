@@ -101,6 +101,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
       // the new-session branch does; without this the counter is reset to 0
       // and the session file permanently loses the scrape history.
       scrapes: result.scrapes ?? 0,
+      resumeCostSummary: result.costSummary,
     }
   }
 
@@ -221,6 +222,7 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
     smoothSpeed: ctx.smoothSpeed,
     compactThinking: ctx.compactThinking,
     scrapes: ctx.scrapes,
+    resumeCostSummary: ctx.resumeCostSummary,
     rpgDir: opts.rpg,
     rpgDebug: opts.debug === true,
     rpgPostHistoryInstruction: ctx.rpgPostHistoryInstruction ?? null,

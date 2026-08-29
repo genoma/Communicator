@@ -2,7 +2,7 @@ import { DEFAULT_SYSTEM_PROMPT } from './constants.js'
 import { normalizeSmoothSpeed, normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
-  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, topP, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, webSearchExplicit = false, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, updatedAt = null, modelReasoning, reasoningMandatory, markdown = true, smoothStreaming = true, smoothSpeed, compactThinking = false, messages, systemContent, scrapes = 0 }) {
+  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, topP, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, webSearchExplicit = false, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, updatedAt = null, modelReasoning, reasoningMandatory, markdown = true, smoothStreaming = true, smoothSpeed, compactThinking = false, messages, systemContent, scrapes = 0, costSummary = null }) {
     this.modelId = modelId
     this.endpointProviderName = endpointProviderName
     this.reasoningEffort = reasoningEffort
@@ -43,6 +43,10 @@ export class ChatState {
     this.smoothSpeed = normalizeSmoothSpeed(smoothSpeed)
     this.compactThinking = compactThinking === true
     this.scrapes = scrapes
+    // Authoritative per-session cost totals, set by the chat loop / one-shot
+    // right before persisting (from the live UsageTracker). Carried through
+    // toFinalState so the session file and sidecar keep a durable snapshot.
+    this.costSummary = costSummary ?? null
     this.systemContent = systemContent || DEFAULT_SYSTEM_PROMPT
     this.messages = messages || [{ role: 'system', content: this.systemContent }]
   }
@@ -72,6 +76,7 @@ export class ChatState {
       imageOutputSupported: this.imageOutputSupported,
       e2ee: this.e2ee,
       scrapes: this.scrapes,
+      costSummary: this.costSummary ?? null,
       providerType,
     }
   }

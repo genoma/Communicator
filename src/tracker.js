@@ -197,3 +197,27 @@ export function seedTracker(tracker, messages, pricing, scrapes) {
   }
   return lastUsage
 }
+
+// Flattens a UsageTracker into the cost summary persisted on the session file
+// and mirrored into the sidecar. The authoritative per-session totals.
+export function trackerCostSummary(tracker) {
+  return {
+    promptTokens: tracker.promptTokens,
+    completionTokens: tracker.completionTokens,
+    totalTokens: tracker.totalTokens,
+    cost: tracker.cost,
+    requests: tracker.requests,
+    cacheHits: tracker.cacheHits,
+    cachedTokens: tracker.cachedTokens,
+    scrapes: tracker.scrapes,
+  }
+}
+
+// Fallback for legacy sessions saved before the cost summary existed: replay
+// the surviving assistant usage (and the flat-fee scrape cost) exactly like a
+// resumed session. Returns the same shape as `trackerCostSummary`.
+export function computeCostSummary({ pricing, messages, scrapes = 0 }) {
+  const tracker = new UsageTracker()
+  seedTracker(tracker, messages, pricing, scrapes)
+  return trackerCostSummary(tracker)
+}

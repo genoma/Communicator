@@ -33,6 +33,7 @@ export async function resumeCmd(partialId) {
     isImageModel: sessionData.isImageModel === true,
     e2ee: sessionData.e2ee === true,
     scrapes: sessionData.scrapes ?? 0,
+    costSummary: sessionData.costSummary || null,
     initialMessages: sessionData.messages,
     sessionId: matchedId,
     sessionCreatedAt: sessionData.createdAt,

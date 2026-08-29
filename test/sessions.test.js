@@ -404,6 +404,7 @@ test('buildSessionPayload returns the full save object shape', () => {
   assert.deepEqual(Object.keys(payload).sort(), [
     'budget',
     'contextLength',
+    'costSummary',
     'createdAt',
     'e2ee',
     'fileSupported',
@@ -443,6 +444,7 @@ test('buildSessionPayload returns the full save object shape', () => {
   assert.equal(payload.isImageModel, false)
   assert.equal(payload.e2ee, false)
   assert.equal(payload.scrapes, 0)
+  assert.equal(payload.costSummary, null)
   assert.equal(payload.createdAt, '2026-01-01T00:00:00.000Z')
   assert.equal(payload.title, 'Hi')
   assert.deepEqual(payload.messages, messages)
