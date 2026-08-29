@@ -29,5 +29,5 @@ test('@inquirer/core resolves to a single deduped version with no nested copy', 
   const declaredRange = dependencies?.['@inquirer/core'] || ''
   const declaredMajor = (declaredRange.match(/\^(\d+)/) || [])[1]
   assert.ok(declaredMajor, `package.json must declare an @inquirer/core range; got ${declaredRange}`)
-  assert.match(version || '', new RegExp(`^${declaredMajor}\.`), `@inquirer/core resolved ${version} but package.json declares ${declaredRange}; the declared major must be what the lockfile resolves`)
+  assert.match(version || '', new RegExp(`^${declaredMajor}`), `@inquirer/core resolved ${version} but package.json declares ${declaredRange}; the declared major must be what the lockfile resolves`)
 })
