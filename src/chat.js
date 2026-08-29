@@ -24,13 +24,26 @@ import { ExitPromptError } from '@inquirer/core'
 // not carry). Used when a resumed session has a durable cost summary; legacy
 // sessions without one fall back to the replay-based tracker summary.
 function summaryFromCostSummary(costSummary) {
+  // Tolerate a partial/malformed summary (e.g. a hand-edited file or a cost
+  // summary the older schema never wrote): render what exists as zeros
+  // instead of crashing, matching how formatMarkdown/formatSessionItem treat
+  // an empty object as "no cost".
+  if (!costSummary || typeof costSummary !== 'object') return ''
+  const prompt = Number.isFinite(costSummary.promptTokens) ? costSummary.promptTokens : 0
+  const completion = Number.isFinite(costSummary.completionTokens) ? costSummary.completionTokens : 0
+  const total = Number.isFinite(costSummary.totalTokens) ? costSummary.totalTokens : prompt + completion
+  const requests = Number.isFinite(costSummary.requests) ? costSummary.requests : 0
+  const scrapes = Number.isFinite(costSummary.scrapes) ? costSummary.scrapes : 0
+  const cacheHits = Number.isFinite(costSummary.cacheHits) ? costSummary.cacheHits : 0
+  const cachedTokens = Number.isFinite(costSummary.cachedTokens) ? costSummary.cachedTokens : 0
+  const cost = Number.isFinite(costSummary.cost) ? costSummary.cost : 0
   const arrowUp = '\u2191'
   const arrowDown = '\u2193'
   const eq = '\u003d'
-  let s = `${arrowUp} ${costSummary.promptTokens.toLocaleString()} prompt  ${arrowDown} ${costSummary.completionTokens.toLocaleString()} completion  ${eq} ${costSummary.totalTokens.toLocaleString()} total  |  ${costSummary.requests} request(s)`
-  if (costSummary.scrapes > 0) s += `  |  ${costSummary.scrapes} scrape${costSummary.scrapes > 1 ? 's' : ''}`
-  if (costSummary.cacheHits > 0) s += `  |  ${costSummary.cacheHits} cache hit(s) [${(costSummary.cachedTokens || 0).toLocaleString()} cached tokens]`
-  if (costSummary.cost > 0) s += `  |  ${formatCost(costSummary.cost)} cost`
+  let s = `${arrowUp} ${prompt.toLocaleString()} prompt  ${arrowDown} ${completion.toLocaleString()} completion  ${eq} ${total.toLocaleString()} total  |  ${requests} request(s)`
+  if (scrapes > 0) s += `  |  ${scrapes} scrape${scrapes > 1 ? 's' : ''}`
+  if (cacheHits > 0) s += `  |  ${cacheHits} cache hit(s) [${cachedTokens.toLocaleString()} cached tokens]`
+  if (cost > 0) s += `  |  ${formatCost(cost)} cost`
   return s
 }
 
