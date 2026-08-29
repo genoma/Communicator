@@ -22,6 +22,12 @@ test('@inquirer/core resolves to a single deduped version with no nested copy', 
   assert.equal(topLevel.length, 1, 'the app must declare exactly one top-level @inquirer/core')
   assert.equal(nested.length, 0, `no nested @inquirer/core copies allowed; found: ${nested.join(', ') || 'none'}`)
 
-  const version = packages['node_modules/@inquirer/core']?.version
-  assert.match(version || '', /^12\./, `@inquirer/core must be v12 (which exports ExitPromptError/Separator); got ${version}`)
+  const { version } = packages['node_modules/@inquirer/core'] || {}
+  const { dependencies } = JSON.parse(
+    await readFile(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8')
+  )
+  const declaredRange = dependencies?.['@inquirer/core'] || ''
+  const declaredMajor = (declaredRange.match(/\^(\d+)/) || [])[1]
+  assert.ok(declaredMajor, `package.json must declare an @inquirer/core range; got ${declaredRange}`)
+  assert.match(version || '', new RegExp(`^${declaredMajor}\.`), `@inquirer/core resolved ${version} but package.json declares ${declaredRange}; the declared major must be what the lockfile resolves`)
 })

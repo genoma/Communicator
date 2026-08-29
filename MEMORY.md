@@ -250,7 +250,7 @@ Cross-path invariants pinned by `test/ui-consistency.test.js`. Every change must
 
 ## Tests, CI and platform notes
 
-- `npm test` = `node --test --experimental-test-module-mocks`; engines `>=22.3`; keep `namedExports` for Node 22; migrate to `exports` only when bumping.
+- `npm test` = `node --test --experimental-test-module-mocks`; engines `>=22.13.0` (pinned by `@inquirer/core@12`); keep `namedExports` for Node 22; migrate to `exports` only when bumping.
 - ESLint flat config: no semicolons, single quotes, deliberate ANSI regex file-disables, `_`-prefixed allowed.
 - Tests needing temp home use `mock.module('node:os')`, dynamic import, never static import before mock; never swallow child stdout.
 - CI: macOS/Ubuntu/Windows Node 22, `npm ci`, lint, test, audit.
