@@ -76,7 +76,10 @@ its sidecar entry, plus any attachment blobs under
 sessions shows a single `Delete N sessions?` confirmation and removes them all;
 selecting none prints `Deletion cancelled.` and exits without changes. It
 cannot be combined with `--resume`, `--export`, or a prompt argument, and needs
-a TTY for the confirmation prompt.
+a TTY for the confirmation prompt. Removal is best-effort per session: an entry
+that cannot be removed (a locked file, a stray directory named like a session)
+is skipped and reported, the rest are deleted, and the command exits 1 naming
+what it could not remove.
 
 To wipe **all** saved sessions at once:
 
@@ -120,7 +123,9 @@ communicator --export --export-format jsonl
 
 Selecting multiple sessions exports each one into its own folder, printing one
 `Exported to ...` line per session; selecting none prints `Export cancelled.`
-and exits without changes.
+and exits without changes. Export is best-effort per session: a session whose
+file is corrupt or missing is skipped (the others still export) and the
+command exits 1 naming the sessions it could not export.
 
 Each session is exported into its own folder: `session-{id}/` in the current
 working directory by default, containing the conversation as `session-{id}.md`

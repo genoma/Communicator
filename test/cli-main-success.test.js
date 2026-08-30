@@ -1,6 +1,6 @@
 import { test, mock, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, readFile, readdir, mkdir } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, readdir, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ExitPromptError } from '@inquirer/core'
@@ -339,6 +339,39 @@ test('--delete bare with an empty checkbox selection cancels and exits 0', async
 
   const { listSessions } = await import('../src/sessions.js')
   assert.ok((await listSessions(dir)).some((s) => s.id === '2026-02-06T00-00-00'))
+})
+
+test('--delete with an unremovable entry deletes the rest and exits 1', async (t) => {
+  withTTY(t, true)
+  const dir = await seedSession('2026-02-07T00-00-00')
+  await mkdir(join(dir, 'stuck.json'))
+  t.after(() => rm(join(dir, 'stuck.json'), { recursive: true, force: true }))
+  checkboxImpl = async () => ['2026-02-07T00-00-00', 'stuck']
+
+  const { out, err } = await runAndExit(t, { delete: true }, undefined, 1)
+  assert.match(out.join('\n'), /Deleted 1 of 2 sessions/)
+  assert.match(err.join('\n'), /Error: could not remove 1 session\(s\): stuck/)
+
+  const { listSessions } = await import('../src/sessions.js')
+  const remaining = await listSessions(dir)
+  assert.ok(!remaining.some((s) => s.id === '2026-02-07T00-00-00'))
+  assert.ok((await readdir(dir)).includes('stuck.json'))
+})
+
+test('--export with a corrupt selected session exports the rest and exits 1', async (t) => {
+  withTTY(t, true)
+  const dir = await seedSession('2026-03-02T00-00-00')
+  await writeFile(join(dir, '2026-03-01T00-00-00.json'), '{ not json')
+  t.after(() => rm(join(dir, '2026-03-01T00-00-00.json'), { force: true }))
+  checkboxImpl = async () => ['2026-03-01T00-00-00', '2026-03-02T00-00-00']
+  const outDir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(outDir, { recursive: true, force: true }))
+
+  const { out, err } = await runAndExit(t, { export: true, outputDir: outDir }, undefined, 1)
+  assert.match(out.join('\n'), /Exported to .*session-2026-03-02T00-00-00/)
+  assert.match(err.join('\n'), /Error: could not export 1 session\(s\): 2026-03-01T00-00-00/)
+
+  assert.ok((await readdir(outDir)).some((name) => name.includes('session-2026-03-02T00-00-00')))
 })
 
 test('--resume with a unique partial id rebuilds the context from the session', async (t) => {

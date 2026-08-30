@@ -27,9 +27,9 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--list-endpoints`    | `[model]`| List providers for a model (pricing, uptime, ZDR support, privacy policy link). No arg = picker, partial ID = fuzzy match |
 |       | `--list-sessions`     | —        | List saved sessions (ID, last-activity timestamp, model, message count, title) and exit                |
 | `-r`  | `--resume`            | `[partial-id]` | Resume a saved session. No arg = picker, partial ID = prefix match. With `--rpg`, must be bare: continues the story from the RPG directory's `history.json` |
-| `-x`  | `--export`            | `[partial-id]` | Export saved session(s). No arg = multi-select checkbox; partial ID = prefix match, unique prefix exports directly |
+| `-x`  | `--export`            | `[partial-id]` | Export saved session(s). No arg = multi-select checkbox; partial ID = prefix match, unique prefix exports directly. Export is best-effort per session; any session it could not export is reported and it exits 1 |
 |       | `--export-format`     | `<markdown\|jsonl>` | Export format: `markdown` (default) or `jsonl` |
-|       | `--delete`            | `[partial-id]` | Delete saved session(s) (asks for confirmation). No arg = multi-select checkbox; partial ID = prefix match, unique prefix deletes directly |
+|       | `--delete`            | `[partial-id]` | Delete saved session(s) (asks for confirmation). No arg = multi-select checkbox; partial ID = prefix match, unique prefix deletes directly. Removal is best-effort per session; anything it could not remove is reported and it exits 1 |
 |       | `--delete-all-sessions` | `[y/N]` | Delete ALL saved sessions. Bare flag asks "Are you sure?" on a terminal; pass `y` (or `yes`) to confirm — and to skip the prompt with piped stdin. Anything else does nothing |
 |       | `--output-dir`        | `<path>` | Set export directory for exported files (saved in preferences). Bare use saves it as the default (requires a TTY and no prompt). With `--image`, generated images are also copied there |
 |       | `--config`            | `[path]` | Custom path for the preferences JSON file (default: `~/.communicator.json`). Bare flag prints the current config |

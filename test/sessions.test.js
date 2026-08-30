@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readdir, readFile, stat, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { deleteSession, deleteAllSessions, generateTitle, listSessions, saveSession, loadSession, generateSessionId, removeEmptySessionClaim, buildSessionPayload } from '../src/sessions.js'
+import { deleteSession, deleteAllSessions, deleteSessions, generateTitle, listSessions, saveSession, loadSession, generateSessionId, removeEmptySessionClaim, buildSessionPayload } from '../src/sessions.js'
 import { formatSessionItem } from '../src/ui/format.js'
 import { CliError } from '../src/errors.js'
 
@@ -745,4 +745,71 @@ test('deleteAllSessions continues past an unremovable entry', async (t) => {
   await assert.rejects(stat(join(dir, '.index.json')), { code: 'ENOENT' })
   await assert.rejects(stat(join(dir, 'attachments')), { code: 'ENOENT' })
   assert.deepEqual((await readdir(dir)).sort(), ['notes.txt', 'stuck.json'])
+})
+
+test('deleteSessions removes the given files, attachment dirs and sidecar entries', async (t) => {
+  const dir = await tempDir(t)
+  const imageUrl = `data:image/png;base64,${Buffer.from('fake-png-content').toString('base64')}`
+  const data = sessionData({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: [
+        { type: 'text', text: 'what is this?' },
+        { type: 'image_url', image_url: { url: imageUrl } },
+      ] },
+      { role: 'assistant', content: 'an image' },
+    ],
+  })
+  await saveSession(dir, '2026-01-01T00-00-00', data)
+  await saveSession(dir, '2026-01-02T00-00-00', sessionData())
+  await assert.doesNotReject(stat(join(dir, 'attachments', '2026-01-01T00-00-00')))
+
+  const { removed, failures } = await deleteSessions(dir, ['2026-01-01T00-00-00', '2026-01-02T00-00-00'])
+
+  assert.equal(removed, 2)
+  assert.deepEqual(failures, [])
+  await assert.rejects(readFile(join(dir, '2026-01-01T00-00-00.json')))
+  await assert.rejects(readFile(join(dir, '2026-01-02T00-00-00.json')))
+  await assert.rejects(stat(join(dir, 'attachments', '2026-01-01T00-00-00')), { code: 'ENOENT' })
+  assert.deepEqual(await listSessions(dir), [])
+})
+
+test('deleteSessions continues past an unremovable entry', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-02T00-00-00', sessionData())
+  await mkdir(join(dir, 'stuck.json'))
+
+  const { removed, failures } = await deleteSessions(dir, ['2026-01-02T00-00-00', 'stuck'])
+
+  assert.equal(removed, 1)
+  assert.deepEqual(failures, ['stuck'])
+  await assert.rejects(readFile(join(dir, '2026-01-02T00-00-00.json')))
+  await assert.doesNotReject(stat(join(dir, 'stuck.json')))
+  assert.deepEqual(await listSessions(dir), [])
+})
+
+test('deleteSessions records invalid ids as failures and continues', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-03T00-00-00', sessionData())
+
+  const { removed, failures } = await deleteSessions(dir, ['../escape', '2026-01-03T00-00-00'])
+
+  assert.equal(removed, 1)
+  assert.deepEqual(failures, ['../escape'])
+  await assert.rejects(readFile(join(dir, '2026-01-03T00-00-00.json')))
+})
+
+test('deleteSessions does not fabricate an empty sidecar when none existed', async (t) => {
+  const dir = await tempDir(t)
+  // A session file with no accompanying .index.json (an orphan left by a
+  // manually placed file or an interrupted save): deleteSessions must remove
+  // the file and NOT create a stray empty sidecar in its wake.
+  await writeFile(join(dir, '2026-01-04T00-00-00.json'), '{}')
+
+  const { removed, failures } = await deleteSessions(dir, ['2026-01-04T00-00-00'])
+
+  assert.equal(removed, 1)
+  assert.deepEqual(failures, [])
+  await assert.rejects(readFile(join(dir, '2026-01-04T00-00-00.json')))
+  await assert.rejects(readFile(join(dir, '.index.json')), { code: 'ENOENT' })
 })

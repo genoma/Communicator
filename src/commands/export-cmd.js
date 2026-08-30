@@ -19,13 +19,17 @@ export async function exportCmd(partialId, outputDir, format = 'markdown') {
   const exportDir = outputDir || process.cwd()
   await mkdir(exportDir, { recursive: true })
 
+  const failures = []
   for (const id of matchedIds) {
-    const sessionData = await loadSession(dir, id)
     try {
+      const sessionData = await loadSession(dir, id)
       const folder = await exportSession(sessionData, exportDir, id, format)
       console.log(`Exported to ${folder}`)
-    } catch (err) {
-      throw new CliError(`Error: Export failed: ${err.message}`)
+    } catch {
+      failures.push(id)
     }
+  }
+  if (failures.length > 0) {
+    throw new CliError(`Error: could not export ${failures.length} session(s): ${failures.join(', ')}`)
   }
 }

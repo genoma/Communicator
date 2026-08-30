@@ -362,6 +362,55 @@ export async function deleteSession(dir, id) {
   }
 }
 
+// Best-effort delete of an explicit set of ids: each id's session file and
+// attachment dir are removed independently so a single stuck entry (a locked
+// file, a stray directory named like a session) cannot abort the batch or
+// leave the rest untouched. Sidecar entries are dropped in one batched write
+// at the end; a failed id keeps its entry so the delete stays retryable.
+// Returns { removed, failures } — the count of ids fully removed and the names
+// of every entry that could not be removed.
+export async function deleteSessions(dir, ids) {
+  const index = await readSidecar(dir)
+  const removed = []
+  const failures = []
+  for (const id of ids) {
+    if (!validSessionId(id)) {
+      failures.push(id)
+      continue
+    }
+    let ok = true
+    try {
+      await rm(join(dir, `${id}.json`), { force: true })
+    } catch {
+      ok = false
+    }
+    if (ok) {
+      try {
+        await rm(attachmentDirFor(dir, id), { recursive: true, force: true })
+      } catch {
+        ok = false
+      }
+    }
+    if (ok) {
+      removed.push(id)
+      if (index && index[id]) delete index[id]
+    } else {
+      failures.push(id)
+    }
+  }
+  // Only rewrite the sidecar when one actually existed and we dropped entries
+  // from it — never fabricate an empty .index.json (writeSidecar swallows its
+  // own errors, so writeFileAtomic here makes a real write failure reportable).
+  if (removed.length > 0 && index) {
+    try {
+      await writeFileAtomic(join(dir, SIDECAR_FILE), JSON.stringify(index, null, 2) + '\n', { mode: 0o600 })
+    } catch {
+      failures.push(SIDECAR_FILE)
+    }
+  }
+  return { removed: removed.length, failures }
+}
+
 // Wipes the whole sessions dir: every session JSON file (including corrupt
 // files and empty claims — the sweep does not rely on listSessions parsing),
 // the .index.json sidecar and the attachments dir. Removal is best-effort

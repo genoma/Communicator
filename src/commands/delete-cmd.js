@@ -1,6 +1,7 @@
 import { confirm } from '@inquirer/prompts'
-import { ensureSessionsDir, resolveSessionsInteractive, deleteSession, listSessions } from '../sessions.js'
+import { ensureSessionsDir, resolveSessionsInteractive, deleteSessions, listSessions } from '../sessions.js'
 import { formatSessionItem } from '../ui/format.js'
+import { CliError } from '../errors.js'
 
 export async function deleteCmd(partialId) {
   const dir = await ensureSessionsDir()
@@ -25,8 +26,10 @@ export async function deleteCmd(partialId) {
     return
   }
 
-  for (const id of matchedIds) {
-    await deleteSession(dir, id)
+  const { removed, failures } = await deleteSessions(dir, matchedIds)
+  if (failures.length > 0) {
+    console.log(removed > 0 ? `Deleted ${removed} of ${matchedIds.length} sessions.` : 'No sessions were deleted.')
+    throw new CliError(`Error: could not remove ${failures.length} session(s): ${failures.join(', ')}`)
   }
   console.log(matchedIds.length === 1 ? `Deleted session ${matchedIds[0]}` : `Deleted ${matchedIds.length} sessions`)
 }
