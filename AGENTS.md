@@ -51,6 +51,7 @@
 - CLI chat client for OpenRouter + Venice.ai with interactive model/provider selection, session persistence, usage/cost tracking, markdown export, and Venice image generation (`--image`, `--list-image-models`).
 - The frame-diffing editor (in-repo `src/editor/`, merged Aug 2026) replaces the vendored read-multiline editor; its behaviour contract is in MEMORY.md §Command autocomplete and the parity tests in `test/editor-parity.test.js`.
 - Streaming renderer, config file persistence (`--config`, `savePreferences`), per-request timeouts/retry with backoff (`fetchWithTimeout`/`fetchWithRetry` in `src/http.js`), and web search sources are implemented; keep them working when touching related code.
+- OpenRouter's search-enabled delivery is **bursty by long-standing behavior, not a recent bug**: with `/web-search on` (auto) or `always`, OpenRouter can flush the whole reasoning block/content in a single SSE burst and can even run the search after the model already started answering (sub-ms delta spans, late-arriving sources, no incremental feedback). Symptoms like the compact meter checkpointing `· 0s` on a multi-second wait, the waiting row frozen on the spinner, or the whole answer popping at once are *expected* there — read `OPENROUTER.md` before investigating any web-search streaming anomaly, and remember the client already handles it (request-anchored clocks, sub-50 ms count-only suppression, smooth-streaming pacing).
 - When testing image generation (Venice `--image`, OpenRouter image-output models), prefer cheap/fast models (e.g. `venice-sd35` on Venice, low-cost models on OpenRouter) unless the test genuinely needs the heavy hitters (`gpt-image-2`, `nano-banana-2`, ...) — high-end generations take minutes and cost more.
 - Documentation update policy: see §Documentation & memory below.
 
@@ -65,5 +66,6 @@
 - README.md + docs/ — committed, public, user-facing. Update on user-visible behavior changes only.
 - AGENTS.md (repo root, committed) — agent instructions and environment facts.
 - MEMORY.md (repo root, committed) — the single detailed source of truth for implementation facts and contracts (English). Every behavior change must update it.
+- OPENROUTER.md (repo root, committed) — provider-behavior reference for OpenRouter specifics: the search "burst mode" delivery quirk (what it is, when it hits, what it breaks, how the client handles it) and its regression checklist. Consult it before investigating web-search streaming anomalies — it exists precisely because that behavior is easy to mistake for a recent bug.
 - Memory rules: (1) one detailed home per fact — MEMORY.md; (2) on any behavior change, update MEMORY.md in the same session (same discipline as updating tests); (3) new long-form facts land in MEMORY.md.
-- Both `MEMORY.md` and `AGENTS.md` are committed project files; keep them updated in the same commits as the changes they describe.
+- `MEMORY.md`, `AGENTS.md` and `OPENROUTER.md` are committed project files; keep them updated in the same commits as the changes they describe.
