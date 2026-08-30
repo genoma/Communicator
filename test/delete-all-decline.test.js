@@ -116,3 +116,13 @@ test('--delete-all-sessions y with a declined "Are you sure" leaves sessions int
   const { listSessions } = await import('../src/sessions.js')
   assert.deepEqual((await listSessions(dir)).map((s) => s.id), ['2026-01-01T00-00-00'])
 })
+
+test('--delete-all-sessions bare with a declined "Are you sure" leaves sessions intact', async (t) => {
+  withTTY(t, true)
+  const dir = await seedSession('2026-01-02T00-00-00')
+  const { out } = await runAndExit(t, { deleteAllSessions: true }, undefined, 0)
+  assert.match(out.join('\n'), /Deletion cancelled\./)
+
+  const { listSessions } = await import('../src/sessions.js')
+  assert.ok((await listSessions(dir)).some((s) => s.id === '2026-01-02T00-00-00'))
+})

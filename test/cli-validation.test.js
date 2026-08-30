@@ -232,9 +232,14 @@ test('rejects --delete-all-sessions combined with session flags', () => {
   )
 })
 
-test('--delete-all-sessions works with piped stdin (not an interactive flag)', () => {
+test('--delete-all-sessions y works with piped stdin; bare flag needs a TTY', () => {
   assert.deepEqual(validateCliFlags(opts({ deleteAllSessions: 'y' }), NO_TTY), [])
   assert.deepEqual(validateCliFlags(opts({ deleteAllSessions: 'y' }), TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ deleteAllSessions: true }), TTY), [])
+  assert.deepEqual(
+    validateCliFlags(opts({ deleteAllSessions: true }), NO_TTY),
+    ['Error: bare --delete-all-sessions needs a TTY (pass y to confirm non-interactively).']
+  )
 })
 
 test('rejects --delete-all-sessions combined with bare --config', () => {

@@ -688,9 +688,10 @@ test('deleteAllSessions wipes every session file, sidecar, claims and stray json
   await writeFile(join(dir, 'claim.json'), '')
   await writeFile(join(dir, 'notes.txt'), 'not a session')
 
-  const count = await deleteAllSessions(dir)
+  const { removed, failures } = await deleteAllSessions(dir)
 
-  assert.equal(count, 5)
+  assert.equal(removed, 5)
+  assert.deepEqual(failures, [])
   await assert.rejects(readFile(join(dir, '.index.json')))
   await assert.rejects(stat(join(dir, 'attachments')), { code: 'ENOENT' })
   assert.deepEqual(await readdir(dir), ['notes.txt'])
@@ -719,13 +720,29 @@ test('deleteAllSessions removes the attachments dir with stored blobs', async (t
   assert.deepEqual(await readdir(dir), [])
 })
 
-test('deleteAllSessions returns 0 for a missing dir', async () => {
+test('deleteAllSessions returns zero removals for a missing dir', async () => {
   const dir = join(tmpdir(), `communicator-missing-${Date.now()}`)
-  assert.equal(await deleteAllSessions(dir), 0)
+  assert.deepEqual(await deleteAllSessions(dir), { removed: 0, failures: [] })
 })
 
 test('deleteAllSessions tolerates an empty dir', async (t) => {
   const dir = await tempDir(t)
-  assert.equal(await deleteAllSessions(dir), 0)
+  assert.deepEqual(await deleteAllSessions(dir), { removed: 0, failures: [] })
   assert.deepEqual(await readdir(dir), [])
+})
+
+test('deleteAllSessions continues past an unremovable entry', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  await mkdir(join(dir, 'stuck.json'))
+  await writeFile(join(dir, 'notes.txt'), 'not a session')
+
+  const { removed, failures } = await deleteAllSessions(dir)
+
+  assert.equal(removed, 1)
+  assert.deepEqual(failures, ['stuck.json'])
+  await assert.rejects(readFile(join(dir, '2026-01-01T00-00-00.json')))
+  await assert.rejects(stat(join(dir, '.index.json')), { code: 'ENOENT' })
+  await assert.rejects(stat(join(dir, 'attachments')), { code: 'ENOENT' })
+  assert.deepEqual((await readdir(dir)).sort(), ['notes.txt', 'stuck.json'])
 })

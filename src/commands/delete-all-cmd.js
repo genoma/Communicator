@@ -1,10 +1,15 @@
 import { confirm } from '@inquirer/prompts'
 import { ensureSessionsDir, deleteAllSessions } from '../sessions.js'
+import { CliError } from '../errors.js'
 
 const YES_RE = /^(y|yes)$/i
 
 export async function deleteAllSessionsCmd(value) {
-  if (typeof value !== 'string' || !YES_RE.test(value.trim())) {
+  // A string value means the caller tried to pre-confirm: only y/yes passes,
+  // and anything else (n, no, ...) cancels before any sessions dir access.
+  // A bare flag arrives as boolean true and goes straight to the prompt.
+  const preconfirmed = typeof value === 'string' && YES_RE.test(value.trim())
+  if (typeof value === 'string' && !preconfirmed) {
     console.log('Deletion cancelled.')
     return
   }
@@ -19,6 +24,9 @@ export async function deleteAllSessionsCmd(value) {
       return
     }
   }
-  const count = await deleteAllSessions(dir)
-  console.log(count > 0 ? `Deleted ${count} saved session(s).` : 'No saved sessions found.')
+  const { removed, failures } = await deleteAllSessions(dir)
+  console.log(removed > 0 ? `Deleted ${removed} saved session(s).` : 'No saved sessions found.')
+  if (failures.length > 0) {
+    throw new CliError(`Error: could not remove ${failures.length} item(s): ${failures.join(', ')}`)
+  }
 }

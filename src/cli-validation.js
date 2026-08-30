@@ -204,6 +204,14 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --image cannot be combined with --delete-all-sessions.')
   }
 
+  // The bare flag (boolean true from Commander) could not be confirmed without
+  // a prompt; with piped stdin it would skip the TTY confirm and delete
+  // everything silently. y/yes (a string) is the explicit non-interactive
+  // confirmation and stays legal with piped stdin.
+  if (opts.deleteAllSessions === true && !isTTY) {
+    errors.push('Error: bare --delete-all-sessions needs a TTY (pass y to confirm non-interactively).')
+  }
+
   if (promptArg && (interactiveFlags || exitModeFlags)) {
     errors.push('Cannot combine a prompt argument with --resume, --export, --delete, or --list-* flags.')
   }

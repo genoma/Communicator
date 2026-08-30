@@ -30,7 +30,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 | `-x`  | `--export`            | `[partial-id]` | Export saved session(s). No arg = multi-select checkbox; partial ID = prefix match, unique prefix exports directly |
 |       | `--export-format`     | `<markdown\|jsonl>` | Export format: `markdown` (default) or `jsonl` |
 |       | `--delete`            | `[partial-id]` | Delete saved session(s) (asks for confirmation). No arg = multi-select checkbox; partial ID = prefix match, unique prefix deletes directly |
-|       | `--delete-all-sessions` | `[y/N]` | Delete ALL saved sessions. Pass `y` (or `yes`) to confirm; bare flag or anything else does nothing. Asks "Are you sure?" again on a terminal |
+|       | `--delete-all-sessions` | `[y/N]` | Delete ALL saved sessions. Bare flag asks "Are you sure?" on a terminal; pass `y` (or `yes`) to confirm — and to skip the prompt with piped stdin. Anything else does nothing |
 |       | `--output-dir`        | `<path>` | Set export directory for exported files (saved in preferences). Bare use saves it as the default (requires a TTY and no prompt). With `--image`, generated images are also copied there |
 |       | `--config`            | `[path]` | Custom path for the preferences JSON file (default: `~/.communicator.json`). Bare flag prints the current config |
 |       | `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
@@ -104,7 +104,8 @@ communicator --export --output-dir ~/Documents          # export to custom direc
 communicator --export --export-format jsonl             # export as JSONL (one JSON object per line) instead of markdown
 communicator --delete                                   # pick one or more sessions to delete (with confirmation)
 communicator --delete 2026-07-30T19-11-45               # delete a specific session
-communicator --delete-all-sessions y                    # delete ALL saved sessions (asks "Are you sure?" on a terminal)
+communicator --delete-all-sessions                     # asks "Are you sure?" on a terminal
+communicator --delete-all-sessions y                   # confirm non-interactively (piped stdin)
 
 # Reasoning (one-shot session, or use -m alone to save the default)
 communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort high "Solve this"   # force high reasoning effort

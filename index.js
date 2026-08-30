@@ -52,7 +52,7 @@ program
   .option('--smooth-speed <level|cps>', 'smooth streaming speed: slow, normal, fast, or chars per second')
   .option('--compact-thinking', 'show a Thinking meter instead of streaming the reasoning text (persisted; /compact-thinking toggles mid-chat)')
   .option('--delete [partial-id]', 'delete saved sessions (with confirmation, select one or more)')
-  .option('--delete-all-sessions [y/N]', 'delete ALL saved sessions (pass y to confirm; default: no)')
+  .option('--delete-all-sessions [y/N]', 'delete ALL saved sessions (asks for confirmation; pass y to confirm non-interactively)')
 
 program.parse()
 const opts = program.opts()

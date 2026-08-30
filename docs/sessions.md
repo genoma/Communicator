@@ -81,14 +81,20 @@ a TTY for the confirmation prompt.
 To wipe **all** saved sessions at once:
 
 ```bash
-communicator --delete-all-sessions y    # delete every session (default: no)
+communicator --delete-all-sessions       # asks "Are you sure?" on a terminal
+communicator --delete-all-sessions y     # confirm non-interactively (piped stdin)
 ```
 
-`--delete-all-sessions` is one-shot: only `y` or `yes` (case-insensitive)
-confirms, and anything else — including the bare flag — deletes nothing. On a
-terminal it asks "Are you sure?" a second time before wiping; with piped stdin
-the explicit `y` is sufficient. It removes every session file (even corrupt
-ones), the `.index.json` sidecar, and the whole `attachments/` directory.
+`--delete-all-sessions` is one-shot: the bare flag asks "Are you sure?" on a
+terminal and deletes nothing until you confirm; `y` or `yes` (case-insensitive)
+confirms, which is also the way to approve with piped stdin (where the prompt
+cannot run). Any other value — `n`, `no`, anything else — deletes nothing. On a
+terminal it asks "Are you sure?" before wiping even after `y`; `y` with piped
+stdin is sufficient. It removes every session file (even corrupt ones), the
+`.index.json` sidecar, and the whole `attachments/` directory. Removal is
+best-effort: an entry that cannot be removed (e.g. a locked file or a stray
+directory named like a session) is skipped with a warning and the sweep
+continues, then the command exits 1 after reporting what it could not delete.
 
 ## Exporting sessions
 

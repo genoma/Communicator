@@ -1,6 +1,6 @@
 import { test, mock, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, readdir, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ExitPromptError } from '@inquirer/core'
@@ -223,22 +223,44 @@ test('--delete-all-sessions y removes every session and exits 0', async (t) => {
   assert.deepEqual(await listSessions(dir), [])
 })
 
-test('--delete-all-sessions bare leaves sessions intact and exits 0', async (t) => {
+test('--delete-all-sessions bare on a TTY asks and deletes after confirm', async (t) => {
+  withTTY(t, true)
   const dir = await seedSession('2026-01-12T00-00-00')
   const { out } = await runAndExit(t, { deleteAllSessions: true }, undefined, 0)
-  assert.match(out.join('\n'), /Deletion cancelled\./)
+  assert.match(out.join('\n'), /Deleted 1 saved session\(s\)\./)
 
   const { listSessions } = await import('../src/sessions.js')
-  assert.ok((await listSessions(dir)).some((s) => s.id === '2026-01-12T00-00-00'))
+  assert.deepEqual(await listSessions(dir), [])
+})
+
+test('--delete-all-sessions bare with piped stdin exits 1 and deletes nothing', async (t) => {
+  const dir = await seedSession('2026-01-13T00-00-00')
+  const { err } = await runAndExit(t, { deleteAllSessions: true }, undefined, 1)
+  assert.match(err.join('\n'), /bare --delete-all-sessions needs a TTY/)
+
+  const { listSessions } = await import('../src/sessions.js')
+  assert.ok((await listSessions(dir)).some((s) => s.id === '2026-01-13T00-00-00'))
+})
+
+test('--delete-all-sessions y with an unremovable entry reports it and exits 1', async (t) => {
+  const dir = await seedSession('2026-01-14T00-00-00')
+  await mkdir(join(dir, 'stuck.json'))
+  t.after(() => rm(join(dir, 'stuck.json'), { recursive: true, force: true }))
+  const { out, err } = await runAndExit(t, { deleteAllSessions: 'y' }, undefined, 1)
+  assert.match(out.join('\n'), /Deleted \d+ saved session\(s\)\./)
+  assert.match(err.join('\n'), /Error: could not remove 1 item\(s\): stuck\.json/)
+
+  const { listSessions } = await import('../src/sessions.js')
+  assert.deepEqual(await listSessions(dir), [])
 })
 
 test('--delete-all-sessions n leaves sessions intact and exits 0', async (t) => {
-  const dir = await seedSession('2026-01-13T00-00-00')
+  const dir = await seedSession('2026-01-15T00-00-00')
   const { out } = await runAndExit(t, { deleteAllSessions: 'n' }, undefined, 0)
   assert.match(out.join('\n'), /Deletion cancelled\./)
 
   const { listSessions } = await import('../src/sessions.js')
-  assert.ok((await listSessions(dir)).some((s) => s.id === '2026-01-13T00-00-00'))
+  assert.ok((await listSessions(dir)).some((s) => s.id === '2026-01-15T00-00-00'))
 })
 
 test('--export bare with checkbox selection exports all chosen sessions and exits 0', async (t) => {

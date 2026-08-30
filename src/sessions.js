@@ -364,25 +364,39 @@ export async function deleteSession(dir, id) {
 
 // Wipes the whole sessions dir: every session JSON file (including corrupt
 // files and empty claims — the sweep does not rely on listSessions parsing),
-// the .index.json sidecar and the attachments dir. Returns the count of
-// non-hidden .json files removed; a missing dir yields 0.
+// the .index.json sidecar and the attachments dir. Removal is best-effort
+// per item: a failure (locked file, a directory named like a session, ...) is
+// collected and the sweep continues, so one stuck entry can never block the
+// rest. Returns { removed, failures } — the count of non-hidden .json files
+// removed and the names of every entry that could not be deleted; a missing
+// dir yields { removed: 0, failures: [] }.
 export async function deleteAllSessions(dir) {
   let entries
   try {
     entries = await readdir(dir)
   } catch {
-    return 0
+    return { removed: 0, failures: [] }
   }
 
   let removed = 0
+  const failures = []
+  const removeBestEffort = async (file, options = { force: true }) => {
+    try {
+      await rm(join(dir, file), options)
+      return true
+    } catch {
+      failures.push(file)
+      return false
+    }
+  }
+
   for (const file of entries) {
     if (file.startsWith('.') || extname(file) !== '.json') continue
     const id = basename(file, '.json')
     if (!validSessionId(id)) continue
-    await rm(join(dir, file), { force: true })
-    removed++
+    if (await removeBestEffort(file)) removed++
   }
-  await rm(join(dir, SIDECAR_FILE), { force: true })
-  await rm(join(dir, 'attachments'), { recursive: true, force: true })
-  return removed
+  await removeBestEffort(SIDECAR_FILE)
+  await removeBestEffort('attachments', { recursive: true, force: true })
+  return { removed, failures }
 }
