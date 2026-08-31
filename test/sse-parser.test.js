@@ -836,3 +836,40 @@ test('a trailing empty data payload when the stream ends is not malformed either
   assert.equal(fullText, 'end')
   assert.equal(skippedChunks, 0)
 })
+
+test('stamps the reasoning duration on a reader error thrown mid-reasoning', async () => {
+  let first = true
+  const reader = {
+    read: async () => {
+      if (first) {
+        first = false
+        return { done: false, value: new TextEncoder().encode(event({ choices: [{ delta: { reasoning_content: 'think' } }] })) }
+      }
+      throw new Error('aborted')
+    },
+    cancel: async () => {},
+  }
+  await assert.rejects(
+    parseSSEStream(reader, () => {}, null, { now: () => 2300, requestStartedAt: 200 }),
+    (err) => err.message === 'aborted' && err.reasoningMs === 2100
+  )
+})
+
+test('keeps the closed-thinking duration on a reader error after content started', async () => {
+  const chunks = [
+    event({ choices: [{ delta: { reasoning_content: 'think' } }] }),
+    event({ choices: [{ delta: { content: 'Answer' } }] }),
+  ]
+  let reads = 0
+  const reader = {
+    read: async () => {
+      if (reads < chunks.length) return { done: false, value: new TextEncoder().encode(chunks[reads++]) }
+      throw new Error('aborted')
+    },
+    cancel: async () => {},
+  }
+  await assert.rejects(
+    parseSSEStream(reader, () => {}, null, { now: () => 2300, requestStartedAt: 0 }),
+    (err) => err.message === 'aborted' && err.reasoningMs === 2300
+  )
+})

@@ -293,6 +293,14 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
         chunk = await readChunk()
       } catch (err) {
         if (!err.pendingBuffer) err.pendingBuffer = buffer
+        // Mirror the clean-path reasoning-duration semantics (closeThinking)
+        // for a stream interrupted while reading (Esc stop / Ctrl+C / idle
+        // stall): stamp the elapsed reasoning time so the caller's replay
+        // shows the same `· Ns` the live compact meter had, never a
+        // count-only checkpoint. Reasoning already closed into content keeps
+        // the duration captured at closeThinking.
+        if (reasoningStartedAt !== null) err.reasoningMs = now() - reasoningStartedAt
+        else if (reasoningMs !== null) err.reasoningMs = reasoningMs
         throw err
       }
       const { done, value } = chunk

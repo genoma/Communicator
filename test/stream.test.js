@@ -627,3 +627,28 @@ test('renderHistory compact replays the real seconds for a substantive thinking 
   ], { markdown: false, stdout, compactThinking: true })
   assert.equal(plain(), '\n❯ You\n\nquestion\n\n✓ Thinking · 13 · 5.7s\n\n❯ Answer\n\nanswer\n\n')
 })
+
+test('renderHistory emits no Answer header for a reasoning-only stopped partial', () => {
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: '', reasoning: 'thinking text' },
+  ], { markdown: false, stdout })
+  assert.match(plain(), /❯ Thinking\n\nthinking text/)
+  assert.doesNotMatch(plain(), /❯ Answer/)
+})
+
+test('renderHistory compact shows nothing for a reasoning-only stopped partial', () => {
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: '', reasoning: 'thinking text' },
+  ], { markdown: false, stdout, compactThinking: true })
+  // Live compact never printed the reasoning body and the stop cleared the
+  // meter without resolving it to a checkpoint, so replay shows the same
+  // silence instead of a phantom `✓ Thinking · N` + `❯ Answer`.
+  assert.doesNotMatch(plain(), /Thinking/)
+  assert.doesNotMatch(plain(), /❯ Answer/)
+})

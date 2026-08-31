@@ -121,6 +121,10 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
     const buildPartial = (err) => {
       const partial = { role: 'assistant', content: contentParts.join('') }
       if (reasoningParts.length > 0) partial.reasoning = reasoningParts.join('')
+      // Mirror the success-path reasoning timestamp (see apiResultMessage) so
+      // a stopped compact turn replays the `· Ns` duration the live meter
+      // showed, never a count-only checkpoint.
+      if (err?.reasoningMs != null && partial.reasoning) partial.reasoningMs = err.reasoningMs
       if (render.sources?.length > 0) partial.sources = render.sources
       if (!partial.content && !partial.reasoning && err?.pendingBuffer) {
         const pending = extractPartialToken(err.pendingBuffer)
@@ -138,6 +142,13 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
             else partial.content = text
           }
         }
+      }
+      // A reasoning-less stopped turn resolved its loader/meter row to a green
+      // checkpoint before the stop (exactly the success-path condition, see
+      // the verdict block below): stash the label so history replay shows the
+      // same line the live stream did, instead of dropping it.
+      if (tty && contentParts.length > 0 && !partial.reasoning) {
+        partial.waitLine = state.webSearch === 'always' ? 'Searching the web' : 'Waiting for response'
       }
       return partial
     }
@@ -241,8 +252,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       if (sessionState.stopped) {
         stdout.write('\n\n')
         stdout.write(`${dim('Stopped')}\n\n`)
-        await finishStopped(buildPartial(null))
-        return
+        return await finishStopped(buildPartial(null))
       }
       stdout.write('\n\n')
 
@@ -262,8 +272,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         // the metrics block printed nothing.
         if (wroteMetrics) stdout.write('\n\n')
         stdout.write(`${dim('Stopped')}\n\n`)
-        await finishStopped(buildPartial(null))
-        return
+        return await finishStopped(buildPartial(null))
       }
 
       if (apiResult.usage) {

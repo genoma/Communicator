@@ -247,6 +247,21 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
         out += `${attachmentLine('attached', att.filename, { meta: att.kind })}\n`
       }
     } else if (msg.role === 'assistant') {
+      // A reasoning-only partial (Esc/Ctrl+C stopped before any content) is
+      // the truncated form of a live stream that never opened an answer row:
+      // full mode left the thinking block open and never wrote `❯ Answer`,
+      // compact mode cleared the meter without resolving it to `✓ Thinking ·
+      // N`. Replay exactly that — raw thinking block (full), no `✓` checkpoint
+      // (compact), no `❯ Answer` — instead of a phantom closed block.
+      const hasAnswer = !!contentText(msg.content)
+      if (msg.reasoning && !hasAnswer) {
+        if (!compactThinking) {
+          out += `${thinking()}\n\n`
+          out += `${dim(wrapPlain(sanitizeAnsi(msg.reasoning)))}\n`
+        }
+        out += sourcesText(msg.sources)
+        continue
+      }
       // Same marker sequence as the live stream (writeSegment): one blank
       // line above and below every marker.
       // Compact mode replays the live checkpoint (`✓ Thinking · N`) with the

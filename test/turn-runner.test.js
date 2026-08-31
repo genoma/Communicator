@@ -1155,3 +1155,66 @@ test('Esc then Ctrl+C during finalize stays stopped and does not exit 130', asyn
   assert.equal(sessionState.stopped, false)
   assert.equal(sessionState.stopping, false)
 })
+
+test('Esc during the post-stream drain returns the finishStopped boolean verdict', async (t) => {
+  enableAnsi(t)
+  mockConsole(t)
+  let flushResolve
+  const render = () => {}
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => new Promise((resolve) => { flushResolve = resolve })
+  const provider = {
+    async chatCompletion(opts) {
+      opts.onToken('Hello!', 'content')
+      return { content: 'Hello!', usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }
+    },
+  }
+  const state = fakeState()
+  const sessionState = createSessionState()
+  const { deps, exitCodes, saves } = makeDeps({ render, provider, sessionState })
+
+  const turn = runTurn(deps, state)
+  while (!flushResolve) await new Promise((resolve) => setTimeout(resolve, 0))
+  sessionState.stopped = true
+  flushResolve()
+  const produced = await turn
+
+  assert.deepEqual(exitCodes, [])
+  assert.deepEqual(saves, ['session'])
+  assert.equal(state.messages[2].content, 'Hello!')
+  // A drain-window stop that already appended the live partial must report the
+  // message was produced (so /retry and /edit skip the full-screen rebuild).
+  assert.equal(produced, true)
+})
+
+test('Esc stop on a reasoning-less turn stashes the checkpoint label for replay', async (t) => {
+  mockConsole(t)
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  const provider = okProvider({
+    async chatCompletion(opts) {
+      opts.onToken('Hel', 'content')
+      opts.signal.addEventListener('abort', () => rejectCompletion(new Error('aborted')))
+      return pending
+    },
+  })
+  const state = fakeState()
+  const sessionState = createSessionState()
+  sessionState.streaming = true
+  sessionState.streamController = new AbortController()
+  const { deps, exitCodes, saves } = makeDeps({ provider, sessionState, tty: true })
+
+  const turn = runTurn(deps, state)
+  sessionState.stopped = true
+  sessionState.streamController.abort()
+  const produced = await turn
+
+  assert.deepEqual(exitCodes, [])
+  assert.deepEqual(saves, ['session'])
+  assert.equal(state.messages[2].content, 'Hel')
+  // Mirror the success path: a reasoning-less turn stashes the green
+  // checkpoint so history replay shows the line the live stream did.
+  assert.equal(state.messages[2].waitLine, 'Waiting for response')
+  assert.equal(produced, true)
+})

@@ -112,12 +112,15 @@ test('post-metrics Esc stop keeps one blank row above the Stopped note when the 
   while (!metrics.entered) await new Promise((resolve) => setTimeout(resolve, 0))
   sessionState.stopped = true
   metrics.resolve()
-  await turn
+  const produced = await turn
 
   assert.deepEqual(exitCodes, [])
   assert.deepEqual(saves, ['session'])
   assert.equal(state.messages[2].content, 'Hello!')
   assert.deepEqual(writes, ['\n', '\n\n', `${dim('Stopped')}\n\n`])
+  // A post-metrics stop that already appended the live partial must report the
+  // message was produced (so /retry and /edit skip the full-screen rebuild).
+  assert.equal(produced, true)
 })
 
 test('post-metrics Esc stop adds a blank row above the Stopped note when the metrics block emitted lines', async () => {
@@ -135,10 +138,11 @@ test('post-metrics Esc stop adds a blank row above the Stopped note when the met
   while (!metrics.entered) await new Promise((resolve) => setTimeout(resolve, 0))
   sessionState.stopped = true
   metrics.resolve()
-  await turn
+  const produced = await turn
 
   assert.deepEqual(exitCodes, [])
   assert.deepEqual(saves, ['session'])
   assert.equal(state.messages[2].content, 'Hello!')
   assert.deepEqual(writes, ['\n', '\n\n', 'file.txt saved\n', '\n\n', `${dim('Stopped')}\n\n`])
+  assert.equal(produced, true)
 })
