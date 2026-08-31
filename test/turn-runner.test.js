@@ -1188,6 +1188,43 @@ test('Esc during the post-stream drain returns the finishStopped boolean verdict
   assert.equal(produced, true)
 })
 
+test('Esc during the post-stream drain carries the completed reasoning duration onto the stopped partial', async (t) => {
+  enableAnsi(t)
+  mockConsole(t)
+  let flushResolve
+  const render = () => {}
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => new Promise((resolve) => { flushResolve = resolve })
+  const provider = {
+    async chatCompletion(opts) {
+      opts.onToken(null, 'start_reasoning')
+      opts.onToken('thinking', 'reasoning')
+      opts.onToken('Hello!', 'content')
+      return { content: 'Hello!', reasoning: 'thinking', reasoningMs: 2345, usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }
+    },
+  }
+  const state = fakeState()
+  const sessionState = createSessionState()
+  const { deps, exitCodes, saves } = makeDeps({ render, provider, sessionState })
+
+  const turn = runTurn(deps, state)
+  while (!flushResolve) await new Promise((resolve) => setTimeout(resolve, 0))
+  sessionState.stopped = true
+  flushResolve()
+  const produced = await turn
+
+  assert.deepEqual(exitCodes, [])
+  assert.deepEqual(saves, ['session'])
+  assert.equal(state.messages[2].content, 'Hello!')
+  assert.equal(state.messages[2].reasoning, 'thinking')
+  // The drain-window branch passes the completed stream's reasoningMs onto
+  // the stopped partial (mirroring apiResultMessage), so compact replay shows
+  // the seconds the live meter checkmated at rather than count-only.
+  assert.equal(state.messages[2].reasoningMs, 2345)
+  assert.equal(produced, true)
+})
+
 test('Esc stop on a reasoning-less turn stashes the checkpoint label for replay', async (t) => {
   mockConsole(t)
   let rejectCompletion
