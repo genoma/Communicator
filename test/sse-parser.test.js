@@ -873,3 +873,21 @@ test('keeps the closed-thinking duration on a reader error after content started
     (err) => err.message === 'aborted' && err.reasoningMs === 2300
   )
 })
+
+test('does not stamp a reasoning duration on a content-only reader error', async () => {
+  const chunks = [event({ choices: [{ delta: { content: 'Answer' } }] })]
+  let reads = 0
+  const reader = {
+    read: async () => {
+      if (reads < chunks.length) return { done: false, value: new TextEncoder().encode(chunks[reads++]) }
+      throw new Error('aborted')
+    },
+    cancel: async () => {},
+  }
+  // A request clock is supplied and never null in practice, but no reasoning
+  // block was opened: the abort must not stamp a fake reasoning duration.
+  await assert.rejects(
+    parseSSEStream(reader, () => {}, null, { now: () => 2300, requestStartedAt: 200 }),
+    (err) => err.message === 'aborted' && err.reasoningMs === undefined
+  )
+})

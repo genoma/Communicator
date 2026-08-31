@@ -635,8 +635,29 @@ test('renderHistory emits no Answer header for a reasoning-only stopped partial'
     { role: 'user', content: 'question' },
     { role: 'assistant', content: '', reasoning: 'thinking text' },
   ], { markdown: false, stdout })
-  assert.match(plain(), /❯ Thinking\n\nthinking text/)
+  // Same spacing as a completed reasoning turn: `❯ Thinking`, one blank row,
+  // the body, then one blank row (the runner's live `\n\n` before `Stopped`)
+  // — and no `❯ Answer`, which the live stream never opened.
+  assert.equal(plain(), '\n❯ You\n\nquestion\n\n❯ Thinking\n\nthinking text\n\n')
   assert.doesNotMatch(plain(), /❯ Answer/)
+})
+
+test('renderHistory keeps the Answer header for reasoning with non-text content', () => {
+  const { stdout, plain } = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'question' },
+    {
+      role: 'assistant',
+      content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }],
+      reasoning: 'thinking text',
+    },
+  ], { markdown: false, stdout })
+  // A reasoning-bearing reply whose content renders only as an artifact opened
+  // an answer row live; replay it as the normal path, not as a reasoning-only
+  // partial (which would drop the Answer header and the attachment line).
+  assert.match(plain(), /❯ Answer/)
+  assert.match(plain(), /image: image\.png/)
 })
 
 test('renderHistory compact shows nothing for a reasoning-only stopped partial', () => {

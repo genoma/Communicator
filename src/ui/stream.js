@@ -253,11 +253,14 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
       // compact mode cleared the meter without resolving it to `✓ Thinking ·
       // N`. Replay exactly that — raw thinking block (full), no `✓` checkpoint
       // (compact), no `❯ Answer` — instead of a phantom closed block.
-      const hasAnswer = !!contentText(msg.content)
+      const hasAnswer = !!contentText(msg.content) || contentAttachments(msg.content).length > 0
       if (msg.reasoning && !hasAnswer) {
         if (!compactThinking) {
           out += `${thinking()}\n\n`
-          out += `${dim(wrapPlain(sanitizeAnsi(msg.reasoning)))}\n`
+          // Match live: a mid-reasoning stop left the thinking block open and
+          // the runner's blank row under it; replay the same trailing blank so
+          // a resize rebuild keeps one blank row below the block, never fewer.
+          out += `${dim(wrapPlain(sanitizeAnsi(msg.reasoning)))}\n\n`
         }
         out += sourcesText(msg.sources)
         continue

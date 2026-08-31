@@ -1218,3 +1218,41 @@ test('Esc stop on a reasoning-less turn stashes the checkpoint label for replay'
   assert.equal(state.messages[2].waitLine, 'Waiting for response')
   assert.equal(produced, true)
 })
+
+test('copies the stamped reasoning duration onto a stopped reply', async (t) => {
+  mockConsole(t)
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  const provider = {
+    async chatCompletion(opts) {
+      opts.onToken(null, 'start_reasoning')
+      opts.onToken('thinking', 'reasoning')
+      opts.onToken('Hello', 'content')
+      opts.signal.addEventListener('abort', () => {
+        const err = new Error('aborted')
+        err.reasoningMs = 2345
+        rejectCompletion(err)
+      })
+      return pending
+    },
+  }
+  const state = fakeState()
+  const sessionState = createSessionState()
+  sessionState.streaming = true
+  sessionState.streamController = new AbortController()
+  const { deps, exitCodes, saves } = makeDeps({ provider, sessionState, tty: true })
+
+  const turn = runTurn(deps, state)
+  sessionState.stopped = true
+  sessionState.streamController.abort()
+  const produced = await turn
+
+  assert.deepEqual(exitCodes, [])
+  assert.deepEqual(saves, ['session'])
+  // The sse-parser stamps the duration on the abort; buildPartial carries it
+  // onto the stopped partial exactly like apiResultMessage does on success.
+  assert.equal(state.messages[2].content, 'Hello')
+  assert.equal(state.messages[2].reasoning, 'thinking')
+  assert.equal(state.messages[2].reasoningMs, 2345)
+  assert.equal(produced, true)
+})

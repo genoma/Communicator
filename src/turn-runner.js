@@ -118,13 +118,16 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       return Boolean(hasContent)
     }
 
-    const buildPartial = (err) => {
+    const buildPartial = (err, reasoningMs = null) => {
       const partial = { role: 'assistant', content: contentParts.join('') }
       if (reasoningParts.length > 0) partial.reasoning = reasoningParts.join('')
       // Mirror the success-path reasoning timestamp (see apiResultMessage) so
       // a stopped compact turn replays the `· Ns` duration the live meter
-      // showed, never a count-only checkpoint.
-      if (err?.reasoningMs != null && partial.reasoning) partial.reasoningMs = err.reasoningMs
+      // showed, never a count-only checkpoint. The value comes from the
+      // sse-parser stamped on an abort, or the drain path's completed
+      // apiResult when no error is available (post-stream Esc stop).
+      const carriedReasoningMs = err?.reasoningMs ?? reasoningMs
+      if (carriedReasoningMs != null && partial.reasoning) partial.reasoningMs = carriedReasoningMs
       if (render.sources?.length > 0) partial.sources = render.sources
       if (!partial.content && !partial.reasoning && err?.pendingBuffer) {
         const pending = extractPartialToken(err.pendingBuffer)
@@ -252,7 +255,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       if (sessionState.stopped) {
         stdout.write('\n\n')
         stdout.write(`${dim('Stopped')}\n\n`)
-        return await finishStopped(buildPartial(null))
+        return await finishStopped(buildPartial(null, apiResult.reasoningMs))
       }
       stdout.write('\n\n')
 
@@ -272,7 +275,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         // the metrics block printed nothing.
         if (wroteMetrics) stdout.write('\n\n')
         stdout.write(`${dim('Stopped')}\n\n`)
-        return await finishStopped(buildPartial(null))
+        return await finishStopped(buildPartial(null, apiResult.reasoningMs))
       }
 
       if (apiResult.usage) {

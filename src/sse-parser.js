@@ -298,8 +298,11 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
         // stall): stamp the elapsed reasoning time so the caller's replay
         // shows the same `· Ns` the live compact meter had, never a
         // count-only checkpoint. Reasoning already closed into content keeps
-        // the duration captured at closeThinking.
-        if (reasoningStartedAt !== null) err.reasoningMs = now() - reasoningStartedAt
+        // the duration captured at closeThinking. The open-thinking branch is
+        // gated on `inThinking` because `reasoningStartedAt` is request-
+        // anchored (never null when a request clock is supplied), so a
+        // content-only abort must not stamp a fake reasoning duration.
+        if (inThinking && reasoningStartedAt !== null) err.reasoningMs = now() - reasoningStartedAt
         else if (reasoningMs !== null) err.reasoningMs = reasoningMs
         throw err
       }
