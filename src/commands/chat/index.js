@@ -1,5 +1,4 @@
-import { formatError, commandErrorLine } from '../../errors.js'
-import { ExitPromptError } from '@inquirer/core'
+import { formatError, commandErrorLine, isExitPromptError } from '../../errors.js'
 import { selectModelAndEndpoint } from '../../model-selection.js'
 import { getEffortLabel, selectReasoningEffort } from '../../prompts.js'
 import { resolveTemperatureFlag, resolveTopPFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, webSearchGate } from '../../flags.js'
@@ -184,7 +183,7 @@ const handlers = {
     try {
       sel = await (ctx.selectModelAndEndpoint ?? selectModelAndEndpoint)({ provider: ctx.provider, apiKey: ctx.apiKey, prefs: ctx.prefs, reasoningEffort: undefined, zdr: ctx.state.zdr, e2ee: ctx.state.e2ee })
     } catch (err) {
-      if (err instanceof ExitPromptError || err?.name === 'ExitPromptError') {
+      if (isExitPromptError(err)) {
         console.log('Aborted.')
         return
       }

@@ -1,4 +1,4 @@
-import { getEffortLabel } from './prompts.js'
+import { getEffortLabel } from './ui/format.js'
 import { formatCost, formatSmoothSpeed, formatSamplingValue } from './constants.js'
 import { formatModelPrice, sessionLabel } from './ui/format.js'
 import { dim } from './ui/style.js'

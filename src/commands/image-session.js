@@ -1,5 +1,4 @@
 import { readInput as readInputFromInput } from '../input.js'
-import { ExitPromptError } from '@inquirer/core'
 import { persistSessionFile } from '../sessions.js'
 import { DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { getImageDefaults, mergeImageDefaults, clearImageDefault, savePreferences, savePrefsBestEffort, syncPreferenceUpdates, mergePreferenceState } from '../config.js'
@@ -8,7 +7,7 @@ import { sessionLabel } from '../ui/format.js'
 import { dim } from '../ui/style.js'
 import { connectedBanner, buildImageStatusLine, wrapStatusLine } from '../status-line.js'
 import { sanitizeSingleLine } from '../ui/hyperlink.js'
-import { CliError, commandErrorLine, formatError } from '../errors.js'
+import { CliError, commandErrorLine, formatError, isExitPromptError } from '../errors.js'
 import { resolveAspectRatio, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
 import { runImageGeneration, printImageOutcome, buildImageSessionPayload, handleWatermarkCommand } from './image-gen.js'
@@ -214,7 +213,7 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       try {
         sel = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: undefined, zdr: false })
       } catch (err) {
-        if (err instanceof ExitPromptError || err?.name === 'ExitPromptError') {
+        if (isExitPromptError(err)) {
           console.log('Aborted.')
           continue
         }

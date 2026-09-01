@@ -3,6 +3,16 @@ import { resolveEffortDefault, isWebSearchSupported, endpointSupportsReasoning }
 import { CliError, formatError } from './errors.js'
 import { sanitizeSingleLine } from './ui/hyperlink.js'
 
+// Starts the model-listing fetch without awaiting it (after the same zdr
+// gate the selection would run), so a caller can overlap the network
+// round-trip with a heavy import instead of serializing behind it.
+export function seedModelFetch({ provider, apiKey, zdr = false }) {
+  return (async () => {
+    const zdrActive = await zdrGate(provider, zdr)
+    return provider.fetchModels(apiKey, { zdr: zdrActive })
+  })()
+}
+
 async function zdrGate(provider, zdr) {
   if (zdr !== true || provider.meta.supportsZdr !== true) return false
   if ((await provider.isZdrIndexDegraded?.()) === true) {
@@ -91,14 +101,15 @@ export async function selectImageEndpoint({ provider, apiKey, model, interactive
   return selectImageProvider(endpoints)
 }
 
-export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort, zdr = false, e2ee = false }) {
+export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort, zdr = false, e2ee = false, modelsPromise = null }) {
   const zdrActive = await zdrGate(provider, zdr)
   // Model and image-model listings are independent: fetch them concurrently
   // to cut startup latency. Image pricing is intentionally not requested
   // here — the picker does not display it and the selected model's endpoint
-  // fetch already carries the price.
+  // fetch already carries the price. `modelsPromise` is a pre-started
+  // listing (seedModelFetch) overlapped with the caller's heavy import.
   const [models, imageModels] = await Promise.all([
-    provider.fetchModels(apiKey, { zdr: zdrActive }),
+    modelsPromise ?? provider.fetchModels(apiKey, { zdr: zdrActive }),
     (async () => {
       if (zdrActive || e2ee || typeof provider.fetchImageModels !== 'function') return null
       try {
@@ -220,9 +231,9 @@ export async function selectImageModelNonInteractive({ provider, apiKey, imageMo
   return model
 }
 
-export async function selectModelNonInteractive({ provider, apiKey, prefs, modelId, forcedEffort, zdr = false, e2ee = false }) {
+export async function selectModelNonInteractive({ provider, apiKey, prefs, modelId, forcedEffort, zdr = false, e2ee = false, modelsPromise = null }) {
   const zdrActive = await zdrGate(provider, zdr)
-  const models = await provider.fetchModels(apiKey, { zdr: zdrActive })
+  const models = await (modelsPromise ?? provider.fetchModels(apiKey, { zdr: zdrActive }))
   const modelData = models.find((m) => m.id === modelId)
   if (!modelData) {
     if (!zdrActive && !e2ee) {

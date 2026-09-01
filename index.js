@@ -2,7 +2,6 @@
 
 import { Command } from 'commander'
 import pkg from './package.json' with { type: 'json' }
-import { runCli } from './src/cli-main.js'
 import { collectFlag, findUnmappedDashArg } from './src/cli-utils.js'
 
 const program = new Command()
@@ -63,4 +62,8 @@ if (unmapped) {
   program.error(`error: unknown option '${unmapped}'`)
 }
 
+// Lazy-load the CLI graph: Commander has already handled --version/--help
+// and any parse error, so those fast exits never import the chat/renderer
+// graph (roughly two thirds of the module tree, ~50 ms on --version).
+const { runCli } = await import('./src/cli-main.js')
 await runCli(opts, promptArg)

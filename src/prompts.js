@@ -1,6 +1,5 @@
 import { search, select } from '@inquirer/prompts'
 import { Separator } from '@inquirer/core'
-import { EFFORT_LABELS } from './constants.js'
 import { formatModelPrice, formatImagePrice } from './ui/format.js'
 import { hyperlink, sanitizeAnsi, sanitizeSingleLine } from './ui/hyperlink.js'
 import { bold, dim } from './ui/style.js'
@@ -205,10 +204,9 @@ function providerSearchPrompt(message, providerChoices, backChoice, { withBack, 
 
 const FULL_EFFORT_LIST = ['max', 'xhigh', 'high', 'medium', 'low', 'minimal', 'none']
 
-export function getEffortLabel(effort) {
-  if (effort == null) return EFFORT_LABELS.none
-  return EFFORT_LABELS[effort] || sanitizeSingleLine(effort)
-}
+import { getEffortLabel } from './ui/format.js'
+
+export { getEffortLabel } from './ui/format.js'
 
 export async function selectReasoningEffort(reasoning, lastEffort, opts = {}) {
   if (!reasoning || reasoning.supportsEffort === false) return undefined

@@ -46,12 +46,12 @@ function samplingPrefValue(forced, persisted, prefs, section, modelId) {
   return forced ?? persisted
 }
 
-export async function buildSessionContext({ provider, apiKey, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedWebResults, zdr, e2ee = false, allowInteractive = true }) {
+export async function buildSessionContext({ provider, apiKey, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedWebResults, zdr, e2ee = false, allowInteractive = true, modelsPromise = null }) {
   let selection
   if (opts.model) {
-    selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort, zdr, e2ee })
+    selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort, zdr, e2ee, modelsPromise })
   } else if (allowInteractive) {
-    selection = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: forcedEffort, zdr, e2ee })
+    selection = await selectModelAndEndpoint({ provider, apiKey, prefs, reasoningEffort: forcedEffort, zdr, e2ee, modelsPromise })
   } else {
     throw new CliError('Error: interactive model selection needs a TTY. Use -m <model-id> when piping input.')
   }

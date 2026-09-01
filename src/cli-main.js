@@ -1,13 +1,13 @@
-import { ExitPromptError } from '@inquirer/core'
 import { getApiKey, loadPreferences, loadSystemPrompt, savePreferences } from './config.js'
 import { getProvider } from './providers/index.js'
-import { ApiError, CliError, formatError } from './errors.js'
+import { ApiError, CliError, formatError, isExitPromptError } from './errors.js'
 import { sanitizeAnsi } from './ui/hyperlink.js'
 import { err, debug } from './ui/io.js'
 import { resolveSmoothSpeed, resolveTemperatureFlag, resolveTopPFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
 import { isConfigSetter, isPureConfigSetter, hasConfigSetterFlags, validateCliFlags } from './cli-validation.js'
 import { scrapeContext } from './scrape.js'
+import { seedModelFetch } from './model-selection.js'
 import { loadRpgContext } from './rpg.js'
 
 // Command modules are loaded lazily at their dispatch points: markdown-it and
@@ -42,7 +42,7 @@ export async function runCli(opts, promptArg) {
   try {
     await main(opts, promptArg)
   } catch (error) {
-    if (error instanceof ExitPromptError || error?.name === 'ExitPromptError') {
+    if (isExitPromptError(error)) {
       console.log('Aborted.')
       process.exit(0)
     }
@@ -261,7 +261,10 @@ async function main(opts, promptArg) {
   }
 
   // chat-start pulls in the streaming renderer, markdown-it and the
-  // inquirer pickers; loaded only for interactive chat.
+  // inquirer pickers; loaded only for interactive chat. The model listing is
+  // started BEFORE the import so its network round-trip overlaps the module
+  // load instead of serializing behind it.
+  const modelsPromise = seedModelFetch({ provider: getProvider(providerType), apiKey, zdr: opts.zdr === true })
   const { chatStart } = await import('./commands/chat-start.js')
-  await chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgCharName, rpgUserName, rpgHistory, rpgPostHistoryInstruction, providerType, scraped })
+  await chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgCharName, rpgUserName, rpgHistory, rpgPostHistoryInstruction, providerType, scraped, modelsPromise })
 }

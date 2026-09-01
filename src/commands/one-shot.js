@@ -1,4 +1,3 @@
-import { ExitPromptError } from '@inquirer/core'
 import { getProvider } from '../providers/index.js'
 import { cpsToCharsPerTick, SCRAPE_COST_USD, DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { scrapeMessage } from '../scrape.js'
@@ -6,7 +5,7 @@ import { createNewSession, removeEmptySessionClaim } from '../sessions.js'
 import { createStreamRenderer } from '../ui/stream.js'
 import { UsageTracker, budgetLine, trackerCostSummary } from '../tracker.js'
 import { ChatState } from '../chat-state.js'
-import { CliError, formatError } from '../errors.js'
+import { CliError, formatError, isExitPromptError } from '../errors.js'
 import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { loadAttachments, buildContent } from '../attachments.js'
 import { resolveArtifacts, printArtifactsSummary } from '../artifacts.js'
@@ -49,7 +48,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
       allowInteractive: !stdinPiped,
     })
   } catch (err) {
-    if (err instanceof CliError || err instanceof ExitPromptError || err?.name === 'ExitPromptError') throw err
+    if (err instanceof CliError || isExitPromptError(err)) throw err
     fail(`Error: ${formatError(err)}`)
   }
   const { selection, temperature, topP, webSearch, webSearchExplicit, webResults } = context

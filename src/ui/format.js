@@ -1,5 +1,12 @@
 import { sanitizeAnsi, sanitizeSingleLine } from './hyperlink.js'
-import { formatCost } from '../constants.js'
+import { formatCost, EFFORT_LABELS } from '../constants.js'
+
+// Reasoning-effort display label (kept here, not in prompts.js, so the
+// banner/status line never loads @inquirer/prompts just to format one word).
+export function getEffortLabel(effort) {
+  if (effort == null) return EFFORT_LABELS.none
+  return EFFORT_LABELS[effort] || sanitizeSingleLine(effort)
+}
 
 // Rounds to `decimals` places and returns a plain string (no locale/sign
 // formatting): the money formatter for image prices and the image-generation

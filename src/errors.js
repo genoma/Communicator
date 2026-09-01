@@ -28,6 +28,15 @@ export class CliError extends Error {
 // Error messages can carry provider/model-derived text (SSE stream errors,
 // HTTP error bodies), so the terminal-facing renderings are sanitized here —
 // the same treatment content/reasoning output gets before display.
+// Prompt cancellation is duck-typed by name: @inquirer/core exposes
+// ExitPromptError, but importing the package just for one instanceof costs
+// ~30 ms of startup on every invocation. The name check already covers every
+// guard (inquirer sets this.name = 'ExitPromptError'), so a single helper
+// replaces the six scattered imports.
+export function isExitPromptError(err) {
+  return err?.name === 'ExitPromptError'
+}
+
 export function formatError(err) {
   if (err instanceof ApiError) return sanitizeAnsi(err.message)
   return sanitizeAnsi(err?.message || String(err))

@@ -1,4 +1,3 @@
-import { ExitPromptError } from '@inquirer/core'
 import { basename, join } from 'node:path'
 import { copyFile, mkdir } from 'node:fs/promises'
 import { getProvider } from '../providers/index.js'
@@ -7,7 +6,7 @@ import { attachmentDirFor, externalizeAttachments, savedAttachmentPath } from '.
 import { selectImageModelNonInteractive, selectImageEndpoint } from '../model-selection.js'
 import { selectImageModel, selectSizingOption } from '../prompts.js'
 import { SESSIONS_DIR, DEFAULT_SYSTEM_PROMPT } from '../constants.js'
-import { CliError, formatError } from '../errors.js'
+import { CliError, formatError, isExitPromptError } from '../errors.js'
 import { readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { getImageDefaults, mergeImageDefaults, savePreferences, savePrefsBestEffort, syncPreferenceUpdates } from '../config.js'
 import { createLoader } from '../ui/loader.js'
@@ -384,7 +383,7 @@ export async function runImageCommand({ provider, apiKey, opts, prefs, providerT
     outcome = await runImageGeneration({ provider, apiKey, prompt, opts, prefs, sessionId, model, stdout })
   } catch (err) {
     await removeEmptySessionClaim(dir, sessionId)
-    if (err instanceof CliError || err instanceof ExitPromptError || err?.name === 'ExitPromptError') throw err
+    if (err instanceof CliError || isExitPromptError(err)) throw err
     throw new CliError(`Error: ${formatError(err)}`)
   }
 

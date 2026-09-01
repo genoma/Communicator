@@ -15,7 +15,7 @@ function imageSessionContext({ provider, apiKey, prefs, imageModelId, sessionId,
   return { imageModelId, provider, apiKey, prefs, sessionId, createdAt, updatedAt, initialMessages, configPath, imageProviderName, pricing }
 }
 
-async function createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, scraped = null }) {
+async function createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, scraped = null, modelsPromise = null }) {
   const { forcedEffort, forcedTemperature, forcedTopP, forcedBudget, budget, forcedWebResults, smoothSpeed, compactThinking, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
   if (opts.resume !== undefined && opts.rpg === undefined) {
@@ -118,6 +118,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     forcedWebResults,
     zdr,
     e2ee,
+    modelsPromise,
   })
 
   const { sessionId, createdAt } = await createNewSession()

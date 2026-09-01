@@ -14,10 +14,9 @@ import { savePreferences, syncPreferenceUpdates, savePrefsBestEffort } from './c
 import { copyText } from './clipboard.js'
 import { ChatState } from './chat-state.js'
 import { createE2eeSession } from './e2ee.js'
-import { CliError, formatError, commandErrorLine } from './errors.js'
+import { CliError, formatError, commandErrorLine, isExitPromptError } from './errors.js'
 import { registerSignalHandlers } from './signals.js'
 import { createSessionState, createTurnRunner } from './turn-runner.js'
-import { ExitPromptError } from '@inquirer/core'
 
 // Builds a resume summary line from a persisted cost summary (same shape as
 // UsageTracker.summary() minus the live CTX segment, which the snapshot does
@@ -456,7 +455,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
       try {
         outcome = await handler({ ...chatCtx, input, args: spaceIdx === -1 ? '' : firstLine.slice(spaceIdx + 1).trim() })
       } catch (err) {
-        if (err instanceof ExitPromptError || err?.name === 'ExitPromptError') {
+        if (isExitPromptError(err)) {
           console.log('Aborted.')
           continue
         }
