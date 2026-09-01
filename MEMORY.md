@@ -218,6 +218,22 @@ Cross-path invariants pinned by `test/ui-consistency.test.js`. Every change must
 - **Piped one-shot**: stdout only answer; stderr for artifacts/notices; banner/sources/metrics suppressed. Content streams to stdout as deltas arrive (raw, per-chunk `sanitizeAnsi`, no reasoning/markers/sources); TTY one-shot keeps its banner + renderer path.
 - **Channels**: errors/warnings/notes via console methods; image blur warning to stderr.
 
+## Width oracles
+
+Four independent display-width implementations coexist; knowing which owns what is load-bearing, because a mismatch between the editor's and the terminal's idea of a row width is the ghost-duplicate-row bug class.
+
+- `src/editor/chars.js` — the EDITOR's oracle, dependency-free, per code point. Owns the grid: `layout.js` folding, `paint.js` exact-fill/erase decisions, cursor columns.
+- `string-width` (npm) — the RENDERER's oracle. `src/ui/wrap.js` calls it per code point; `src/ui/markdown.js` and `src/ui/md-it.js` call it per whole segment/cell. Those two disagree with each other on clusters; `markdown.js`'s whole-segment measurement happens to match the terminal's soft wrap, which is why it has never been visible.
+- `test/editor-grid.test.js` — the TEST TERMINAL's oracle, deliberately independent of `chars.js` so the harness cannot agree with the code under test by construction. It iterates grapheme clusters and measures with `string-width`. It used to be `codePointAt(0) > 0x20000 ? 2 : 1`, under which even U+4E00 (中) was one column: the CJK grid tests passed by coincidence and no emoji desync was detectable.
+
+**The `chars.js` invariant: never under-count.** The editor paints an explicit grid and relies on never emitting a row wider than the terminal. An under-count overflows the row, the terminal soft-wraps it, the grid<->screen 1:1 mapping desyncs, and stale rows survive as ghosts. Over-counting folds a row early instead — much milder, but NOT free: an over-count that lands exactly on `width` skips `rowBody`'s erase-to-EOL (stale tail cell), and it drifts the absolute cursor column (`layout.js` `cursorCol` → `paint.js` `rewindCursor`). So the table aims to be exact and errs wide only where it must.
+
+Rule set: East Asian Wide/Fullwidth ranges (sorted, binary-searched) → 2; `\p{Emoji_Presentation}` → 2; below U+1100 → 1 (fast path, nothing lower is ever wide); control → 0; everything else 1. Combining marks and format characters deliberately keep width 1 rather than 0: zeroing them is more accurate in context (decomposed `e` + U+0301 really is one cell) but under-counts a mark standing alone, and it makes a text-presentation base plus U+FE0F sum to 1 where terminals render 2 (⚠️ ❤️ 1️⃣) — a naive "emoji→2, marks→0" rewrite passes the whole suite while corrupting those. Refining marks is a separate change with its own tests.
+
+`isWordChar` asks the width TABLE (`isWide`), not `charWidth(...) === 2`. It drives word-jump and undo grouping in `src/editor/model.js`, and it must not change just because the width table learned that emoji are two cells.
+
+Half the rule set self-updates (`\p{Emoji_Presentation}` tracks the runtime's Unicode data) while the range table is frozen, so a Node upgrade can silently introduce new under-counts. `test/editor-grid.test.js`'s drift test sweeps the BMP plus plane 1 against `string-width` and fails with the exact ranges to add.
+
 ## Reasoning effort semantics
 
 - `undefined` = auto/default; `null` = disabled (`none`). OpenRouter sends `reasoning: { effort: "none" }`; mandatory-reasoning models omit the field entirely; Venice sends `reasoning_effort: "none"`.

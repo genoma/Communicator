@@ -6,9 +6,44 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
+import stringWidth from 'string-width'
 import { readEditor } from '../src/editor/index.js'
 import { firstDiffRow, rowBody } from '../src/editor/paint.js'
 import { wrapSegments } from '../src/editor/layout.js'
+import { stringWidth as editorStringWidth, charWidth as editorCharWidth } from '../src/editor/chars.js'
+
+// The emulated terminal needs its OWN width oracle, independent of the one the
+// editor ships (src/editor/chars.js). It models what a real terminal does, so
+// it iterates grapheme clusters (a ZWJ family occupies one cell pair, not one
+// per code point) and measures with string-width. Using the editor's own table
+// here would make the harness agree with the code under test by construction:
+// the previous oracle was `codePointAt(0) > 0x20000 ? 2 : 1`, under which even
+// U+4E00 (中) was one column wide, so the CJK grid tests below passed by
+// coincidence and no emoji desync could ever be detected.
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
+function cells(cluster) {
+  // A cluster that measures zero (a lone combining mark or zero-width space)
+  // still occupies a slot in this simple grid model; over-counting it makes
+  // the harness stricter, never more permissive.
+  return Math.max(1, stringWidth(cluster))
+}
+
+function clustersOf(text) {
+  // CR and LF are cursor operations here, not printable clusters, and UAX #29
+  // makes CRLF a *single* grapheme — segmenting blindly would swallow the
+  // newline and plot it as a character.
+  const out = []
+  for (const part of text.split(/(\r|\n)/)) {
+    if (part === '') continue
+    if (part === '\r' || part === '\n') {
+      out.push(part)
+      continue
+    }
+    for (const { segment } of graphemes.segment(part)) out.push(segment)
+  }
+  return out
+}
 
 class Terminal {
   constructor({ cols = 80, rows = 24, replyDsr = true } = {}) {
@@ -45,7 +80,7 @@ class Terminal {
     let r = this.cursor.r
     let c = this.cursor.c
     let wrap = this.wrapPending
-    for (const ch of text) {
+    for (const ch of clustersOf(text)) {
       if (ch === '\r') {
         c = 0
         wrap = false
@@ -60,7 +95,7 @@ class Terminal {
         wrap = false
         continue
       }
-      const w = ch.codePointAt(0) > 0x20000 ? 2 : 1
+      const w = cells(ch)
       if (wrap || c + w > this.cols) {
         r++
         if (r >= this.rows) {
@@ -830,4 +865,89 @@ test('a paste starting while an escape tail is held joins cleanly', async (t) =>
   await t.mock.timers.tick(0)
   const [value] = await editor
   assert.equal(value, '/paste text')
+})
+
+// Width-oracle guards. The editor's own width table (src/editor/chars.js) must
+// never measure a character as NARROWER than the terminal renders it: an
+// under-count packs too much into a grid row, the terminal soft-wraps it, and
+// the grid<->screen 1:1 mapping desyncs into ghost duplicate rows. Over-counting
+// is permitted (a row folds early — cosmetic), which is why these assert an
+// upper bound on row width rather than an exact layout.
+function realWidth(row) {
+  return clustersOf(row).reduce((sum, ch) => sum + cells(ch), 0)
+}
+
+test('an emoji in the input never produces a ghost duplicate row', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, { cols: 80, options: { helpFooter: true } })
+  const typed = 'Hey there, can you summarize this thread for me please \u{1F600} and then list the action items?'
+  type(stdin, typed)
+
+  // The grid can never physically hold more than `cols` cells, so an
+  // over-wide row shows up as DUPLICATED CONTENT: the terminal soft-wrapped a
+  // row the editor believed was one row, and the next repaint left the stale
+  // tail behind. Reconstructing the value from the visible input rows catches
+  // exactly that (word folding drops the fold space, so compare on collapsed
+  // whitespace).
+  const inputRows = term.lines().filter((l) => l.startsWith('\u276f '))
+  const rebuilt = inputRows.map((l) => l.slice(2).trimEnd()).join(' ').replace(/\s+/g, ' ').trim()
+  assert.equal(rebuilt, typed.replace(/\s+/g, ' ').trim(), `screen does not reconstruct the typed text:\n${inputRows.join('\n')}`)
+  submit(stdin)
+  await editor
+})
+
+test('an emoji at the exact row width is not erased from the screen', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, { cols: 20 })
+  // 2 prefix + 16 'a' + a 2-cell emoji fills the row exactly. rowBody must not
+  // append \x1b[K here: the erase would wipe the glyph the terminal just drew,
+  // leaving the character in the buffer but invisible on screen.
+  type(stdin, 'a'.repeat(16) + '😀')
+
+  const screen = term.lines().join('')
+  assert.ok(screen.includes('😀'), `the emoji vanished from the screen:\n${term.lines().filter((l) => l !== '').join('\n')}`)
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'a'.repeat(16) + '😀')
+})
+
+test('charWidth never under-counts what the terminal renders', () => {
+  // Over-counts are allowed and expected (chars.js has no grapheme clustering,
+  // so a ZWJ family or a skin-tone sequence measures as the sum of its parts).
+  // Under-counts are the bug class: they are what desyncs the grid.
+  for (const sample of ['😀', '⚡', '⚠️', '❤️', '👨‍👩‍👧‍👦', '1️⃣', '🇫🇷', '👍🏽', '中', '！', 'é', 'a']) {
+    const measured = editorStringWidth(sample)
+    const rendered = realWidth(sample)
+    assert.ok(measured >= rendered, `chars.js measures ${JSON.stringify(sample)} as ${measured}, terminal renders ${rendered}`)
+  }
+})
+
+// The width table in src/editor/chars.js is hardcoded, but the rest of the
+// rule set (\p{Emoji_Presentation}) and the string-width truth oracle both
+// track the RUNTIME's Unicode data. So a Node upgrade can introduce new
+// under-counts — new instances of the ghost-row bug — with no code change.
+// This is the alarm for that: it fails when the table falls behind the
+// runtime, and the fix is mechanical (add the reported range to WIDE_RANGES).
+// Scoped to the BMP plus plane 1, which is where all realistic wide text and
+// every emoji live; sweeping all 17 planes costs seconds for no added signal.
+test('the width table has not fallen behind the runtime Unicode data', () => {
+  const under = []
+  for (let cp = 0x20; cp <= 0x1ffff; cp++) {
+    if (cp >= 0xd800 && cp <= 0xdfff) continue
+    const ch = String.fromCodePoint(cp)
+    if (editorCharWidth(cp) < stringWidth(ch)) under.push(cp)
+  }
+  const hex = (n) => 'U+' + n.toString(16).toUpperCase().padStart(4, '0')
+  const ranges = []
+  for (const cp of under) {
+    const last = ranges[ranges.length - 1]
+    if (last && last[1] === cp - 1) last[1] = cp
+    else ranges.push([cp, cp])
+  }
+  assert.deepEqual(
+    under,
+    [],
+    `chars.js under-counts ${under.length} code points the runtime renders wider; add to WIDE_RANGES: ` +
+      ranges.map(([a, b]) => (a === b ? hex(a) : `${hex(a)}..${hex(b)}`)).join(' ')
+  )
 })
