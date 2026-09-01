@@ -58,15 +58,23 @@ export async function dropSidecarEntry(dir, id) {
   }
 }
 
-export async function dropSidecarEntries(dir, ids) {
+// Batched two-way reconciliation in one read-modify-write: `remove` drops
+// ghost entries whose file is gone, `add` re-registers session files the
+// index never mentioned (a concurrent instance's lost update).
+export async function reconcileSidecar(dir, { add = [], remove = [] } = {}) {
   try {
     const index = (await readSidecar(dir)) || {}
     let changed = false
-    for (const id of ids) {
+    for (const id of remove) {
       if (index[id]) {
         delete index[id]
         changed = true
       }
+    }
+    for (const item of add) {
+      const { id, ...meta } = item
+      index[id] = meta
+      changed = true
     }
     if (changed) await writeSidecar(dir, index)
   } catch {

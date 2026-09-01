@@ -7,7 +7,7 @@ import { attachmentDirFor, externalizeAttachments, hydrateAttachments } from './
 import { CliError } from './errors.js'
 import { computeCostSummary } from './tracker.js'
 import { writeFileAtomic } from './fs-utils.js'
-import { readSidecar, writeSidecar, sidecarStale, updateSidecar, dropSidecarEntry, dropSidecarEntries, SIDECAR_FILE } from './session-sidecar.js'
+import { readSidecar, writeSidecar, sidecarStale, updateSidecar, dropSidecarEntry, reconcileSidecar, SIDECAR_FILE } from './session-sidecar.js'
 
 // Session ids are app-generated timestamps; anything else (path separators,
 // dots, other characters) is rejected so ids can never escape the sessions dir.
@@ -216,9 +216,11 @@ export async function listSessions(dir) {
     // never offers a resume that fails. Ghosts are collected and dropped in
     // one batched sidecar rewrite (a Set keeps the membership check O(1)).
     const present = new Set(jsonFiles)
+    const known = new Set()
     const valid = []
     const ghosts = []
     for (const [id, meta] of Object.entries(index)) {
+      known.add(`${id}.json`)
       if (present.has(`${id}.json`)) {
         const item = toSessionItem(id, meta)
         // A legacy sidecar entry has no cost summary; recompute from the
@@ -228,7 +230,20 @@ export async function listSessions(dir) {
         valid.push(item)
       } else ghosts.push(id)
     }
-    if (ghosts.length > 0) await dropSidecarEntries(dir, ghosts)
+    // Reconcile the other direction too. `sidecarStale` compares mtimes and
+    // `saveSession` writes the session file *before* the sidecar, so the
+    // sidecar is always the newest file: a session another instance wrote
+    // while this one held a stale copy of the index is never detected as
+    // stale, and would stay invisible to every listing path (resume, export,
+    // delete all funnel through here) while sitting on disk. Only the
+    // uncovered files are parsed, so the fast path stays cheap; id claims and
+    // <=1-message sessions parse to null and are correctly not re-added.
+    const uncovered = jsonFiles.filter((file) => !known.has(file))
+    const recovered = uncovered.length > 0 ? await parseSessionFiles(dir, uncovered) : []
+    valid.push(...recovered)
+    if (ghosts.length > 0 || recovered.length > 0) {
+      await reconcileSidecar(dir, { add: recovered, remove: ghosts })
+    }
     return valid.sort(byActivityDesc)
   }
 

@@ -267,6 +267,60 @@ test('listing drops sidecar entries whose files were deleted externally', async 
   assert.deepEqual(Object.keys(index), ['2026-01-02T00-00-00'])
 })
 
+// A second CLI instance saves its session while this one holds a stale copy
+// of the index, then writes that copy back. The session file is on disk but
+// the sidecar never mentions it, and because the sidecar is written after the
+// session file it is always the newest entry, so the mtime staleness check
+// never fires. Before the two-way reconciliation the session was invisible to
+// every listing path and could not be resumed, exported or deleted.
+test('listing recovers a session file the sidecar never mentioned', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  await saveSession(dir, '2026-01-02T00-00-00', sessionData({ model: 'other' }))
+
+  const indexPath = join(dir, '.index.json')
+  const stale = JSON.parse(await readFile(indexPath, 'utf-8'))
+  delete stale['2026-01-02T00-00-00']
+  await writeFile(indexPath, JSON.stringify(stale, null, 2) + '\n')
+
+  const sessions = await listSessions(dir)
+  assert.deepEqual(sessions.map((s) => s.id), ['2026-01-02T00-00-00', '2026-01-01T00-00-00'])
+  assert.equal(sessions[0].model, 'other')
+
+  // and the recovery is folded back in, so the next listing is cheap again
+  const healed = JSON.parse(await readFile(indexPath, 'utf-8'))
+  assert.deepEqual(Object.keys(healed).sort(), ['2026-01-01T00-00-00', '2026-01-02T00-00-00'])
+})
+
+test('recovery does not resurrect id claims or single-message session files', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  // An id claimed by generateSessionId but never filled in, and a file with
+  // no real turn: neither is a listable session, and neither is in the index.
+  await writeFile(join(dir, '2026-01-03T00-00-00.json'), '')
+  await writeFile(join(dir, '2026-01-04T00-00-00.json'), JSON.stringify({ messages: [{ role: 'system', content: 'x' }] }))
+
+  const sessions = await listSessions(dir)
+  assert.deepEqual(sessions.map((s) => s.id), ['2026-01-01T00-00-00'])
+  const index = JSON.parse(await readFile(join(dir, '.index.json'), 'utf-8'))
+  assert.deepEqual(Object.keys(index), ['2026-01-01T00-00-00'])
+})
+
+test('the sidecar fast path does not parse the bodies of covered sessions', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+
+  // Diverge the sidecar entry from the file body. Reading the body would
+  // yield 'test/model'; trusting the index yields 'sidecar-only'.
+  const indexPath = join(dir, '.index.json')
+  const index = JSON.parse(await readFile(indexPath, 'utf-8'))
+  index['2026-01-01T00-00-00'].model = 'sidecar-only'
+  await writeFile(indexPath, JSON.stringify(index, null, 2) + '\n')
+
+  const sessions = await listSessions(dir)
+  assert.equal(sessions[0].model, 'sidecar-only')
+})
+
 test('generateSessionId claims the id and saveSession removes empty claims', async (t) => {
   const dir = await tempDir(t)
   const id = await generateSessionId(dir)
