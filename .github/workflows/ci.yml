@@ -3,7 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    # Release tags are bare versions (3.47.6); the legacy v-prefixed series is
+    # kept so re-running an old tag still works.
+    tags: ['[0-9]*', 'v*']
   pull_request:
 
 jobs:

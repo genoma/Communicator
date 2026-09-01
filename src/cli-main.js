@@ -2,6 +2,7 @@ import { ExitPromptError } from '@inquirer/core'
 import { getApiKey, loadPreferences, loadSystemPrompt, savePreferences } from './config.js'
 import { getProvider } from './providers/index.js'
 import { ApiError, CliError, formatError } from './errors.js'
+import { sanitizeAnsi } from './ui/hyperlink.js'
 import { err, debug } from './ui/io.js'
 import { resolveSmoothSpeed, resolveTemperatureFlag, resolveTopPFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
@@ -52,7 +53,10 @@ export async function runCli(opts, promptArg) {
     }
     if (error instanceof CliError) {
       debug(error.stack)
-      err(error.message)
+      // CliError messages interpolate provider- and user-supplied fragments
+      // (model ids, file names, URLs). Every other error sink sanitizes;
+      // this one is the CLI's last write before exit.
+      err(sanitizeAnsi(error.message))
       process.exit(error.exitCode)
     }
     debug(error?.stack)

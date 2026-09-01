@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { formatMarkdown, exportSession, formatJsonl } from '../src/export.js'
@@ -257,6 +257,36 @@ test('exportSession writes the markdown file into a session folder and overwrite
   await exportSession(session({ model: 'other/model' }), dir, id)
   const second = await readFile(file, 'utf-8')
   assert.match(second, /\*\*Model:\*\* `other\/model`/)
+})
+
+test('exportSession writes the folder and files with private permissions', { skip: process.platform === 'win32' }, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const id = '2026-07-30T19-11-45'
+  const folder = join(dir, `session-${id}`)
+
+  await exportSession(session(), dir, id)
+  assert.equal((await stat(folder)).mode & 0o777, 0o700)
+  assert.equal((await stat(join(folder, `session-${id}.md`))).mode & 0o777, 0o600)
+
+  await exportSession(session(), dir, id, 'jsonl')
+  assert.equal((await stat(join(folder, `session-${id}.jsonl`))).mode & 0o777, 0o600)
+})
+
+test('exportSession re-tightens a folder an older export left world-readable', { skip: process.platform === 'win32' }, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const id = '2026-07-30T19-11-45'
+  const folder = join(dir, `session-${id}`)
+  const file = join(folder, `session-${id}.md`)
+
+  await exportSession(session(), dir, id)
+  await chmod(folder, 0o755)
+  await chmod(file, 0o644)
+
+  await exportSession(session(), dir, id)
+  assert.equal((await stat(folder)).mode & 0o777, 0o700)
+  assert.equal((await stat(file)).mode & 0o777, 0o600)
 })
 
 test('exportSession rejects when the target directory is not writable', async (t) => {

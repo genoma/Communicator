@@ -55,6 +55,41 @@ test('keeps the final line when the stream ends mid-emoji without a trailing new
   assert.equal(skippedChunks, 0)
 })
 
+// The incomplete trailing line is accumulated as unscanned fragments, so the
+// three shapes below all exercise the reassembly seam: a single event far
+// larger than one chunk, several complete lines arriving in one chunk on top
+// of a carried fragment, and a chunk boundary landing exactly on the newline.
+test('reassembles a single event spread over many newline-less chunks', async () => {
+  const blob = 'x'.repeat(200_000)
+  const line = `${event({ choices: [{ delta: { content: blob } }] })}`
+  const chunks = []
+  for (let i = 0; i < line.length; i += 4096) chunks.push(line.slice(i, i + 4096))
+
+  const { fullText, skippedChunks } = await parseSSEStream(streamReader(chunks), () => {})
+  assert.equal(fullText, blob)
+  assert.equal(skippedChunks, 0)
+})
+
+test('handles several complete events arriving in one chunk after a carried fragment', async () => {
+  const first = event({ choices: [{ delta: { content: 'one' } }] })
+  const rest = event({ choices: [{ delta: { content: 'two' } }] }) + event({ choices: [{ delta: { content: 'three' } }] })
+  const split = first.length - 5
+
+  const tokens = []
+  const { fullText } = await parseSSEStream(
+    streamReader([first.slice(0, split), first.slice(split) + rest]),
+    (t, type) => tokens.push([type, t])
+  )
+  assert.equal(fullText, 'onetwothree')
+  assert.deepEqual(tokens, [['content', 'one'], ['content', 'two'], ['content', 'three']])
+})
+
+test('handles a chunk boundary falling exactly on the newline', async () => {
+  const line = `data: ${JSON.stringify({ choices: [{ delta: { content: 'edge' } }] })}`
+  const { fullText } = await parseSSEStream(streamReader([line, '\n', '\n']), () => {})
+  assert.equal(fullText, 'edge')
+})
+
 test('accepts spec-valid data events without a space after the colon', async () => {
   const { fullText, skippedChunks } = await parseSSEStream(
     streamReader([

@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { formatCost, CITATION_GROUP } from './constants.js'
 import { computeTurnCost } from './tracker.js'
@@ -207,14 +207,31 @@ export function formatJsonl(sessionData, sessionId = null) {
 // decodable data-URL attachment under an attachments/ subfolder; remote
 // http(s) parts stay clickable links and a decode/write failure warns and
 // skips the part. Jsonl embeds the content parts directly (no materialization).
+// An export folder holds the whole conversation in cleartext (prompts,
+// answers, reasoning and attachment bytes) and the destination is often a
+// shared or synced directory, so it gets the same private modes as the
+// session store it came from. The mode is re-applied after the write because
+// it only takes effect when the entry is created: without the chmod, a
+// re-export into a folder left behind by an older version would keep that
+// folder's world-readable mode.
+async function mkdirPrivate(path) {
+  await mkdir(path, { recursive: true, mode: 0o700 })
+  await chmod(path, 0o700)
+}
+
+async function writePrivate(path, data) {
+  await writeFile(path, data, { mode: 0o600 })
+  await chmod(path, 0o600)
+}
+
 export async function exportSession(sessionData, outDir, sessionId, format = 'markdown') {
   const folder = join(outDir, `session-${sessionId}`)
   const attachmentsDir = join(folder, 'attachments')
-  await mkdir(folder, { recursive: true })
+  await mkdirPrivate(folder)
 
   if (format !== 'markdown') {
     const jsonl = formatJsonl(sessionData, sessionId)
-    await writeFile(join(folder, `session-${sessionId}.jsonl`), jsonl)
+    await writePrivate(join(folder, `session-${sessionId}.jsonl`), jsonl)
     return folder
   }
 
@@ -235,12 +252,12 @@ export async function exportSession(sessionData, outDir, sessionId, format = 'ma
         continue
       }
       if (!attachmentsReady) {
-        await mkdir(attachmentsDir, { recursive: true })
+        await mkdirPrivate(attachmentsDir)
         attachmentsReady = true
       }
       const name = uniqueName(sanitizeFilename(partLabel(part)), used)
       try {
-        await writeFile(join(attachmentsDir, name), Buffer.from(info.base64, 'base64'))
+        await writePrivate(join(attachmentsDir, name), Buffer.from(info.base64, 'base64'))
       } catch (err) {
         console.warn(`Warning: could not write attachment ${name}: ${err.message}`)
         continue
@@ -250,6 +267,6 @@ export async function exportSession(sessionData, outDir, sessionId, format = 'ma
   }
 
   const markdown = formatMarkdown(sessionData, (part) => links.get(part) || null)
-  await writeFile(join(folder, `session-${sessionId}.md`), markdown)
+  await writePrivate(join(folder, `session-${sessionId}.md`), markdown)
   return folder
 }

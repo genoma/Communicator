@@ -1,5 +1,5 @@
 import { parseSSEStream } from '../sse-parser.js'
-import { fetchSafeBytes, fetchWithRetry } from '../http.js'
+import { fetchSafeBytes, fetchWithRetry, mapWithConcurrency } from '../http.js'
 import { ApiError, makeHandleHttpError } from '../errors.js'
 import { DEFAULT_WEB_SEARCH_RESULTS, IMAGE_GEN_TIMEOUT_MS, MAX_IMAGE_ATTACHMENT_BYTES } from '../constants.js'
 import { getZdrIndex, getProviderPolicies, OPENROUTER_BASE, CACHE_TTL_MS } from './openrouter-meta.js'
@@ -229,19 +229,6 @@ export function resetImageModelCaches() {
   imageModelsCache.fetchedAt = 0
   imageModelsCache.models = null
   imageEndpointsCache.clear()
-}
-
-async function mapWithConcurrency(items, limit, fn) {
-  const results = new Array(items.length)
-  let next = 0
-  async function worker() {
-    while (next < items.length) {
-      const i = next++
-      results[i] = await fn(items[i], i)
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
-  return results
 }
 
 export async function generateImage({ apiKey, model, prompt, format, variants = 1, aspectRatio, resolution, quality, seed, width, height, provider, signal, timeoutMs = IMAGE_GEN_TIMEOUT_MS, requestFn }) {

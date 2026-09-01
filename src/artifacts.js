@@ -1,7 +1,9 @@
 import { partLabel, partUrl } from './attachments.js'
 import { downloadRemotePart } from './attachment-store.js'
+import { mapWithConcurrency } from './http.js'
+import { ARTIFACT_DOWNLOAD_CONCURRENCY, MAX_PRODUCED_PARTS } from './constants.js'
 import { dim } from './ui/style.js'
-import { hyperlink } from './ui/hyperlink.js'
+import { hyperlink, sanitizeSingleLine } from './ui/hyperlink.js'
 import { attachmentLine, printSources } from './ui/stream.js'
 
 // Models that advertise image output often emit the artifact as a markdown
@@ -40,17 +42,26 @@ export function extractMarkdownImageUrls(text) {
 export async function produceParts(streamedParts, { sessionId, imageOutputSupported, fullText, requestFn }) {
   const parts = [...streamedParts]
   if (parts.length === 0 && imageOutputSupported === true) {
+    // Model-authored text controls both how many URLs appear here and where
+    // they point, so repeats are collapsed before they become downloads.
+    const seen = new Set()
     for (const url of extractMarkdownImageUrls(fullText)) {
+      if (seen.has(url)) continue
+      seen.add(url)
       parts.push({ type: 'image_url', image_url: { url } })
     }
   }
-  const results = await Promise.all(parts.map(async (part) => {
+  // Past the cap the remaining artifacts keep their original URL in the
+  // message, exactly as a failed download does — nothing silently changes
+  // shape, the client just refuses to fan out without bound.
+  if (parts.length > MAX_PRODUCED_PARTS) parts.length = MAX_PRODUCED_PARTS
+  const results = await mapWithConcurrency(parts, ARTIFACT_DOWNLOAD_CONCURRENCY, async (part) => {
     // The label is captured before download so the original filename (e.g.
     // photo.png) survives replacement with a generic data-URL-derived one.
     const label = partLabel(part)
     const res = await downloadRemotePart(part, sessionId, { requestFn })
     return { ...res, label }
-  }))
+  })
   return { parts, results }
 }
 
@@ -83,8 +94,11 @@ export function printArtifacts(results, stdout = process.stdout) {
     const part = res.part
     if (!part) continue
     const word = part.type === 'image_url' ? 'image' : 'file'
-    const url = partUrl(part)
-    const link = url && /^https?:/.test(url) ? ` ${hyperlink(url, url) || url}` : null
+    // The URL is model-controlled and only reaches the terminal when
+    // hyperlink() refuses it (it requires a scheme with `//`), so the raw
+    // fallback is the one path that could carry escape bytes to stdout.
+    const url = sanitizeSingleLine(partUrl(part) ?? '')
+    const link = url && /^https?:\/\//i.test(url) ? ` ${hyperlink(url, url) || url}` : null
     const note = res.savedTo ? `saved to ${res.savedTo}` : res.error ? `download failed: ${res.error}` : null
     stdout.write(`${attachmentLine(word, res.label || partLabel(part), { link, note })}\n`)
   }

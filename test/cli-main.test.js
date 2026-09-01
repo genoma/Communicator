@@ -501,3 +501,11 @@ test('an unknown --provider exits 1 with a friendly message, not a raw stack', a
   assert.ok(err.some((l) => /Unknown provider: bogus/.test(l)))
   assert.ok(!err.some((l) => /at /.test(l)))
 })
+
+test('a CliError message is stripped of escape bytes before it reaches the terminal', async (t) => {
+  withTTY(t, true)
+  const { exitCode, err } = await runAndExit(t, { provider: 'bogus\u001b[2J\u001b[1;31mFAKE' }, undefined, 1)
+  assert.equal(exitCode, 1)
+  assert.ok(err.some((l) => /Unknown provider: bogusFAKE/.test(l)))
+  assert.ok(!err.some((l) => l.includes('\u001b')))
+})

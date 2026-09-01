@@ -1,6 +1,7 @@
 import { selectModel, selectModelWithImages, selectProvider, selectImageProvider, selectReasoningEffort, BACK_SENTINEL } from './prompts.js'
 import { resolveEffortDefault, isWebSearchSupported, endpointSupportsReasoning } from './reasoning.js'
 import { CliError, formatError } from './errors.js'
+import { sanitizeSingleLine } from './ui/hyperlink.js'
 
 async function zdrGate(provider, zdr) {
   if (zdr !== true || provider.meta.supportsZdr !== true) return false
@@ -146,7 +147,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
 
     const zdrEndpoints = zdrActive ? endpoints.filter((ep) => ep.zdr === true) : endpoints
     if (zdrActive && zdrEndpoints.length === 0) {
-      console.error(`No zero-retention providers found for model: ${modelId}`)
+      console.error(`No zero-retention providers found for model: ${sanitizeSingleLine(modelId)}`)
       continue
     }
 
@@ -174,7 +175,7 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
       }
     }
     if (effort === null && modelData?.reasoning?.mandatory === true) {
-      console.log(`Note: reasoning is mandatory for ${modelId}; it cannot be disabled.`)
+      console.log(`Note: reasoning is mandatory for ${sanitizeSingleLine(modelId)}; it cannot be disabled.`)
     }
 
     // Endpoint capabilities differ per provider: OpenRouter reports a raw
@@ -251,7 +252,7 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
   const effort = resolveEffortDefault({ reasoning, forcedEffort, prefs, modelId: prefModelId })
 
   if (effort === null && reasoning?.mandatory === true) {
-    console.log(`Note: reasoning is mandatory for ${modelId}; it cannot be disabled.`)
+    console.log(`Note: reasoning is mandatory for ${sanitizeSingleLine(modelId)}; it cannot be disabled.`)
   }
 
   const endpoints = await provider.fetchEndpoints(apiKey, prefModelId, models)

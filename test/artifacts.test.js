@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Readable } from 'node:stream'
 import { extractMarkdownImageUrls, produceParts, buildPartsContent, printArtifacts, resolveArtifacts } from '../src/artifacts.js'
+import { ARTIFACT_DOWNLOAD_CONCURRENCY, MAX_PRODUCED_PARTS } from '../src/constants.js'
 
 function capture() {
   const chunks = []
@@ -114,6 +115,71 @@ test('produceParts keeps failed downloads inline with the error', async () => {
   const { parts, results } = await produceParts([part], { sessionId: null, imageOutputSupported: undefined, fullText: '', requestFn })
   assert.deepEqual(parts, [part])
   assert.match(results[0].error, /HTTP 500/)
+})
+
+test('produceParts dedupes repeated markdown image URLs', async () => {
+  let calls = 0
+  const requestFn = () => {
+    calls++
+    return {
+      on(event, listener) {
+        if (event === 'response') queueMicrotask(() => listener(pngResponse()))
+        return this
+      },
+      end() {},
+    }
+  }
+  const text = '![](https://example.com/a.png) ![](https://example.com/a.png) ![](https://example.com/b.png)'
+  const { parts } = await produceParts([], { sessionId: null, imageOutputSupported: true, fullText: text, requestFn })
+  assert.equal(parts.length, 2)
+  assert.equal(calls, 2)
+})
+
+test('produceParts caps the artifact list and bounds download concurrency', async () => {
+  let inFlight = 0
+  let peak = 0
+  const requestFn = () => ({
+    on(event, listener) {
+      if (event === 'response') {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        setTimeout(() => {
+          inFlight--
+          listener(pngResponse())
+        }, 5)
+      }
+      return this
+    },
+    end() {},
+  })
+  const text = Array.from({ length: 500 }, (_, i) => `![](https://example.com/${i}.png)`).join(' ')
+  const { parts, results } = await produceParts([], { sessionId: null, imageOutputSupported: true, fullText: text, requestFn })
+  assert.equal(parts.length, MAX_PRODUCED_PARTS)
+  assert.equal(results.length, MAX_PRODUCED_PARTS)
+  assert.ok(peak <= ARTIFACT_DOWNLOAD_CONCURRENCY, `peak in-flight ${peak} exceeded ${ARTIFACT_DOWNLOAD_CONCURRENCY}`)
+})
+
+test('printArtifacts strips escape bytes from a URL hyperlink() refuses', () => {
+  const { stdout, text } = capture()
+  printArtifacts([{
+    part: { type: 'image_url', image_url: { url: 'https:\u001b[2J\u001b[1;31mFAKE' } },
+    error: 'unsupported URL',
+    label: 'x.png',
+  }], stdout)
+  assert.equal(text().includes('\u001b[2J'), false)
+  assert.equal(text().includes('\u001b[1;31m'), false)
+  assert.match(text(), /download failed: unsupported URL/)
+})
+
+test('printArtifacts sanitizes escape bytes carried by a download error note', () => {
+  const { stdout, text } = capture()
+  printArtifacts([{
+    part: { type: 'image_url', image_url: { url: 'https://example.com/a.png' } },
+    error: 'getaddrinfo ENOTFOUND \u001b[2Jspoofed',
+    label: 'a.png',
+  }], stdout)
+  assert.equal(text().includes('\u001b[2J'), false)
+  assert.match(text(), /download failed: getaddrinfo ENOTFOUND spoofed/)
 })
 
 test('printArtifacts renders saved, failed and inline lines', () => {

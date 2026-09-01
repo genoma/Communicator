@@ -11,10 +11,15 @@ import { formatCompactCount, formatElapsedSeconds } from './format.js'
 // /attach confirmations, artifact reports and image outcomes: dim italic
 // kind word, label, optional dim meta, then the undimmed link (OSC 8 escapes
 // must not be styled) and a dim note.
+//
+// `label`, `meta` and `note` all carry provider- or filesystem-derived text
+// (a download error embeds a remote hostname), so each is sanitized here;
+// `link` is exempt because a hyperlink legitimately contains OSC 8 escapes
+// and is sanitized by its caller before it is built.
 export function attachmentLine(word, label, { meta = null, note = null, link = null } = {}) {
   const head = `${dim(`${italic(word)}: ${sanitizeAnsi(label)}`)}`
-  const metaText = meta != null ? ` ${dim(`(${meta})`)}` : ''
-  const noteText = note ? `  ${dim(note)}` : ''
+  const metaText = meta != null ? ` ${dim(`(${sanitizeSingleLine(meta)})`)}` : ''
+  const noteText = note ? `  ${dim(sanitizeSingleLine(note))}` : ''
   return `${head}${link ?? ''}${metaText}${noteText}`
 }
 

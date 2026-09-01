@@ -78,7 +78,17 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
   const fullReasoningParts = []
   const fullParts = []
   const seenParts = new Set()
-  let buffer = ''
+  // Fragments of the trailing line that no newline has terminated yet. Kept
+  // as an array instead of a growing string because the parser must never
+  // rescan bytes it has already searched: one SSE event larger than the
+  // transport chunk size (the normal case for an inline data:image/... part)
+  // carries no newline, and both `buffer.split('\n')` and `indexOf` over a
+  // re-concatenated buffer re-walk the whole accumulated line on every read.
+  // That is quadratic, and this loop is the hot path that runs while the
+  // terminal is in raw mode — blocking it also freezes Esc-stop, Ctrl+C and
+  // the smooth-streaming pump.
+  const pending = []
+  const pendingBuffer = () => pending.join('')
   let inThinking = false
   // The thinking clock is anchored at request start (the moment the provider
   // fetch was dispatched, passed by the caller) so a fast/one-burst response
@@ -129,7 +139,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     const onTimeout = () => {
       timer = null
       const err = new ApiError(`Stream stalled after ${Math.round(idleTimeoutMs / 1000)}s`, { retryable: true })
-      err.pendingBuffer = buffer
+      err.pendingBuffer = pendingBuffer()
       reject(err)
     }
     reader.read().then(
@@ -292,7 +302,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
       try {
         chunk = await readChunk()
       } catch (err) {
-        if (!err.pendingBuffer) err.pendingBuffer = buffer
+        if (!err.pendingBuffer) err.pendingBuffer = pendingBuffer()
         // Mirror the clean-path reasoning-duration semantics (closeThinking)
         // for a stream interrupted while reading (Esc stop / Ctrl+C / idle
         // stall): stamp the elapsed reasoning time so the caller's replay
@@ -308,7 +318,8 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
       }
       const { done, value } = chunk
       if (done) {
-        buffer += decoder.decode()
+        const tail = decoder.decode()
+        if (tail) pending.push(tail)
         break
       }
 
@@ -320,16 +331,27 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
         throw new ApiError(`Stream exceeded ${Math.round(maxBytes / 1024 / 1024)} MB`, { retryable: false })
       }
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        handleLine(line)
+      // Only the freshly decoded text is searched for newlines; everything
+      // already in `pending` is known to hold none, so each byte is scanned
+      // once over the whole stream.
+      const text = decoder.decode(value, { stream: true })
+      let from = 0
+      let newline = text.indexOf('\n')
+      while (newline !== -1) {
+        const piece = text.slice(from, newline)
+        if (pending.length === 0) handleLine(piece)
+        else {
+          pending.push(piece)
+          handleLine(pending.join(''))
+          pending.length = 0
+        }
+        from = newline + 1
+        newline = text.indexOf('\n', from)
       }
+      if (from < text.length) pending.push(text.slice(from))
     }
 
-    for (const line of buffer.split('\n')) {
+    for (const line of pendingBuffer().split('\n')) {
       handleLine(line)
     }
     if (pendingDataLines.length > 0) {

@@ -259,6 +259,22 @@ export async function fetchSafeBytes(url, { maxBytes, timeoutMs = 30_000, reques
   }
 }
 
+// Runs `fn` over `items` with at most `limit` in flight. Every caller here
+// maps to an outbound request, so the bound is what keeps a large input list
+// from opening one socket (and one response buffer) per item at once.
+export async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length)
+  let next = 0
+  async function worker() {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await fn(items[i], i)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
+  return results
+}
+
 export function sleep(ms, signal) {
   return new Promise((resolve, reject) => {
     const onAbort = () => {

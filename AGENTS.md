@@ -20,7 +20,7 @@
 - Run `npm test` (uses `node --test --experimental-test-module-mocks`) after any change.
 - Run `npm run lint` (`eslint .`) and keep it passing.
 - Run `npx --yes knip` (via `npx`, deliberately not a dependency) after any change and keep it clean — it flags unused files, dependencies, and unnecessary exports, which accumulate silently one task at a time.
-- Baseline: full test suite (478 tests) and lint pass on tag `3.1.0`; keep both green.
+- Baseline: full test suite (1610 tests), lint and `npx knip` pass on tag `3.48.0`; keep all three green.
 
 ## Git workflow
 

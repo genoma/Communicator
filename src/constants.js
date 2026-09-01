@@ -37,6 +37,15 @@ export const MAX_STREAM_BYTES = 128 * 1024 * 1024
 
 export const MAX_INLINE_TEXT_ATTACHMENT_BYTES = 256 * 1024
 
+// A single answer can name an unbounded number of artifacts (structured parts
+// or markdown images in model-authored text), and every one becomes an
+// outbound download holding up to MAX_FILE_ATTACHMENT_BYTES in memory. The
+// cap and the concurrency bound keep one response from exhausting sockets and
+// heap, and from turning the client into a request amplifier.
+export const MAX_PRODUCED_PARTS = 16
+
+export const ARTIFACT_DOWNLOAD_CONCURRENCY = 4
+
 export const SMOOTH_CHARS_PER_TICK = 40
 
 export const SMOOTH_TICK_MS = 20
