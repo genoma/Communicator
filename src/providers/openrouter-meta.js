@@ -1,4 +1,4 @@
-import { fetchWithRetry } from '../http.js'
+import { fetchWithRetry, readJsonBounded } from '../http.js'
 import { ApiError } from '../errors.js'
 
 export const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
@@ -11,7 +11,7 @@ const noRetry = () => new ApiError('metadata fetch failed', { retryable: false }
 
 async function loadZdrIndex() {
   const res = await fetchWithRetry(`${OPENROUTER_BASE}/endpoints/zdr`, {}, { attempts: 1, errorResponse: noRetry })
-  const { data } = await res.json()
+  const { data } = await readJsonBounded(res)
   zdrCache.tags = new Set((data || []).map((e) => e.tag).filter(Boolean))
   zdrCache.modelIds = new Set((data || []).map((e) => e.model_id).filter(Boolean))
   zdrCache.fetchedAt = Date.now()
@@ -21,7 +21,7 @@ async function loadZdrIndex() {
 
 async function loadPolicies() {
   const res = await fetchWithRetry(`${OPENROUTER_BASE}/providers`, {}, { attempts: 1, errorResponse: noRetry })
-  const { data } = await res.json()
+  const { data } = await readJsonBounded(res)
   const policies = new Map()
   for (const p of data || []) {
     if (p?.name && p.privacy_policy_url) {

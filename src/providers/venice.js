@@ -1,5 +1,5 @@
 import { parseSSEStream } from '../sse-parser.js'
-import { fetchWithRetry } from '../http.js'
+import { fetchWithRetry, readJsonBounded } from '../http.js'
 import { ApiError, makeHandleHttpError } from '../errors.js'
 import { formatPricePerM, formatImagePrice, imageUnitPrice } from '../ui/format.js'
 import { IMAGE_GEN_TIMEOUT_MS, VENICE_BASE } from '../constants.js'
@@ -91,7 +91,7 @@ export async function fetchModelsByType(apiKey, type) {
 
   const res = await fetchWithRetry(`${VENICE_BASE}/models?type=${type}`, { headers }, { errorResponse: handleHttpError })
 
-  return res.json()
+  return readJsonBounded(res)
 }
 
 // Scrapes a public web page and returns its content as markdown. Venice-only
@@ -107,7 +107,7 @@ export async function scrapePage({ apiKey, url, signal }) {
     body: JSON.stringify({ url }),
   }, { errorResponse: handleHttpError, signal })
 
-  return res.json()
+  return readJsonBounded(res)
 }
 
 export async function fetchModels(apiKey) {
@@ -211,7 +211,7 @@ export async function generateImage({ apiKey, model, prompt, format = 'webp', va
     },
     body: JSON.stringify(body),
   }, { errorResponse: handleHttpError, signal, timeoutMs })
-  const parsed = await res.json()
+  const parsed = await readJsonBounded(res)
   const rawImages = Array.isArray(parsed.images) ? parsed.images : []
   if (rawImages.length === 0) {
     throw new ApiError('Venice returned no images.', { provider: 'venice', retryable: false })
