@@ -3,11 +3,12 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
-// The app imports ExitPromptError / Separator from '@inquirer/core' and relies on
-// `instanceof ExitPromptError` in several handlers. If @inquirer/core is ever
-// duplicated (a nested copy under a prompt package), the nested class is a
-// different identity and `instanceof` fails in production, turning a user's
-// Ctrl+C at a picker into an uncaught exception. This pins the dedupe: exactly
+// The app imports Separator from '@inquirer/core' and relies on the name-based
+// isExitPromptError check (`error?.name === 'ExitPromptError'`) in every
+// handler. If @inquirer/core is ever duplicated (a nested copy under a prompt
+// package), `instanceof` would fail across module instances, but the name
+// check matches the thrower's class regardless — and Separator identity
+// requires the single copy. This pins the dedupe: exactly
 // one top-level @inquirer/core, no nested copies, on v12 (which exports both).
 test('@inquirer/core resolves to a single deduped version with no nested copy', async () => {
   const lockPath = fileURLToPath(new URL('../package-lock.json', import.meta.url))

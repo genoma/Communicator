@@ -257,8 +257,11 @@ async function main(opts, promptArg) {
   // chat-start pulls in the streaming renderer, markdown-it and the
   // inquirer pickers; loaded only for interactive chat. The model listing is
   // started BEFORE the import so its network round-trip overlaps the module
-  // load instead of serializing behind it.
-  const modelsPromise = seedModelFetch({ provider: getProvider(providerType), apiKey, zdr: opts.zdr === true })
+  // load instead of serializing behind it. A resume loads its model from the
+  // session file, so the seeding (and its response) would be wasted there.
+  const modelsPromise = opts.resume === undefined
+    ? seedModelFetch({ provider: getProvider(providerType), apiKey, zdr: opts.zdr === true })
+    : null
   const { chatStart } = await import('./commands/chat-start.js')
   await chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgCharName, rpgUserName, rpgHistory, rpgPostHistoryInstruction, providerType, scraped, modelsPromise })
 }

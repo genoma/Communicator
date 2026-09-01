@@ -36,18 +36,28 @@ async function loadPolicies() {
   return policies
 }
 
+let zdrInFlight = null
 export async function getZdrIndex() {
   if (zdrCache.tags && Date.now() - zdrCache.fetchedAt < CACHE_TTL_MS) return zdrCache
-  try {
-    return await loadZdrIndex()
-  } catch {
-    // non-fatal: degrade to untagged
-    zdrCache.tags = new Set()
-    zdrCache.modelIds = new Set()
-    zdrCache.fetchedAt = Date.now()
-    zdrCache.degraded = true
-    return zdrCache
-  }
+  // Two callers can race for the index (the seeded model fetch and the
+  // selection's zdr gate): share one in-flight request instead of issuing
+  // two.
+  if (zdrInFlight) return zdrInFlight
+  zdrInFlight = (async () => {
+    try {
+      return await loadZdrIndex()
+    } catch {
+      // non-fatal: degrade to untagged
+      zdrCache.tags = new Set()
+      zdrCache.modelIds = new Set()
+      zdrCache.fetchedAt = Date.now()
+      zdrCache.degraded = true
+      return zdrCache
+    }
+  })().finally(() => {
+    zdrInFlight = null
+  })
+  return zdrInFlight
 }
 
 export async function getProviderPolicies() {

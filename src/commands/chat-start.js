@@ -236,8 +236,8 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
   await persistSession({ finalState, prefs, config: opts.config })
 }
 
-export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, providerType, scraped = null }) {
-  const ctx = await createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage, rpgCharName, rpgUserName, rpgHistory, rpgPostHistoryInstruction, scraped })
+export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, providerType, scraped = null, modelsPromise = null }) {
+  const ctx = await createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage, rpgCharName, rpgUserName, rpgHistory, rpgPostHistoryInstruction, scraped, modelsPromise })
   if (ctx.imageModelId) {
     const imageResult = await startImageSession({
       provider: ctx.provider,

@@ -37,10 +37,11 @@ function imageSessionCommands(providerName, model) {
   const showVariants = c?.maxN == null || c?.maxN > 1
   const cmds = ['/help', '/status', '/model', '/quit']
   if (providerName === 'venice') cmds.push('/watermark')
+  // The sizing group order matches the help table and docs/images.md.
   if (showAspect) cmds.push('/aspect')
+  if (Array.isArray(c?.formats)) cmds.push('/format')
   if (Array.isArray(c?.resolutions)) cmds.push('/resolution')
   if (Array.isArray(c?.qualities)) cmds.push('/quality')
-  if (Array.isArray(c?.formats)) cmds.push('/format')
   if (showVariants) cmds.push('/variants')
   cmds.push('/seed')
   return cmds

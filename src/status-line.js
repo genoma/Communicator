@@ -1,6 +1,5 @@
-import { getEffortLabel } from './ui/format.js'
 import { formatCost, formatSmoothSpeed, formatSamplingValue } from './constants.js'
-import { formatModelPrice, sessionLabel } from './ui/format.js'
+import { formatModelPrice, getEffortLabel, sessionLabel } from './ui/format.js'
 import { dim } from './ui/style.js'
 import { sanitizeAnsi } from './ui/hyperlink.js'
 import { getImageDefaults } from './config.js'

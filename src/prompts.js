@@ -3,6 +3,9 @@ import { Separator } from '@inquirer/core'
 import { formatModelPrice, formatImagePrice } from './ui/format.js'
 import { hyperlink, sanitizeAnsi, sanitizeSingleLine } from './ui/hyperlink.js'
 import { bold, dim } from './ui/style.js'
+import { getEffortLabel } from './ui/format.js'
+
+export { getEffortLabel } from './ui/format.js'
 
 export const BACK_SENTINEL = Symbol('back')
 
@@ -203,10 +206,6 @@ function providerSearchPrompt(message, providerChoices, backChoice, { withBack, 
 }
 
 const FULL_EFFORT_LIST = ['max', 'xhigh', 'high', 'medium', 'low', 'minimal', 'none']
-
-import { getEffortLabel } from './ui/format.js'
-
-export { getEffortLabel } from './ui/format.js'
 
 export async function selectReasoningEffort(reasoning, lastEffort, opts = {}) {
   if (!reasoning || reasoning.supportsEffort === false) return undefined

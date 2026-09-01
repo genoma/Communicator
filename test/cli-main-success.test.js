@@ -576,9 +576,12 @@ test('--no-safe-mode alone opens the chat and persists the pref', async (t) => {
   withTTY(t, true)
   withVeniceApiKey(t)
   const configFile = await tempConfig(t)
-  t.mock.method(globalThis, 'fetch', async () =>
-    new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
-  )
+  const modelCalls = []
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    const u = String(url)
+    if (u.includes('/models')) modelCalls.push(u)
+    return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  })
 
   const { out } = await runAndExit(t, { provider: 'venice', config: configFile, safeMode: false }, undefined, 0)
 
@@ -586,6 +589,9 @@ test('--no-safe-mode alone opens the chat and persists the pref', async (t) => {
   assert.ok(out.join('\n').includes('Aborted.'))
   const saved = JSON.parse(await readFile(configFile, 'utf-8'))
   assert.equal(saved.safeMode, false)
+  // The seeded listing must be the one and only /models request: the
+  // selection path awaits it instead of fetching a second copy.
+  assert.equal(modelCalls.length, 1, `expected exactly one /models request, saw ${modelCalls.length}`)
 })
 
 test('Ctrl+C at the picker in one-shot (prompt arg) aborts cleanly with Aborted.', async (t) => {
