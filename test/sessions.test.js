@@ -945,3 +945,42 @@ test('saveSession detects a write that happened after loadSession', async (t) =>
   assert.equal(entries.filter((f) => f.includes('.conflict-')).length, 1)
   assert.equal(JSON.parse(await readFile(filePath, 'utf-8')).model, 'loader')
 })
+
+test('listSessions refreshes a covered sidecar entry whose file is newer (stale entry)', async (t) => {
+  const dir = await tempDir(t)
+  const id = '2026-03-01T00-00-00'
+  await saveSession(dir, id, sessionData({ model: 'old/entry' }))
+
+  // The save wrote the sidecar; simulate a later save that wrote the file
+  // but lost the sidecar update (crash after writeFileAtomic, or a
+  // concurrent instance): the file is newer than the recorded mtimeMs.
+  const filePath = join(dir, `${id}.json`)
+  await writeFile(filePath, JSON.stringify(sessionData({ model: 'fresh/file' }), null, 2) + '\n')
+  const future = new Date(Date.now() + 5000)
+  await utimes(filePath, future, future)
+
+  const sessions = await listSessions(dir)
+  assert.equal(sessions.length, 1)
+  assert.equal(sessions[0].model, 'fresh/file')
+  const index = JSON.parse(await readFile(join(dir, '.index.json'), 'utf-8'))
+  assert.equal(index[id].model, 'fresh/file')
+  assert.equal(index[id].mtimeMs, future.getTime())
+})
+
+test('listSessions keeps a legacy entry without mtimeMs when the sidecar is newest', async (t) => {
+  const dir = await tempDir(t)
+  const id = '2026-03-02T00-00-00'
+  await saveSession(dir, id, sessionData({ model: 'legacy' }))
+  // Strip mtimeMs (a sidecar written before the field existed), then make
+  // the sidecar visibly newer than the file.
+  const index = JSON.parse(await readFile(join(dir, '.index.json'), 'utf-8'))
+  delete index[id].mtimeMs
+  const sidecarPath = join(dir, '.index.json')
+  await writeFile(sidecarPath, JSON.stringify(index, null, 2) + '\n')
+  const future = new Date(Date.now() + 5000)
+  await utimes(sidecarPath, future, future)
+
+  const sessions = await listSessions(dir)
+  assert.equal(sessions.length, 1)
+  assert.equal(sessions[0].model, 'legacy')
+})

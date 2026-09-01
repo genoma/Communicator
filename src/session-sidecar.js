@@ -25,13 +25,25 @@ export async function writeSidecar(dir, index) {
   }
 }
 
-export async function sidecarStale(dir, jsonFiles) {
+// Stats every session file once; a file that vanished between the readdir
+// and the stat maps to null (treat as stale by callers).
+export async function sessionFileMtimes(dir, jsonFiles) {
+  const entries = new Map()
+  await Promise.all(jsonFiles.map(async (file) => {
+    try {
+      entries.set(file, (await stat(join(dir, file))).mtimeMs)
+    } catch {
+      entries.set(file, null)
+    }
+  }))
+  return entries
+}
+
+export async function sidecarMtimeMs(dir) {
   try {
-    const sidecarStat = await stat(join(dir, SIDECAR_FILE))
-    const fileStats = await Promise.all(jsonFiles.map((file) => stat(join(dir, file))))
-    return fileStats.some((s) => s.mtimeMs > sidecarStat.mtimeMs)
+    return (await stat(join(dir, SIDECAR_FILE))).mtimeMs
   } catch {
-    return true
+    return null
   }
 }
 
