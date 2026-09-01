@@ -501,3 +501,33 @@ test('fetchWithRetry caps a stalled error body and keeps the status retry path',
   ])
   assert.equal(calls, 2)
 })
+
+test('readJsonBounded strips a UTF-8 BOM like Response.json does', async () => {
+  const res = new Response('\uFEFF{"data":1}', { status: 200 })
+  assert.deepEqual(await readJsonBounded(res), { data: 1 })
+})
+
+test('fetchWithRetry keeps an oversized-but-capped error body for the status message', async (t) => {
+  let calls = 0
+  const errorBody = 'x'.repeat(70_000)
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++
+    return calls === 1 ? new Response(errorBody, { status: 500 }) : new Response('still down', { status: 500 })
+  })
+
+  const seen = []
+  await assert.rejects(
+    fetchWithRetry('https://example.test', {}, {
+      errorResponse: (status, body) => {
+        seen.push({ status, body })
+        return new ApiError(`status ${status}`, { status, retryable: status === 429 || status >= 500 })
+      },
+      attempts: 2,
+      retryDelays: [0],
+    }),
+    (err) => err instanceof ApiError && err.status === 500
+  )
+  assert.equal(seen.length, 2)
+  assert.equal(seen[0].body.length, 70_000)
+  assert.equal(calls, 2)
+})

@@ -28,6 +28,11 @@ export const MAX_SCRAPE_CHARS = 200_000
 
 export const MAX_IMAGE_ATTACHMENT_BYTES = 20 * 1024 * 1024
 
+// Ceiling on one image-generation JSON response: the contract allows up to
+// four variants of up to MAX_IMAGE_ATTACHMENT_BYTES each, and provider
+// responses embed them as base64 (4/3 inflation), so 4 * 20 MiB * 4/3.
+export const IMAGE_GEN_RESPONSE_LIMIT_BYTES = 128 * 1024 * 1024
+
 export const MAX_FILE_ATTACHMENT_BYTES = 25 * 1024 * 1024
 
 // Hard cap on one streamed model response: text plus embedded data-URL parts

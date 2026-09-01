@@ -11,7 +11,12 @@ const DEFAULT_TIMEOUT_MS = 30_000
 // fetchWithTimeout's timer is already cleared: without a bound a
 // slow-dribbling or unbounded body would hang the caller forever.
 const DEFAULT_BODY_LIMIT_BYTES = 8 * 1024 * 1024
-const ERROR_BODY_LIMIT_BYTES = 64 * 1024
+// Error responses are diagnostic only: the cap is generous enough to keep
+// the payload (makeHandleHttpError reads the first 200 chars) but bounds a
+// hostile or runaway error body; the idle bound never exceeds the request
+// timeout but is itself capped at the default so a 10-minute image
+// generation cannot idle for 10 minutes on a stalled error page.
+const ERROR_BODY_LIMIT_BYTES = 512 * 1024
 const RETRY_DELAYS = [500, 1000]
 
 function isPrivateAddress(address) {
@@ -273,7 +278,7 @@ export async function fetchSafeBytes(url, { maxBytes, timeoutMs = 30_000, reques
 export async function readJsonBounded(res, { limit = DEFAULT_BODY_LIMIT_BYTES, timeoutMs = 30_000 } = {}) {
   const bytes = await readBodyWithDeadline(res, { limit, timeoutMs })
   if (bytes === null) throw new ApiError(`Response body exceeded ${limit} bytes`, { retryable: false })
-  return JSON.parse(bytes.toString('utf8'))
+  return JSON.parse(new TextDecoder().decode(bytes))
 }
 
 // Runs `fn` over `items` with at most `limit` in flight. Every caller here
@@ -336,7 +341,7 @@ export async function fetchWithRetry(url, opts = {}, { timeoutMs = DEFAULT_TIMEO
         // decision.
         let body = ''
         try {
-          const bodyBytes = await readBodyWithDeadline(res, { limit: ERROR_BODY_LIMIT_BYTES, timeoutMs })
+          const bodyBytes = await readBodyWithDeadline(res, { limit: ERROR_BODY_LIMIT_BYTES, timeoutMs: Math.min(timeoutMs, DEFAULT_TIMEOUT_MS) })
           body = bodyBytes === null ? '' : bodyBytes.toString('utf8')
         } catch {
           body = ''

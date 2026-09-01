@@ -1,7 +1,7 @@
 import { parseSSEStream } from '../sse-parser.js'
 import { fetchSafeBytes, fetchWithRetry, mapWithConcurrency, readJsonBounded } from '../http.js'
 import { ApiError, makeHandleHttpError } from '../errors.js'
-import { DEFAULT_WEB_SEARCH_RESULTS, IMAGE_GEN_TIMEOUT_MS, MAX_IMAGE_ATTACHMENT_BYTES } from '../constants.js'
+import { DEFAULT_WEB_SEARCH_RESULTS, IMAGE_GEN_RESPONSE_LIMIT_BYTES, IMAGE_GEN_TIMEOUT_MS, MAX_IMAGE_ATTACHMENT_BYTES } from '../constants.js'
 import { getZdrIndex, getProviderPolicies, OPENROUTER_BASE, CACHE_TTL_MS } from './openrouter-meta.js'
 import { mimeForExt, extForMime } from '../attachments.js'
 
@@ -253,7 +253,7 @@ export async function generateImage({ apiKey, model, prompt, format, variants = 
     },
     body: JSON.stringify(body),
   }, { errorResponse: handleHttpError, signal, timeoutMs })
-  const parsed = await readJsonBounded(res)
+  const parsed = await readJsonBounded(res, { limit: IMAGE_GEN_RESPONSE_LIMIT_BYTES, timeoutMs })
   const rawImages = Array.isArray(parsed.data) ? parsed.data : []
   if (rawImages.length === 0) {
     throw new ApiError('OpenRouter returned no images.', { provider: 'openrouter', retryable: false })

@@ -2,7 +2,7 @@ import { parseSSEStream } from '../sse-parser.js'
 import { fetchWithRetry, readJsonBounded } from '../http.js'
 import { ApiError, makeHandleHttpError } from '../errors.js'
 import { formatPricePerM, formatImagePrice, imageUnitPrice } from '../ui/format.js'
-import { IMAGE_GEN_TIMEOUT_MS, VENICE_BASE } from '../constants.js'
+import { IMAGE_GEN_RESPONSE_LIMIT_BYTES, IMAGE_GEN_TIMEOUT_MS, VENICE_BASE } from '../constants.js'
 import { mimeForExt, extForMime } from '../attachments.js'
 import { encryptMessages, decryptToken } from '../e2ee.js'
 
@@ -211,7 +211,7 @@ export async function generateImage({ apiKey, model, prompt, format = 'webp', va
     },
     body: JSON.stringify(body),
   }, { errorResponse: handleHttpError, signal, timeoutMs })
-  const parsed = await readJsonBounded(res)
+  const parsed = await readJsonBounded(res, { limit: IMAGE_GEN_RESPONSE_LIMIT_BYTES, timeoutMs })
   const rawImages = Array.isArray(parsed.images) ? parsed.images : []
   if (rawImages.length === 0) {
     throw new ApiError('Venice returned no images.', { provider: 'venice', retryable: false })
