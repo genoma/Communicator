@@ -369,3 +369,17 @@ test('generateImage surfaces provider-rejection 400s with the accepted-values me
     (err) => err instanceof ApiError && err.status === 400 && err.message.includes('Accepted: 1:1, 3:2, 2:3, auto')
   )
 })
+
+test('generateImage does not re-POST on a 5xx (a gateway 504 may already be billed)', async (t) => {
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++
+    return jsonResponse({ error: { message: 'Bad Gateway' } }, 504)
+  })
+
+  await assert.rejects(
+    generateImage({ apiKey: 'key', model: 'openai/gpt-image-1-mini', prompt: 'p' }),
+    (err) => err instanceof ApiError && err.status === 504 && err.retryable === false
+  )
+  assert.equal(calls, 1)
+})

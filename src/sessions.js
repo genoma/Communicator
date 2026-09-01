@@ -325,10 +325,28 @@ export async function removeEmptySessionClaim(dir, id) {
   }
 }
 
+// Serializes saves per session id within this process: two in-flight saves
+// of the same id (the turn-runner's interrupt save racing the exit save)
+// would otherwise see each other's file as a foreign write and produce a
+// spurious conflict backup of our own data.
+const saveChains = new Map()
+
 export async function saveSession(dir, id, data) {
   if (!validSessionId(id)) {
     throw new CliError(`Error: Invalid session id "${id}".`)
   }
+  const key = baselineKey(dir, id)
+  const previous = saveChains.get(key) ?? Promise.resolve()
+  const result = previous.then(() => saveSessionSerialized(dir, id, data))
+  saveChains.set(key, result)
+  try {
+    return await result
+  } finally {
+    if (saveChains.get(key) === result) saveChains.delete(key)
+  }
+}
+
+async function saveSessionSerialized(dir, id, data) {
   const filePath = join(dir, `${id}.json`)
   if (!data.messages || data.messages.length <= 1) {
     // The id may have been claimed by generateSessionId (empty wx file) but
@@ -346,8 +364,15 @@ export async function saveSession(dir, id, data) {
     const onDisk = await stat(filePath).catch(() => null)
     if (onDisk && onDisk.size > 0 && onDisk.mtimeMs > (sessionBaselines.get(baselineKey(dir, id)) ?? 0)) {
       const backup = `${filePath}.conflict-${new Date().toISOString().replace(/[:.]/g, '-')}`
-      await rename(filePath, backup)
-      console.error(`Warning: session ${id} changed on disk (another instance may be using it); the previous version was preserved at ${basename(backup)}`)
+      try {
+        await rename(filePath, backup)
+        console.error(`Warning: session ${id} changed on disk (another instance may be using it); the previous version was preserved at ${basename(backup)}`)
+      } catch {
+        // The file could not be moved aside (e.g. a sharing violation on
+        // Windows): the write below still proceeds so the current turn is
+        // not lost, at the cost of overwriting the other version.
+        console.error('Warning: session ' + id + ' changed on disk (another instance may be using it) but could not be preserved; the version on disk will be replaced.')
+      }
     }
     await writeFileAtomic(filePath, JSON.stringify(payload, null, 2) + '\n', { mode: 0o600 })
     const written = await stat(filePath).catch(() => null)
@@ -436,12 +461,31 @@ export async function deleteSession(dir, id) {
     throw new CliError(`Error: Invalid session id "${id}".`)
   }
   await rm(join(dir, `${id}.json`), { force: true })
+  // A conflict backup (see saveSession) is the same transcript and must go
+  // with the session: best-effort, the session id part is validated above.
+  await removeConflictBackups(dir, id)
   await rm(attachmentDirFor(dir, id), { recursive: true, force: true })
   const index = await readSidecar(dir)
   if (index && index[id]) {
     delete index[id]
     await writeSidecar(dir, index)
   }
+}
+
+// Removes every <id>.json.conflict-* sibling best-effort (deleteSession and
+// deleteSessions both funnel here).
+async function removeConflictBackups(dir, id) {
+  let entries
+  try {
+    entries = await readdir(dir)
+  } catch {
+    return
+  }
+  const prefix = `${id}.json.conflict-`
+  await Promise.all(entries
+    .filter((file) => file.startsWith(prefix))
+    .map((file) => rm(join(dir, file), { force: true }).catch(() => {}))
+  )
 }
 
 // Best-effort delete of an explicit set of ids: each id's session file and
@@ -463,6 +507,7 @@ export async function deleteSessions(dir, ids) {
     let ok = true
     try {
       await rm(join(dir, `${id}.json`), { force: true })
+      await removeConflictBackups(dir, id)
     } catch {
       ok = false
     }
@@ -494,13 +539,14 @@ export async function deleteSessions(dir, ids) {
 }
 
 // Wipes the whole sessions dir: every session JSON file (including corrupt
-// files and empty claims — the sweep does not rely on listSessions parsing),
-// the .index.json sidecar and the attachments dir. Removal is best-effort
-// per item: a failure (locked file, a directory named like a session, ...) is
-// collected and the sweep continues, so one stuck entry can never block the
-// rest. Returns { removed, failures } — the count of non-hidden .json files
-// removed and the names of every entry that could not be deleted; a missing
-// dir yields { removed: 0, failures: [] }.
+// files, empty claims and save-conflict backups — the sweep relies on
+// filename shapes, not on listSessions parsing), the .index.json sidecar and
+// the attachments dir. Removal is best-effort per item: a failure (locked
+// file, a directory named like a session, ...) is collected and the sweep
+// continues, so one stuck entry can never block the rest. Returns
+// { removed, failures } — the count of non-hidden session files removed and
+// the names of every entry that could not be deleted; a missing dir yields
+// { removed: 0, failures: [] }.
 export async function deleteAllSessions(dir) {
   let entries
   try {
@@ -522,9 +568,17 @@ export async function deleteAllSessions(dir) {
   }
 
   for (const file of entries) {
-    if (file.startsWith('.') || extname(file) !== '.json') continue
-    const id = basename(file, '.json')
-    if (!validSessionId(id)) continue
+    if (file.startsWith('.')) continue
+    // A conflict backup is `<id>.json.conflict-<iso>`; its extname is never
+    // .json, so it is matched by shape rather than extension.
+    const conflictAt = file.indexOf('.json.conflict-')
+    let id = null
+    if (conflictAt !== -1) {
+      id = file.slice(0, conflictAt)
+    } else if (extname(file) === '.json') {
+      id = basename(file, '.json')
+    }
+    if (id === null || !validSessionId(id)) continue
     if (await removeBestEffort(file)) removed++
   }
   await removeBestEffort(SIDECAR_FILE)

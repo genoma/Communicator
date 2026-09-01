@@ -188,7 +188,7 @@
 - Session/prefs saves are non-fatal; single warning per save path.
 - `deleteAllSessions` (and `deleteSessions`/`--delete`, and `--export`) partial failures are fatal: the per-item sweep keeps going, then the command throws `CliError` (exit 1) listing what could not be removed/exported — never a silent partial delete.
 - `ExitPromptError` from pickers must propagate to the cli-main “Aborted.” handler.
-- `writeFileAtomic` used for config/session/sidecar; private modes 0600/0700. Session files: mtime-baseline conflict backup (see `src/sessions.js`).
+- `writeFileAtomic` used for config/session/sidecar; private modes 0600/0700. Session files: mtime-baseline conflict backup (see `src/sessions.js`); `.json.conflict-*` siblings are removed by `deleteSession`/`deleteSessions`/`deleteAllSessions` (the wipe matches them by filename shape since their extname is never `.json`).
 - Exports are private too: `exportSession` creates the session folder 0700 and every file (markdown, jsonl, materialized attachments) 0600, then re-applies the mode with `chmod` because a mode argument only takes effect at creation — a re-export into a folder an older version left world-readable would otherwise stay 0644. An export folder holds the whole conversation in cleartext and the destination defaults to `process.cwd()`.
 - `CliError` messages are sanitized at the cli-main sink (`err(sanitizeAnsi(...))`) before exit; they interpolate provider- and user-supplied fragments (model ids, file names, URLs). The REPL sink (`commandErrorLine`) and `ApiError`/`formatError` already sanitized.
 
