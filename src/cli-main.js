@@ -108,6 +108,11 @@ async function main(opts, promptArg) {
     } else if (rpgContext.history?.length > 0) {
       console.warn(`Warning: starting a new story — ${rpgContext.dir}/history.json (${rpgContext.history.length} messages) will be replaced on save. Continue it with --rpg ${rpgContext.dir} --resume.`)
     }
+} else if (opts.e2ee === true) {
+    // Plain --e2ee chats persist their transcript to the sessions dir just
+    // like any other session; encryption only covers the messages sent to
+    // the API, so the on-disk copy must not surprise the user.
+    console.warn('Warning: --e2ee encrypts messages sent to the API, but the session file stores them unencrypted.')
   }
 
   if (opts.config === true) {

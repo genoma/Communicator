@@ -54,6 +54,7 @@ async function runAndExit(t, overrides, promptArg, expectedCode) {
   })
   t.mock.method(console, 'log', (msg) => out.push(String(msg)))
   t.mock.method(console, 'error', (msg) => err.push(String(msg)))
+  t.mock.method(console, 'warn', (msg) => err.push(String(msg)))
   await assert.rejects(
     runCli(opts(overrides), promptArg),
     (e) => e instanceof ExitSignal && e.code === expectedCode
@@ -508,4 +509,13 @@ test('a CliError message is stripped of escape bytes before it reaches the termi
   assert.equal(exitCode, 1)
   assert.ok(err.some((l) => /Unknown provider: bogusFAKE/.test(l)))
   assert.ok(!err.some((l) => l.includes('\u001b')))
+})
+
+test('plain --e2ee warns that the session file is stored unencrypted', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  mockVeniceApi(t)
+  const file = await tempConfig(t)
+  const { err } = await runAndExit(t, { e2ee: true, provider: 'venice', config: file, model: 'venice/model-x' }, undefined, 0)
+  assert.match(err[0], /--e2ee encrypts messages sent to the API, but the session file stores them unencrypted/)
 })

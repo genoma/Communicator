@@ -98,6 +98,7 @@
 - Venice-only. Client crypto in `src/e2ee.js`: ECDH secp256k1 + HKDF-SHA256 + AES-256-GCM; hex wire format (ephemeral pubkey ‖ nonce ‖ ciphertext+tag).
 - Session setup fetches/verifies TEE attestation; failure aborts (never falls back to plaintext). Attestation signing keys are validated up front (hex, exactly 128/130 chars, 04-prefixed uncompressed point on secp256k1) and nonces are compared in constant time (`timingSafeEqual`, non-hex/odd-length nonces fail closed).
 - `ChatState` stores `e2ee` persisted marker + in-memory `e2eeContext`; only the boolean is serialized.
+- **At rest**: encryption covers only the wire — the session file (`~/.communicator/sessions/*.json`) stores the transcript in cleartext, and plain `--e2ee` now warns about it on startup (the `--rpg` path has always warned for `history.json`/`prompt-log.jsonl`; see `cli-main.js`).
 - Threading: flag → validation → session setup → selectors → chat/one-shot → provider.
 - Model selection filters to `supportsE2EE`; image models not shown under e2ee.
 - Venice `chatCompletion` encrypts user/system messages; adds TEE headers; disables web search/prompt cache.

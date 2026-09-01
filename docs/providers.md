@@ -52,5 +52,6 @@ E2EE intentionally disables features that would leak content or that the enclave
 - **Prompt caching** — `prompt_cache_key` is not sent; the host cannot key a cache on ciphertext.
 - **Image generation** — `--image` is rejected; E2EE is text-only.
 - **Resume** — sessions record an `e2ee` marker. An encrypted session may only be resumed with `--e2ee`, and `--e2ee` refuses to resume an unencrypted session — both directions fail fast rather than silently downgrade.
+- **At rest** — encryption covers only the messages sent to the API; the session file (`~/.communicator/sessions/*.json`) stores the transcript in cleartext, and `--e2ee` prints a warning about it on startup (the same caveat that `--rpg` has always printed for `history.json`/`prompt-log.jsonl`).
 
 If you need web search or file uploads, run the same model without `--e2ee` (it will still run inside the TEE, though prompts stay readable to the host).
