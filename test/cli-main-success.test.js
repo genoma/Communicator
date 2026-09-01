@@ -504,6 +504,11 @@ function mockVeniceScrapeFetch(t) {
     if (u.includes('/models?type=text')) {
       return new Response(JSON.stringify({ data: models }), { status: 200, headers: { 'content-type': 'application/json' } })
     }
+    if (u.includes('/models?type=image')) {
+      // The image picker is not stubbed here; an empty listing keeps the flow
+      // on the text-model path (a non-empty one would open the image picker).
+      return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
     throw new Error(`unexpected fetch: ${u}`)
   })
   return calls

@@ -182,6 +182,7 @@ test('openrouter 404 throws friendly model-not-found message, no retry', async (
 })
 
 test('venice 429 is retried twice then throws rate limited message', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
   resetModels()
   let calls = 0
   t.mock.method(globalThis, 'fetch', async () => {
@@ -189,14 +190,18 @@ test('venice 429 is retried twice then throws rate limited message', async (t) =
     return new Response('slow down', { status: 429 })
   })
 
-  await assert.rejects(
-    venice.fetchModels('key'),
-    (err) => err instanceof ApiError && err.status === 429 && err.message.includes('Rate limited by Venice')
-  )
+  const promise = venice.fetchModels('key')
+  const assertion = assert.rejects(promise, (err) => err instanceof ApiError && err.status === 429 && err.message.includes('Rate limited by Venice'))
+  for (let i = 0; i < 4; i++) {
+    t.mock.timers.tick(1000)
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  await assertion
   assert.equal(calls, 3)
 })
 
 test('network errors are retried with backoff before succeeding', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
   resetModels()
   let calls = 0
   t.mock.method(globalThis, 'fetch', async () => {
@@ -205,8 +210,12 @@ test('network errors are retried with backoff before succeeding', async (t) => {
     return jsonResponse({ data: [] })
   })
 
-  const models = await openrouter.fetchModels('key')
-  assert.deepEqual(models, [])
+  const promise = openrouter.fetchModels('key')
+  for (let i = 0; i < 4; i++) {
+    t.mock.timers.tick(1000)
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  assert.deepEqual(await promise, [])
   assert.equal(calls, 3)
 })
 

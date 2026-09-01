@@ -230,25 +230,30 @@ test('generateImage defaults to IMAGE_GEN_TIMEOUT_MS without timeoutMs', async (
 })
 
 test('generateImage passes an explicit timeoutMs through to the request', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
   t.mock.method(globalThis, 'fetch', hangingFetch())
 
-  await assert.rejects(
-    venice.generateImage({ apiKey: 'key', model: 'm', prompt: 'x', timeoutMs: 500 }),
-    (err) => err instanceof TimeoutError && err.message.includes('after 1s')
-  )
+  const promise = venice.generateImage({ apiKey: 'key', model: 'm', prompt: 'x', timeoutMs: 500 })
+  const assertion = assert.rejects(promise, (err) => err instanceof TimeoutError && err.message.includes('after 1s'))
+  t.mock.timers.tick(500)
+  await assertion
 })
 
 test('generateImage maps non-200 responses through handleHttpError', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
   let calls = 0
   t.mock.method(globalThis, 'fetch', async () => {
     calls++
     return new Response('slow down', { status: 429 })
   })
 
-  await assert.rejects(
-    venice.generateImage({ apiKey: 'key', model: 'm', prompt: 'x' }),
-    (err) => err instanceof ApiError && err.status === 429 && err.message.includes('Rate limited by Venice')
-  )
+  const promise = venice.generateImage({ apiKey: 'key', model: 'm', prompt: 'x' })
+  const assertion = assert.rejects(promise, (err) => err instanceof ApiError && err.status === 429 && err.message.includes('Rate limited by Venice'))
+  for (let i = 0; i < 4; i++) {
+    t.mock.timers.tick(1000)
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  await assertion
   assert.equal(calls, 3)
 })
 

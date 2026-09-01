@@ -142,15 +142,19 @@ test('fetchImageModels maps non-200 responses through handleHttpError', async (t
 })
 
 test('fetchImageModels 429 is retried then throws the rate-limit message', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
   let calls = 0
   t.mock.method(globalThis, 'fetch', async () => {
     calls++
     return new Response('slow down', { status: 429 })
   })
 
-  await assert.rejects(
-    venice.fetchImageModels('key'),
-    (err) => err instanceof ApiError && err.status === 429 && err.message.includes('Rate limited by Venice')
-  )
+  const promise = venice.fetchImageModels('key')
+  const assertion = assert.rejects(promise, (err) => err instanceof ApiError && err.status === 429 && err.message.includes('Rate limited by Venice'))
+  for (let i = 0; i < 4; i++) {
+    t.mock.timers.tick(1000)
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  await assertion
   assert.equal(calls, 3)
 })
