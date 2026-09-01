@@ -24,10 +24,26 @@ const WIDE_RANGES = [
 
 // Emoji that default to emoji presentation render as two cells. This tracks
 // the runtime's Unicode data, unlike the table above — see the drift test in
-// test/editor-grid.test.js, which fails if the table falls behind the runtime.
+// test/editor-grid.test.js, which fails if the table falls behind.
 const EMOJI_PRESENTATION = /\p{Emoji_Presentation}/u
 
-// Nothing below U+1100 is ever wide, so ASCII and Latin skip both lookups.
+// The lowest Emoji_Presentation code point, so ordinary punctuation and
+// symbols above U+1100 skip the property test entirely.
+const FIRST_EMOJI = 0x231a
+
+// Emoji added to Unicode after the oldest runtime this package supports.
+// Node 22 (engines: >=22.13.0) ships ICU 76 / Unicode 16.0, so its
+// \p{Emoji_Presentation} does not match these Unicode 17 additions and the
+// width would fall back to 1 — an under-count, i.e. the bug this table exists
+// to prevent. Listed explicitly so the width does not depend on which Node is
+// running (verified: zero under-counts on both 22.13.0 and 26.8.1).
+//
+// Deliberately NOT folded into WIDE_RANGES: that table also answers "is this
+// a word character" for word-jump (see isWordChar), and an emoji is not a
+// word. Extend this set when the drift test reports new code points.
+const RECENT_EMOJI = new Set([0x1f6d8, 0x1fa8a, 0x1fa8e, 0x1fac8, 0x1facd, 0x1faea, 0x1faef])
+
+// Nothing below U+1100 is ever wide, so ASCII and Latin skip every lookup.
 const FIRST_WIDE = 0x1100
 
 function isWide(code) {
@@ -46,9 +62,12 @@ function isWide(code) {
 /** Returns the terminal display width of a character (full-width=2, half-width=1) */
 export function charWidth(code) {
   if (code < 32) return 0
-  if (code < FIRST_WIDE) return 1
+  // Negated so NaN/undefined also land here: the function stays total.
+  if (!(code >= FIRST_WIDE)) return 1
   if (isWide(code)) return 2
+  if (code < FIRST_EMOJI || code > 0x10ffff) return 1
   if (EMOJI_PRESENTATION.test(String.fromCodePoint(code))) return 2
+  if (RECENT_EMOJI.has(code)) return 2
   // Combining marks and format characters deliberately keep width 1 rather
   // than 0. Zeroing them would be more accurate in context (decomposed "e" +
   // U+0301 really is one cell) but it under-counts a mark that stands alone,

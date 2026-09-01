@@ -220,7 +220,7 @@ Cross-path invariants pinned by `test/ui-consistency.test.js`. Every change must
 
 ## Width oracles
 
-Four independent display-width implementations coexist; knowing which owns what is load-bearing, because a mismatch between the editor's and the terminal's idea of a row width is the ghost-duplicate-row bug class.
+Several independent display-width implementations coexist here; knowing which owns what is load-bearing, because a mismatch between the editor's and the terminal's idea of a row width is the ghost-duplicate-row bug class.
 
 - `src/editor/chars.js` — the EDITOR's oracle, dependency-free, per code point. Owns the grid: `layout.js` folding, `paint.js` exact-fill/erase decisions, cursor columns.
 - `string-width` (npm) — the RENDERER's oracle. `src/ui/wrap.js` calls it per code point; `src/ui/markdown.js` and `src/ui/md-it.js` call it per whole segment/cell. Those two disagree with each other on clusters; `markdown.js`'s whole-segment measurement happens to match the terminal's soft wrap, which is why it has never been visible.
@@ -228,11 +228,15 @@ Four independent display-width implementations coexist; knowing which owns what 
 
 **The `chars.js` invariant: never under-count.** The editor paints an explicit grid and relies on never emitting a row wider than the terminal. An under-count overflows the row, the terminal soft-wraps it, the grid<->screen 1:1 mapping desyncs, and stale rows survive as ghosts. Over-counting folds a row early instead — much milder, but NOT free: an over-count that lands exactly on `width` skips `rowBody`'s erase-to-EOL (stale tail cell), and it drifts the absolute cursor column (`layout.js` `cursorCol` → `paint.js` `rewindCursor`). So the table aims to be exact and errs wide only where it must.
 
-Rule set: East Asian Wide/Fullwidth ranges (sorted, binary-searched) → 2; `\p{Emoji_Presentation}` → 2; below U+1100 → 1 (fast path, nothing lower is ever wide); control → 0; everything else 1. Combining marks and format characters deliberately keep width 1 rather than 0: zeroing them is more accurate in context (decomposed `e` + U+0301 really is one cell) but under-counts a mark standing alone, and it makes a text-presentation base plus U+FE0F sum to 1 where terminals render 2 (⚠️ ❤️ 1️⃣) — a naive "emoji→2, marks→0" rewrite passes the whole suite while corrupting those. Refining marks is a separate change with its own tests.
+Rule set: East Asian Wide/Fullwidth ranges (sorted, binary-searched) → 2; `\p{Emoji_Presentation}` → 2; a small explicit `RECENT_EMOJI` set → 2; below U+1100 → 1 (fast path, nothing lower is ever wide); below U+231A → 1 (no emoji lower, so punctuation skips the property test); control → 0; everything else 1. Combining marks and format characters deliberately keep width 1 rather than 0: zeroing them is more accurate in context (decomposed `e` + U+0301 really is one cell) but under-counts a mark standing alone, and it makes a text-presentation base plus U+FE0F sum to 1 where terminals render 2 (⚠️ ❤️ 1️⃣) — a naive "emoji→2, marks→0" rewrite passes the whole suite while corrupting those. Refining marks is a separate change with its own tests.
 
-`isWordChar` asks the width TABLE (`isWide`), not `charWidth(...) === 2`. It drives word-jump and undo grouping in `src/editor/model.js`, and it must not change just because the width table learned that emoji are two cells.
+The invariant is per code point, and the editor sums per code point while a terminal renders per grapheme cluster, so multi-code-point emoji over-count by design: a skin-tone or flag sequence measures 4 and a ZWJ family 11 against a rendered 2. That folds early, parks the caret right of the glyph, and can suppress the exact-fill erase on a row that is not really full. It is the safe direction and the accepted cost of having no clustering; do not chase it as a new bug.
 
-Half the rule set self-updates (`\p{Emoji_Presentation}` tracks the runtime's Unicode data) while the range table is frozen, so a Node upgrade can silently introduce new under-counts. `test/editor-grid.test.js`'s drift test sweeps the BMP plus plane 1 against `string-width` and fails with the exact ranges to add.
+East Asian **Ambiguous** characters stay 1, matching `string-width`'s default. In a CJK-configured terminal that renders them wide that is an under-count — the one known exception to the invariant, pre-existing and conventional.
+
+`isWordChar` asks the width TABLE (`isWide`), not `charWidth(...) === 2`. It drives word-jump in `src/editor/model.js`. Decoupling keeps emoji out of word-jump (they are width 2 now but must not be words); it does widen word-ness to the newly added ideographic ranges (Tangut, Kana Ext-B, CJK compat, hexagrams, vertical forms), which is right for scripts without spaces. `RECENT_EMOJI` is deliberately kept out of that table for exactly this reason.
+
+Half the rule set self-updates (`\p{Emoji_Presentation}` reads the runtime's ICU) while the range table is frozen, and the truth oracle is `string-width`'s bundled static `get-east-asian-width` table — so the two drift apart from either side: a dependency bump teaches the oracle new characters, an older Node knows fewer. Not hypothetical: Node 22 ships Unicode 16.0 and missed seven Unicode 17 emoji the oracle knew, which is why `RECENT_EMOJI` exists. `test/editor-grid.test.js`'s drift test sweeps the BMP plus plane 1 and fails with the exact code points to add. Run the suite on the oldest supported Node (22) as well as the dev one before trusting it.
 
 ## Reasoning effort semantics
 
