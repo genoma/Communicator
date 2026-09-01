@@ -10,7 +10,7 @@ import stringWidth from 'string-width'
 import { readEditor } from '../src/editor/index.js'
 import { firstDiffRow, rowBody } from '../src/editor/paint.js'
 import { wrapSegments } from '../src/editor/layout.js'
-import { stringWidth as editorStringWidth, charWidth as editorCharWidth } from '../src/editor/chars.js'
+import { stringWidth as editorStringWidth, charWidth as editorCharWidth, colFromVisual, visualCol } from '../src/editor/chars.js'
 
 // The emulated terminal needs its OWN width oracle, independent of the one the
 // editor ships (src/editor/chars.js). It models what a real terminal does, so
@@ -1010,4 +1010,45 @@ test('a hard-cut base leaves its mark to start the next row as one cell', async 
   submit(stdin)
   const [value] = await editor
   assert.equal(value, 'abcdefghij\u4e00\u0301')
+})
+
+test('spacing marks keep width 1 (Mc keycap and Devanagari vowels never under-count)', () => {
+  // U+093E is a spacing mark: it consumes a cell, so it must stay 1 like the
+  // terminal's cluster measurement. U+20E3 (keycap) is an enclosing mark.
+  for (const sample of ['क\u093e', '1\u20e3']) {
+    const measured = editorStringWidth(sample)
+    const rendered = realWidth(sample)
+    assert.ok(measured >= rendered, `chars.js measures ${JSON.stringify(sample)} as ${measured}, terminal renders ${rendered}`)
+  }
+})
+
+test('a spacing-mark cluster never measures narrower than the terminal (no ghost row)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, { cols: 12 })
+  // 'a'*9 + क + U+093E = 11 cells at cols 12 (usable 10): the row must fold
+  // before it would exceed 10 cells — the spacing mark keeps width 1, so the
+  // fold happens at 10 real cells, not 9 (which would leave an 11-cell row
+  // that soft-wraps and ghosts).
+  type(stdin, 'a'.repeat(9) + '\u0915\u093e')
+  const lines = term.lines().filter((l) => l !== '')
+  const screen = lines.join(' ')
+  assert.ok(screen.includes('\u0915') && screen.includes('\u093e'), 'both Devanagari code points must stay on screen')
+  for (const row of lines) {
+    const width = [...row].reduce((sum, ch) => sum + editorStringWidth(ch), 0)
+    assert.ok(width <= 12, `row exceeds the terminal width: ${JSON.stringify(row)} (${width})`)
+  }
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'a'.repeat(9) + '\u0915\u093e')
+})
+
+test('colFromVisual inverts visualCol across combining marks (cursor preservation)', () => {
+  const line = 'e\u0301x'
+  assert.equal(visualCol(line, 3), 2)
+  assert.equal(colFromVisual(line, 2), 3)
+  // Round trip: every valid column maps back to a point with the same width.
+  for (let col = 0; col <= editorStringWidth(line); col++) {
+    const idx = colFromVisual(line, col)
+    assert.equal(visualCol(line, idx), col)
+  }
 })

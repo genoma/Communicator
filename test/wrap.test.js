@@ -139,3 +139,14 @@ test('wrapWords folds VS16-containing words at cluster width', () => {
   // 4 columns fit one family (2) plus two letters (2)? No: 'ab' + family is 4:
   assert.deepEqual(wrapWords('ab⚠️ cd', 4), ['ab⚠️', 'cd'])
 })
+
+test('wrapWords survives an escape run whose terminator clusters with a following mark', () => {
+  // ESC [ 22 m ends at 'm'; a following combining mark clusters with that
+  // terminator per UAX #29, so the cluster index list has no entry at the
+  // mark's position. The walker must fall back to the code point instead of
+  // running off the end of the cluster list.
+  const out = wrapWords('\x1b[1ma\x1b[22m\u0301', 10)
+  assert.deepEqual(out, ['\x1b[1ma\x1b[22m\u0301'])
+  const longer = wrapWords('\x1b[1ma\x1b[22m\u0301x', 10)
+  assert.deepEqual(longer, ['\x1b[1ma\x1b[22m\u0301x'])
+})

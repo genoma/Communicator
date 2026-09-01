@@ -78,9 +78,14 @@ const visualCut = (styled, from, to, limit, clusters) => {
       continue
     }
     while (ci < clusters.length && clusters[ci].index < i) ci++
+    // An escape run can end inside a grapheme cluster (its final byte is not
+    // a control character, so UAX #29 may cluster a following Extend/ZWJ with
+    // it): when no cluster starts exactly here, fall back to the code point
+    // so alignment can never run off the end.
     const cluster = clusters[ci]
-    const ch = cluster.text
-    const w = cluster.width
+    const aligned = cluster && cluster.index === i
+    const ch = aligned ? cluster.text : String.fromCodePoint(styled.codePointAt(i))
+    const w = aligned ? cluster.width : stringWidth(ch)
     if (vis + w > limit) return i === from ? i + ch.length : i
     vis += w
     i += ch.length
@@ -122,8 +127,12 @@ export function wrapWords(styled, cols) {
       continue
     }
     while (ci < clusters.length && clusters[ci].index < i) ci++
-    const ch = clusters[ci].text
-    const w = clusters[ci].width
+    // Escape runs can end inside a cluster (see visualCut); fall back to the
+    // code point when no cluster starts at the scan position.
+    const cluster = clusters[ci]
+    const aligned = cluster && cluster.index === i
+    const ch = aligned ? cluster.text : String.fromCodePoint(styled.codePointAt(i))
+    const w = aligned ? cluster.width : stringWidth(ch)
     const inLink = linkStart !== -1 && linkEnd === -1
     if (ch === ' ' && !inLink) {
       if (lineWidth + wordWidth + 1 > cols) {

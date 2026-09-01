@@ -75,12 +75,15 @@ export function charWidth(code) {
   return 1
 }
 
-// Combining marks that are zero columns when attached: Mn/Mc/Me after a
-// non-space base on the same row. Variation selectors are excluded — a
-// text-presentation base plus U+FE0F (⚠️, ❤️) renders TWO cells, so zeroing
-// them would under-count. ZWJ is not Mn, so a ZWJ family still over-counts
-// (mild; exact family width is the cluster-aware follow-up).
-const ZEROABLE_MARK = /\p{M}/u
+// Non-spacing combining marks (Mn only) that are zero columns when attached:
+// Mn follows a non-space base on the same row. Spacing marks (Mc) consume a
+// cell by definition (Devanagari क + U+093E renders TWO cells) and enclosing
+// marks (Me, e.g. the keycap U+20E3) do too, so they keep width 1. Variation
+// selectors are excluded — a text-presentation base plus U+FE0F (⚠️, ❤️)
+// renders TWO cells, so zeroing them would under-count. ZWJ is not Mn, so a
+// ZWJ family still over-counts (mild; exact family width is the
+// cluster-aware follow-up).
+const ZEROABLE_MARK = /\p{Mn}/u
 const isVariationSelector = (cp) => (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0xe0100 && cp <= 0xe01ef)
 
 function isZeroableMark(cp) {
@@ -147,11 +150,13 @@ export function charBeforeIndex(str, index) {
 export function colFromVisual(str, visualCol) {
   let vis = 0
   let i = 0
+  let base = false
   while (i < str.length) {
     const ch = charAtIndex(str, i)
-    const cw = charWidth(ch.codePointAt(0))
+    const { width: cw, base: nextBase } = rowWidth(ch.codePointAt(0), { base })
     if (vis + cw > visualCol) break
     vis += cw
+    base = nextBase
     i += ch.length
   }
   return i
