@@ -60,6 +60,15 @@ export const handleHttpError = makeHandleHttpError({
   notFoundMessage: 'Model not found on OpenRouter. Use --list-models to list available models.',
 })
 
+// Generation errors must never re-POST (a gateway 5xx can fire after the
+// generation was produced and billed server-side); 429 stays retryable.
+const handleGenerationError = makeHandleHttpError({
+  providerName: 'OpenRouter',
+  providerId: 'openrouter',
+  apiKeyEnv: 'OPENROUTER_API_KEY',
+  retryable5xx: false,
+})
+
 export async function isZdrIndexDegraded() {
   return (await getZdrIndex()).degraded === true
 }
@@ -252,7 +261,7 @@ export async function generateImage({ apiKey, model, prompt, format, variants = 
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
-  }, { errorResponse: handleHttpError, signal, timeoutMs })
+  }, { errorResponse: handleGenerationError, signal, timeoutMs })
   const parsed = await readJsonBounded(res, { limit: IMAGE_GEN_RESPONSE_LIMIT_BYTES, timeoutMs })
   const rawImages = Array.isArray(parsed.data) ? parsed.data : []
   if (rawImages.length === 0) {

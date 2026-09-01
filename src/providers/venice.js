@@ -28,6 +28,10 @@ export function resetModelCaches() {
 
 export const handleHttpError = makeHandleHttpError({ providerName: 'Venice', providerId: 'venice', apiKeyEnv: 'VENICE_API_KEY' })
 
+// Generation errors must never re-POST (a gateway 5xx can fire after the
+// generation was produced and billed server-side); 429 stays retryable.
+const handleGenerationError = makeHandleHttpError({ providerName: 'Venice', providerId: 'venice', apiKeyEnv: 'VENICE_API_KEY', retryable5xx: false })
+
 export function normalizePricing(raw) {
   if (raw?.input?.usd == null || raw?.output?.usd == null) {
     return { prompt: null, completion: null }
@@ -210,7 +214,7 @@ export async function generateImage({ apiKey, model, prompt, format = 'webp', va
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
-  }, { errorResponse: handleHttpError, signal, timeoutMs })
+  }, { errorResponse: handleGenerationError, signal, timeoutMs })
   const parsed = await readJsonBounded(res, { limit: IMAGE_GEN_RESPONSE_LIMIT_BYTES, timeoutMs })
   const rawImages = Array.isArray(parsed.images) ? parsed.images : []
   if (rawImages.length === 0) {
