@@ -39,7 +39,7 @@ export default [
     rules: {
       semi: ['error', 'never'],
       quotes: ['error', 'single', { avoidEscape: true }],
-      'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'all' }],
       'no-constant-condition': ['error', { checkLoops: false }],
     },
   },

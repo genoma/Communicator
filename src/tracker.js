@@ -111,6 +111,21 @@ export class UsageTracker {
     this.peakContext = Math.max(this.peakContext, pt + ct)
   }
 
+  // Copies every metric field from another tracker: the single place the
+  // field list lives, so a recompute (resyncTracker for /edit and /delete)
+  // can never drift from the constructor.
+  copyMetricsFrom(other) {
+    this.promptTokens = other.promptTokens
+    this.completionTokens = other.completionTokens
+    this.totalTokens = other.totalTokens
+    this.cost = other.cost
+    this.requests = other.requests
+    this.cacheHits = other.cacheHits
+    this.cachedTokens = other.cachedTokens
+    this.scrapes = other.scrapes
+    this.peakContext = other.peakContext
+  }
+
   addScrapeCost(amount, count = 1) {
     if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) return
     this.scrapes += count

@@ -12,6 +12,23 @@ import { resolveAspectRatio, resolveImageFormat, resolveQuality, resolveResoluti
 import { computePixelSize, formatSize, isPixelModel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
 import { runImageGeneration, printImageOutcome, buildImageSessionPayload, handleWatermarkCommand } from './image-gen.js'
 
+// Help lines keyed by command; the /help body iterates the same visibility
+// list (imageSessionCommands) so the two can never drift. The argument-form
+// lines carry their own column padding and are printed verbatim.
+const IMAGE_COMMAND_HELP = {
+  '/help': { first: 'show this help' },
+  '/status': { first: 'show the current settings snapshot' },
+  '/model': { first: 'switch image model, or pick a text model to continue in chat' },
+  '/quit': { first: 'leave the session' },
+  '/watermark': { first: 'hide the Venice watermark on generated images (on|off)' },
+  '/aspect': { first: 'show the supported aspect ratios and the session one', extra: ['/aspect <x:y>    set the aspect ratio for this session (clear to unset)'] },
+  '/format': { first: 'show the supported output formats and the session one', extra: ['/format <fmt>    set the output format for this session (clear to unset)'] },
+  '/resolution': { first: 'show the supported resolutions and the session one', extra: ['/resolution <t>  set the resolution tier for this session (clear to unset)'] },
+  '/quality': { first: 'show the supported qualities and the session one', extra: ['/quality <q>     set the quality tier for this session (clear to unset)'] },
+  '/variants': { first: 'show the number of images per generation and the session one', extra: ['/variants <n>    set the number of images per generation (clear to unset)'] },
+  '/seed': { first: 'show the session seed', extra: ['/seed <int>      set the random seed for this session (clear to unset)'] },
+}
+
 // /watermark is Venice-only: OpenRouter image models have no watermark
 // parameter, so the command is only offered on Venice sessions.
 function imageSessionCommands(providerName, model) {
@@ -169,36 +186,14 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     }
 
     if (input === '/help') {
-      const c = model?.constraints
-      const showAspect = Array.isArray(c?.aspectRatios) || isPixelModel(model)
-      const showVariants = c?.maxN == null || c?.maxN > 1
-      console.log('/help            show this help')
-      console.log('/status          show the current settings snapshot')
-      console.log('/model           switch image model, or pick a text model to continue in chat')
-      console.log('/quit            leave the session')
-      if (provider.meta.name === 'venice') console.log('/watermark       hide the Venice watermark on generated images (on|off)')
-      if (showAspect) {
-        console.log('/aspect          show the supported aspect ratios and the session one')
-        console.log('/aspect <x:y>    set the aspect ratio for this session (clear to unset)')
+      // One visibility list (imageSessionCommands), one help table: the
+      // /help body can never drift from the suggestions.
+      for (const cmd of imageSessionCommands(provider.meta.name, model)) {
+        const entry = IMAGE_COMMAND_HELP[cmd]
+        if (!entry) continue
+        console.log(`${cmd.padEnd(16)} ${entry.first}`)
+        for (const extra of entry.extra ?? []) console.log(extra)
       }
-      if (Array.isArray(c?.formats)) {
-        console.log('/format          show the supported output formats and the session one')
-        console.log('/format <fmt>    set the output format for this session (clear to unset)')
-      }
-      if (Array.isArray(c?.resolutions)) {
-        console.log('/resolution      show the supported resolutions and the session one')
-        console.log('/resolution <t>  set the resolution tier for this session (clear to unset)')
-      }
-      if (Array.isArray(c?.qualities)) {
-        console.log('/quality         show the supported qualities and the session one')
-        console.log('/quality <q>     set the quality tier for this session (clear to unset)')
-      }
-      if (showVariants) {
-        console.log('/variants        show the number of images per generation and the session one')
-        console.log('/variants <n>    set the number of images per generation (clear to unset)')
-      }
-      console.log('/seed            show the session seed')
-      console.log('/seed <int>      set the random seed for this session (clear to unset)')
       continue
     }
 

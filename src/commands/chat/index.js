@@ -11,7 +11,7 @@ import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArg
 import { attachGateOptions } from '../../session-setup.js'
 import { fetchModelPubKey } from '../../e2ee.js'
 import { buildStatusLine, wrapStatusLine } from '../../status-line.js'
-import { scrapeContext, scrapeMessage } from '../../scrape.js'
+import { parseScrapeUrl, scrapeContext, scrapeMessage } from '../../scrape.js'
 const ARG_COMMANDS = new Set(['/temp', '/top-p', '/budget', '/web-search', '/web-results', '/smooth', '/compact-thinking', '/attach', '/attachments', '/scrape'])
 
 // Recompute the live usage tracker from the surviving messages exactly like a
@@ -20,16 +20,7 @@ const ARG_COMMANDS = new Set(['/temp', '/top-p', '/budget', '/web-search', '/web
 function resyncTracker(ctx) {
   const fresh = new UsageTracker()
   seedTracker(fresh, ctx.state.messages, ctx.state.pricing, ctx.state.scrapes)
-  const live = ctx.tracker
-  live.promptTokens = fresh.promptTokens
-  live.completionTokens = fresh.completionTokens
-  live.totalTokens = fresh.totalTokens
-  live.cost = fresh.cost
-  live.requests = fresh.requests
-  live.cacheHits = fresh.cacheHits
-  live.cachedTokens = fresh.cachedTokens
-  live.scrapes = fresh.scrapes
-  live.peakContext = fresh.peakContext
+  ctx.tracker.copyMetricsFrom(fresh)
 }
 
 // Single source for the /help index and the in-editor command suggestions.
@@ -436,13 +427,7 @@ const handlers = {
       console.error('Usage: /scrape <url>\n')
       return
     }
-    let parsed
-    try {
-      parsed = new URL(url)
-    } catch {
-      parsed = null
-    }
-    if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
+    if (!parseScrapeUrl(url)) {
       console.error('Error: /scrape expects a valid http(s) URL.\n')
       return
     }

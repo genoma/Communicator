@@ -6,7 +6,7 @@ import { err, debug } from './ui/io.js'
 import { resolveSmoothSpeed, resolveTemperatureFlag, resolveTopPFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
 import { isConfigSetter, isPureConfigSetter, hasConfigSetterFlags, validateCliFlags } from './cli-validation.js'
-import { scrapeContext } from './scrape.js'
+import { parseScrapeUrl, scrapeContext } from './scrape.js'
 import { seedModelFetch } from './model-selection.js'
 import { loadRpgContext } from './rpg.js'
 
@@ -20,13 +20,7 @@ import { loadRpgContext } from './rpg.js'
 // injection into the session context (validated http(s) URL, truncated to
 // MAX_SCRAPE_CHARS). One flat $0.01 per page, tracked by the session.
 async function scrapeForSession({ provider, apiKey, url }) {
-  let parsed
-  try {
-    parsed = new URL(url)
-  } catch {
-    parsed = null
-  }
-  if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
+  if (!parseScrapeUrl(url)) {
     throw new CliError('Error: --scrape expects a valid http(s) URL.')
   }
   if (typeof provider.scrapePage !== 'function') {
