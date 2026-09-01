@@ -951,3 +951,24 @@ test('the width table has not fallen behind the runtime Unicode data', () => {
       ranges.map(([a, b]) => (a === b ? hex(a) : `${hex(a)}..${hex(b)}`)).join(' ')
   )
 })
+
+test('shrinking from a multiline tail clears the stale rows and parks the cursor (no helpFooter)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, { cols: 12 })
+  // 25 chars wrap to 3 rows ('❯ abcdefghij' / '❯ klmnopqrst' / '❯ uvwxy').
+  type(stdin, 'abcdefghijklmnopqrstuvwxy')
+  assert.deepEqual(term.lines().slice(0, 3), ['❯ abcdefghij', '❯ klmnopqrst', '❯ uvwxy'])
+  // Deleting the tail char by char shrinks the grid 3 -> 2 rows; the step
+  // where the trailing row vanishes leaves no row to rewrite, so the cursor
+  // must still climb back to the new last row instead of parking one row
+  // below the block (the ghost-row bug).
+  for (let i = 0; i < 10; i++) press(stdin, '\x7f')
+  assert.deepEqual(term.lines().slice(0, 3), ['❯ abcdefghij', '❯ klmno', ''])
+  assert.deepEqual(term.cursor, { r: 1, c: 7 })
+  type(stdin, 'XYZ')
+  assert.deepEqual(term.lines().slice(0, 3), ['❯ abcdefghij', '❯ klmnoXYZ', ''])
+  assert.deepEqual(term.cursor, { r: 1, c: 10 })
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'abcdefghijklmnoXYZ')
+})

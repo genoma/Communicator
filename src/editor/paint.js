@@ -98,6 +98,15 @@ export function paintDiff(out, shadow, grid) {
   // or it erases the last cell of a row that fills the terminal exactly.
   if (grid.rows.length < shadow.rows.length) body += '\x1b[J'
   body += rowBody(grid.rows.slice(firstDiff), grid.width)
+  // A shrink that removed every row from the diff down (the tail was
+  // deleted) writes nothing, so the cursor still sits on the old shadow
+  // row, past the new grid's last row: climb back so the rewind math
+  // (physical cursor = last grid row) holds. helpFooter keeps a footer row
+  // and masks this — a regression test pins the footerless case.
+  if (grid.rows.length <= firstDiff) {
+    const up = firstDiff - (grid.rows.length - 1)
+    if (up > 0) body += `\x1b[${up}A`
+  }
   batchText(out, rewindCursor(body, grid))
 }
 

@@ -5,14 +5,26 @@
 // (string-width) so CJK/emoji and escape sequences stay exact.
 import stringWidth from 'string-width'
 
-/** Character at code-unit index i (surrogate pair aware). */
-const charAt = (styled, i) => {
-  const code = styled.charCodeAt(i)
-  if (code >= 0xd800 && code <= 0xdbff && i + 1 < styled.length) return styled.slice(i, i + 2)
-  return styled[i]
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
+// Cluster-annotated view of a styled string, so widths are measured per
+// grapheme cluster. string-width is cluster-aware on whole strings but not
+// per code point: an emoji with a VS16 variation selector sums to 1 column
+// char-by-char yet occupies 2, and a ZWJ family sums to 6 — the per-code-point sums
+// hard-cut clusters in half and emit rows wider than the terminal, which
+// soft-wrap and desync. Escape sequences are control characters (grapheme
+// boundaries), so the index list stays valid when a walker skips a whole
+// escape run.
+function clusterWidths(styled) {
+  const out = []
+  for (const { index, segment } of graphemeSegmenter.segment(styled)) {
+    out.push({ index, text: segment, width: stringWidth(segment) })
+  }
+  return out
 }
 
-/** Index just past the escape sequence starting at i (CSI/SGR or OSC). */
+/**
+ * Index just past the escape sequence starting at i (CSI/SGR or OSC). */
 const escapeRunEnd = (styled, i) => {
   const len = styled.length
   if (styled.charCodeAt(i + 1) === 0x5b) {
@@ -56,16 +68,19 @@ const isOsc8Open = (styled, i, end) => {
  * cut after it so every chunk still makes visible progress (exceptionally
  * over-wide chunks are row-counted by the caller).
  */
-const visualCut = (styled, from, to, limit) => {
+const visualCut = (styled, from, to, limit, clusters) => {
   let vis = 0
   let i = from
+  let ci = 0
   while (i < to) {
     if (styled.charCodeAt(i) === 0x1b) {
       i = escapeRunEnd(styled, i)
       continue
     }
-    const ch = charAt(styled, i)
-    const w = stringWidth(ch)
+    while (ci < clusters.length && clusters[ci].index < i) ci++
+    const cluster = clusters[ci]
+    const ch = cluster.text
+    const w = cluster.width
     if (vis + w > limit) return i === from ? i + ch.length : i
     vis += w
     i += ch.length
@@ -80,6 +95,7 @@ const visualCut = (styled, from, to, limit) => {
  */
 export function wrapWords(styled, cols) {
   if (!(cols > 0) || styled === '') return [styled]
+  const clusters = clusterWidths(styled)
   const segments = []
   const len = styled.length
   let lineStart = 0
@@ -89,6 +105,7 @@ export function wrapWords(styled, cols) {
   let linkStart = -1
   let linkEnd = -1
   let i = 0
+  let ci = 0
   while (i < len) {
     if (styled.charCodeAt(i) === 0x1b) {
       const end = escapeRunEnd(styled, i)
@@ -104,8 +121,9 @@ export function wrapWords(styled, cols) {
       i = end
       continue
     }
-    const ch = charAt(styled, i)
-    const w = stringWidth(ch)
+    while (ci < clusters.length && clusters[ci].index < i) ci++
+    const ch = clusters[ci].text
+    const w = clusters[ci].width
     const inLink = linkStart !== -1 && linkEnd === -1
     if (ch === ' ' && !inLink) {
       if (lineWidth + wordWidth + 1 > cols) {
@@ -139,7 +157,7 @@ export function wrapWords(styled, cols) {
       // Hard cut inside the overlong word, keeping escape runs and whole
       // hyperlink atoms intact. A link that starts mid-line folds to the next
       // line whole; one that already starts the line stays put as an atom.
-      let cut = visualCut(styled, wordStart, i, cols - lineWidth)
+      let cut = visualCut(styled, wordStart, i, cols - lineWidth, clusters)
       if (inLink) {
         if (linkStart > lineStart) cut = linkStart
         else {
@@ -201,11 +219,11 @@ export function createWordWrap({ stdout, cols, style = null }) {
   const sliceAtWidth = (text, width) => {
     let end = 0
     let w = 0
-    for (const ch of text) {
-      const cw = stringWidth(ch)
+    for (const { segment } of graphemeSegmenter.segment(text)) {
+      const cw = stringWidth(segment)
       if (end > 0 && w + cw > width) break
       w += cw
-      end += ch.length
+      end += segment.length
     }
     return { text: text.slice(0, end), width: w }
   }
@@ -257,8 +275,8 @@ export function createWordWrap({ stdout, cols, style = null }) {
       if (text !== '') emit(text)
       return
     }
-    for (const ch of text) {
-      if (ch === '\n') {
+    for (const { segment: ch } of graphemeSegmenter.segment(text)) {
+      if (ch === '\n' || ch === '\r\n') {
         flushWord(width)
         newline()
         lineW = 0

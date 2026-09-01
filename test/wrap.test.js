@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createWordWrap, wrapWords } from '../src/ui/wrap.js'
+import stringWidth from 'string-width'
 
 test('wrapWords passes through without a usable width', () => {
   assert.deepEqual(wrapWords('abc def', null), ['abc def'])
@@ -118,4 +119,23 @@ test('createWordWrap passes through when the width getter yields no width', () =
   w.write('unchanged text  there')
   w.flush()
   assert.equal(out.join(''), 'unchanged text  there')
+})
+
+test('wrapWords measures VS16 emoji as 2 columns (never emits an over-wide row)', () => {
+  // '⚠️' occupies 2 terminal columns but sums to 1 code-point-by-code-point;
+  // the row must fold at real width, not at the per-code-point sum.
+  const [row1, ...rest] = wrapWords('a'.repeat(79) + '⚠️ b', 80)
+  assert.equal(stringWidth(row1) <= 80, true)
+  assert.deepEqual(rest, ['⚠️ b'])
+  assert.equal(row1, 'a'.repeat(79))
+})
+
+test('wrapWords never splits a ZWJ family across rows', () => {
+  assert.deepEqual(wrapWords('xx 👨‍👩‍👧 y', 5), ['xx 👨‍👩‍👧', 'y'])
+  assert.deepEqual(wrapWords('👨‍👩‍👧👨‍👩‍👧', 4), ['👨‍👩‍👧👨‍👩‍👧'])
+})
+
+test('wrapWords folds VS16-containing words at cluster width', () => {
+  // 4 columns fit one family (2) plus two letters (2)? No: 'ab' + family is 4:
+  assert.deepEqual(wrapWords('ab⚠️ cd', 4), ['ab⚠️', 'cd'])
 })
