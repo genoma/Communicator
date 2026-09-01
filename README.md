@@ -41,7 +41,7 @@ The full documentation lives in the [`docs/`](docs/) folder, organized into guid
 
 ## Requirements
 
-- **Node.js** >= 22.13
+- **Node.js** >= 22.15
 
 ### API Keys
 

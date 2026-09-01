@@ -12,7 +12,7 @@ Communicator is written in pure Node.js ESM with no native dependencies, so the 
 
 ## Requirements
 
-- **Node.js >= 22.13** on all platforms
+- **Node.js >= 22.15** on all platforms
 - No native dependencies — pure ESM
 
 ## Clipboard tools
