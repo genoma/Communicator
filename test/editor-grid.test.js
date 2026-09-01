@@ -972,3 +972,42 @@ test('shrinking from a multiline tail clears the stale rows and parks the cursor
   const [value] = await editor
   assert.equal(value, 'abcdefghijklmnoXYZ')
 })
+
+test('combining mark after a base is one cell (marks zero in context)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, { cols: 12 })
+  // 'e' + U+0301 is one terminal cell; the row must not split the pair.
+  type(stdin, 'e\u0301')
+  assert.deepEqual(term.lines().slice(0, 2), ['❯ e\u0301', ''])
+  assert.deepEqual(term.cursor, { r: 0, c: 3 })
+  // Two more bases confirm the grid keeps counting display columns.
+  type(stdin, 'bc')
+  assert.deepEqual(term.lines().slice(0, 2), ['❯ e\u0301bc', ''])
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'e\u0301bc')
+})
+
+test('a lone combining mark occupies one cell (never a zero-width row)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, { cols: 12 })
+  type(stdin, '\u0301')
+  assert.deepEqual(term.lines().slice(0, 2), ['❯ \u0301', ''])
+  assert.deepEqual(term.cursor, { r: 0, c: 3 })
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, '\u0301')
+})
+
+test('a hard-cut base leaves its mark to start the next row as one cell', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, { cols: 12 })
+  // usable width 10: 10 bases fill the row exactly; the next wide char must
+  // fold and the mark after it starts the next row alone.
+  type(stdin, 'abcdefghij\u4e00\u0301')
+  const lines = term.lines().filter((l) => l !== '')
+  assert.deepEqual(lines, ['❯ abcdefghij', '❯ \u4e00\u0301'])
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'abcdefghij\u4e00\u0301')
+})

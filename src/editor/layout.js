@@ -2,7 +2,7 @@
 // of styled text + cursor position). Wrapping is done here with display-width
 // awareness, so the block's rows are exactly the physical terminal rows — the
 // terminal's own soft-wrap never engages inside the block.
-import { charWidth, stringWidth } from './chars.js'
+import { rowWidth, stringWidth } from './chars.js'
 import { applyStyle } from './style.js'
 
 /** Widen-safe available width for one input row */
@@ -45,8 +45,9 @@ function wrapSegmentsDetailed(text, limit) {
     segments.push(text.slice(start, end))
     starts.push(start)
   }
+  let rowBase = false
   for (const ch of text) {
-    const w = charWidth(ch.codePointAt(0))
+    const { width: w, base: nextBase } = rowWidth(ch.codePointAt(0), { base: rowBase })
     if (ch === ' ') {
       if (cw + w > limit) {
         // The row is already full: the space is the fold point — it would be
@@ -59,6 +60,7 @@ function wrapSegmentsDetailed(text, limit) {
         cw = 0
         foldAt = -1
         foldW = 0
+        rowBase = false
         i += 1
         continue
       }
@@ -68,6 +70,7 @@ function wrapSegmentsDetailed(text, limit) {
       foldW = cw
       current += ch
       cw += w
+      rowBase = nextBase
       i += 1
       continue
     }
@@ -96,17 +99,23 @@ function wrapSegmentsDetailed(text, limit) {
       foldW = 0
       let w2 = 0
       let i2 = 0
+      let residualBase = false
       for (const rc of current) {
+        const rw = rowWidth(rc.codePointAt(0), { base: residualBase })
         if (rc === ' ') {
           foldAt = i2
           foldW = w2
         }
-        w2 += charWidth(rc.codePointAt(0))
+        w2 += rw.width
+        residualBase = rw.base
         i2 += rc.length
       }
+      // The residual segment's own base (it starts after the dropped space).
+      rowBase = residualBase
     } else {
       current += ch
       cw += w
+      rowBase = nextBase
     }
     i += ch.length
   }

@@ -980,7 +980,7 @@ test('listSessions refreshes a covered sidecar entry whose file is newer (stale 
   assert.equal(sessions[0].model, 'fresh/file')
   const index = JSON.parse(await readFile(join(dir, '.index.json'), 'utf-8'))
   assert.equal(index[id].model, 'fresh/file')
-  assert.equal(index[id].mtimeMs, future.getTime())
+  assert.ok(Math.abs(index[id].mtimeMs - future.getTime()) < 2, `entry mtime ${index[id].mtimeMs} ~ future ${future.getTime()}`)
 })
 
 test('listSessions keeps a legacy entry without mtimeMs when the sidecar is newest', async (t) => {

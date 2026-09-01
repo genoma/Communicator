@@ -68,22 +68,59 @@ export function charWidth(code) {
   if (code < FIRST_EMOJI || code > 0x10ffff) return 1
   if (EMOJI_PRESENTATION.test(String.fromCodePoint(code))) return 2
   if (RECENT_EMOJI.has(code)) return 2
-  // Combining marks and format characters deliberately keep width 1 rather
-  // than 0. Zeroing them would be more accurate in context (decomposed "e" +
-  // U+0301 really is one cell) but it under-counts a mark that stands alone,
-  // and it would make a text-presentation base plus U+FE0F sum to 1 where
-  // terminals render 2 (⚠️, ❤️, 1️⃣). Width 1 keeps both cases on the safe
-  // side of the invariant; refining it is a separate change with its own
-  // tests, not a rider on the emoji fix.
+  // Combining marks and format characters default to width 1; the context
+  // rule in isZeroableMark/rowWidth/stringWidth narrows marks to 0 when they
+  // attach to a base (a lone mark still counts 1 here, so this table can
+  // never under-count on its own).
   return 1
+}
+
+// Combining marks that are zero columns when attached: Mn/Mc/Me after a
+// non-space base on the same row. Variation selectors are excluded — a
+// text-presentation base plus U+FE0F (⚠️, ❤️) renders TWO cells, so zeroing
+// them would under-count. ZWJ is not Mn, so a ZWJ family still over-counts
+// (mild; exact family width is the cluster-aware follow-up).
+const ZEROABLE_MARK = /\p{M}/u
+const isVariationSelector = (cp) => (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0xe0100 && cp <= 0xe01ef)
+
+function isZeroableMark(cp) {
+  if (cp < 0x300 || isVariationSelector(cp)) return false
+  return ZEROABLE_MARK.test(String.fromCodePoint(cp))
+}
+
+// Width of one code point with row context: zeroable marks render as zero
+// columns after a non-space base (or another mark) on the same row, and as
+// one column when they start a row (a lone mark, or a base the hard cut left
+// behind — a row-start mark never under-counts). A space is not a base: a
+// mark after a space keeps width 1 (space + dotted-circle renders two cells
+// in practice; err wide).
+export function rowWidth(cp, { base = false } = {}) {
+  let w = charWidth(cp)
+  if (isZeroableMark(cp)) {
+    w = base ? 0 : 1
+  } else if (w > 0 && cp !== 0x20) {
+    base = true
+  } else if (cp === 0x20) {
+    base = false
+  }
+  return { width: w, base }
 }
 
 /** Returns the terminal display width of a string (ANSI escape codes are ignored) */
 export function stringWidth(str) {
   const s = str.includes('\x1b') ? stripVTControlCharacters(str) : str
   let width = 0
+  let base = false
   for (const ch of s) {
-    width += charWidth(ch.codePointAt(0))
+    let w = charWidth(ch.codePointAt(0))
+    if (isZeroableMark(ch.codePointAt(0))) {
+      w = base ? 0 : 1
+    } else if (w > 0 && ch !== ' ') {
+      base = true
+    } else if (ch === ' ') {
+      base = false
+    }
+    width += w
   }
   return width
 }
