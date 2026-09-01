@@ -59,7 +59,7 @@ test('saveSession skips sessions with no user messages', async (t) => {
   await assert.rejects(readFile(join(dir, '.index.json')))
 })
 
-test('listSessions reads from sidecar without parsing session bodies', async (t) => {
+test('listSessions returns sidecar metadata ordered most-recent-first', async (t) => {
   const dir = await tempDir(t)
   await saveSession(dir, '2026-01-01T00-00-00', sessionData({ model: 'one' }))
   await saveSession(dir, '2026-01-02T00-00-00', sessionData({ model: 'two' }))
@@ -299,26 +299,47 @@ test('recovery does not resurrect id claims or single-message session files', as
   // no real turn: neither is a listable session, and neither is in the index.
   await writeFile(join(dir, '2026-01-03T00-00-00.json'), '')
   await writeFile(join(dir, '2026-01-04T00-00-00.json'), JSON.stringify({ messages: [{ role: 'system', content: 'x' }] }))
+  // Re-stamp the sidecar so it is the newest file: otherwise the stray files
+  // make it stale and the whole listing falls to the slow path, which never
+  // exercises the fast-path recovery this test is about.
+  const indexPath = join(dir, '.index.json')
+  const before = await readFile(indexPath, 'utf-8')
+  await writeFile(indexPath, before)
 
   const sessions = await listSessions(dir)
   assert.deepEqual(sessions.map((s) => s.id), ['2026-01-01T00-00-00'])
-  const index = JSON.parse(await readFile(join(dir, '.index.json'), 'utf-8'))
-  assert.deepEqual(Object.keys(index), ['2026-01-01T00-00-00'])
+  // Nothing was recoverable, so the sidecar must not have been rewritten.
+  assert.equal(await readFile(indexPath, 'utf-8'), before)
 })
 
-test('the sidecar fast path does not parse the bodies of covered sessions', async (t) => {
+test('the sidecar fast path lists a covered session without reading its body', async (t) => {
   const dir = await tempDir(t)
-  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  const data = sessionData()
+  data.costSummary = { cost: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, requests: 0, cacheHits: 0, cachedTokens: 0, scrapes: 0, peakContext: 0 }
+  await saveSession(dir, '2026-01-01T00-00-00', data)
 
-  // Diverge the sidecar entry from the file body. Reading the body would
-  // yield 'test/model'; trusting the index yields 'sidecar-only'.
+  // A covered entry carrying a cost summary needs nothing from the file, so
+  // corrupting the body must not change the listing at all. Any body read
+  // would drop or degrade this session.
+  await writeFile(join(dir, '2026-01-01T00-00-00.json'), '{ not json')
   const indexPath = join(dir, '.index.json')
-  const index = JSON.parse(await readFile(indexPath, 'utf-8'))
-  index['2026-01-01T00-00-00'].model = 'sidecar-only'
-  await writeFile(indexPath, JSON.stringify(index, null, 2) + '\n')
+  await writeFile(indexPath, await readFile(indexPath, 'utf-8'))
 
   const sessions = await listSessions(dir)
-  assert.equal(sessions[0].model, 'sidecar-only')
+  assert.equal(sessions.length, 1)
+  assert.equal(sessions[0].id, '2026-01-01T00-00-00')
+  assert.equal(sessions[0].model, 'test/model')
+  assert.equal(sessions[0].messageCount, 3)
+})
+
+test('a file whose name is not a valid session id is never listed', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  // Listing it would offer a resume that loadSession/deleteSession reject.
+  await writeFile(join(dir, '2026-01-01T00-00-00 copy.json'), JSON.stringify(sessionData()))
+
+  const sessions = await listSessions(dir)
+  assert.deepEqual(sessions.map((s) => s.id), ['2026-01-01T00-00-00'])
 })
 
 test('generateSessionId claims the id and saveSession removes empty claims', async (t) => {

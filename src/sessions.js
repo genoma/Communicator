@@ -167,6 +167,10 @@ async function costFromFile(dir, id) {
 async function parseSessionFiles(dir, jsonFiles) {
   const sessions = await Promise.all(jsonFiles.map(async (file) => {
     const id = basename(file, '.json')
+    // A file whose stem is not a usable session id would be listed but could
+    // never be resumed, exported or deleted (loadSession/deleteSession reject
+    // it), so it is not a session as far as the listing is concerned.
+    if (!validSessionId(id)) return null
 
     try {
       const parsed = JSON.parse(await readFile(join(dir, file), 'utf-8'))
@@ -240,7 +244,7 @@ export async function listSessions(dir) {
     // <=1-message sessions parse to null and are correctly not re-added.
     const uncovered = jsonFiles.filter((file) => !known.has(file))
     const recovered = uncovered.length > 0 ? await parseSessionFiles(dir, uncovered) : []
-    valid.push(...recovered)
+    for (const item of recovered) valid.push(item)
     if (ghosts.length > 0 || recovered.length > 0) {
       await reconcileSidecar(dir, { add: recovered, remove: ghosts })
     }
@@ -248,7 +252,10 @@ export async function listSessions(dir) {
   }
 
   const sessions = await parseSessionFiles(dir, jsonFiles)
-  await writeSidecar(dir, Object.fromEntries(sessions.map((s) => [s.id, s])))
+  // Stored without the id: it is the key, and the incremental writers
+  // (updateSidecar/reconcileSidecar) strip it too, so every entry has the
+  // same shape regardless of which path wrote it.
+  await writeSidecar(dir, Object.fromEntries(sessions.map(({ id, ...meta }) => [id, meta])))
   return sessions
 }
 

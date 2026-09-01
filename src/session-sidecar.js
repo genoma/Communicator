@@ -63,7 +63,12 @@ export async function dropSidecarEntry(dir, id) {
 // index never mentioned (a concurrent instance's lost update).
 export async function reconcileSidecar(dir, { add = [], remove = [] } = {}) {
   try {
-    const index = (await readSidecar(dir)) || {}
+    // Both operations only make sense against an index that exists. Falling
+    // back to `{}` would let a listing that races `deleteAllSessions` (which
+    // removes the sidecar) recreate one holding just-deleted sessions; the
+    // slow path rebuilds it correctly on the next call instead.
+    const index = await readSidecar(dir)
+    if (!index) return
     let changed = false
     for (const id of remove) {
       if (index[id]) {
