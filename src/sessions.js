@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join, basename, extname } from 'node:path'
 import { SESSIONS_DIR } from './constants.js'
 import { selectSession, selectSessions } from './session-picker.js'
@@ -145,6 +145,13 @@ function sessionRecency(item) {
   const legacy = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})/.exec(String(value))
   return legacy ? Date.parse(`${legacy[1]}T${legacy[2]}:${legacy[3]}:${legacy[4]}Z`) : 0
 }
+
+// mtimeMs of each session file as last seen by this process (captured at load
+// and refreshed after our own write). saveSession compares against it to
+// detect a concurrent instance's write: two CLIs on the same session id
+// would otherwise silently overwrite each other, last writer wins.
+const sessionBaselines = new Map()
+const baselineKey = (dir, id) => `${dir}/${id}`
 
 // Most recently active first: updatedAt (bumped on every save and on resume),
 // falling back to createdAt, then the creation-time id for legacy sessions.
@@ -295,7 +302,19 @@ export async function saveSession(dir, id, data) {
 
   try {
     const payload = { ...data, messages: await externalizeAttachments(data.messages, attachmentDirFor(dir, id)) }
+    // A concurrent instance (same session id, same directory) may have
+    // written since this process last saw the file: preserve its version as
+    // a timestamped backup instead of silently overwriting it. The backup
+    // name does not end in .json, so listings and parsers ignore it.
+    const onDisk = await stat(filePath).catch(() => null)
+    if (onDisk && onDisk.size > 0 && onDisk.mtimeMs > (sessionBaselines.get(baselineKey(dir, id)) ?? 0)) {
+      const backup = `${filePath}.conflict-${new Date().toISOString().replace(/[:.]/g, '-')}`
+      await rename(filePath, backup)
+      console.error(`Warning: session ${id} changed on disk (another instance may be using it); the previous version was preserved at ${basename(backup)}`)
+    }
     await writeFileAtomic(filePath, JSON.stringify(payload, null, 2) + '\n', { mode: 0o600 })
+    const written = await stat(filePath).catch(() => null)
+    sessionBaselines.set(baselineKey(dir, id), written?.mtimeMs ?? Date.now())
     await updateSidecarEntry(dir, id, payload)
   } catch (err) {
     if (err.code === 'ENOSPC') {
@@ -367,6 +386,9 @@ export async function loadSession(dir, id) {
     console.warn(`Warning: missing attachment ${ref}`)
   }
   data.messages = messages
+
+  const info = await stat(filePath).catch(() => null)
+  sessionBaselines.set(baselineKey(dir, id), info?.mtimeMs ?? 0)
 
   return data
 }

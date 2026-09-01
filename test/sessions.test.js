@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readdir, readFile, stat, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readdir, readFile, stat, utimes, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { deleteSession, deleteAllSessions, deleteSessions, generateTitle, listSessions, saveSession, loadSession, generateSessionId, removeEmptySessionClaim, buildSessionPayload } from '../src/sessions.js'
@@ -887,4 +887,61 @@ test('deleteSessions does not fabricate an empty sidecar when none existed', asy
   assert.deepEqual(failures, [])
   await assert.rejects(readFile(join(dir, '2026-01-04T00-00-00.json')))
   await assert.rejects(readFile(join(dir, '.index.json')), { code: 'ENOENT' })
+})
+
+test('saveSession preserves a concurrently-written version as a backup', async (t) => {
+  const dir = await tempDir(t)
+  const id = '2026-01-01T00-00-00'
+  await saveSession(dir, id, sessionData())
+
+  // Another instance writes its own version and stamps it visibly newer.
+  const filePath = join(dir, `${id}.json`)
+  await writeFile(filePath, JSON.stringify(sessionData({ model: 'other/instance' }), null, 2) + '\n')
+  const future = new Date(Date.now() + 5000)
+  await utimes(filePath, future, future)
+
+  const captured = []
+  const origError = console.error
+  console.error = (msg) => captured.push(msg)
+  try {
+    await saveSession(dir, id, sessionData({ model: 'this/instance' }))
+  } finally {
+    console.error = origError
+  }
+
+  assert.equal(captured.length, 1)
+  assert.match(captured[0], /changed on disk.*preserved at .*\.conflict-/)
+  const saved = JSON.parse(await readFile(filePath, 'utf-8'))
+  assert.equal(saved.model, 'this/instance')
+  const entries = await readdir(dir)
+  const backups = entries.filter((f) => f.includes('.conflict-'))
+  assert.equal(backups.length, 1)
+  const backup = JSON.parse(await readFile(join(dir, backups[0]), 'utf-8'))
+  assert.equal(backup.model, 'other/instance')
+})
+
+test('saveSession detects a write that happened after loadSession', async (t) => {
+  const dir = await tempDir(t)
+  const id = '2026-01-02T00-00-00'
+  await saveSession(dir, id, sessionData())
+  await loadSession(dir, id)
+
+  const filePath = join(dir, `${id}.json`)
+  await writeFile(filePath, JSON.stringify(sessionData({ model: 'concurrent' }), null, 2) + '\n')
+  const future = new Date(Date.now() + 5000)
+  await utimes(filePath, future, future)
+
+  const captured = []
+  const origError = console.error
+  console.error = (msg) => captured.push(msg)
+  try {
+    await saveSession(dir, id, sessionData({ model: 'loader' }))
+  } finally {
+    console.error = origError
+  }
+
+  assert.equal(captured.length, 1)
+  const entries = await readdir(dir)
+  assert.equal(entries.filter((f) => f.includes('.conflict-')).length, 1)
+  assert.equal(JSON.parse(await readFile(filePath, 'utf-8')).model, 'loader')
 })
