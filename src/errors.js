@@ -41,7 +41,7 @@ export function commandErrorLine(err) {
   return err instanceof CliError ? `${sanitizeAnsi(err.message)}\n` : `Error: ${formatError(err)}\n`
 }
 
-export function makeHandleHttpError({ providerName, providerId = providerName, apiKeyEnv, notFoundMessage = null }) {
+export function makeHandleHttpError({ providerName, providerId = providerName, apiKeyEnv, notFoundMessage = null, retryable5xx = true }) {
   return function handleHttpError(status, body) {
     if (status === 401) {
       throw new ApiError(`Invalid API key. Check your ${apiKeyEnv} environment variable.`, { status, provider: providerId, retryable: false })
@@ -53,6 +53,10 @@ export function makeHandleHttpError({ providerName, providerId = providerName, a
       throw new ApiError(notFoundMessage, { status, provider: providerId, retryable: false })
     }
     const trunc = typeof body === 'string' && body.length > 200 ? `${body.slice(0, 200)}...` : body
-    throw new ApiError(`${providerName} request failed (${status}): ${trunc}`, { status, provider: providerId, retryable: status >= 500 })
+    // 5xx on a generation endpoint must not retry: a gateway 504 can fire
+    // after the generation was already produced and billed server-side, so
+    // re-POSTing would double the generation and the bill (429 stays
+    // retryable — the server already rejected the request before doing work).
+    throw new ApiError(`${providerName} request failed (${status}): ${trunc}`, { status, provider: providerId, retryable: status >= 500 && retryable5xx })
   }
 }

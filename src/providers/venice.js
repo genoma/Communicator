@@ -1,8 +1,8 @@
 import { parseSSEStream } from '../sse-parser.js'
-import { fetchWithRetry } from '../http.js'
+import { fetchWithRetry, readJsonBounded } from '../http.js'
 import { ApiError, makeHandleHttpError } from '../errors.js'
 import { formatPricePerM, formatImagePrice, imageUnitPrice } from '../ui/format.js'
-import { IMAGE_GEN_TIMEOUT_MS, VENICE_BASE } from '../constants.js'
+import { IMAGE_GEN_RESPONSE_LIMIT_BYTES, IMAGE_GEN_TIMEOUT_MS, VENICE_BASE } from '../constants.js'
 import { mimeForExt, extForMime } from '../attachments.js'
 import { encryptMessages, decryptToken } from '../e2ee.js'
 
@@ -27,6 +27,10 @@ export function resetModelCaches() {
 }
 
 export const handleHttpError = makeHandleHttpError({ providerName: 'Venice', providerId: 'venice', apiKeyEnv: 'VENICE_API_KEY' })
+
+// Generation errors must never re-POST (a gateway 5xx can fire after the
+// generation was produced and billed server-side); 429 stays retryable.
+const handleGenerationError = makeHandleHttpError({ providerName: 'Venice', providerId: 'venice', apiKeyEnv: 'VENICE_API_KEY', retryable5xx: false })
 
 export function normalizePricing(raw) {
   if (raw?.input?.usd == null || raw?.output?.usd == null) {
@@ -91,7 +95,7 @@ export async function fetchModelsByType(apiKey, type) {
 
   const res = await fetchWithRetry(`${VENICE_BASE}/models?type=${type}`, { headers }, { errorResponse: handleHttpError })
 
-  return res.json()
+  return readJsonBounded(res)
 }
 
 // Scrapes a public web page and returns its content as markdown. Venice-only
@@ -107,7 +111,7 @@ export async function scrapePage({ apiKey, url, signal }) {
     body: JSON.stringify({ url }),
   }, { errorResponse: handleHttpError, signal })
 
-  return res.json()
+  return readJsonBounded(res)
 }
 
 export async function fetchModels(apiKey) {
@@ -210,8 +214,8 @@ export async function generateImage({ apiKey, model, prompt, format = 'webp', va
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
-  }, { errorResponse: handleHttpError, signal, timeoutMs })
-  const parsed = await res.json()
+  }, { errorResponse: handleGenerationError, signal, timeoutMs })
+  const parsed = await readJsonBounded(res, { limit: IMAGE_GEN_RESPONSE_LIMIT_BYTES, timeoutMs })
   const rawImages = Array.isArray(parsed.images) ? parsed.images : []
   if (rawImages.length === 0) {
     throw new ApiError('Venice returned no images.', { provider: 'venice', retryable: false })

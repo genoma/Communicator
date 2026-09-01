@@ -1,7 +1,7 @@
 import { parseSSEStream } from '../sse-parser.js'
-import { fetchSafeBytes, fetchWithRetry, mapWithConcurrency } from '../http.js'
+import { fetchSafeBytes, fetchWithRetry, mapWithConcurrency, readJsonBounded } from '../http.js'
 import { ApiError, makeHandleHttpError } from '../errors.js'
-import { DEFAULT_WEB_SEARCH_RESULTS, IMAGE_GEN_TIMEOUT_MS, MAX_IMAGE_ATTACHMENT_BYTES } from '../constants.js'
+import { DEFAULT_WEB_SEARCH_RESULTS, IMAGE_GEN_RESPONSE_LIMIT_BYTES, IMAGE_GEN_TIMEOUT_MS, MAX_IMAGE_ATTACHMENT_BYTES } from '../constants.js'
 import { getZdrIndex, getProviderPolicies, OPENROUTER_BASE, CACHE_TTL_MS } from './openrouter-meta.js'
 import { mimeForExt, extForMime } from '../attachments.js'
 
@@ -60,6 +60,15 @@ export const handleHttpError = makeHandleHttpError({
   notFoundMessage: 'Model not found on OpenRouter. Use --list-models to list available models.',
 })
 
+// Generation errors must never re-POST (a gateway 5xx can fire after the
+// generation was produced and billed server-side); 429 stays retryable.
+const handleGenerationError = makeHandleHttpError({
+  providerName: 'OpenRouter',
+  providerId: 'openrouter',
+  apiKeyEnv: 'OPENROUTER_API_KEY',
+  retryable5xx: false,
+})
+
 export async function isZdrIndexDegraded() {
   return (await getZdrIndex()).degraded === true
 }
@@ -76,7 +85,7 @@ export async function fetchModels(apiKey, { zdr = false } = {}) {
       headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
     }, { errorResponse: handleHttpError })
 
-    const { data } = await res.json()
+    const { data } = await readJsonBounded(res)
     models = data.map((m) => {
       const r = m.reasoning
       const aliasTarget = m.alias_target?.slug || null
@@ -175,7 +184,7 @@ export async function fetchImageModelEndpoints(apiKey, modelId) {
   const res = await fetchWithRetry(`${OPENROUTER_BASE}/images/models/${modelPathId(modelId)}/endpoints`, {
     headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
   }, { errorResponse: handleHttpError })
-  const parsed = await res.json()
+  const parsed = await readJsonBounded(res)
   const endpoints = Array.isArray(parsed.data) ? parsed.data : parsed.endpoints || parsed.data?.endpoints || []
   const mapped = endpoints.map((ep) => ({
     providerName: ep.provider_name,
@@ -205,7 +214,7 @@ export async function fetchImageModels(apiKey, { withPricing = false } = {}) {
     const res = await fetchWithRetry(`${OPENROUTER_BASE}/images/models`, {
       headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
     }, { errorResponse: handleHttpError })
-    const { data } = await res.json()
+    const { data } = await readJsonBounded(res)
     models = (data || []).map((m) => ({
       id: m.id,
       name: m.name,
@@ -252,8 +261,8 @@ export async function generateImage({ apiKey, model, prompt, format, variants = 
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
-  }, { errorResponse: handleHttpError, signal, timeoutMs })
-  const parsed = await res.json()
+  }, { errorResponse: handleGenerationError, signal, timeoutMs })
+  const parsed = await readJsonBounded(res, { limit: IMAGE_GEN_RESPONSE_LIMIT_BYTES, timeoutMs })
   const rawImages = Array.isArray(parsed.data) ? parsed.data : []
   if (rawImages.length === 0) {
     throw new ApiError('OpenRouter returned no images.', { provider: 'openrouter', retryable: false })
@@ -300,7 +309,7 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   }, { errorResponse: handleHttpError })
 
   let res = await request()
-  let { data } = await res.json()
+  let { data } = await readJsonBounded(res)
 
   if (!data?.endpoints?.length && modelId.startsWith('~') && queryId === modelId && !allModels?.length) {
     // The alias target was not resolvable from the supplied model list (the
@@ -310,7 +319,7 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
     if (aliasTarget && aliasTarget !== queryId) {
       queryId = aliasTarget
       res = await request()
-      ;({ data } = await res.json())
+      ;({ data } = await readJsonBounded(res))
     }
   }
 

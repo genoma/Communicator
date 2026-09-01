@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join, basename, extname } from 'node:path'
 import { SESSIONS_DIR } from './constants.js'
 import { selectSession, selectSessions } from './session-picker.js'
@@ -7,7 +7,7 @@ import { attachmentDirFor, externalizeAttachments, hydrateAttachments } from './
 import { CliError } from './errors.js'
 import { computeCostSummary } from './tracker.js'
 import { writeFileAtomic } from './fs-utils.js'
-import { readSidecar, writeSidecar, sidecarStale, updateSidecar, dropSidecarEntry, reconcileSidecar, SIDECAR_FILE } from './session-sidecar.js'
+import { readSidecar, writeSidecar, sessionFileMtimes, sidecarMtimeMs, updateSidecar, dropSidecarEntry, reconcileSidecar, SIDECAR_FILE } from './session-sidecar.js'
 
 // Session ids are app-generated timestamps; anything else (path separators,
 // dots, other characters) is rejected so ids can never escape the sessions dir.
@@ -130,6 +130,7 @@ function toSessionItem(id, meta) {
     preview: meta.preview || '',
     title: meta.title || '',
     costSummary: meta.costSummary || null,
+    mtimeMs: meta.mtimeMs ?? null,
   }
 }
 
@@ -145,6 +146,13 @@ function sessionRecency(item) {
   const legacy = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})/.exec(String(value))
   return legacy ? Date.parse(`${legacy[1]}T${legacy[2]}:${legacy[3]}:${legacy[4]}Z`) : 0
 }
+
+// mtimeMs of each session file as last seen by this process (captured at load
+// and refreshed after our own write). saveSession compares against it to
+// detect a concurrent instance's write: two CLIs on the same session id
+// would otherwise silently overwrite each other, last writer wins.
+const sessionBaselines = new Map()
+const baselineKey = (dir, id) => `${dir}/${id}`
 
 // Most recently active first: updatedAt (bumped on every save and on resume),
 // falling back to createdAt, then the creation-time id for legacy sessions.
@@ -176,6 +184,7 @@ async function parseSessionFiles(dir, jsonFiles) {
       const parsed = JSON.parse(await readFile(join(dir, file), 'utf-8'))
       const msgCount = Array.isArray(parsed.messages) ? parsed.messages.length : 0
       if (msgCount <= 1) return null
+      const mtimeMs = await stat(join(dir, file)).then((s) => s.mtimeMs).catch(() => null)
 
       return toSessionItem(id, {
         model: parsed.model,
@@ -186,6 +195,7 @@ async function parseSessionFiles(dir, jsonFiles) {
         messageCount: msgCount,
         preview: firstUserPreview(parsed.messages),
         title: parsed.title,
+        mtimeMs,
         // Legacy files before the cost summary existed: replay usage so the
         // list still shows a cost; the next save backfills the summary.
         costSummary: parsed.costSummary ?? computeCostSummary({ pricing: parsed.pricing, messages: parsed.messages, scrapes: parsed.scrapes ?? 0 }),
@@ -214,41 +224,75 @@ export async function listSessions(dir) {
     .map((e) => e.name)
   const index = await readSidecar(dir)
 
-  if (index && Object.keys(index).length > 0 && !(await sidecarStale(dir, jsonFiles))) {
-    // A session file deleted outside the app (or a stale sidecar key) leaves
-    // a ghost entry: drop entries whose files no longer exist so the picker
-    // never offers a resume that fails. Ghosts are collected and dropped in
-    // one batched sidecar rewrite (a Set keeps the membership check O(1)).
-    const present = new Set(jsonFiles)
-    const known = new Set()
-    const valid = []
-    const ghosts = []
-    for (const [id, meta] of Object.entries(index)) {
-      known.add(`${id}.json`)
-      if (present.has(`${id}.json`)) {
-        const item = toSessionItem(id, meta)
-        // A legacy sidecar entry has no cost summary; recompute from the
-        // session file so the list and picker show a consistent cost (the
-        // session is backfilled on its next save).
-        if (!item.costSummary) item.costSummary = await costFromFile(dir, id)
-        valid.push(item)
-      } else ghosts.push(id)
+  if (index && Object.keys(index).length > 0) {
+    const mtimes = await sessionFileMtimes(dir, jsonFiles)
+    const sidecarMtime = await sidecarMtimeMs(dir)
+    const wholeIndexStale = sidecarMtime == null || jsonFiles.some((file) => (mtimes.get(file) ?? Infinity) > sidecarMtime)
+    if (!wholeIndexStale) {
+      // A session file deleted outside the app (or a stale sidecar key) leaves
+      // a ghost entry: drop entries whose files no longer exist so the picker
+      // never offers a resume that fails. Ghosts are collected and dropped in
+      // one batched sidecar rewrite (a Set keeps the membership check O(1)).
+      const present = new Set(jsonFiles)
+      const known = new Set()
+      const valid = []
+      const ghosts = []
+      const staleEntries = []
+      for (const [id, meta] of Object.entries(index)) {
+        known.add(`${id}.json`)
+        if (present.has(`${id}.json`)) {
+          // A covered entry whose file is newer than the recorded mtime is
+          // stale (the save wrote the file but its sidecar update was lost, a
+          // crash, or a concurrent instance): refresh it from the file in the
+          // same pass that recovers uncovered files. Sidecar entries written
+          // before mtimeMs existed skip the per-entry check and rely on the
+          // whole-index gate above.
+          const fileMtime = mtimes.get(`${id}.json`)
+          if ((meta.mtimeMs ?? null) != null && fileMtime != null && fileMtime > meta.mtimeMs) {
+            staleEntries.push(id)
+            continue
+          }
+          const item = toSessionItem(id, meta)
+          // A legacy sidecar entry has no cost summary; recompute from the
+          // session file so the list and picker show a consistent cost (the
+          // session is backfilled on its next save).
+          if (!item.costSummary) item.costSummary = await costFromFile(dir, id)
+          valid.push(item)
+        } else ghosts.push(id)
+      }
+      // Reconcile the other direction too. `saveSession` writes the session
+      // file *before* the sidecar, so a session another instance wrote while
+      // this one held a stale copy of the index is never detected as stale
+      // and would stay invisible to every listing path (resume, export,
+      // delete all funnel through here) while sitting on disk. Only the
+      // uncovered and stale-covered files are parsed, so the fast path stays
+      // cheap; id claims and <=1-message sessions parse to null and are
+      // correctly not re-added.
+      const needsParse = [...jsonFiles.filter((file) => !known.has(file)), ...staleEntries.map((id) => `${id}.json`)]
+      const parsed = needsParse.length > 0 ? await parseSessionFiles(dir, needsParse) : []
+      const refreshed = new Set(staleEntries)
+      const recovered = parsed.filter((item) => !refreshed.has(item.id))
+      const refreshedItems = parsed.filter((item) => refreshed.has(item.id))
+      const refreshedById = new Map(refreshedItems.map((item) => [item.id, item]))
+      for (const item of recovered) valid.push(item)
+      for (const id of staleEntries) {
+        const fresh = refreshedById.get(id)
+        if (fresh) {
+          valid.push(fresh)
+        } else {
+          // The stale file failed to parse (corrupt or an empty claim): keep
+          // the indexed metadata so a stray page write cannot blank the
+          // listing; the entry refreshes on the next readable save.
+          const item = toSessionItem(id, index[id])
+          if (!item.costSummary) item.costSummary = await costFromFile(dir, id)
+          valid.push(item)
+        }
+      }
+      if (ghosts.length > 0 || recovered.length > 0 || refreshedItems.length > 0) {
+        await reconcileSidecar(dir, { add: [...recovered, ...refreshedItems], remove: ghosts })
+      }
+      return valid.sort(byActivityDesc)
     }
-    // Reconcile the other direction too. `sidecarStale` compares mtimes and
-    // `saveSession` writes the session file *before* the sidecar, so the
-    // sidecar is always the newest file: a session another instance wrote
-    // while this one held a stale copy of the index is never detected as
-    // stale, and would stay invisible to every listing path (resume, export,
-    // delete all funnel through here) while sitting on disk. Only the
-    // uncovered files are parsed, so the fast path stays cheap; id claims and
-    // <=1-message sessions parse to null and are correctly not re-added.
-    const uncovered = jsonFiles.filter((file) => !known.has(file))
-    const recovered = uncovered.length > 0 ? await parseSessionFiles(dir, uncovered) : []
-    for (const item of recovered) valid.push(item)
-    if (ghosts.length > 0 || recovered.length > 0) {
-      await reconcileSidecar(dir, { add: recovered, remove: ghosts })
-    }
-    return valid.sort(byActivityDesc)
   }
 
   const sessions = await parseSessionFiles(dir, jsonFiles)
@@ -281,10 +325,28 @@ export async function removeEmptySessionClaim(dir, id) {
   }
 }
 
+// Serializes saves per session id within this process: two in-flight saves
+// of the same id (the turn-runner's interrupt save racing the exit save)
+// would otherwise see each other's file as a foreign write and produce a
+// spurious conflict backup of our own data.
+const saveChains = new Map()
+
 export async function saveSession(dir, id, data) {
   if (!validSessionId(id)) {
     throw new CliError(`Error: Invalid session id "${id}".`)
   }
+  const key = baselineKey(dir, id)
+  const previous = saveChains.get(key) ?? Promise.resolve()
+  const result = previous.then(() => saveSessionSerialized(dir, id, data))
+  saveChains.set(key, result)
+  try {
+    return await result
+  } finally {
+    if (saveChains.get(key) === result) saveChains.delete(key)
+  }
+}
+
+async function saveSessionSerialized(dir, id, data) {
   const filePath = join(dir, `${id}.json`)
   if (!data.messages || data.messages.length <= 1) {
     // The id may have been claimed by generateSessionId (empty wx file) but
@@ -295,8 +357,27 @@ export async function saveSession(dir, id, data) {
 
   try {
     const payload = { ...data, messages: await externalizeAttachments(data.messages, attachmentDirFor(dir, id)) }
+    // A concurrent instance (same session id, same directory) may have
+    // written since this process last saw the file: preserve its version as
+    // a timestamped backup instead of silently overwriting it. The backup
+    // name does not end in .json, so listings and parsers ignore it.
+    const onDisk = await stat(filePath).catch(() => null)
+    if (onDisk && onDisk.size > 0 && onDisk.mtimeMs > (sessionBaselines.get(baselineKey(dir, id)) ?? 0)) {
+      const backup = `${filePath}.conflict-${new Date().toISOString().replace(/[:.]/g, '-')}`
+      try {
+        await rename(filePath, backup)
+        console.error(`Warning: session ${id} changed on disk (another instance may be using it); the previous version was preserved at ${basename(backup)}`)
+      } catch {
+        // The file could not be moved aside (e.g. a sharing violation on
+        // Windows): the write below still proceeds so the current turn is
+        // not lost, at the cost of overwriting the other version.
+        console.error('Warning: session ' + id + ' changed on disk (another instance may be using it) but could not be preserved; the version on disk will be replaced.')
+      }
+    }
     await writeFileAtomic(filePath, JSON.stringify(payload, null, 2) + '\n', { mode: 0o600 })
-    await updateSidecarEntry(dir, id, payload)
+    const written = await stat(filePath).catch(() => null)
+    sessionBaselines.set(baselineKey(dir, id), written?.mtimeMs ?? Date.now())
+    await updateSidecarEntry(dir, id, payload, written?.mtimeMs ?? null)
   } catch (err) {
     if (err.code === 'ENOSPC') {
       console.error('Warning: disk full, could not save session')
@@ -306,7 +387,7 @@ export async function saveSession(dir, id, data) {
   }
 }
 
-async function updateSidecarEntry(dir, id, data) {
+async function updateSidecarEntry(dir, id, data, mtimeMs) {
   await updateSidecar(dir, toSessionItem(id, {
     model: data.model,
     providerName: data.providerName,
@@ -317,6 +398,7 @@ async function updateSidecarEntry(dir, id, data) {
     preview: firstUserPreview(data.messages),
     title: data.title,
     costSummary: data.costSummary || null,
+    mtimeMs,
   }))
 }
 
@@ -368,6 +450,9 @@ export async function loadSession(dir, id) {
   }
   data.messages = messages
 
+  const info = await stat(filePath).catch(() => null)
+  sessionBaselines.set(baselineKey(dir, id), info?.mtimeMs ?? 0)
+
   return data
 }
 
@@ -376,12 +461,31 @@ export async function deleteSession(dir, id) {
     throw new CliError(`Error: Invalid session id "${id}".`)
   }
   await rm(join(dir, `${id}.json`), { force: true })
+  // A conflict backup (see saveSession) is the same transcript and must go
+  // with the session: best-effort, the session id part is validated above.
+  await removeConflictBackups(dir, id)
   await rm(attachmentDirFor(dir, id), { recursive: true, force: true })
   const index = await readSidecar(dir)
   if (index && index[id]) {
     delete index[id]
     await writeSidecar(dir, index)
   }
+}
+
+// Removes every <id>.json.conflict-* sibling best-effort (deleteSession and
+// deleteSessions both funnel here).
+async function removeConflictBackups(dir, id) {
+  let entries
+  try {
+    entries = await readdir(dir)
+  } catch {
+    return
+  }
+  const prefix = `${id}.json.conflict-`
+  await Promise.all(entries
+    .filter((file) => file.startsWith(prefix))
+    .map((file) => rm(join(dir, file), { force: true }).catch(() => {}))
+  )
 }
 
 // Best-effort delete of an explicit set of ids: each id's session file and
@@ -403,6 +507,7 @@ export async function deleteSessions(dir, ids) {
     let ok = true
     try {
       await rm(join(dir, `${id}.json`), { force: true })
+      await removeConflictBackups(dir, id)
     } catch {
       ok = false
     }
@@ -434,13 +539,14 @@ export async function deleteSessions(dir, ids) {
 }
 
 // Wipes the whole sessions dir: every session JSON file (including corrupt
-// files and empty claims — the sweep does not rely on listSessions parsing),
-// the .index.json sidecar and the attachments dir. Removal is best-effort
-// per item: a failure (locked file, a directory named like a session, ...) is
-// collected and the sweep continues, so one stuck entry can never block the
-// rest. Returns { removed, failures } — the count of non-hidden .json files
-// removed and the names of every entry that could not be deleted; a missing
-// dir yields { removed: 0, failures: [] }.
+// files, empty claims and save-conflict backups — the sweep relies on
+// filename shapes, not on listSessions parsing), the .index.json sidecar and
+// the attachments dir. Removal is best-effort per item: a failure (locked
+// file, a directory named like a session, ...) is collected and the sweep
+// continues, so one stuck entry can never block the rest. Returns
+// { removed, failures } — the count of non-hidden session files removed and
+// the names of every entry that could not be deleted; a missing dir yields
+// { removed: 0, failures: [] }.
 export async function deleteAllSessions(dir) {
   let entries
   try {
@@ -462,9 +568,17 @@ export async function deleteAllSessions(dir) {
   }
 
   for (const file of entries) {
-    if (file.startsWith('.') || extname(file) !== '.json') continue
-    const id = basename(file, '.json')
-    if (!validSessionId(id)) continue
+    if (file.startsWith('.')) continue
+    // A conflict backup is `<id>.json.conflict-<iso>`; its extname is never
+    // .json, so it is matched by shape rather than extension.
+    const conflictAt = file.indexOf('.json.conflict-')
+    let id = null
+    if (conflictAt !== -1) {
+      id = file.slice(0, conflictAt)
+    } else if (extname(file) === '.json') {
+      id = basename(file, '.json')
+    }
+    if (id === null || !validSessionId(id)) continue
     if (await removeBestEffort(file)) removed++
   }
   await removeBestEffort(SIDECAR_FILE)

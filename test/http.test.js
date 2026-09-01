@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Readable } from 'node:stream'
-import { fetchWithTimeout, fetchWithRetry, fetchSafeBytes, fetchWithRedirects, assertSafeUrl, readBodyWithDeadline, pinnedFetch, sleep } from '../src/http.js'
+import { fetchWithTimeout, fetchWithRetry, fetchSafeBytes, fetchWithRedirects, assertSafeUrl, readBodyWithDeadline, readJsonBounded, pinnedFetch, sleep } from '../src/http.js'
 import { ApiError, TimeoutError } from '../src/errors.js'
 
 function abortAwareFetch() {
@@ -437,4 +437,97 @@ test('pinnedFetch settles immediately when the caller aborts (timer cleared)', a
   const promise = pinnedFetch('https://example.com/a.png', { addresses: ['1.2.3.4'], family: 4, timeoutMs: 30_000, signal: controller.signal, requestFn })
   controller.abort()
   await assert.rejects(promise, /aborted/i)
+})
+
+test('readJsonBounded parses a JSON body within the cap', async () => {
+  const res = new Response('{"data":[1,2,3]}', { status: 200 })
+  assert.deepEqual(await readJsonBounded(res), { data: [1, 2, 3] })
+})
+
+test('readJsonBounded throws a non-retryable ApiError past the byte cap', async () => {
+  const res = new Response('{"data":"' + 'x'.repeat(1000) + '"}', { status: 200 })
+  await assert.rejects(
+    readJsonBounded(res, { limit: 100 }),
+    (err) => err instanceof ApiError && err.retryable === false && /exceeded 100 bytes/.test(err.message)
+  )
+})
+
+test('readJsonBounded dies on a stalled body instead of hanging the reader', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('{"data":'))
+    },
+    cancel() {},
+  })
+  const promise = readJsonBounded({ body }, { timeoutMs: 1000 })
+  const assertion = assert.rejects(promise, /could not read response body/)
+  t.mock.timers.tick(1000)
+  await assertion
+})
+
+test('fetchWithRetry caps a stalled error body and keeps the status retry path', async (t) => {
+  let calls = 0
+  const stalledBody = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('slow down forever'))
+    },
+    pull() {
+      // Never delivers another chunk: the idle deadline has to cancel it.
+      return new Promise(() => {})
+    },
+  })
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++
+    return calls === 1 ? new Response(stalledBody, { status: 429 }) : new Response('ok', { status: 429 })
+  })
+
+  const seen = []
+  await assert.rejects(
+    fetchWithRetry('https://example.test', {}, {
+      errorResponse: (status, body) => {
+        seen.push({ status, body })
+        return new ApiError(`status ${status}: ${body}`, { status, retryable: status === 429 || status >= 500 })
+      },
+      attempts: 2,
+      retryDelays: [0],
+      timeoutMs: 50,
+    }),
+    (err) => err instanceof ApiError && err.status === 429
+  )
+  assert.deepEqual(seen, [
+    { status: 429, body: '' },
+    { status: 429, body: 'ok' },
+  ])
+  assert.equal(calls, 2)
+})
+
+test('readJsonBounded strips a UTF-8 BOM like Response.json does', async () => {
+  const res = new Response('\uFEFF{"data":1}', { status: 200 })
+  assert.deepEqual(await readJsonBounded(res), { data: 1 })
+})
+
+test('fetchWithRetry keeps an oversized-but-capped error body for the status message', async (t) => {
+  let calls = 0
+  const errorBody = 'x'.repeat(70_000)
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++
+    return calls === 1 ? new Response(errorBody, { status: 500 }) : new Response('still down', { status: 500 })
+  })
+
+  const seen = []
+  await assert.rejects(
+    fetchWithRetry('https://example.test', {}, {
+      errorResponse: (status, body) => {
+        seen.push({ status, body })
+        return new ApiError(`status ${status}`, { status, retryable: status === 429 || status >= 500 })
+      },
+      attempts: 2,
+      retryDelays: [0],
+    }),
+    (err) => err instanceof ApiError && err.status === 500
+  )
+  assert.equal(seen.length, 2)
+  assert.equal(seen[0].body.length, 70_000)
+  assert.equal(calls, 2)
 })

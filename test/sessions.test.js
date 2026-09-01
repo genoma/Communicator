@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readdir, readFile, stat, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readdir, readFile, stat, utimes, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { deleteSession, deleteAllSessions, deleteSessions, generateTitle, listSessions, saveSession, loadSession, generateSessionId, removeEmptySessionClaim, buildSessionPayload } from '../src/sessions.js'
@@ -319,8 +319,9 @@ test('the sidecar fast path lists a covered session without reading its body', a
   await saveSession(dir, '2026-01-01T00-00-00', data)
 
   // A covered entry carrying a cost summary needs nothing from the file, so
-  // corrupting the body must not change the listing at all. Any body read
-  // would drop or degrade this session.
+  // corrupting the body must not change the listing at all: the stale-entry
+  // branch may read it, but the parse failure falls back to the indexed
+  // metadata instead of dropping the session.
   await writeFile(join(dir, '2026-01-01T00-00-00.json'), '{ not json')
   const indexPath = join(dir, '.index.json')
   await writeFile(indexPath, await readFile(indexPath, 'utf-8'))
@@ -346,8 +347,18 @@ test('generateSessionId claims the id and saveSession removes empty claims', asy
   const dir = await tempDir(t)
   const id = await generateSessionId(dir)
   assert.equal((await stat(join(dir, `${id}.json`))).size, 0)
-  await saveSession(dir, id, { messages: [{ role: 'system', content: 'only system' }] })
+  const warned = []
+  const origError = console.error
+  console.error = (msg) => warned.push(String(msg))
+  try {
+    await saveSession(dir, id, { messages: [{ role: 'system', content: 'only system' }] })
+  } finally {
+    console.error = origError
+  }
   await assert.rejects(stat(join(dir, `${id}.json`)), { code: 'ENOENT' })
+  // The empty claim must never be treated as a conflict (no backup, no warning).
+  assert.deepEqual(warned, [])
+  assert.equal((await readdir(dir)).some((f) => f.includes('.conflict-')), false)
 })
 
 test('removeEmptySessionClaim keeps content-bearing files', async (t) => {
@@ -887,4 +898,138 @@ test('deleteSessions does not fabricate an empty sidecar when none existed', asy
   assert.deepEqual(failures, [])
   await assert.rejects(readFile(join(dir, '2026-01-04T00-00-00.json')))
   await assert.rejects(readFile(join(dir, '.index.json')), { code: 'ENOENT' })
+})
+
+test('saveSession preserves a concurrently-written version as a backup', async (t) => {
+  const dir = await tempDir(t)
+  const id = '2026-01-01T00-00-00'
+  await saveSession(dir, id, sessionData())
+
+  // Another instance writes its own version and stamps it visibly newer.
+  const filePath = join(dir, `${id}.json`)
+  await writeFile(filePath, JSON.stringify(sessionData({ model: 'other/instance' }), null, 2) + '\n')
+  const future = new Date(Date.now() + 5000)
+  await utimes(filePath, future, future)
+
+  const captured = []
+  const origError = console.error
+  console.error = (msg) => captured.push(msg)
+  try {
+    await saveSession(dir, id, sessionData({ model: 'this/instance' }))
+  } finally {
+    console.error = origError
+  }
+
+  assert.equal(captured.length, 1)
+  assert.match(captured[0], /changed on disk.*preserved at .*\.conflict-/)
+  const saved = JSON.parse(await readFile(filePath, 'utf-8'))
+  assert.equal(saved.model, 'this/instance')
+  const entries = await readdir(dir)
+  const backups = entries.filter((f) => f.includes('.conflict-'))
+  assert.equal(backups.length, 1)
+  const backup = JSON.parse(await readFile(join(dir, backups[0]), 'utf-8'))
+  assert.equal(backup.model, 'other/instance')
+})
+
+test('saveSession detects a write that happened after loadSession', async (t) => {
+  const dir = await tempDir(t)
+  const id = '2026-01-02T00-00-00'
+  await saveSession(dir, id, sessionData())
+  await loadSession(dir, id)
+
+  const filePath = join(dir, `${id}.json`)
+  await writeFile(filePath, JSON.stringify(sessionData({ model: 'concurrent' }), null, 2) + '\n')
+  const future = new Date(Date.now() + 5000)
+  await utimes(filePath, future, future)
+
+  const captured = []
+  const origError = console.error
+  console.error = (msg) => captured.push(msg)
+  try {
+    await saveSession(dir, id, sessionData({ model: 'loader' }))
+  } finally {
+    console.error = origError
+  }
+
+  assert.equal(captured.length, 1)
+  const entries = await readdir(dir)
+  assert.equal(entries.filter((f) => f.includes('.conflict-')).length, 1)
+  assert.equal(JSON.parse(await readFile(filePath, 'utf-8')).model, 'loader')
+})
+
+test('listSessions refreshes a covered sidecar entry whose file is newer (stale entry)', async (t) => {
+  const dir = await tempDir(t)
+  const id = '2026-03-01T00-00-00'
+  await saveSession(dir, id, sessionData({ model: 'old/entry' }))
+
+  // The save wrote the sidecar; simulate a later save that wrote the file
+  // but lost the sidecar update (crash after writeFileAtomic, or a
+  // concurrent instance): the file is newer than the recorded mtimeMs.
+  // The sidecar is re-stamped newest so the whole-index gate passes and the
+  // per-entry mtime branch (not the slow rebuild) is exercised.
+  const filePath = join(dir, `${id}.json`)
+  await writeFile(filePath, JSON.stringify(sessionData({ model: 'fresh/file' }), null, 2) + '\n')
+  const future = new Date(Date.now() + 5000)
+  await utimes(filePath, future, future)
+  const sidecarPath = join(dir, '.index.json')
+  const sidecarFuture = new Date(Date.now() + 10000)
+  await utimes(sidecarPath, sidecarFuture, sidecarFuture)
+
+  const sessions = await listSessions(dir)
+  assert.equal(sessions.length, 1)
+  assert.equal(sessions[0].model, 'fresh/file')
+  const index = JSON.parse(await readFile(join(dir, '.index.json'), 'utf-8'))
+  assert.equal(index[id].model, 'fresh/file')
+  assert.equal(index[id].mtimeMs, future.getTime())
+})
+
+test('listSessions keeps a legacy entry without mtimeMs when the sidecar is newest', async (t) => {
+  const dir = await tempDir(t)
+  const id = '2026-03-02T00-00-00'
+  await saveSession(dir, id, sessionData({ model: 'legacy' }))
+  // Strip mtimeMs (a sidecar written before the field existed), then make
+  // the sidecar visibly newer than the file.
+  const index = JSON.parse(await readFile(join(dir, '.index.json'), 'utf-8'))
+  delete index[id].mtimeMs
+  const sidecarPath = join(dir, '.index.json')
+  await writeFile(sidecarPath, JSON.stringify(index, null, 2) + '\n')
+  const future = new Date(Date.now() + 5000)
+  await utimes(sidecarPath, future, future)
+
+  const sessions = await listSessions(dir)
+  assert.equal(sessions.length, 1)
+  assert.equal(sessions[0].model, 'legacy')
+})
+
+test('deleteSession and deleteAllSessions remove conflict backups', async (t) => {
+  const dir = await tempDir(t)
+  const id = '2026-04-01T00-00-00'
+  await saveSession(dir, id, sessionData())
+  const filePath = join(dir, `${id}.json`)
+  await writeFile(filePath, JSON.stringify(sessionData({ model: 'other' }), null, 2) + '\n')
+  const future = new Date(Date.now() + 5000)
+  await utimes(filePath, future, future)
+  await saveSession(dir, id, sessionData({ model: 'ours' }))
+
+  assert.equal((await readdir(dir)).filter((f) => f.includes('.conflict-')).length, 1)
+
+  await deleteSession(dir, id)
+  assert.equal((await readdir(dir)).some((f) => f.includes('.conflict-')), false)
+  await assert.rejects(stat(filePath), { code: 'ENOENT' })
+})
+
+test('deleteAllSessions removes conflict backups from the wipe', async (t) => {
+  const dir = await tempDir(t)
+  const id = '2026-04-02T00-00-00'
+  await saveSession(dir, id, sessionData())
+  const filePath = join(dir, `${id}.json`)
+  await writeFile(filePath, JSON.stringify(sessionData({ model: 'other' }), null, 2) + '\n')
+  const future = new Date(Date.now() + 5000)
+  await utimes(filePath, future, future)
+  await saveSession(dir, id, sessionData({ model: 'ours' }))
+
+  const { removed } = await deleteAllSessions(dir)
+  assert.equal(removed, 2)
+  const remaining = await readdir(dir)
+  assert.deepEqual(remaining, [])
 })

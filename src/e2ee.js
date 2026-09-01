@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createECDH, hkdfSync, randomBytes, timingSafeEqual } from 'node:crypto'
-import { fetchWithRetry } from './http.js'
+import { fetchWithRetry, readJsonBounded } from './http.js'
 import { ApiError } from './errors.js'
 import { VENICE_BASE } from './constants.js'
 
@@ -73,7 +73,7 @@ export async function fetchModelPubKey({ apiKey, modelId }) {
       return new ApiError(message, { retryable: false })
     },
   })
-  const attestation = await res.json()
+  const attestation = await readJsonBounded(res)
   if (attestation.verified !== true) {
     throw e2eeError('TEE attestation verification failed on server.')
   }

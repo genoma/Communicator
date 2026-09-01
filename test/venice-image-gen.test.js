@@ -272,3 +272,17 @@ test('generateImage computes cost from pricing when a resolution is requested', 
 
   assert.equal(result.cost, 0.24)
 })
+
+test('generateImage does not re-POST on a 5xx (a gateway 504 may already be billed)', async (t) => {
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++
+    return new Response('Bad Gateway', { status: 504 })
+  })
+
+  await assert.rejects(
+    venice.generateImage({ apiKey: 'key', model: 'm', prompt: 'x' }),
+    (err) => err instanceof ApiError && err.status === 504 && err.retryable === false
+  )
+  assert.equal(calls, 1)
+})

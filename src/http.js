@@ -6,6 +6,17 @@ import { Readable } from 'node:stream'
 import { ApiError, TimeoutError } from './errors.js'
 
 const DEFAULT_TIMEOUT_MS = 30_000
+// Non-streaming provider responses (model lists, scrape results, image
+// generations) are JSON whose body is read AFTER the headers arrive, when
+// fetchWithTimeout's timer is already cleared: without a bound a
+// slow-dribbling or unbounded body would hang the caller forever.
+const DEFAULT_BODY_LIMIT_BYTES = 8 * 1024 * 1024
+// Error responses are diagnostic only: the cap is generous enough to keep
+// the payload (makeHandleHttpError reads the first 200 chars) but bounds a
+// hostile or runaway error body; the idle bound never exceeds the request
+// timeout but is itself capped at the default so a 10-minute image
+// generation cannot idle for 10 minutes on a stalled error page.
+const ERROR_BODY_LIMIT_BYTES = 512 * 1024
 const RETRY_DELAYS = [500, 1000]
 
 function isPrivateAddress(address) {
@@ -259,6 +270,17 @@ export async function fetchSafeBytes(url, { maxBytes, timeoutMs = 30_000, reques
   }
 }
 
+// Parses a provider JSON response with readBodyWithDeadline's idle deadline
+// and a hard byte cap, so a stalled or oversized body fails fast instead of
+// hanging the reader. Throws a non-retryable ApiError when the cap is
+// crossed; JSON parse errors propagate as before (they were a res.json()
+// SyntaxError).
+export async function readJsonBounded(res, { limit = DEFAULT_BODY_LIMIT_BYTES, timeoutMs = 30_000 } = {}) {
+  const bytes = await readBodyWithDeadline(res, { limit, timeoutMs })
+  if (bytes === null) throw new ApiError(`Response body exceeded ${limit} bytes`, { retryable: false })
+  return JSON.parse(new TextDecoder().decode(bytes))
+}
+
 // Runs `fn` over `items` with at most `limit` in flight. Every caller here
 // maps to an outbound request, so the bound is what keeps a large input list
 // from opening one socket (and one response buffer) per item at once.
@@ -314,7 +336,16 @@ export async function fetchWithRetry(url, opts = {}, { timeoutMs = DEFAULT_TIMEO
     try {
       const res = await fetchWithTimeout(url, opts, { timeoutMs, signal })
       if (!res.ok) {
-        const body = await res.text()
+        // Cap the error body read: a stalled or oversized error body must
+        // not hang the caller, and the status alone still drives the retry
+        // decision.
+        let body = ''
+        try {
+          const bodyBytes = await readBodyWithDeadline(res, { limit: ERROR_BODY_LIMIT_BYTES, timeoutMs: Math.min(timeoutMs, DEFAULT_TIMEOUT_MS) })
+          body = bodyBytes === null ? '' : bodyBytes.toString('utf8')
+        } catch {
+          body = ''
+        }
         let err
         try {
           err = errorResponse(res.status, body)

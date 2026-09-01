@@ -73,3 +73,6 @@ lib-cov/
 coverage/
 .grunt/
 lock.asp
+
+# --- PI session exports ---
+pi-session-*.html
