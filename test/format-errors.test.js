@@ -24,7 +24,7 @@ test('formatError returns ApiError message and falls back gracefully', () => {
 test('formatError and commandErrorLine sanitize provider-controlled escapes', () => {
   const hostile = 'provider \x1b[2J said \u009b2J boom\x07'
   assert.equal(formatError(new ApiError(hostile, {})), 'provider  said 2J boom')
-  assert.equal(commandErrorLine(new Error(hostile)), '\nError: provider  said 2J boom\n')
+  assert.equal(commandErrorLine(new Error(hostile)), 'Error: provider  said 2J boom\n')
 })
 
 test('resolveReasoningFlag normalizes effort semantics', () => {

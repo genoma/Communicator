@@ -173,7 +173,7 @@ const handlers = {
       ctx.state.appendAssistant({ role: 'assistant', content: ctx.rpgFirstMessage })
       renderHistory(ctx.state.messages, { markdown: ctx.state.markdown, stdout: ctx.stdout, compactThinking: ctx.state.compactThinking, ...(ctx.rpgMarkers ?? {}) })
     }
-    console.log('\nNew session started.\n')
+    console.log('New session started.\n')
     showStatus(ctx)
     return { reset: true }
   },
@@ -193,7 +193,7 @@ const handlers = {
     }
     if (ctx.state.e2ee) {
       if (sel.supportsE2EE !== true) {
-        console.error('\nError: the selected model does not support E2EE; staying on the current model.\n')
+        console.error('Error: the selected model does not support E2EE; staying on the current model.\n')
         return
       }
       // The client key pair stays per-session; only the model public key
@@ -201,7 +201,7 @@ const handlers = {
       try {
         ctx.state.e2eeContext.modelPubKeyHex = await fetchModelPubKey({ apiKey: ctx.apiKey, modelId: sel.modelId })
       } catch (err) {
-        console.error(`\nError: ${formatError(err)}\n`)
+        console.error(`Error: ${formatError(err)}\n`)
         return
       }
     }
@@ -224,7 +224,7 @@ const handlers = {
       reasoningEffort: sel.reasoningEffort,
     })
     const label = sessionLabel(sel.endpointProviderName, sel.modelId)
-    console.log(`\nSwitched to ${label}\n`)
+    console.log(`Switched to ${label}\n`)
     showStatus(ctx)
   },
 
@@ -279,7 +279,7 @@ const handlers = {
         reasoning = models.find((m) => m.id === ctx.state.modelId)?.reasoning || null
         ctx.state.modelReasoning = reasoning
       } catch (err) {
-        console.error(`\nError: ${formatError(err)}\n`)
+        console.error(`Error: ${formatError(err)}\n`)
         return
       }
     }
@@ -451,7 +451,7 @@ const handlers = {
     try {
       result = await ctx.provider.scrapePage({ apiKey: ctx.apiKey, url })
     } catch (err) {
-      console.error(`\nError: ${formatError(err)}\n`)
+      console.error(`Error: ${formatError(err)}\n`)
       return
     }
     const { text, sizeLabel } = scrapeContext(url, result.content)
@@ -515,6 +515,10 @@ const handlers = {
     if (result?.cancelled) return
     const text = result.value
     if (!text.trim()) {
+      // Same seam as the chat REPL: the nested editor leaves the cursor glued
+      // to the submitted row, and this branch returns to the prompt without
+      // the screen rebuild that the accepted-edit path below performs.
+      ctx.stdout?.write('\n')
       console.log('Edit cancelled: the message cannot be empty.\n')
       return
     }

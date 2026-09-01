@@ -145,13 +145,23 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
   while (true) {
     const result = await read({ commands: imageSessionCommands(provider.meta.name, model) })
     if (result.cancelled) {
+      // Mirrors the chat REPL: cancel/EOF erased the editor block and left the
+      // cursor at column 0, so this is the blank row before the shell prompt.
+      stdout.write('\n')
       await savePrefs(syncPreferenceUpdates(prefs, { lastImageModel: imageModelId }))
       await persist()
       return
     }
 
     const input = result.value.trim()
-    if (!input) continue
+    // Same seam as the chat REPL: a submitted line leaves the cursor glued to
+    // its end, so every branch that returns to the prompt without generating
+    // writes the line break itself.
+    if (!input) {
+      stdout.write('\n')
+      continue
+    }
+    if (input.startsWith('/')) stdout.write('\n')
 
     if (input === '/quit') {
       await savePrefs(syncPreferenceUpdates(prefs, { lastImageModel: imageModelId }))
@@ -386,6 +396,11 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
     }
 
     let outcome
+    // The generation is the image REPL's turn: mirror the chat turn's leading
+    // '\n' + TTY '\n' (src/turn-runner.js) so the loader row sits one blank
+    // row below the submitted prompt instead of gluing to it.
+    stdout.write('\n')
+    if (stdout.isTTY === true) stdout.write('\n')
     try {
       outcome = await runImageGeneration({
         provider,

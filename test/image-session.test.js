@@ -210,6 +210,17 @@ function mockConsole(t) {
   t.mock.method(console, 'error', () => {})
 }
 
+// Ordered capture of console output AND raw stdout writes in one timeline:
+// the submitted-line seam is a `write('\n')` that must land immediately
+// before the first message a non-generation branch prints.
+function mockOutput(t) {
+  const events = []
+  t.mock.method(console, 'log', (...args) => { events.push(['log', String(args[0] ?? '')]) })
+  t.mock.method(console, 'error', (...args) => { events.push(['error', String(args[0] ?? '')]) })
+  const stdout = { write: (chunk) => { events.push(['write', String(chunk)]); return true } }
+  return { events, stdout }
+}
+
 test('two prompts generate two images, persist the session and save prefs', async (t) => {
   genCalls.length = 0
   printed.length = 0
@@ -387,6 +398,38 @@ test('unknown slash commands are reported without generating', async (t) => {
 
   assert.deepEqual(genCalls, [])
   assert.ok(logs.some((l) => l.includes('Unknown command')))
+})
+
+test('a rejected image command closes the submitted line before printing', async (t) => {
+  genCalls.length = 0
+  const { events, stdout } = mockOutput(t)
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['/nope', '/quit']), stdout }))
+
+  const idx = events.findIndex(([, text]) => text.startsWith('Unknown command'))
+  assert.notEqual(idx, -1)
+  assert.deepEqual(events[idx - 1], ['write', '\n'])
+})
+
+test('cancel closes the line so the shell prompt never glues to the erased block', async (t) => {
+  genCalls.length = 0
+  const { events, stdout } = mockOutput(t)
+
+  await startImageSession(baseOpts({ readInput: scriptedInput([]), stdout }))
+
+  assert.deepEqual(genCalls, [])
+  assert.deepEqual(events.filter(([kind, text]) => kind === 'write' && text === '\n'), [['write', '\n']])
+})
+
+test('an image generation opens with its own leading newline, not the command seam', async (t) => {
+  genCalls.length = 0
+  const { events, stdout } = mockOutput(t)
+
+  await startImageSession(baseOpts({ readInput: scriptedInput(['a red cat', '/quit']), stdout }))
+
+  assert.equal(genCalls.length, 1)
+  // Non-TTY: one '\n' for the generation turn, then one for the /quit seam.
+  assert.deepEqual(events.filter(([kind, text]) => kind === 'write' && text === '\n'), [['write', '\n'], ['write', '\n']])
 })
 
 test('a failed generation is reported and the loop continues', async (t) => {

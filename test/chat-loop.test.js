@@ -94,6 +94,18 @@ function mockConsole(t) {
   }
 }
 
+// Ordered capture of console output AND raw stdout writes in one timeline:
+// the submitted-line seam is a `write('\n')` that must land immediately
+// before the first message a non-turn branch prints, so only the interleaved
+// order proves it.
+function mockOutput(t) {
+  const events = []
+  t.mock.method(console, 'log', (...args) => { events.push(['log', String(args[0] ?? '')]) })
+  t.mock.method(console, 'error', (...args) => { events.push(['error', String(args[0] ?? '')]) })
+  const stdout = { write: (chunk) => { events.push(['write', String(chunk)]); return true } }
+  return { events, stdout }
+}
+
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 test('submitted whitespace is preserved in the message body', async (t) => {
@@ -646,6 +658,58 @@ test('unknown command is rejected with the exact message and the provider is not
     unknownLine,
     'Unknown command "/nope". Available: /quit, /status, /new, /model, /attach, /attachments, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /edit, /delete, /copy, /markdown, /smooth, /compact-thinking, /cost, /help, /exit, /q\n'
   )
+})
+
+test('cancel closes the line so the shell prompt never glues to the erased block', async (t) => {
+  const { events, stdout } = mockOutput(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput([]), stdout })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  // exitCleanly writes nothing: this branch is the only newline at exit.
+  assert.deepEqual(events.filter(([kind, text]) => kind === 'write' && text === '\n'), [['write', '\n']])
+  assert.deepEqual(events.at(-1), ['write', '\n'])
+})
+
+test('a rejected command closes the submitted line before printing', async (t) => {
+  const { events, stdout } = mockOutput(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/nope', '/quit']), stdout })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  const idx = events.findIndex(([, text]) => text.startsWith('Unknown command'))
+  assert.notEqual(idx, -1)
+  assert.deepEqual(events[idx - 1], ['write', '\n'])
+})
+
+test('an empty submit closes the line so the next separator never glues to the prompt', async (t) => {
+  const { events, stdout } = mockOutput(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['', '/quit']), stdout })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  const seps = events.map(([kind, text], i) => (kind === 'log' && text.includes(THIN_SEP) ? i : -1)).filter((i) => i !== -1)
+  // The separator opening the iteration after the empty submit.
+  assert.ok(seps.length >= 2)
+  assert.deepEqual(events[seps[1] - 1], ['write', '\n'])
+})
+
+test('a normal message never takes the seam: the turn owns its own leading newline', async (t) => {
+  const { events, stdout } = mockOutput(t)
+  const { provider, calls } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['hello', '/quit']), stdout })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  assert.equal(calls.length, 1)
+  const seps = events.map(([kind, text], i) => (kind === 'log' && text.includes(THIN_SEP) ? i : -1)).filter((i) => i !== -1)
+  const turnWrites = events.slice(seps[0] + 1, seps[1]).filter(([kind]) => kind === 'write')
+  // Non-TTY: createTurnRunner writes exactly one '\n' and the seam adds none.
+  assert.equal(turnWrites[0][1], '\n')
+  assert.equal(turnWrites.filter(([, text]) => text === '\n').length, 1)
 })
 
 test('unknown command list omits /attach and /attachments when the model lacks vision', async (t) => {

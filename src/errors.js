@@ -35,9 +35,10 @@ export function formatError(err) {
 
 // One-line rendering of a command failure: CliErrors already carry their
 // user-facing text, everything else is prefixed and passed through
-// formatError.
+// formatError. Plain message shape (no leading newline) — the REPL branch
+// that reached the failure already closed the submitted line.
 export function commandErrorLine(err) {
-  return err instanceof CliError ? `\n${sanitizeAnsi(err.message)}\n` : `\nError: ${formatError(err)}\n`
+  return err instanceof CliError ? `${sanitizeAnsi(err.message)}\n` : `Error: ${formatError(err)}\n`
 }
 
 export function makeHandleHttpError({ providerName, providerId = providerName, apiKeyEnv, notFoundMessage = null }) {

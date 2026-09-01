@@ -145,7 +145,7 @@ test('/new saves the session, requests a fresh id, resets state', async (t) => {
   assert.equal(ctx.state.budget, null)
   assert.equal(ctx.state.webResults, null)
   assert.deepEqual(prefsUpdates, [])
-  assert.equal(consoleSpy.log(0), '\nNew session started.\n')
+  assert.equal(consoleSpy.log(0), 'New session started.\n')
   assert.equal(consoleSpy.log(1), 'Current settings: Provider / org/model  [in $1.00 / out $2.00/M]  [thinking: High]  [temp: 0.7]  [top-p: default]  [smooth: on (normal, ~2000 chars/s)]\n')
 })
 
@@ -219,7 +219,7 @@ test('/model reports selection failures without crashing', async (t) => {
 
   await chatCommands['/model'](ctx)
 
-  assert.equal(consoleSpy.error(0), '\nError: network down\n')
+  assert.equal(consoleSpy.error(0), 'Error: network down\n')
   assert.equal(ctx.state.modelId, before.modelId)
   assert.equal(ctx.state.endpointProviderName, before.endpointProviderName)
   assert.equal(ctx.state.reasoningEffort, before.reasoningEffort)
@@ -276,7 +276,7 @@ test('/model with no zero-retention models prints the error and never exits the 
   assert.equal(exitCalled, 0)
   assert.equal(outcome, undefined)
   assert.equal(ctx.state.modelId, before)
-  assert.equal(consoleSpy.error(0), '\nError: No zero-retention models available on OpenRouter right now.\n')
+  assert.equal(consoleSpy.error(0), 'Error: No zero-retention models available on OpenRouter right now.\n')
 })
 
 test('/reasoning sets the effort and saves the pref', async (t) => {
@@ -324,7 +324,7 @@ test('/reasoning reports fetch failures without crashing', async (t) => {
 
   await chatCommands['/reasoning'](ctx)
 
-  assert.equal(consoleSpy.error(0), '\nError: boom\n')
+  assert.equal(consoleSpy.error(0), 'Error: boom\n')
   assert.equal(ctx.state.reasoningEffort, 'high')
 })
 
@@ -359,7 +359,7 @@ test('/temp rejects invalid values without changing state', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx, prefsUpdates } = makeCtx()
   await chatCommands['/temp']({ ...ctx, args: '2.5' })
-  assert.equal(consoleSpy.error(0), '\nError: Temperature must be a number between 0 and 2.\n')
+  assert.equal(consoleSpy.error(0), 'Error: Temperature must be a number between 0 and 2.\n')
   assert.equal(ctx.state.temperature, 0.7)
   assert.deepEqual(prefsUpdates, [])
 })
@@ -396,7 +396,7 @@ test('/top-p rejects invalid values without changing state', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx, prefsUpdates } = makeCtx()
   await chatCommands['/top-p']({ ...ctx, args: '1.5' })
-  assert.equal(consoleSpy.error(0), '\nError: Top-p must be a number between 0 and 1.\n')
+  assert.equal(consoleSpy.error(0), 'Error: Top-p must be a number between 0 and 1.\n')
   assert.equal(ctx.state.topP, undefined)
   assert.deepEqual(prefsUpdates, [])
 })
@@ -414,7 +414,7 @@ test('/budget rejects non-positive and non-numeric values', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx } = makeCtx()
   await chatCommands['/budget']({ ...ctx, args: '0' })
-  assert.equal(consoleSpy.error(0), '\nError: Budget must be a positive number (USD).\n')
+  assert.equal(consoleSpy.error(0), 'Error: Budget must be a positive number (USD).\n')
   assert.equal(ctx.state.budget, null)
   await chatCommands['/budget']({ ...ctx, args: '-3' })
   assert.equal(ctx.state.budget, null)
@@ -544,7 +544,7 @@ test('/web-results rejects invalid counts', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx } = makeCtx()
   await chatCommands['/web-results']({ ...ctx, args: '0' })
-  assert.equal(consoleSpy.error(0), '\nError: --web-results must be a positive integer.\n')
+  assert.equal(consoleSpy.error(0), 'Error: --web-results must be a positive integer.\n')
   assert.equal(ctx.state.webResults, null)
 })
 
@@ -855,12 +855,16 @@ test('/edit cancel leaves the session untouched', async (t) => {
 
 test('/edit rejects an empty replacement', async (t) => {
   const consoleSpy = mockConsole(t)
-  const harness = makeCtx({ readInput: async () => ({ value: '   ' }) })
+  const writes = []
+  const harness = makeCtx({ readInput: async () => ({ value: '   ' }), stdout: { write: (chunk) => writes.push(String(chunk)) } })
   const { ctx } = harness
   ctx.state.appendUser('original prompt')
 
   await chatCommands['/edit'](ctx)
 
+  // The nested prompt leaves the cursor glued to the submitted row, so this
+  // branch closes the line before printing.
+  assert.deepEqual(writes, ['\n'])
   assert.equal(consoleSpy.log(0), 'Edit cancelled: the message cannot be empty.\n')
   assert.deepEqual(ctx.state.messages[1], { role: 'user', content: 'original prompt' })
   assert.equal(harness.turnCount, 0)
@@ -1268,7 +1272,7 @@ test('/smooth rejects invalid values', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx } = makeCtx()
   await chatCommands['/smooth']({ ...ctx, args: 'maybe' })
-  assert.equal(consoleSpy.error(0), '\nError: Smooth speed must be "slow", "normal", "fast", or a positive number of chars per second.\n')
+  assert.equal(consoleSpy.error(0), 'Error: Smooth speed must be "slow", "normal", "fast", or a positive number of chars per second.\n')
   assert.equal(ctx.state.smoothStreaming, true)
   assert.equal(ctx.state.smoothSpeed, 2000)
   assert.equal(ctx.render.smoothCharsPerTick, 40)
@@ -1547,7 +1551,7 @@ test('/model drops queued attachments the new model cannot accept', async (t) =>
   assert.equal(ctx.state.pendingAttachments.length, 1)
   assert.equal(ctx.state.pendingAttachments[0].filename, 'b.txt')
   assert.equal(consoleSpy.log(0), 'Dropped attachment a.png: The selected model does not support image input.\n')
-  assert.equal(consoleSpy.log(1), '\nSwitched to NewProvider / new/model\n')
+  assert.equal(consoleSpy.log(1), 'Switched to NewProvider / new/model\n')
 })
 
 test('/model keeps compatible attachments on switch', async (t) => {
@@ -1570,7 +1574,7 @@ test('/model keeps compatible attachments on switch', async (t) => {
 
   assert.equal(ctx.state.pendingAttachments.length, 1)
   assert.equal(ctx.state.pendingAttachments[0].filename, 'a.png')
-  assert.equal(consoleSpy.log(0), '\nSwitched to NewProvider / new/model\n')
+  assert.equal(consoleSpy.log(0), 'Switched to NewProvider / new/model\n')
 })
 
 test('CHAT_COMMANDS keeps the 24-command order', () => {
@@ -1872,7 +1876,7 @@ test('/model under e2ee refuses models without E2EE support and keeps the curren
   await chatCommands['/model'](ctx)
 
   assert.equal(ctx.state.modelId, 'org/model')
-  assert.equal(consoleSpy.error(0), '\nError: the selected model does not support E2EE; staying on the current model.\n')
+  assert.equal(consoleSpy.error(0), 'Error: the selected model does not support E2EE; staying on the current model.\n')
 })
 
 test('/model under e2ee keeps the current model when attestation fails', async (t) => {
@@ -2026,6 +2030,6 @@ test('/model prints the updated status line with the new model values', async (t
 
   await chatCommands['/model'](ctx)
 
-  assert.equal(consoleSpy.log(0), '\nSwitched to NewProvider / new/model\n')
+  assert.equal(consoleSpy.log(0), 'Switched to NewProvider / new/model\n')
   assert.equal(consoleSpy.log(1), 'Current settings: NewProvider / new/model  [thinking: Low]  [temp: 0.3]  [top-p: default]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n')
 })

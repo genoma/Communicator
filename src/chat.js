@@ -336,7 +336,6 @@ export async function runChatSession(ctx = {}, deps = {}) {
 
   const exitCleanly = async () => {
     cleanupSignals()
-    stdout.write('\n')
     await bestEffortSave()
     return state.toFinalState(provider.meta.name)
   }
@@ -418,6 +417,10 @@ export async function runChatSession(ctx = {}, deps = {}) {
     })
 
     if (result.cancelled) {
+      // Cancel/EOF erased the editor block and left the cursor at column 0,
+      // so this newline is the blank row before the shell prompt, not a
+      // line break for a submitted line.
+      stdout.write('\n')
       return exitCleanly()
     }
 
@@ -426,9 +429,17 @@ export async function runChatSession(ctx = {}, deps = {}) {
     // of a pasted multi-line message must survive to the API.
     const rawInput = result.value
     const input = rawInput.trim()
-    if (!input) continue
+    // Seam: a submitted line leaves the cursor glued to its end, so every
+    // branch that returns to the prompt without running a turn writes the
+    // line break itself. The turn path writes its own '\n' (plus a TTY blank
+    // row).
+    if (!input) {
+      stdout.write('\n')
+      continue
+    }
 
     if (input.startsWith('/')) {
+      stdout.write('\n')
       const lines = input.split('\n')
       const firstLine = lines[0]
       const spaceIdx = firstLine.indexOf(' ')
@@ -484,6 +495,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
 
     const guard = budgetGuard(chatCtx)
     if (guard) {
+      stdout.write('\n')
       console.log(guard)
       continue
     }
