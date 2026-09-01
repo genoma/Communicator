@@ -17,7 +17,7 @@
 
 ## Verification
 
-- Run `npm test` (uses `node --test --experimental-test-module-mocks`) after any change.
+- Run `npm test` (via `scripts/run-tests.js`, which wraps `node --test --experimental-test-module-mocks` with `NO_COLOR` set and `FORCE_COLOR` cleared — the raw `node --test` invocation is not color-deterministic and fails ~55 ANSI-contract tests on a TTY) after any change.
 - Run `npm run lint` (`eslint .`) and keep it passing.
 - Run `npx --yes knip` (via `npx`, deliberately not a dependency) after any change and keep it clean — it flags unused files, dependencies, and unnecessary exports, which accumulate silently one task at a time.
 - Baseline: full test suite (1617 tests), lint and `npx knip` pass on tag `3.48.2`; keep all three green.
