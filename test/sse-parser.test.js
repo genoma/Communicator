@@ -90,6 +90,35 @@ test('handles a chunk boundary falling exactly on the newline', async () => {
   assert.equal(fullText, 'edge')
 })
 
+// The three tests above pin reassembly, which the previous implementation also
+// got right: it was correct but quadratic. This one pins the complexity, the
+// only property that actually regressed. A newline-less event delivered in
+// many small chunks made the old per-chunk `buffer.split('\n')` rescan the
+// whole accumulated line every read: measured 3435 ms here versus 57 ms now,
+// so the ceiling leaves the fix ~25x of headroom while the old code overshoots
+// it by more than 2x.
+test('parses a large newline-less event in linear time', async () => {
+  const blob = 'x'.repeat(8 * 1024 * 1024)
+  const bytes = new TextEncoder().encode(event({ choices: [{ delta: { content: blob } }] }))
+  let offset = 0
+  const reader = {
+    read: async () => {
+      if (offset >= bytes.length) return { done: true, value: undefined }
+      const end = Math.min(offset + 4096, bytes.length)
+      const value = bytes.subarray(offset, end)
+      offset = end
+      return { done: false, value }
+    },
+    cancel: async () => {},
+  }
+
+  const startedAt = performance.now()
+  const { fullText } = await parseSSEStream(reader, () => {})
+  const elapsed = performance.now() - startedAt
+  assert.equal(fullText.length, blob.length)
+  assert.ok(elapsed < 1500, `parsing took ${Math.round(elapsed)}ms, expected linear-time parsing well under 1500ms`)
+})
+
 test('accepts spec-valid data events without a space after the colon', async () => {
   const { fullText, skippedChunks } = await parseSSEStream(
     streamReader([
@@ -405,6 +434,22 @@ test('rethrows reader errors with the pending buffer attached', async () => {
         first = false
         return { done: false, value: new TextEncoder().encode(partial) }
       }
+      throw new Error('boom')
+    },
+  }
+
+  await assert.rejects(parseSSEStream(reader, () => {}), (err) => err.message === 'boom' && err.pendingBuffer === partial)
+})
+
+// The unterminated tail is accumulated as fragments, so a partial that spans
+// more than one read is the case where the salvage buffer could lose a piece.
+test('attaches a pending buffer that spans several reads', async () => {
+  const partial = 'data: {"choices":[{"delta":{"content":"par'
+  const chunks = [partial.slice(0, 12), partial.slice(12, 30), partial.slice(30)]
+  let reads = 0
+  const reader = {
+    read: async () => {
+      if (reads < chunks.length) return { done: false, value: new TextEncoder().encode(chunks[reads++]) }
       throw new Error('boom')
     },
   }

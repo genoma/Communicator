@@ -271,7 +271,8 @@ export async function mapWithConcurrency(items, limit, fn) {
       results[i] = await fn(items[i], i)
     }
   }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
+  const workers = Math.max(1, Math.min(limit, items.length))
+  await Promise.all(Array.from({ length: workers }, () => worker()))
   return results
 }
 

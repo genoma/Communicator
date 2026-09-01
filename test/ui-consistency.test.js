@@ -160,6 +160,16 @@ test('attachmentLine styles the word, label, meta and note with one dim note', (
   )
 })
 
+test('attachmentLine keeps every field on one row', (t) => {
+  enableAnsi(t)
+  // partLabel decodes an image label out of a model-controlled URL path, so a
+  // %0A in the path would otherwise forge a second row in the artifact report
+  // and in history replay.
+  const line = attachmentLine('image', 'a\nsaved to ~/keys.png', { meta: 'image\n, 7 B', note: 'failed\nsaved to /etc' })
+  assert.equal(line.includes('\n'), false)
+  assert.match(line.replace(OSC8, ''), /asaved to ~\/keys\.png/)
+})
+
 test('printArtifacts uses the shared line format for image and file parts', (t) => {
   enableAnsi(t)
   const { stdout, text, plain } = capture()

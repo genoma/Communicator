@@ -213,15 +213,25 @@ export function formatJsonl(sessionData, sessionId = null) {
 // session store it came from. The mode is re-applied after the write because
 // it only takes effect when the entry is created: without the chmod, a
 // re-export into a folder left behind by an older version would keep that
-// folder's world-readable mode.
+// folder's world-readable mode. A filesystem that has no modes to set (a
+// network share, a FAT volume) must not turn a successful export into a
+// failure, so only a real permission error propagates.
+async function chmodBestEffort(path, mode) {
+  try {
+    await chmod(path, mode)
+  } catch (err) {
+    if (err?.code !== 'EPERM' && err?.code !== 'ENOTSUP' && err?.code !== 'ENOSYS') throw err
+  }
+}
+
 async function mkdirPrivate(path) {
   await mkdir(path, { recursive: true, mode: 0o700 })
-  await chmod(path, 0o700)
+  await chmodBestEffort(path, 0o700)
 }
 
 async function writePrivate(path, data) {
   await writeFile(path, data, { mode: 0o600 })
-  await chmod(path, 0o600)
+  await chmodBestEffort(path, 0o600)
 }
 
 export async function exportSession(sessionData, outDir, sessionId, format = 'markdown') {

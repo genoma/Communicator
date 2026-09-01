@@ -51,9 +51,12 @@ export async function produceParts(streamedParts, { sessionId, imageOutputSuppor
       parts.push({ type: 'image_url', image_url: { url } })
     }
   }
-  // Past the cap the remaining artifacts keep their original URL in the
-  // message, exactly as a failed download does — nothing silently changes
-  // shape, the client just refuses to fan out without bound.
+  // Past the cap the extra artifacts are dropped. For the markdown branch
+  // that costs nothing — the URLs are still in the answer text, which stays
+  // as the leading text part — but a model emitting more than the cap in
+  // *structured* parts does lose them from the persisted message. Keeping
+  // them undownloaded instead would push every remote URL into the session
+  // and re-send it next turn, which is worse.
   if (parts.length > MAX_PRODUCED_PARTS) parts.length = MAX_PRODUCED_PARTS
   const results = await mapWithConcurrency(parts, ARTIFACT_DOWNLOAD_CONCURRENCY, async (part) => {
     // The label is captured before download so the original filename (e.g.

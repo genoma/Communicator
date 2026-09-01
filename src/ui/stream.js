@@ -13,11 +13,14 @@ import { formatCompactCount, formatElapsedSeconds } from './format.js'
 // must not be styled) and a dim note.
 //
 // `label`, `meta` and `note` all carry provider- or filesystem-derived text
-// (a download error embeds a remote hostname), so each is sanitized here;
-// `link` is exempt because a hyperlink legitimately contains OSC 8 escapes
-// and is sanitized by its caller before it is built.
+// (an image label is decoded from a model-controlled URL path, a download
+// error embeds a remote hostname), so each is sanitized single-line here: a
+// label carrying a real newline would forge an extra row in the artifact
+// report and in history replay. `link` is exempt because a hyperlink
+// legitimately contains OSC 8 escapes and is sanitized by its caller before
+// it is built.
 export function attachmentLine(word, label, { meta = null, note = null, link = null } = {}) {
-  const head = `${dim(`${italic(word)}: ${sanitizeAnsi(label)}`)}`
+  const head = `${dim(`${italic(word)}: ${sanitizeSingleLine(label)}`)}`
   const metaText = meta != null ? ` ${dim(`(${sanitizeSingleLine(meta)})`)}` : ''
   const noteText = note ? `  ${dim(sanitizeSingleLine(note))}` : ''
   return `${head}${link ?? ''}${metaText}${noteText}`
