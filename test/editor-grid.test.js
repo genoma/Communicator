@@ -714,8 +714,10 @@ test('wrapSegments never splits a grapheme cluster across segments', () => {
 })
 
 test('wrapSegments keeps flags, keycaps and lone marks whole', () => {
-  // Two 2-cell flags fit at limit 4; a flag never splits into its two
-  // regional indicators.
+  // A flag is two width-1 regional indicators: at an ODD limit per-code-point
+  // folding cuts the glyph (['🇫','🇷','🇫']-style), so limit 3 is the true pin;
+  // the even limits pass under the old code too and are kept for coverage.
+  assert.deepEqual(wrapSegments('🇫🇷🇫🇷🇫🇷', 3), ['🇫🇷', '🇫🇷', '🇫🇷'])
   assert.deepEqual(wrapSegments('🇫🇷🇫🇷🇫🇷', 4), ['🇫🇷🇫🇷', '🇫🇷'])
   assert.deepEqual(wrapSegments('🇫🇷🇫🇷🇫🇷', 2), ['🇫🇷', '🇫🇷', '🇫🇷'])
   // Keycap sequences stay whole (old per-code-point output: ['1','️','⃣']).
@@ -1133,12 +1135,10 @@ test('colFromVisual inverts visualCol across emoji clusters (floor snap, never m
 test('a ZWJ family near the row width never ghosts or exceeds the terminal', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const { term, stdin, editor } = setup(t, { cols: 12 })
-  // usable 10: 8 'a' + a family is 19 per-code-point but 10 cluster-aware —
-  // invariant guard, not a seam pin: wrapSegments still folds per code point
-  // (an early fold is the safe, permitted direction), so the family may split
-  // across rows either way. What must hold is that no row exceeds the
-  // terminal width and that folding never erases or drops a family member
-  // (the discriminating screen test is moveUp/moveDown below).
+  // usable 10: 8 'a' + a family is 10 cluster-aware — the fold is cluster
+  // aware too, so the family stays whole and the row fills exactly; what
+  // must hold is that no row exceeds the terminal width, the family is not
+  // split, and folding never erases or drops a family member.
   type(stdin, 'a'.repeat(8) + '👨‍👩‍👧‍👦')
   const lines = term.lines().filter((l) => l !== '')
   const screen = lines.join(' ')
