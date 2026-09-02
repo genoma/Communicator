@@ -84,7 +84,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 └── chat.js               — runChatSession: DI chat loop (readInput/renderer/stdout/exit/save/signals), banner, SIGINT
 ```
 
-Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing, [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) and [`@inquirer/core`](https://www.npmjs.com/package/@inquirer/core) for the interactive search/select UI, [`markdown-it`](https://www.npmjs.com/package/markdown-it) for terminal markdown rendering, and [`string-width`](https://www.npmjs.com/package/string-width) for emoji-aware column measurement (stream rewind math). Multi-line input uses the in-repo frame-diffing editor (`src/editor/`), whose behaviour contract was originally defined by the vendored `@toiroakr/read-multiline` 0.4.1 (removed in 2026-08; attribution in the module headers).
+Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing, [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) and [`@inquirer/core`](https://www.npmjs.com/package/@inquirer/core) for the interactive search/select UI, [`markdown-it`](https://www.npmjs.com/package/markdown-it) for terminal markdown rendering, and [`string-width`](https://www.npmjs.com/package/string-width) for emoji-aware column measurement (stream rewind math). Multi-line input uses the in-repo frame-diffing editor (`src/editor/`), whose behaviour contract was originally defined by the vendored `@toiroakr/read-multiline` 0.4.1 (removed in 2026-08; the contract now lives in MEMORY.md §Command autocomplete).
 
 ## Architecture
 

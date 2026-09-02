@@ -75,7 +75,7 @@ Choices are remembered as **global per-provider defaults** (`venice` and `openro
 }
 ```
 
-- A non-default picker choice or any explicit flag (CLI) becomes the provider default for future generations. Aspect ratios are stored; pixel sizes are always derived from the ratio and the model's divisor, never persisted.
+- A non-default picker choice becomes the provider default for future generations. From the CLI, only `--aspect-ratio` and `--image-format` are promoted to a persisted default; `--variants`, `--resolution` and `--quality` apply to that one generation only — set those as lasting defaults with `/aspect`, `/format`, `/resolution`, `/quality` and `/variants` in an image session, or with the config-setter (which accepts `--aspect-ratio`/`--image-format`). Aspect ratios are stored; pixel sizes are always derived from the ratio and the model's divisor, never persisted.
 - Save them directly with the config-setter (no `--image` needed):
   ```bash
   communicator -p venice --aspect-ratio 16:9 --image-format png

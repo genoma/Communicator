@@ -92,7 +92,7 @@ Enable/disable with `/compact-thinking on|off` mid-chat (`/compact-thinking` sho
 
 ## Budget caps
 
-`--budget <usd>` (or `/budget <usd>` mid-chat) sets a per-session spending cap based on accumulated tracked cost. When 80% is crossed, the last footer row shows the budget bar (`Budget  83% used ($0.0005 of $0.0006), $0.0001 remaining`), joined with the CTX bar on the same row when both are visible. At 100% the next turn is refused with `Budget exhausted ($X of $Y). /new to start fresh or /quit.`. `/budget` with no value prints used/remaining. Budgets are stored in the session file and restored on `--resume`; `/new` clears the budget for the fresh session.
+`--budget <usd>` (or `/budget <usd>` mid-chat) sets a per-session spending cap based on accumulated tracked cost. When 80% is crossed, the last footer row shows the budget bar (`Budget  ████████░░ 83% used ($0.0005 of $0.0006), $0.0001 remaining`), joined with the CTX bar on the same row when both are visible. At 100% the next turn is refused with `Budget exhausted ($X of $Y). /new to start fresh or /quit.`. `/budget` with no value prints used/remaining. Budgets are stored in the session file and restored on `--resume`; `/new` clears the budget for the fresh session.
 
 ## System Prompt
 

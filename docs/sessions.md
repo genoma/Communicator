@@ -8,7 +8,7 @@ when longer than 50 chars the title is the first 50 chars plus `...`). Sessions 
 when you switch models or start a new session, and on interrupt during streaming
 (including the partial response). A metadata index at
 `~/.communicator/sessions/.index.json` powers `--list-sessions` and the
-resume/export/delete pickers so listing never has to parse full session files.
+resume/export/delete pickers so listing never has to parse full session files — the only exception is a legacy entry without a stored cost summary, which is parsed once to fill in its cost.
 If the index is missing or stale (e.g. from an older version), it is rebuilt
 automatically from the session files.
 
@@ -18,13 +18,13 @@ automatically from the session files.
 communicator --list-sessions
 ```
 
-Output shows each session's ID, last-activity timestamp, model, message count, and the session title. Sessions are listed most-recently-used first: the timestamp is `updatedAt`, bumped when new content is saved (a new message or an image generation) — merely resuming an old conversation does not bump it, so it keeps its place until you actually use it again. Legacy sessions without `updatedAt` fall back to `createdAt`, then to the creation-time id:
+Output shows each session's ID, last-activity timestamp, model, message count, an optional `· $cost` column (present when the session has tracked usage cost), and the session title. Sessions are listed most-recently-used first: the timestamp is `updatedAt`, bumped when new content is saved (a new message or an image generation) — merely resuming an old conversation does not bump it, so it keeps its place until you actually use it again. Legacy sessions without `updatedAt` fall back to `createdAt`, then to the creation-time id:
 
 ```
 3 saved session(s):
 
   ID: 2026-07-30T19-15-22
-     2026-08-02 14:31:08  openai/gpt-4o                        12 msgs       "Write a Python script that..."
+     2026-08-02 14:31:08  openai/gpt-4o                        12 msgs · $0.000124  "Write a Python script that..."
   ID: 2026-07-30T18-42-10
      2026-07-30 18:42:10  deepseek-v4-flash                     5 msgs       "Explain how garbage collection..."
   ID: 2026-07-30T17-11-45
@@ -201,6 +201,7 @@ Each session is stored as a JSON file:
 - `temperature` is the resolved session temperature (0–2); `topP` is the resolved session top-p (0–1) — both present only when explicitly set; when unset the parameters are omitted from the request and the provider applies its own default; `budget` is the per-session cap in USD (`null` when unset)
 - `pricing` is the endpoint's per-token USD rates (`null` when unknown); `contextLength` is the endpoint's advertised context window (`null` when undisclosed, e.g. some Venice models) — used by the CTX indicator on resume
 - `webSearch` is the web search mode (`"off"`, `"auto"`, or `"always"`); `webResults` is the OpenRouter result count (`null` when unset — the provider default of 10 applies) — both restored on resume
+- `--e2ee` encrypts messages only on the API wire: session files still store the transcript in cleartext, and the CLI prints a `Warning: --e2ee encrypts messages sent to the API, but the session file stores them unencrypted.` at start. The rest of this format is unchanged under E2EE
 - `scrapes` is the number of Venice web-scraped pages in the session (`0` when none); the flat $0.01 per page is added to the resumed session cost. The scraped page itself is a normal user message and persists like any other message
 - `title` is auto-generated from the first user message
 - User messages with attachments store `content` as an OpenAI-style parts array (`[{ type: 'text', ... }, { type: 'image_url', ... }, { type: 'file', ... }]`); plain text messages keep the string form, so older sessions stay readable
