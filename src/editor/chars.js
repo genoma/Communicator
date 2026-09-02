@@ -32,11 +32,11 @@ const EMOJI_PRESENTATION = /\p{Emoji_Presentation}/u
 const FIRST_EMOJI = 0x231a
 
 // Emoji added to Unicode after the oldest runtime this package supports.
-// Node 22 (engines: >=22.13.0) ships ICU 76 / Unicode 16.0, so its
+// Node 22 (engines: >=22.15.0) ships ICU 76 / Unicode 16.0, so its
 // \p{Emoji_Presentation} does not match these Unicode 17 additions and the
 // width would fall back to 1 — an under-count, i.e. the bug this table exists
 // to prevent. Listed explicitly so the width does not depend on which Node is
-// running (verified: zero under-counts on both 22.13.0 and 26.8.1).
+// running (verified: zero under-counts on both 22.15.0 and 26.8.1).
 //
 // Deliberately NOT folded into WIDE_RANGES: that table also answers "is this
 // a word character" for word-jump (see isWordChar), and an emoji is not a

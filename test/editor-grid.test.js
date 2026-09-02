@@ -1108,10 +1108,11 @@ test('a ZWJ family near the row width never ghosts or exceeds the terminal', asy
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const { term, stdin, editor } = setup(t, { cols: 12 })
   // usable 10: 8 'a' + a family is 19 per-code-point but 10 cluster-aware —
-  // wrapSegments still folds per code point (an early fold is the safe,
-  // permitted direction), so the family may split across rows; what must NOT
-  // happen is a row the terminal renders wider than the grid, or a ghost tail
-  // from an erase skip. Assert the cluster-aware row widths and reconstruction.
+  // invariant guard, not a seam pin: wrapSegments still folds per code point
+  // (an early fold is the safe, permitted direction), so the family may split
+  // across rows either way. What must hold is that no row exceeds the
+  // terminal width and that folding never erases or drops a family member
+  // (the discriminating screen test is moveUp/moveDown below).
   type(stdin, 'a'.repeat(8) + '👨‍👩‍👧‍👦')
   const lines = term.lines().filter((l) => l !== '')
   const screen = lines.join(' ')
