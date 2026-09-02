@@ -80,15 +80,94 @@ export function charWidth(code) {
 // cell by definition (Devanagari क + U+093E renders TWO cells) and enclosing
 // marks (Me, e.g. the keycap U+20E3) do too, so they keep width 1. Variation
 // selectors are excluded — a text-presentation base plus U+FE0F (⚠️, ❤️)
-// renders TWO cells, so zeroing them would under-count. ZWJ is not Mn, so a
-// ZWJ family still over-counts (mild; exact family width is the
-// cluster-aware follow-up).
+// renders TWO cells, so zeroing them would under-count. ZWJ is not Mn, so
+// rowWidth (the fold oracle) still over-counts a family — mild, permitted;
+// the visual seam (stringWidth/visualCol/colFromVisual) measures it as ONE
+// 2-cell cluster via rendersAsDoubleWidthEmoji below.
 const ZEROABLE_MARK = /\p{Mn}/u
 const isVariationSelector = (cp) => (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0xe0100 && cp <= 0xe01ef)
 
 function isZeroableMark(cp) {
   if (cp < 0x300 || isVariationSelector(cp)) return false
   return ZEROABLE_MARK.test(String.fromCodePoint(cp))
+}
+
+// Cluster-aware visual measures. charWidth/rowWidth stay per code point and
+// drive the fold decisions in layout.js (an over-count there only wraps a row
+// early — the mild, permitted direction). The cursor-placement and
+// erase-to-EOL seam — stringWidth, visualCol, colFromVisual — instead measures
+// per grapheme cluster, because the terminal renders a ZWJ family as ONE
+// two-cell glyph: a per-code-point sum there parks the cursor several columns
+// past the text (rewindCursor \x1b[<c+1>G) and can skip the exact-fill erase.
+// All three share this one primitive so the visualCol<->colFromVisual inverse
+// stays exact: cluster-aware stringWidth against a per-code-point colFromVisual
+// collapses the cursor INTO a cluster (the round-trip desync pinned by tests).
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+const EMOJI = /\p{Emoji}/u
+const EXTENDED_PICTOGRAPHIC = /\p{Extended_Pictographic}/u
+const KEYCAP = 0x20e3
+const ZWJ = 0x200d
+const ZWNJ = 0x200c
+const TAG_END = 0xe007f
+const TAG_START = 0xe0020
+const VS15 = 0xfe0e
+const VS16 = 0xfe0f
+
+// Members that may appear inside a double-width emoji glyph: extended
+// pictographs (\p{Emoji} covers Emoji_Presentation too), joiners, variation
+// selectors, skin-tone tags, RECENT_EMOJI (the Unicode-17 additions the
+// runtime property may not know — a family containing one must still measure
+// 2, never the sum), and zero-width combining marks that compose over the
+// glyph. Spacing (Mc) / enclosing (Me) marks are deliberately excluded —
+// they consume their own cell, so such a cluster falls through to the safe
+// per-code-point sum.
+function isEmojiish(cp) {
+  if (cp === ZWJ || cp === ZWNJ || cp === VS15 || cp === VS16) return true
+  if (cp >= TAG_START && cp <= TAG_END) return true
+  return EMOJI.test(String.fromCodePoint(cp)) || RECENT_EMOJI.has(cp) || ZEROABLE_MARK.test(String.fromCodePoint(cp))
+}
+
+// True when a cluster renders as ONE double-width emoji glyph: ZWJ families,
+// regional-indicator flags, keycap sequences (base + keycap, with or without
+// VS16) and emoji-plus-modifier chains. A ZWJ chain is also double-width when
+// its members are text-presentation emoji (🕵️‍♂️ = U+1F575 U+FE0F U+200D
+// U+2642 U+FE0F, where no member is Emoji_Presentation but the chain renders
+// as one 2-cell glyph): as long as two Extended_Pictographic members are
+// joined, the rule matches string-width's. Keycap without a base — a lone
+// U+20E3 — is NOT: it occupies nothing on its own, so it falls through to the
+// sum (width 1 keeps the row-start invariant).
+function rendersAsDoubleWidthEmoji(cluster) {
+  const cps = [...cluster].map((ch) => ch.codePointAt(0))
+  // A keycap sequence is double-width even when its base is a plain digit
+  // ('1' is not \p{Emoji}, so the all-members-emojiish rule would reject it).
+  if (cps.indexOf(KEYCAP) > 0) return true
+  let presentation = false
+  let extended = 0
+  let zwj = false
+  for (const cp of cps) {
+    const ch = String.fromCodePoint(cp)
+    if (cp === ZWJ) zwj = true
+    if (EXTENDED_PICTOGRAPHIC.test(ch)) extended += 1
+    if (EMOJI_PRESENTATION.test(ch)) presentation = true
+    else if (!isEmojiish(cp)) return false
+  }
+  if (zwj && extended >= 2) return true
+  return presentation
+}
+
+// Width of one grapheme cluster with row context, plus the base state it
+// leaves behind (see rowWidth). Emoji clusters are exactly 2 (base=true), so
+// the sum never over-counts a family and the cursor column matches the glyph.
+function clusterWidth(cluster, base) {
+  if (rendersAsDoubleWidthEmoji(cluster)) return { width: 2, base: true }
+  let width = 0
+  let b = base
+  for (const ch of cluster) {
+    const { width: w, base: nextBase } = rowWidth(ch.codePointAt(0), { base: b })
+    width += w
+    b = nextBase
+  }
+  return { width, base: b }
 }
 
 // Width of one code point with row context: zeroable marks render as zero
@@ -114,16 +193,10 @@ export function stringWidth(str) {
   const s = str.includes('\x1b') ? stripVTControlCharacters(str) : str
   let width = 0
   let base = false
-  for (const ch of s) {
-    let w = charWidth(ch.codePointAt(0))
-    if (isZeroableMark(ch.codePointAt(0))) {
-      w = base ? 0 : 1
-    } else if (w > 0 && ch !== ' ') {
-      base = true
-    } else if (ch === ' ') {
-      base = false
-    }
+  for (const { segment } of graphemeSegmenter.segment(s)) {
+    const { width: w, base: nextBase } = clusterWidth(segment, base)
     width += w
+    base = nextBase
   }
   return width
 }
@@ -151,13 +224,12 @@ export function colFromVisual(str, visualCol) {
   let vis = 0
   let i = 0
   let base = false
-  while (i < str.length) {
-    const ch = charAtIndex(str, i)
-    const { width: cw, base: nextBase } = rowWidth(ch.codePointAt(0), { base })
-    if (vis + cw > visualCol) break
+  for (const { index, segment } of graphemeSegmenter.segment(str)) {
+    const { width: cw, base: nextBase } = clusterWidth(segment, base)
+    if (vis + cw > visualCol) return index
     vis += cw
     base = nextBase
-    i += ch.length
+    i = index + segment.length
   }
   return i
 }

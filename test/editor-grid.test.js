@@ -1052,3 +1052,92 @@ test('colFromVisual inverts visualCol across combining marks (cursor preservatio
     assert.equal(visualCol(line, idx), col)
   }
 })
+
+// Cluster-aware measures: stringWidth/visualCol/colFromVisual share one
+// grapheme-cluster primitive, so multi-code-point emoji (ZWJ families, flags,
+// skin tones, keycaps) render exactly like the terminal instead of summing to
+// their parts. Under-counts stay impossible: every sample must measure >= the
+// test terminal's cluster width, and the RGI-style samples must be EXACT.
+test('emoji clusters measure exactly what the terminal renders', () => {
+  for (const sample of ['👨‍👩‍👧‍👦', '🇫🇷', '👍🏽', '1️⃣', '🧑🏽‍🚀', '🏳️‍🌈', '🕵️‍♂️', '👨‍❤️‍💋‍👨', '🏴󠁧󠁢󠁥󠁮󠁧󠁿', '🫨', '🧌']) {
+    const measured = editorStringWidth(sample)
+    const rendered = realWidth(sample)
+    assert.equal(
+      measured,
+      rendered,
+      `cluster-aware stringWidth measures ${JSON.stringify(sample)} as ${measured}, terminal renders ${rendered}`
+    )
+  }
+})
+
+test('partial clusters never under-count (hard-cut residues and row-start fragments)', () => {
+  // A hard cut inside a ZWJ family leaves a fragment at a row start; the
+  // never-under-count invariant must hold for every such fragment too.
+  for (const sample of ['👨‍', '👨‍👩', '‍👩‍👧', '🏽', '🏻', '️', '‍', '❗️', '✈️', '⌚', '1⃛']) {
+    const measured = editorStringWidth(sample)
+    const rendered = realWidth(sample)
+    assert.ok(measured >= rendered, `chars.js measures ${JSON.stringify(sample)} as ${measured}, terminal renders ${rendered}`)
+  }
+})
+
+test('colFromVisual inverts visualCol across emoji clusters (floor snap, never mid-glyph)', () => {
+  // moveUp/moveDown round trip on emoji clusters. Every visual column maps to
+  // a CLUSTER BOUNDARY (never a code unit inside the glyph — the terminal
+  // cannot park a cursor mid-glyph); boundary columns round trip exactly,
+  // interior columns snap to the start of the containing cluster (floor),
+  // which is what the terminal does when positioned by absolute column.
+  for (const line of ['ab👨‍👩‍👧‍👦xyz', 'a🇫🇷b', 'x👍🏽', '1️⃣k', 'éx']) {
+    const width = editorStringWidth(line)
+    const starts = new Set()
+    for (const { index } of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(line)) starts.add(index)
+    for (let col = 0; col <= width; col++) {
+      const idx = colFromVisual(line, col)
+      assert.ok(idx === 0 || starts.has(idx) || idx === line.length, `idx ${idx} is a cluster boundary in ${JSON.stringify(line)}`)
+      assert.ok(visualCol(line, idx) <= col, `never overshoots col ${col} in ${JSON.stringify(line)}`)
+      const v = visualCol(line, idx)
+      if (v === col) continue
+      // Interior column: the next boundary must be strictly further right (the
+      // target fell inside a 2-cell glyph, so floor snap is the only choice).
+      const next = colFromVisual(line, col + 1)
+      assert.ok(visualCol(line, next) > col, `col ${col} snaps to floor of its glyph in ${JSON.stringify(line)}`)
+    }
+  }
+})
+
+test('a ZWJ family near the row width never ghosts or exceeds the terminal', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, { cols: 12 })
+  // usable 10: 8 'a' + a family is 19 per-code-point but 10 cluster-aware —
+  // wrapSegments still folds per code point (an early fold is the safe,
+  // permitted direction), so the family may split across rows; what must NOT
+  // happen is a row the terminal renders wider than the grid, or a ghost tail
+  // from an erase skip. Assert the cluster-aware row widths and reconstruction.
+  type(stdin, 'a'.repeat(8) + '👨‍👩‍👧‍👦')
+  const lines = term.lines().filter((l) => l !== '')
+  const screen = lines.join(' ')
+  assert.ok(screen.includes('👨') && screen.includes('👩') && screen.includes('👧') && screen.includes('👦'), `family code points disappeared:
+${lines.join('\n')}`)
+  for (const row of lines) {
+    const width = [...row].reduce((sum, ch) => sum + editorStringWidth(ch), 0)
+    assert.ok(width <= 12, `row exceeds the terminal width: ${JSON.stringify(row)} (${width})`)
+  }
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'a'.repeat(8) + '👨‍👩‍👧‍👦')
+})
+
+test('moveUp/moveDown preserve the visual column across a ZWJ family (no collapse)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, { cols: 20 })
+  type(stdin, 'abcdefgh\nab👨‍👩‍👧‍👦xy')
+  // Cursor at end of line 2 (visual col 8): up preserves 8 (end of line 1),
+  // down reconstructs 8; the per-code-point colFromVisual used to park the
+  // cursor INSIDE the family (idx 4 of 'ab...'), breaking the round trip.
+  press(stdin, '\x1b[A')
+  assert.deepEqual(term.cursor, { r: 0, c: 8 })
+  press(stdin, '\x1b[B')
+  assert.deepEqual(term.cursor, { r: 1, c: 8 })
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'abcdefgh\nab👨‍👩‍👧‍👦xy')
+})
