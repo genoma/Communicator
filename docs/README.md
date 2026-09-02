@@ -27,6 +27,5 @@ User-facing documentation for the `communicator` CLI, split into guides, referen
 | Page | Covers |
 |------|--------|
 | [development.md](development.md) | Internal architecture, the module layout, and the provider contract for contributors |
-| [audit-2026-08-29.md](audit-2026-08-29.md) | Historical security & performance audit report (2026-08-29; findings reviewed, fixes merged) |
 
 New here? Start with the [Quick start](../README.md#quick-start) in the README.
