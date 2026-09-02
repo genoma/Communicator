@@ -2,7 +2,7 @@
 // of styled text + cursor position). Wrapping is done here with display-width
 // awareness, so the block's rows are exactly the physical terminal rows — the
 // terminal's own soft-wrap never engages inside the block.
-import { rowWidth, stringWidth } from './chars.js'
+import { clusterWidth, segmentGraphemes, stringWidth } from './chars.js'
 import { applyStyle } from './style.js'
 
 /** Widen-safe available width for one input row */
@@ -40,38 +40,39 @@ function wrapSegmentsDetailed(text, limit) {
   let foldW = 0
   // Code-unit index of `current`'s first character in `text`.
   let curStart = 0
-  let i = 0
   const pushSegment = (start, end) => {
     segments.push(text.slice(start, end))
     starts.push(start)
   }
+  // Iterate grapheme clusters, exactly like chars.js's own visual measures:
+  // a ZWJ family/flag/keycap is ONE 2-cell glyph and must never be split
+  // across segments (per-code-point folding hard-cut families into fragments
+  // and folded rows 9 columns early).
   let rowBase = false
-  for (const ch of text) {
-    const { width: w, base: nextBase } = rowWidth(ch.codePointAt(0), { base: rowBase })
-    if (ch === ' ') {
+  for (const { index, segment } of segmentGraphemes(text)) {
+    const { width: w, base: nextBase } = clusterWidth(segment, rowBase)
+    if (segment === ' ') {
       if (cw + w > limit) {
         // The row is already full: the space is the fold point — it would be
         // invisible at the row end, so drop it and let the next word start a
         // fresh row (a grid row must never exceed the terminal width).
-        pushSegment(curStart, i)
-        drops.push(i)
+        pushSegment(curStart, index)
+        drops.push(index)
         current = ''
-        curStart = i + 1
+        curStart = index + 1
         cw = 0
         foldAt = -1
         foldW = 0
         rowBase = false
-        i += 1
         continue
       }
       // Spaces never overflow: they are committed (a trailing one stays
       // invisible at the row end) and the next word folds before this one.
       foldAt = current.length
       foldW = cw
-      current += ch
+      current += segment
       cw += w
       rowBase = nextBase
-      i += 1
       continue
     }
     if (cw + w > limit) {
@@ -80,32 +81,34 @@ function wrapSegmentsDetailed(text, limit) {
         pushSegment(curStart, curStart + foldAt)
         drops.push(curStart + foldAt)
         const residualStart = curStart + foldAt + 1
-        // current === text.slice(curStart, i), so the residual (post-fold)
-        // equals text.slice(residualStart, i) + ch.
-        current = text.slice(residualStart, i) + ch
+        // current === text.slice(curStart, index), so the residual (post-fold)
+        // equals text.slice(residualStart, index) + segment.
+        current = text.slice(residualStart, index) + segment
         curStart = residualStart
         cw = cw - foldW - 1 + w
       } else {
-        // Hard cut: the residual is full at the fold point. Never push an
-        // empty segment — a leading wide char at limit 1 would otherwise
-        // become a ghost blank grid row.
-        if (current !== '') pushSegment(curStart, i)
-        current = ch
-        curStart = i
+        // Hard cut always lands on a cluster boundary. Never push an empty
+        // segment — a leading cluster wider than the limit (a 2-cell emoji at
+        // limit 1) would otherwise become a ghost blank grid row.
+        if (current !== '') pushSegment(curStart, index)
+        current = segment
+        curStart = index
         cw = w
       }
-      // Recompute the fold point of the residual segment.
+      // Recompute the fold point of the residual segment. The residual
+      // starts right after a dropped fold space, so its base is false (a
+      // space sets no base), never the pre-fold rowBase.
       foldAt = -1
       foldW = 0
       let w2 = 0
       let i2 = 0
       let residualBase = false
-      for (const rc of current) {
-        const rw = rowWidth(rc.codePointAt(0), { base: residualBase })
+      for (const { segment: rc } of segmentGraphemes(current)) {
         if (rc === ' ') {
           foldAt = i2
           foldW = w2
         }
+        const rw = clusterWidth(rc, residualBase)
         w2 += rw.width
         residualBase = rw.base
         i2 += rc.length
@@ -113,11 +116,10 @@ function wrapSegmentsDetailed(text, limit) {
       // The residual segment's own base (it starts after the dropped space).
       rowBase = residualBase
     } else {
-      current += ch
+      current += segment
       cw += w
       rowBase = nextBase
     }
-    i += ch.length
   }
   if (current !== '' || segments.length === 0) pushSegment(curStart, text.length)
   if (segments.length > 1 && segments.at(-1) === '') {

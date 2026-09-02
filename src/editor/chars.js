@@ -158,7 +158,9 @@ function rendersAsDoubleWidthEmoji(cluster) {
 // Width of one grapheme cluster with row context, plus the base state it
 // leaves behind (see rowWidth). Emoji clusters are exactly 2 (base=true), so
 // the sum never over-counts a family and the cursor column matches the glyph.
-function clusterWidth(cluster, base) {
+// Shared with layout.js, which drives it by iterating `graphemeSegmenter` the
+// same way stringWidth/colFromVisual do (never by re-segmenting a string).
+export function clusterWidth(cluster, base) {
   if (rendersAsDoubleWidthEmoji(cluster)) return { width: 2, base: true }
   let width = 0
   let b = base
@@ -170,13 +172,19 @@ function clusterWidth(cluster, base) {
   return { width, base: b }
 }
 
+/** Iterator over a string's grapheme clusters ({ index, segment } records). */
+export function segmentGraphemes(str) {
+  return graphemeSegmenter.segment(str)
+}
+
 // Width of one code point with row context: zeroable marks render as zero
 // columns after a non-space base (or another mark) on the same row, and as
 // one column when they start a row (a lone mark, or a base the hard cut left
 // behind — a row-start mark never under-counts). A space is not a base: a
 // mark after a space keeps width 1 (space + dotted-circle renders two cells
-// in practice; err wide).
-export function rowWidth(cp, { base = false } = {}) {
+// in practice; err wide). Used by clusterWidth; layout.js consumes the
+// cluster-level primitive only.
+function rowWidth(cp, { base = false } = {}) {
   let w = charWidth(cp)
   if (isZeroableMark(cp)) {
     w = base ? 0 : 1

@@ -701,6 +701,32 @@ test('wrapSegments never splits a wide char and folds at word boundaries', () =>
   assert.deepEqual(wrapSegments('', 3), [''])
 })
 
+test('wrapSegments never splits a grapheme cluster across segments', () => {
+  // A ZWJ family is ONE 2-cell glyph; per-code-point folding hard-cut it into
+  // fragments (['👨','🏽','‍','🚀']). It must stay whole at every limit, even
+  // when wider than the limit (over-wide cluster is row-counted by the
+  // caller, never fractured).
+  for (const limit of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const segs = wrapSegments('ab👨🏽‍🚀xy', limit)
+    assert.ok(segs.some((s) => s.includes('👨🏽‍🚀')), `family split at limit ${limit}: ${JSON.stringify(segs)}`)
+  }
+  assert.deepEqual(wrapSegments('ab👨🏽‍🚀xy', 4), ['ab👨🏽‍🚀', 'xy'])
+})
+
+test('wrapSegments keeps flags, keycaps and lone marks whole', () => {
+  // Two 2-cell flags fit at limit 4; a flag never splits into its two
+  // regional indicators.
+  assert.deepEqual(wrapSegments('🇫🇷🇫🇷🇫🇷', 4), ['🇫🇷🇫🇷', '🇫🇷'])
+  assert.deepEqual(wrapSegments('🇫🇷🇫🇷🇫🇷', 2), ['🇫🇷', '🇫🇷', '🇫🇷'])
+  // Keycap sequences stay whole (old per-code-point output: ['1','️','⃣']).
+  assert.deepEqual(wrapSegments('1️⃣2️⃣', 2), ['1️⃣', '2️⃣'])
+  assert.deepEqual(wrapSegments('1️⃣2️⃣', 4), ['1️⃣2️⃣'])
+  // Lone combining marks are one cluster: they never drop to a ghost row.
+  assert.deepEqual(wrapSegments('\u0301\u0301\u0301', 1), ['\u0301\u0301\u0301'])
+  // ' ' + U+0301 is ONE grapheme (width 2): a word unit, never a fold point.
+  assert.deepEqual(wrapSegments('a \u0301b\u0301c', 3), ['a \u0301', 'b\u0301c'])
+})
+
 test('wrapSegments never emits an empty segment at limit 1 with wide chars', () => {
   // A wide char cannot fit the 1-column row: the hard cut must not push a
   // ghost blank segment (it would paint an extra empty row and shift every
@@ -1118,8 +1144,10 @@ test('a ZWJ family near the row width never ghosts or exceeds the terminal', asy
   const screen = lines.join(' ')
   assert.ok(screen.includes('👨') && screen.includes('👩') && screen.includes('👧') && screen.includes('👦'), `family code points disappeared:
 ${lines.join('\n')}`)
+  // Cluster-aware measurement of the whole row: the family is 2 cells, so
+  // 8 'a' + family + prefix fills 12 exactly — single-row, no ghost.
   for (const row of lines) {
-    const width = [...row].reduce((sum, ch) => sum + editorStringWidth(ch), 0)
+    const width = editorStringWidth(row)
     assert.ok(width <= 12, `row exceeds the terminal width: ${JSON.stringify(row)} (${width})`)
   }
   submit(stdin)
