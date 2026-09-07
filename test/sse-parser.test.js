@@ -993,3 +993,225 @@ test('does not stamp a reasoning duration on a content-only reader error', async
     (err) => err.message === 'aborted' && err.reasoningMs === undefined
   )
 })
+
+test('does not re-open the thinking block when reasoning arrives after content', async () => {
+  // OpenRouter web-search "burst mode" can flush the answer's content first
+  // and the reasoning_content deltas afterwards (late burst). Re-opening the
+  // block made compact mode print a second `✓ Thinking · N` checkpoint + a
+  // trailing `❯ Answer` at the BOTTOM of the message. Late reasoning is
+  // dropped outright — no start/end markers, no clock re-anchor, and NOT
+  // stored (the live meter never counted it, so the replayed checkpoint
+  // count must match the live one).
+  const tokens = []
+  const { fullText, fullReasoning, reasoningMs } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: 'the answer' } }] }),
+      event({ choices: [{ delta: { reasoning_content: 'late thought' } }] }),
+      event({ choices: [{ delta: { reasoning_content: 'more late' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t]),
+    null,
+    { requestStartedAt: 1000, now: () => 1500 }
+  )
+  assert.equal(fullText, 'the answer')
+  assert.equal(fullReasoning, '')
+  assert.equal(reasoningMs, null)
+  assert.deepEqual(tokens, [['content', 'the answer']])
+})
+
+test('keeps one thinking block when reasoning resumes after content in the same stream', async () => {
+  // Reasoning → content → MORE reasoning (tool use / post-answer search):
+  // the late burst is dropped, so the renderer never gets a second start/end
+  // cycle AND the stored reasoning equals what the live meter counted.
+  const tokens = []
+  const { fullReasoning } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { reasoning_content: 'early' } }] }),
+      event({ choices: [{ delta: { content: 'answer now' } }] }),
+      event({ choices: [{ delta: { reasoning_content: 'late' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t])
+  )
+  assert.equal(fullReasoning, 'early')
+  assert.deepEqual(tokens, [
+    ['start_reasoning', '\n'],
+    ['reasoning', 'early'],
+    ['end_reasoning', null],
+    ['content', 'answer now'],
+  ])
+})
+
+test('strips exactly one leading space from the first content token', async () => {
+  // deepseek-family models open the answer with a stray space (' Ah, ...');
+  // it is generation noise and must not show before the first line. Only the
+  // FIRST content text is normalized; every later space stays content.
+  const tokens = []
+  const { fullText } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: ' Ah, hello' } }] }),
+      event({ choices: [{ delta: { content: ' here' } }] }),
+      event({ choices: [{ delta: { content: ' again' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t])
+  )
+  assert.equal(fullText, 'Ah, hello here again')
+  assert.deepEqual(tokens, [
+    ['content', 'Ah, hello'],
+    ['content', ' here'],
+    ['content', ' again'],
+  ])
+})
+
+test('strips the leading space from a final-only content delivery too', async () => {
+  const { fullText } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ message: { content: ' Final answer text' } }] }),
+    ]),
+    () => {}
+  )
+  assert.equal(fullText, 'Final answer text')
+})
+
+test('keeps non-first content tokens verbatim (leading space untouched)', async () => {
+  const { fullText } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: 'Hello' } }] }),
+      event({ choices: [{ delta: { content: ' world' } }] }),
+    ]),
+    () => {}
+  )
+  assert.equal(fullText, 'Hello world')
+})
+
+test('stalls with a no-progress error on a keep-alive-only stream', async (t) => {
+  // Bytes keep arriving (keep-alive `data:` empty events) but no non-empty
+  // data event ever lands: the per-read idle timer keeps resetting, so only
+  // the no-progress budget can bound the hang. Must fail loudly, retryable,
+  // with the pending buffer attached.
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let reads = 0
+  const reader = {
+    read: () => {
+      reads++
+      if (reads === 1) return Promise.resolve({ done: false, value: new TextEncoder().encode('data:\n\n') })
+      return new Promise(() => {})
+    },
+    cancel: async () => {},
+  }
+  const promise = parseSSEStream(reader, () => {}, null, { noProgressTimeoutMs: 10_000 })
+  const assertion = assert.rejects(
+    promise,
+    (err) => err instanceof ApiError && err.retryable === true && /no progress after 10s/.test(err.message) && err.pendingBuffer !== undefined
+  )
+  await Promise.resolve()
+  await Promise.resolve()
+  t.mock.timers.tick(10_000)
+  await assertion
+})
+
+test('real data events re-arm the no-progress budget', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let reads = 0
+  const chunks = [event({ choices: [{ delta: { content: 'ok' } }] })]
+  const reader = {
+    read: () => {
+      if (reads < chunks.length) return Promise.resolve({ done: false, value: new TextEncoder().encode(chunks[reads++]) })
+      return Promise.resolve({ done: true, value: undefined })
+    },
+    cancel: async () => {},
+  }
+  const { fullText } = await parseSSEStream(reader, () => {}, null, { noProgressTimeoutMs: 10_000 })
+  assert.equal(fullText, 'ok')
+  t.mock.timers.tick(10_000)
+})
+
+test('does not arm the no-progress timer when its budget is zero', async () => {
+  const { fullText } = await parseSSEStream(
+    streamReader([event({ choices: [{ delta: { content: 'ok' } }] })]),
+    () => {},
+    null,
+    { noProgressTimeoutMs: 0 }
+  )
+  assert.equal(fullText, 'ok')
+})
+
+test('strips a lone-space first token and still normalizes the next one', async () => {
+  // A first content token that is ONLY a space must not close the
+  // normalization gate: the following ' The' token still loses its space.
+  const { fullText } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: ' ' } }] }),
+      event({ choices: [{ delta: { content: ' The answer' } }] }),
+      event({ choices: [{ delta: { content: ' here' } }] }),
+    ]),
+    () => {}
+  )
+  assert.equal(fullText, 'The answer here')
+})
+
+test('keeps multi-space indentation on the first content token (fenceless code block)', async () => {
+  // A first token with 4-space indentation is markdown code, not the
+  // deepseek one-space preamble noise; stripping it would drop below the
+  // 4-space code-block threshold and corrupt the rendering.
+  const { fullText } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: '    const x = 1' } }] }),
+      event({ choices: [{ delta: { content: '\n    return x' } }] }),
+    ]),
+    () => {}
+  )
+  assert.equal(fullText, '    const x = 1\n    return x')
+})
+
+test('a whitespace-only stream stores empty content (no phantom placeholder)', async () => {
+  const { fullText } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: ' ' } }] }),
+      event({ choices: [{ delta: { content: '  ' } }] }),
+    ]),
+    () => {}
+  )
+  assert.equal(fullText, '')
+})
+
+test('preserves whitespace-only tokens mid-stream (lone spaces and newlines are content)', async () => {
+  // deepseek streams ' ' and '\n' as SEPARATE content tokens mid-stream; the
+  // leading-noise normalization must only apply BEFORE the first visible
+  // content, never after — dropping them merges words ('The"where',
+  // 'it's2025', '😄So') and eats newlines between list items ('1978\n-T').
+  const tokens = []
+  const { fullText } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: 'The' } }] }),
+      event({ choices: [{ delta: { content: ' ' } }] }),
+      event({ choices: [{ delta: { content: '"where' } }] }),
+      event({ choices: [{ delta: { content: ' the sun' } }] }),
+      event({ choices: [{ delta: { content: ' ' } }] }),
+      event({ choices: [{ delta: { content: 'doesn' } }] }),
+      event({ choices: [{ delta: { content: "'t" } }] }),
+      event({ choices: [{ delta: { content: ' shine' } }] }),
+      event({ choices: [{ delta: { content: '"' } }] }),
+      event({ choices: [{ delta: { content: '\n' } }] }),
+      event({ choices: [{ delta: { content: '- ' } }] }),
+      event({ choices: [{ delta: { content: 'Raw' } }] }),
+      event({ choices: [{ delta: { content: ' keypress' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t])
+  )
+  assert.equal(fullText, 'The "where the sun doesn\'t shine"\n- Raw keypress')
+  assert.deepEqual(tokens, [
+    ['content', 'The'],
+    ['content', ' '],
+    ['content', '"where'],
+    ['content', ' the sun'],
+    ['content', ' '],
+    ['content', 'doesn'],
+    ['content', "'t"],
+    ['content', ' shine'],
+    ['content', '"'],
+    ['content', '\n'],
+    ['content', '- '],
+    ['content', 'Raw'],
+    ['content', ' keypress'],
+  ])
+})

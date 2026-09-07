@@ -98,7 +98,26 @@ Consequences:
   the thinking block; content and reasoning in the same delta are both emitted
   (no early return); empty `content: ''` never closes the block (would re-open
   per delta); keep-alive `data:` empty events are not counted as skipped
-  chunks; `STREAM_IDLE_TIMEOUT_MS` (60 s) guards the silent search gap.
+  chunks; `STREAM_IDLE_TIMEOUT_MS` (60 s) guards the silent search gap
+  (no bytes at all), and a second `STREAM_NO_PROGRESS_TIMEOUT_MS` (180 s)
+  budget — re-armed only by a NON-empty data event — bounds a keep-alive-only
+  stream (bytes flowing, never a real event) with a retryable
+  `Stream made no progress after 180s` error instead of hanging forever.
+- **Late reasoning after content** (the burst quirk's worst case): a bursty
+  stream can flush the answer's content first and the `reasoning_content`
+  deltas afterwards (sub-ms spans / late-arriving reasoning). `parseSSEStream`
+  drops such late reasoning outright — never stored, never re-opens the
+  thinking block (no marker cycle) — so compact mode cannot print
+  `✓ Thinking · N` + `❯ Answer` after the answer, and the stored reasoning
+  stays byte-equal to what the live meter counted; the `writeCompact`
+  renderer guards the same case. The first content token's leading space
+  (deepseek outputs `' Ah, ...'`) is normalized away by the parser (single
+  gate → live, replay, persisted and piped output agree; multi-space
+  indentation is never touched, so fenceless 4-space code blocks survive).
+  That normalization stops at the first visible content: deepseek also
+  streams `' '` and `'\n'` as STANDALONE tokens mid-stream, and they are
+  preserved verbatim — dropping them corrupts the text (`The"where`, list
+  items glued together).
 - **Visual smoothing**: smooth-streaming pacing (default on TTY) buffers tokens
   and renders at a steady rate, absorbing the first post-search burst; piped
   output is never paced.
@@ -114,6 +133,13 @@ Consequences:
   suppression was dropped.
 - Row frozen on the spinner after seconds of real wait → `startTurn` /
   `beginWait` path regressed.
+- `✓ Thinking · N` + `❯ Answer` at the BOTTOM of the message (after the
+  answer) → late-reasoning fold / `writeCompact` messageStarted guard
+  regressed.
+- Dead cursor after `✓ Thinking` with no live element until the answer lands →
+  answer-wait re-arm (`beginAnswerWait`) regressed.
+- Hang that never errors: nothing re-arms the no-progress budget on a
+  keep-alive-only stream, or the timer is cleared before a re-arm can happen.
 - Stray blank row before the answer → the `stop({ done: true })` visibility
   contract regressed.
 

@@ -1,4 +1,4 @@
-import { SSE_DONE, STREAM_IDLE_TIMEOUT_MS, MAX_STREAM_BYTES } from './constants.js'
+import { SSE_DONE, STREAM_IDLE_TIMEOUT_MS, STREAM_NO_PROGRESS_TIMEOUT_MS, MAX_STREAM_BYTES } from './constants.js'
 import { createHash } from 'node:crypto'
 import { ApiError } from './errors.js'
 import { isEncryptedHex } from './e2ee.js'
@@ -77,7 +77,7 @@ function collectSources(parsed, fullSources, seenUrls, onSources) {
   if (found && onSources) onSources(fullSources)
 }
 
-export async function parseSSEStream(reader, onToken, onSources = null, { idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, decryptToken = null, maxBytes = MAX_STREAM_BYTES, now = () => performance.now(), requestStartedAt = null } = {}) {
+export async function parseSSEStream(reader, onToken, onSources = null, { idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, noProgressTimeoutMs = STREAM_NO_PROGRESS_TIMEOUT_MS, decryptToken = null, maxBytes = MAX_STREAM_BYTES, now = () => performance.now(), requestStartedAt = null } = {}) {
   const decoder = new TextDecoder()
   let receivedBytes = 0
   // Text accumulates in arrays and is joined once at the end: `+=` on the
@@ -98,6 +98,15 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
   const pending = []
   const pendingBuffer = () => pending.join('')
   let inThinking = false
+  // True once the first visible content text is emitted. A reasoning delta
+  // arriving AFTER content has started (OpenRouter web-search burst mode
+  // flushes reasoning late) must not re-open the thinking block: the
+  // renderer treats each start/end cycle as a full marker block, which
+  // compact mode renders as a second `✓ Thinking` checkpoint + `❯ Answer` at
+  // the bottom of the message. Late reasoning is dropped outright — never
+  // stored, which would inflate the replayed checkpoint count against what
+  // the live meter counted.
+  let contentStarted = false
   // The thinking clock is anchored at request start (the moment the provider
   // fetch was dispatched, passed by the caller) so a fast/one-burst response
   // still reports the time the user actually waited, not the sub-millisecond
@@ -143,7 +152,29 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     return decryptToken(token)
   }
 
+  // The stall guard has two layers. The per-read idle timer (no BYTES at
+  // all) keeps its 60s budget; on top of it, keep-alives (`data:` with an
+  // empty payload) are bytes but not progress, so a connection that only
+  // heartbeats while the provider never answers must still fail loudly —
+  // this no-progress timer (reset only by a non-empty data event) bounds
+  // that hang. Armed at stream start, re-armed on every real event, cleared
+  // in the finally below.
+  let noProgressTimer = null
+  let failCurrentRead = null
+  const armNoProgress = () => {
+    if (noProgressTimeoutMs <= 0) return
+    if (noProgressTimer !== null) clearTimeout(noProgressTimer)
+    noProgressTimer = setTimeout(() => {
+      noProgressTimer = null
+      const err = new ApiError(`Stream made no progress after ${Math.round(noProgressTimeoutMs / 1000)}s`, { retryable: true })
+      err.pendingBuffer = pendingBuffer()
+      failCurrentRead?.(err)
+    }, noProgressTimeoutMs)
+    noProgressTimer.unref?.()
+  }
+
   const readChunk = () => new Promise((resolve, reject) => {
+    failCurrentRead = reject
     let timer = null
     const onTimeout = () => {
       timer = null
@@ -154,10 +185,12 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     reader.read().then(
       (chunk) => {
         if (timer !== null) clearTimeout(timer)
+        failCurrentRead = null
         resolve(chunk)
       },
       (err) => {
         if (timer !== null) clearTimeout(timer)
+        failCurrentRead = null
         reject(err)
       }
     )
@@ -174,12 +207,42 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     onToken(null, 'end_reasoning')
   }
 
+  // Content text is emitted through this single gate so the first-token
+  // normalization (below) and the content-started flag can never be missed
+  // by a final-only or delta-only delivery.
+  const pushContent = (text) => {
+    // Before the first visible content, whitespace-only tokens are leading
+    // noise (deepseek emits a lone ' '/newline as its very first content
+    // token): drop them WITHOUT closing the gate, so a following ' The'
+    // still gets normalized. Once content has started, EVERY token is
+    // content — including whitespace-only ones: the same model emits ' '
+    // and '\n' as separate tokens mid-stream, and dropping them merges
+    // words ('The"where'), eats newlines ('1978\n- Terminal' →
+    // '1978- Terminal'), and corrupts the stored session text.
+    if (!contentStarted) {
+      if (text.trim() === '') return
+      contentStarted = true
+      // A single stray leading space (' Ah, ...') is the deepseek preamble
+      // noise that reads as a phantom space before the first line. Strip
+      // exactly ONE, and only when not followed by another space —
+      // multi-space indentation is content (a fenceless 4-space markdown
+      // code block must keep its threshold).
+      if (text.startsWith(' ') && !text.startsWith('  ')) text = text.slice(1)
+    }
+    fullTextParts.push(text)
+    onToken(text, 'content')
+  }
+
   let pendingDataLines = []
   const handleDataEvent = (data) => {
     if (data === SSE_DONE) return
     // Legitimate keep-alives arrive as an empty `data:` event; they are not
     // malformed chunks and must not surface in the skipped-chunk report.
     if (data.trim() === '') return
+    // Any non-empty data event is progress: re-arm the no-progress timer
+    // (clear+set inside armNoProgress), so an endless keep-alive-only stream
+    // still fails loudly after the budget instead of hanging forever.
+    armNoProgress()
     let parsed
     try {
       parsed = JSON.parse(data)
@@ -234,9 +297,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
         if (part?.type === 'text' && typeof part.text === 'string') {
           if (noTextYet) {
             closeThinking()
-            const text = maybeDecrypt(part.text)
-            fullTextParts.push(text)
-            onToken(text, 'content')
+            pushContent(maybeDecrypt(part.text))
             finalTextEmitted = true
           }
         } else {
@@ -245,9 +306,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
       }
     } else if (typeof finalContent === 'string' && fullTextParts.length === 0) {
       closeThinking()
-      const text = maybeDecrypt(finalContent)
-      fullTextParts.push(text)
-      onToken(text, 'content')
+      pushContent(maybeDecrypt(finalContent))
       finalTextEmitted = true
     }
 
@@ -261,13 +320,22 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
       // discard the full text only when no text was streamed, so the dropped
       // content was never recovered.
       const text = maybeDecrypt(reasoningToken)
-      fullReasoningParts.push(text)
-      if (!inThinking) {
-        inThinking = true
-        if (reasoningStartedAt === null) reasoningStartedAt = now()
-        onToken('\n', 'start_reasoning')
+      // A reasoning delta arriving after content already streamed is a late
+      // burst (OpenRouter web-search delivery can flush reasoning after the
+      // answer started). The live stream already rendered the answer, so it
+      // is dropped outright — never folded into the stored reasoning, which
+      // would inflate the replayed checkpoint count against the live meter,
+      // nor re-open the block (which would print `✓ Thinking` + `❯ Answer`
+      // at the bottom of the message).
+      if (!contentStarted) {
+        fullReasoningParts.push(text)
+        if (!inThinking) {
+          inThinking = true
+          if (reasoningStartedAt === null) reasoningStartedAt = now()
+          onToken('\n', 'start_reasoning')
+        }
+        onToken(text, 'reasoning')
       }
-      onToken(text, 'reasoning')
     }
 
     const contentToken = delta.content
@@ -284,17 +352,13 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
         // Skip delta text when the same chunk already emitted the final
         // message content (it duplicates it exactly).
         if (!finalTextEmitted) {
-          const text = maybeDecrypt(contentToken)
-          fullTextParts.push(text)
-          onToken(text, 'content')
+          pushContent(maybeDecrypt(contentToken))
         }
       } else if (Array.isArray(contentToken)) {
         for (const part of contentToken) {
           if (part?.type === 'text' && typeof part.text === 'string') {
             if (finalTextEmitted) continue
-            const text = maybeDecrypt(part.text)
-            fullTextParts.push(text)
-            onToken(text, 'content')
+            pushContent(maybeDecrypt(part.text))
           } else {
             addPart(part)
           }
@@ -323,6 +387,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
   }
 
   try {
+    armNoProgress()
     while (true) {
       let chunk
       try {
@@ -387,6 +452,8 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     // delta) must still close the thinking block for the renderer.
     closeThinking()
   } finally {
+    if (noProgressTimer !== null) clearTimeout(noProgressTimer)
+    noProgressTimer = null
     // A stall or stream error must not leave the connection parked until the
     // server closes it; cancelling the reader aborts the fetch. A fully
     // consumed stream cancels as a no-op.

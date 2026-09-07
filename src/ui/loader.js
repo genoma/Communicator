@@ -124,16 +124,27 @@ export function createLoader({ stdout = process.stdout, graceMs = LOADER_GRACE_M
 // - waiting phase (reasoning-less turn): `✓ <waitLabel>`, only when the
 //   spinner was shown (same contract as the loader, so the runner adds the
 //   one blank row exactly once and instant replies never gain one).
+//
+// The answer-wait phase is the post-thinking gap filler: after the thinking
+// checkpoint the meter is stopped and (with a bursty OpenRouter web-search
+// stream) the first content delta can arrive long after `❯ Answer`. Without
+// a live element the cursor blinks over an empty row and the turn looks
+// dead. `beginAnswerWait()` re-arms the meter as a TRANSIENT `Waiting for
+// answer · <seconds>` row on the content row — never checkpointed, erased by
+// bare `stop()` on the first content delta / flush / error — so the silent
+// gap shows a live clock while the completed-turn layout stays byte-identical
+// (`✓ Thinking · N\n\n❯ Answer\n\n<content>`).
 export function createThinkingMeter({ stdout = process.stdout, graceMs = LOADER_GRACE_MS, tickMs = LOADER_TICK_MS, label = 'Thinking', now = () => performance.now() } = {}) {
   let count = 0
   let startedAt = 0
   let elapsed = 0
   let stopped = true
   let waiting = true
+  let answerWaiting = false
   let currentLabel = label
   const meterLine = (running) => {
     const seconds = formatElapsedSeconds(running ? now() - startedAt : elapsed)
-    if (waiting) return `${currentLabel} · ${seconds}`
+    if (waiting || answerWaiting) return `${currentLabel} · ${seconds}`
     return `${currentLabel} · ${formatCompactCount(count)} · ${seconds}`
   }
   const checkpointLine = () => {
@@ -153,6 +164,7 @@ export function createThinkingMeter({ stdout = process.stdout, graceMs = LOADER_
       startedAt = startedAtOverride ?? now()
       stopped = false
       waiting = false
+      answerWaiting = false
       currentLabel = label
       spinner.start()
     },
@@ -163,16 +175,33 @@ export function createThinkingMeter({ stdout = process.stdout, graceMs = LOADER_
       startedAt = startedAtOverride ?? now()
       stopped = false
       waiting = true
+      answerWaiting = false
+      currentLabel = waitLabel
+      spinner.start()
+    },
+    // Post-thinking gap: a transient live row on the content row (see the
+    // phase docs above). Not the waiting phase — `isWaiting()` stays false so
+    // `resolveWaitingLine` never turns it into a checkpoint.
+    beginAnswerWait({ startedAt: startedAtOverride, label: waitLabel = 'Waiting for answer' } = {}) {
+      count = 0
+      startedAt = startedAtOverride ?? now()
+      stopped = false
+      waiting = false
+      answerWaiting = true
       currentLabel = waitLabel
       spinner.start()
     },
     toThinking() {
       if (stopped) return
       waiting = false
+      answerWaiting = false
       currentLabel = label
     },
     isWaiting() {
       return !stopped && waiting
+    },
+    isAnswerWaiting() {
+      return !stopped && answerWaiting
     },
     update(chars) {
       count += chars
@@ -182,7 +211,10 @@ export function createThinkingMeter({ stdout = process.stdout, graceMs = LOADER_
       stopped = true
       elapsed = now() - startedAt
       spinner.stopTimers()
-      if (done) {
+      // The answer-wait row is transient by contract: it is erased, never
+      // checkpointed (a done-stop there would add a `✓ Waiting for answer`
+      // row the completed layout and history replay must not have).
+      if (done && !answerWaiting) {
         if (waiting && !spinner.isShown()) {
           spinner.hide()
           return false

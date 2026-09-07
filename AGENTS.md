@@ -42,6 +42,8 @@
 - Write very clean code: readable, consistent with existing style, no dead code or leftovers.
 - No comments unless they explain non-obvious intent.
 - Terminal output layout is a contract: every repeated visual element (markers, separators, footers, banners) must keep the identical spacing in every stage that renders it — one blank line above and one below unless the established pattern says otherwise. Never let one code path (live stream, history replay, rebuild, continuation redraw) drift from the others; when a new stage re-renders an element, mirror the spacing of the existing stages (see MEMORY.md §Display consistency contract).
+- Interface parity is mandatory, not a style preference: every element shown in one mode or path must be shown in every equivalent one. Every completed answer carries the `❯ Answer` marker whether the model thought or not, and compact/full TTY modes differ only where the documented contract says they do. Never drop an element because a path "doesn't need it" or looks tidier without it — asymmetry between modes and between live/replay/rebuild is a bug, not a UX win.
+- Regressions found by user experience, not by tests, are still regressions: if a user notices an element missing on one path, restore parity everywhere (live, replay, rebuild, one-shot) and pin it in tests, not just in the path that was reported.
 - No debug prints, no `console.log` leftovers in final code.
 - Do not add dependencies without need; prefer built-in Node.js APIs where reasonable.
 - Keep the CLI flag conventions: long-form flags (`--list-models`, `--output-dir`, `--reasoning-effort`, ...), single-character short flags only (Commander does not support multi-char short flags).

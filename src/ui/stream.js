@@ -45,6 +45,12 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   let pumpTimer = null
   let drainWaiter = null
   let messageStarted = false
+  // The Answer marker is written by end_reasoning on reasoning turns; a
+  // reasoning-less turn never has one, so the first content write must emit
+  // it (with the same one-blank spacing) — otherwise the answer starts right
+  // after the `✓ Waiting for response` checkpoint with no `❯ Answer` label,
+  // and live/history both float on a bare checkpoint.
+  let answerOpen = false
 
   const writeSegment = (type, text) => {
     if (type === 'start_reasoning') {
@@ -56,9 +62,19 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
     } else if (type === 'end_reasoning') {
       reasoningWrap.flush()
       stdout.write(`\n\n${answer()}\n\n`)
+      answerOpen = true
     } else if (type === 'content') {
+      // Compact mode: the transient answer-wait row (post-thinking silent
+      // gap) owns this row until the first content byte replaces it. Bare
+      // stop erases it (no checkpoint); a stopped/never-started meter is a
+      // no-op, so the full-mode path is unaffected.
+      meter.stop()
       if (!messageStarted) {
         messageStarted = true
+        if (!answerOpen) {
+          stdout.write(`${answer()}\n\n`)
+          answerOpen = true
+        }
         if (assistantMarker) stdout.write(`${assistantMarker}\n\n`)
       }
       if (render.markdown) md.write(text)
@@ -72,6 +88,11 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   // and below every marker.
   const writeCompact = (type, text) => {
     if (type === 'start_reasoning') {
+      // A thinking block that opens after content already rendered is a late
+      // burst (OpenRouter web-search delivery can flush reasoning after the
+      // answer started): suppress markers entirely — the completed layout
+      // must never gain a trailing `✓ Thinking`/`❯ Answer` block.
+      if (messageStarted) return
       // The meter was already started by startTurn (waiting phase) when the
       // runner owns the line: flip it to the counting phase without touching
       // the clock, so the checkpoint counts from turn start even when the
@@ -80,10 +101,20 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
       if (meter.isWaiting()) meter.toThinking()
       else meter.start({ startedAt: render.turnStartedAt })
     } else if (type === 'reasoning') {
+      if (messageStarted) return
       meter.update(text.length)
     } else if (type === 'end_reasoning') {
+      if (messageStarted) return
       meter.stop({ done: true })
       stdout.write(`\n${answer()}\n\n`)
+      answerOpen = true
+      // Re-arm a TRANSIENT live row on the content row: after the checkpoint
+      // the meter is stopped and the timer is gone, and with a bursty
+      // OpenRouter web-search stream the first content delta can arrive long
+      // after `❯ Answer` — the cursor blinks over an empty row and the turn
+      // looks dead. The row is erased (bare stop, never checkpointed) on the
+      // first content delta, so the completed layout stays byte-identical.
+      meter.beginAnswerWait()
     }
   }
 
@@ -150,6 +181,7 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   render.sources = []
   render.resetMessage = () => {
     messageStarted = false
+    answerOpen = false
   }
   // Compact mode: the meter owns the turn's status line, so the runner starts
   // it at turn start (waiting phase) instead of the loader. The clock is
@@ -303,6 +335,14 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
       // marker or the compact meter checkpoint owns that row instead.
       if (msg.waitLine) {
         out += `${green('✓')} ${sanitizeSingleLine(msg.waitLine)}\n\n`
+      }
+      // Every completed content-bearing turn carries the `❯ Answer` marker
+      // (live writeSegment now emits it on the first content byte when no
+      // end_reasoning preceded it); replay must match, or a resumed session
+      // shows a bare checkpoint before the answer. Reasoning turns already
+      // wrote it above.
+      if (!msg.reasoning) {
+        out += `${answer()}\n\n`
       }
       if (assistantMarker) out += `${assistantMarker}\n\n`
       out += `${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), msg.sources || [], cols) : wrapPlain(sanitizeAnsi(contentText(msg.content)))}\n\n`

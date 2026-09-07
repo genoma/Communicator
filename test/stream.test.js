@@ -64,7 +64,7 @@ test('smooth renderer defaults off and writes tokens immediately', () => {
   assert.equal(render.smooth, false)
   render('x', 'content')
   render('y', 'content')
-  assert.equal(plain(), 'xy')
+  assert.equal(plain(), '❯ Answer\n\nxy')
 })
 
 test('renderHistory prints attachment lines under parts-based user messages', (t) => {
@@ -123,7 +123,7 @@ test('renderHistory skips produced image tokens during streaming', () => {
   render('hello', 'content')
   render({ type: 'image_url', image_url: { url: 'https://img.example/a.png' } }, 'image')
   render(' world', 'content')
-  assert.equal(plain(), 'hello world')
+  assert.equal(plain(), '❯ Answer\n\nhello world')
 })
 
 test('renderHistory passes plain strings through unchanged', () => {
@@ -208,7 +208,7 @@ test('renderHistory substitutes named RPG speaker markers for user and assistant
     { role: 'user', content: 'question' },
     { role: 'assistant', content: 'Answer here' },
   ], { markdown: false, stdout, userMarker: '❯ Kael', assistantMarker: '❯ Zara' })
-  assert.equal(plain(), '\n❯ Kael\n\nquestion\n\n❯ Zara\n\nAnswer here\n\n')
+  assert.equal(plain(), '\n❯ Kael\n\nquestion\n\n❯ Answer\n\n❯ Zara\n\nAnswer here\n\n')
   assert.doesNotMatch(plain(), /❯ You/)
 })
 
@@ -235,7 +235,7 @@ test('renderHistory puts the waitLine checkpoint one blank above and below the R
     { role: 'user', content: 'question' },
     { role: 'assistant', content: 'Answer here', waitLine: 'Waiting for response' },
   ], { markdown: false, stdout, userMarker: '❯ Kael', assistantMarker: '❯ Zara' })
-  assert.equal(plain(), '\n❯ Kael\n\nquestion\n\n✓ Waiting for response\n\n❯ Zara\n\nAnswer here\n\n')
+  assert.equal(plain(), '\n❯ Kael\n\nquestion\n\n✓ Waiting for response\n\n❯ Answer\n\n❯ Zara\n\nAnswer here\n\n')
 })
 
 test('smooth renderer writes nothing before the first tick and paces at the char cap', async (t) => {
@@ -248,11 +248,11 @@ test('smooth renderer writes nothing before the first tick and paces at the char
   t.mock.timers.tick(19)
   assert.equal(plain(), '')
   t.mock.timers.tick(1)
-  assert.equal(plain(), 'abcdefghij')
+  assert.equal(plain(), '❯ Answer\n\nabcdefghij')
   t.mock.timers.tick(20)
-  assert.equal(plain(), 'abcdefghijklmnopqrst')
+  assert.equal(plain(), '❯ Answer\n\nabcdefghijklmnopqrst')
   t.mock.timers.tick(100)
-  assert.equal(plain(), 'abcdefghijklmnopqrst')
+  assert.equal(plain(), '❯ Answer\n\nabcdefghijklmnopqrst')
 })
 
 test('smooth flush waits for the queue to drain at the paced rate', async (t) => {
@@ -264,16 +264,16 @@ test('smooth flush waits for the queue to drain at the paced rate', async (t) =>
   const done = render.flush()
   assert.equal(plain(), '')
   t.mock.timers.tick(20)
-  assert.equal(plain(), 'hel')
+  assert.equal(plain(), '❯ Answer\n\nhel')
   t.mock.timers.tick(20)
-  assert.equal(plain(), 'hello ')
+  assert.equal(plain(), '❯ Answer\n\nhello ')
   t.mock.timers.tick(20)
-  assert.equal(plain(), 'hello wor')
+  assert.equal(plain(), '❯ Answer\n\nhello wor')
   t.mock.timers.tick(20)
-  assert.equal(plain(), 'hello world')
+  assert.equal(plain(), '❯ Answer\n\nhello world')
   await done
   t.mock.timers.tick(100)
-  assert.equal(plain(), 'hello world')
+  assert.equal(plain(), '❯ Answer\n\nhello world')
 })
 
 test('smooth flush resolves immediately when the queue is empty', async (t) => {
@@ -294,9 +294,9 @@ test('smooth flush with sync drains the queue immediately', async (t) => {
   render('hello ', 'content')
   render('world', 'content')
   render.flush({ sync: true })
-  assert.equal(plain(), 'hello world')
+  assert.equal(plain(), '❯ Answer\n\nhello world')
   t.mock.timers.tick(100)
-  assert.equal(plain(), 'hello world')
+  assert.equal(plain(), '❯ Answer\n\nhello world')
 })
 
 test('smooth keeps reasoning markers ordered behind paced text', async (t) => {
@@ -332,10 +332,10 @@ test('stream renderer prints the assistant marker before the first content token
   const render = createStreamRenderer({ stdout, assistantMarker: '❯ Zara' })
   render('Hel', 'content')
   render('lo', 'content')
-  assert.equal(plain(), '❯ Zara\n\nHello')
+  assert.equal(plain(), '❯ Answer\n\n❯ Zara\n\nHello')
   render.resetMessage()
   render('!', 'content')
-  assert.equal(plain(), '❯ Zara\n\nHello❯ Zara\n\n!')
+  assert.equal(plain(), '❯ Answer\n\n❯ Zara\n\nHello❯ Answer\n\n❯ Zara\n\n!')
 })
 
 test('stream renderer puts the assistant marker after the Answer label when reasoning precedes content', (t) => {
@@ -366,11 +366,11 @@ test('toggling render.smooth off mid-stream drains the residual on the next tick
   render('pending', 'content')
   render.smooth = false
   t.mock.timers.tick(20)
-  assert.equal(plain(), 'pending')
+  assert.equal(plain(), '❯ Answer\n\npending')
   render(' now', 'content')
-  assert.equal(plain(), 'pending now')
+  assert.equal(plain(), '❯ Answer\n\npending now')
   t.mock.timers.tick(100)
-  assert.equal(plain(), 'pending now')
+  assert.equal(plain(), '❯ Answer\n\npending now')
 })
 
 test('mutating render.smoothCharsPerTick mid-stream changes the pacing of the next tick', async (t) => {
@@ -381,18 +381,18 @@ test('mutating render.smoothCharsPerTick mid-stream changes the pacing of the ne
   render('klmnopqrst', 'content')
   assert.equal(plain(), '')
   t.mock.timers.tick(20)
-  assert.equal(plain(), 'abcdefghij')
+  assert.equal(plain(), '❯ Answer\n\nabcdefghij')
   render.smoothCharsPerTick = 2
   t.mock.timers.tick(20)
-  assert.equal(plain(), 'abcdefghijkl')
+  assert.equal(plain(), '❯ Answer\n\nabcdefghijkl')
   t.mock.timers.tick(20)
-  assert.equal(plain(), 'abcdefghijklmn')
+  assert.equal(plain(), '❯ Answer\n\nabcdefghijklmn')
   t.mock.timers.tick(100)
-  assert.equal(plain(), 'abcdefghijklmnop')
+  assert.equal(plain(), '❯ Answer\n\nabcdefghijklmnop')
   t.mock.timers.tick(20)
-  assert.equal(plain(), 'abcdefghijklmnopqr')
+  assert.equal(plain(), '❯ Answer\n\nabcdefghijklmnopqr')
   t.mock.timers.tick(20)
-  assert.equal(plain(), 'abcdefghijklmnopqrst')
+  assert.equal(plain(), '❯ Answer\n\nabcdefghijklmnopqrst')
   assert.equal(render.smoothCharsPerTick, 2)
   assert.equal(render.smoothTickMs, 20)
 })
@@ -407,7 +407,7 @@ test('strips ANSI escape sequences from model content and reasoning', (t) => {
   render('\x1b[1mthought\x1b[0m', 'reasoning')
   render(null, 'end_reasoning')
   render(' done', 'content')
-  assert.match(plain(), /^hellored/)
+  assert.match(plain(), /^❯ Answer\n\nhellored/)
   assert.match(plain(), /thought/)
   assert.match(plain(), / done$/)
   assert.doesNotMatch(plain(), /\x1b]52/)
@@ -672,4 +672,81 @@ test('renderHistory compact shows nothing for a reasoning-only stopped partial',
   // silence instead of a phantom `✓ Thinking · N` + `❯ Answer`.
   assert.doesNotMatch(plain(), /Thinking/)
   assert.doesNotMatch(plain(), /❯ Answer/)
+})
+
+test('compact renderer re-arms a transient answer wait after the checkpoint and clears it on content', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let nowMs = 0
+  const { stdout, text } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true, now: () => nowMs })
+  render.turnStartedAt = 0
+  render.startTurn('Waiting for response')
+  render('', 'start_reasoning')
+  render('thinking text', 'reasoning')
+  render('', 'end_reasoning')
+  assert.ok(text().includes('✓ Thinking · 13\x1b[K\n'))
+  // The silent gap: the answer-wait row shows a live clock (content row).
+  nowMs = 400
+  t.mock.timers.tick(200)
+  assert.ok(text().includes('Waiting for answer · 0.4s ⠋'), `expected answer wait row, got: ${text()}`)
+  // The first content delta bare-stops it, then content lands on the row.
+  render('Answer here', 'content')
+  assert.ok(!text().includes('✓ Waiting for answer'), 'answer wait must never checkpoint')
+  assert.ok(text().endsWith('Answer here'))})
+
+test('compact renderer keeps the pinned layout when content follows immediately', () => {
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true, now: () => 0 })
+  render('', 'start_reasoning')
+  render('thinking text', 'reasoning')
+  render('', 'end_reasoning')
+  render('answer', 'content')
+  assert.equal(plain(), '\r✓ Thinking · 13\x1b[K\n\n❯ Answer\n\nanswer')
+})
+
+test('compact renderer late reasoning burst after content prints no trailing markers', async () => {
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true, now: () => 0 })
+  // Mirror the runner's flow: turn start arms the waiting phase; the first
+  // content delta resolves it to the green checkpoint and writes the blank
+  // row; a late start/end reasoning cycle must then be a no-op.
+  render.startTurn('Waiting for response')
+  assert.equal(render.resolveWaitingLine(), false) // instant reply: nothing shown
+  render('answer text', 'content')
+  render('', 'start_reasoning')
+  render('late thinking', 'reasoning')
+  render('', 'end_reasoning')
+  assert.equal(plain(), '❯ Answer\n\nanswer text')
+})
+
+test('reasoning-less turn renders the Answer marker before content (live and replay)', async () => {
+  // A model that emits no reasoning (deepseek with effort low can skip the
+  // block) resolves the waiting line to `✓ Waiting for response` and then the
+  // answer must still carry the `❯ Answer` marker — the checkpoint alone used
+  // to open the answer directly, and a resumed session showed no Answer tag.
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, compactThinking: true, now: () => 100 })
+  render.turnStartedAt = 0
+  render.startTurn('Waiting for response')
+  assert.equal(render.resolveWaitingLine(), false) // within grace: no checkpoint row
+  render('Answer here', 'content')
+  // Live: Answer marker precedes content even when no checkpoint was shown.
+  assert.equal(plain(), '❯ Answer\n\nAnswer here')
+
+  const history = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: 'Answer here', waitLine: 'Waiting for response' },
+  ], { markdown: false, stdout: history.stdout, compactThinking: true })
+  // Replay: checkpoint then Answer marker then content, matching live.
+  assert.equal(history.plain(), '\n❯ You\n\nquestion\n\n✓ Waiting for response\n\n❯ Answer\n\nAnswer here\n\n')
+})
+
+test('instant reasoning-less turn still gets the Answer marker', () => {
+  const { stdout, plain } = capture()
+  const render = createStreamRenderer({ stdout, markdown: false, compactThinking: true, now: () => 0 })
+  render.startTurn('Waiting for response')
+  render('Instant', 'content')
+  assert.equal(plain(), '❯ Answer\n\nInstant')
 })

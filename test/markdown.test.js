@@ -705,7 +705,9 @@ test('non-markdown content folds word-aware at the terminal width', () => {
 
   render('answer words that also reach the width limit', 'content')
   render.flush()
-  assert.equal(chunks.join('').replace(ANSI, ''), 'answer words that\nalso reach the width\nlimit')
+  // The Answer marker is unconditional: it is emitted on the first content
+  // byte even when no end_reasoning preceded it (reasoning-less turns).
+  assert.equal(chunks.join('').replace(ANSI, ''), '❯ Answer\n\nanswer words that\nalso reach the width\nlimit')
 })
 
 test('history replay wraps reasoning and plain content at the terminal width', () => {

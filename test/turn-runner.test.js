@@ -1365,3 +1365,37 @@ test('copies the stamped reasoning duration onto a stopped reply', async (t) => 
   assert.equal(state.messages[2].reasoningMs, 2345)
   assert.equal(produced, true)
 })
+
+test('compact content-first turn with folded-late reasoning stashes the waitLine, not a phantom checkpoint', async (t) => {
+  // The OpenRouter web-search burst quirk can deliver ALL content before ANY
+  // reasoning arrives; with the late-reasoning drop the parser emits only
+  // content tokens, so apiResult.reasoning is empty and the message must
+  // replay through the waitLine path — exactly what the live stream showed
+  // (✓ Waiting for response + answer, no phantom ✓ Thinking / ❯ Answer).
+  mockConsole(t)
+  const stdout = { write() {} }
+  const render = () => {}
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => {}
+  render.compactThinking = true
+  const started = []
+  const resolved = []
+  render.startTurn = (label) => started.push(label)
+  render.resolveWaitingLine = () => { resolved.push(true); stdout.write('\n'); return true }
+  const state = fakeState({ compactThinking: true })
+  const provider = {
+    async chatCompletion(opts) {
+      opts.onToken('Hello', 'content')
+      return { content: 'Hello' }
+    },
+  }
+  const { deps } = makeDeps({ render, loader: { start() {}, stop() {} }, provider, tty: true, stdout })
+
+  await runTurn(deps, state)
+
+  assert.equal(state.messages[2].content, 'Hello')
+  assert.equal(state.messages[2].reasoning, undefined)
+  assert.equal(state.messages[2].waitLine, 'Waiting for response')
+  assert.ok(!('reasoningMs' in state.messages[2]))
+})

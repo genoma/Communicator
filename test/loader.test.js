@@ -379,3 +379,52 @@ test('thinking meter restarts cleanly after a checkpointed turn (retry path)', a
     `\r${green('✓')} Thinking · 1.2k · 1.5s\x1b[K\n`,
   ])
 })
+
+test('thinking meter answer-wait phase paints a transient live row and bare-stops without a checkpoint', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { write(chunk) { chunks.push(String(chunk)); return true } }
+  let nowMs = 0
+  const meter = createThinkingMeter({ stdout, graceMs: 200, tickMs: 150, now: () => nowMs })
+  meter.beginWait({ startedAt: 0, label: 'Waiting for response' })
+  meter.toThinking()
+  meter.update(13)
+  nowMs = 1500
+  meter.stop({ done: true })
+  // The checkpoint has been written.
+  assert.deepEqual(chunks[chunks.length - 1], `\r${green('✓')} Thinking · 13 · 1.5s\x1b[K\n`)
+
+  // Re-arm as the post-thinking answer wait: transient, never checkpointed.
+  meter.beginAnswerWait({ startedAt: 1500 })
+  // Not the waiting phase: resolveWaitingLine (via isWaiting) must no-op.
+  assert.equal(meter.isWaiting(), false)
+  assert.equal(meter.isAnswerWaiting(), true)
+  nowMs = 1700
+  t.mock.timers.tick(200)
+  assert.ok(chunks.some((c) => c.includes(`${dim('Waiting for answer · 0.2s')} ${frameAt(0)}\x1b[K`)))
+
+  // Bare stop on the first content delta: erases, never checkpoints.
+  const before = chunks.length
+  meter.stop()
+  assert.equal(chunks.length, before + 1)
+  // Erase with carriage return, no `✓ Waiting for answer` line is written.
+  assert.equal(chunks[chunks.length - 1], '\r\x1b[K')
+  assert.ok(!chunks.some((c) => c.includes('✓ Waiting for answer')))
+})
+
+test('thinking meter answer-wait done stop never checkpoints the transient row', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { write(chunk) { chunks.push(String(chunk)); return true } }
+  const meter = createThinkingMeter({ stdout, graceMs: 200, tickMs: 150, now: () => 0 })
+  meter.beginWait({ startedAt: 0, label: 'Waiting for response' })
+  meter.toThinking()
+  meter.update(8)
+  meter.stop({ done: true })
+  meter.beginAnswerWait({ startedAt: 100 })
+  // A done/true stop during the answer-wait phase is still a bare erase, so
+  // the completed layout stays `✓ Thinking · N\n\n❯ Answer\n\n<content>`.
+  const wrote = meter.stop({ done: true })
+  assert.equal(wrote, false)
+  assert.ok(!chunks.some((c) => c.includes('✓ Waiting for answer')))
+})

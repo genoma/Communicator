@@ -81,6 +81,13 @@ export const LOADER_TICK_MS = 150
 
 export const STREAM_IDLE_TIMEOUT_MS = 60_000
 
+// Bytes flowing but never a non-empty data event (a keep-alive-only stream)
+// is not progress; this longer budget bounds that hang separately from the
+// no-bytes-at-all stall above. Keep-alive `data:` events are the documented
+// OpenRouter search-gap behavior, so the budget is generous — the point is a
+// loud, bounded failure instead of an indefinite dead-air wait.
+export const STREAM_NO_PROGRESS_TIMEOUT_MS = 180_000
+
 export const IMAGE_FORMATS = new Set(['png', 'jpeg', 'webp'])
 export const IMAGE_RESOLUTIONS = new Set(['1K', '2K', '4K'])
 export const IMAGE_QUALITIES = new Set(['low', 'medium', 'high'])
