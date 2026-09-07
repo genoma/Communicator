@@ -66,17 +66,22 @@ function createSpinner({ stdout, graceMs, tickMs, drawLine }) {
   }
 }
 
-export function createLoader({ stdout = process.stdout, graceMs = LOADER_GRACE_MS, tickMs = LOADER_TICK_MS } = {}) {
+export function createLoader({ stdout = process.stdout, graceMs = LOADER_GRACE_MS, tickMs = LOADER_TICK_MS, now = () => performance.now() } = {}) {
   let label = ''
+  let startedAt = 0
   const spinner = createSpinner({
     stdout,
     graceMs,
     tickMs,
-    drawLine: (frame) => `\r${dim(label)} ${cyan(frame)}`,
+    // Live wait clock, same format as the compact meter's waiting phase: an
+    // endpoint that flushes the whole answer in one burst would otherwise
+    // leave the row frozen on the plain spinner for the entire silent gap.
+    drawLine: (frame) => `\r${dim(`${label} · ${formatElapsedSeconds(now() - startedAt)}`)} ${cyan(frame)}`,
   })
   return {
     start(nextLabel) {
       label = nextLabel
+      startedAt = now()
       spinner.start()
     },
     // Returns true only when `done` actually wrote the green checkpoint

@@ -32,6 +32,33 @@ incremental delivery** for search-enabled requests.
 3. **Mixed deltas**: content and reasoning can appear in the *same* SSE delta
    (the transition chunk), and a content chunk may duplicate the final message.
 
+### The search phase is unobservable (wire-captured)
+
+Empirically verified (search-enabled stream captured 2026-09-07): the whole
+answer arrived as 85+ content deltas in a single ~0.61 s tick after a silent
+~600 ms gap; **zero** `tool_call`/reasoning events; `usage` (with
+`web_search_requests`) only in the final chunk; no "search started/finished"
+event of any kind. The search runs server-side inside the same stream (server
+tool) or before the answer (deprecated `web` plugin), and nothing on the wire
+exposes it.
+
+Consequences:
+- **Never render a "Searching…" phase label** — it would be fiction. The only
+  honest live signal is `delta.reasoning` (a "thinking" phase) when the model
+  exposes it; the silent gap could be search, reasoning, or the model just
+  being slow, and the client cannot tell them apart.
+- **The gap is only shortenable, never eliminable**: search engine/mode
+  (`engine`, Exa `mode: "instant"`/`"fast"` vs `"deep"`/`"deep-reasoning"`),
+  `search_context_size`, lower `max_results`, and `max_uses`/`max_total_results`
+  caps all shrink the silent period but do not surface it. The client already
+  caps `max_results`/`max_total_results`; the deeper knobs are deliberately not
+  exposed as flags (bounded benefit, OpenRouter-specific and undocumented).
+- **The live wait clock is the honest mitigation**: the full-mode loader and
+  the compact meter both paint `Waiting for response · <seconds>` (or
+  `Searching the web · <seconds>` for `always` mode), so the user sees the wait
+  progress rather than a frozen spinner, and the clock is anchored at turn
+  start so a burst-delivered answer still reports real user-wait time.
+
 ## What naive assumptions break
 
 - **Seconds (thinking clock)**: measuring the thinking phase from the first to

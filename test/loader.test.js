@@ -9,42 +9,48 @@ function frameAt(i) {
   return cyan(FRAMES[i % FRAMES.length])
 }
 
-test('loader shows nothing before the grace period, then dim label with cycling spinner', async (t) => {
+test('loader shows nothing before the grace period, then label with live clock and cycling spinner', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const chunks = []
   const stdout = { write(chunk) { chunks.push(String(chunk)); return true } }
-  const loader = createLoader({ stdout, graceMs: 200, tickMs: 150 })
+  let nowMs = 0
+  const loader = createLoader({ stdout, graceMs: 200, tickMs: 150, now: () => nowMs })
   loader.start('Waiting for response')
 
   t.mock.timers.tick(199)
   assert.deepEqual(chunks, [])
+  nowMs = 200
   t.mock.timers.tick(1)
-  assert.deepEqual(chunks, [`\r${dim('Waiting for response')} ${frameAt(0)}\x1b[K`])
+  assert.deepEqual(chunks, [`\r${dim('Waiting for response · 0.2s')} ${frameAt(0)}\x1b[K`])
+  nowMs = 350
   t.mock.timers.tick(150)
   assert.deepEqual(chunks, [
-    `\r${dim('Waiting for response')} ${frameAt(0)}\x1b[K`,
-    `\r${dim('Waiting for response')} ${frameAt(1)}\x1b[K`,
+    `\r${dim('Waiting for response · 0.2s')} ${frameAt(0)}\x1b[K`,
+    `\r${dim('Waiting for response · 0.4s')} ${frameAt(1)}\x1b[K`,
   ])
+  nowMs = 500
   t.mock.timers.tick(150)
   assert.deepEqual(chunks, [
-    `\r${dim('Waiting for response')} ${frameAt(0)}\x1b[K`,
-    `\r${dim('Waiting for response')} ${frameAt(1)}\x1b[K`,
-    `\r${dim('Waiting for response')} ${frameAt(2)}\x1b[K`,
+    `\r${dim('Waiting for response · 0.2s')} ${frameAt(0)}\x1b[K`,
+    `\r${dim('Waiting for response · 0.4s')} ${frameAt(1)}\x1b[K`,
+    `\r${dim('Waiting for response · 0.5s')} ${frameAt(2)}\x1b[K`,
   ])
+  nowMs = 650
   t.mock.timers.tick(150)
   assert.deepEqual(chunks, [
-    `\r${dim('Waiting for response')} ${frameAt(0)}\x1b[K`,
-    `\r${dim('Waiting for response')} ${frameAt(1)}\x1b[K`,
-    `\r${dim('Waiting for response')} ${frameAt(2)}\x1b[K`,
-    `\r${dim('Waiting for response')} ${frameAt(3)}\x1b[K`,
+    `\r${dim('Waiting for response · 0.2s')} ${frameAt(0)}\x1b[K`,
+    `\r${dim('Waiting for response · 0.4s')} ${frameAt(1)}\x1b[K`,
+    `\r${dim('Waiting for response · 0.5s')} ${frameAt(2)}\x1b[K`,
+    `\r${dim('Waiting for response · 0.7s')} ${frameAt(3)}\x1b[K`,
   ])
+  nowMs = 800
   t.mock.timers.tick(150)
   assert.deepEqual(chunks, [
-    `\r${dim('Waiting for response')} ${frameAt(0)}\x1b[K`,
-    `\r${dim('Waiting for response')} ${frameAt(1)}\x1b[K`,
-    `\r${dim('Waiting for response')} ${frameAt(2)}\x1b[K`,
-    `\r${dim('Waiting for response')} ${frameAt(3)}\x1b[K`,
-    `\r${dim('Waiting for response')} ${frameAt(4)}\x1b[K`,
+    `\r${dim('Waiting for response · 0.2s')} ${frameAt(0)}\x1b[K`,
+    `\r${dim('Waiting for response · 0.4s')} ${frameAt(1)}\x1b[K`,
+    `\r${dim('Waiting for response · 0.5s')} ${frameAt(2)}\x1b[K`,
+    `\r${dim('Waiting for response · 0.7s')} ${frameAt(3)}\x1b[K`,
+    `\r${dim('Waiting for response · 0.8s')} ${frameAt(4)}\x1b[K`,
   ])
 })
 
@@ -63,29 +69,34 @@ test('stop erases the loader line only when shown and cancels further frames', a
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const chunks = []
   const stdout = { write(chunk) { chunks.push(String(chunk)); return true } }
-  const loader = createLoader({ stdout, graceMs: 200, tickMs: 150 })
+  let nowMs = 0
+  const loader = createLoader({ stdout, graceMs: 200, tickMs: 150, now: () => nowMs })
   loader.start('Searching the web')
+  nowMs = 200
   t.mock.timers.tick(200)
   loader.stop()
-  assert.deepEqual(chunks, [`\r${dim('Searching the web')} ${frameAt(0)}\x1b[K`, '\r\x1b[K'])
+  assert.deepEqual(chunks, [`\r${dim('Searching the web · 0.2s')} ${frameAt(0)}\x1b[K`, '\r\x1b[K'])
   t.mock.timers.tick(1000)
-  assert.deepEqual(chunks, [`\r${dim('Searching the web')} ${frameAt(0)}\x1b[K`, '\r\x1b[K'])
+  assert.deepEqual(chunks, [`\r${dim('Searching the web · 0.2s')} ${frameAt(0)}\x1b[K`, '\r\x1b[K'])
 })
 
 test('stop with done writes a green check line once and is idempotent', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const chunks = []
   const stdout = { write(chunk) { chunks.push(String(chunk)); return true } }
-  const loader = createLoader({ stdout, graceMs: 200, tickMs: 150 })
+  let nowMs = 0
+  const loader = createLoader({ stdout, graceMs: 200, tickMs: 150, now: () => nowMs })
   loader.start('Waiting for response')
+  nowMs = 200
   t.mock.timers.tick(200)
   assert.equal(loader.stop({ done: true }), true, 'a shown done stop reports the checkpoint was written')
   const doneLine = `\r${green('✓')} Waiting for response\x1b[K\n`
-  assert.deepEqual(chunks, [`\r${dim('Waiting for response')} ${frameAt(0)}\x1b[K`, doneLine])
+  // The checkpoint stays label-only (no seconds) — matching the compact meter's waiting-phase checkpoint.
+  assert.deepEqual(chunks, [`\r${dim('Waiting for response · 0.2s')} ${frameAt(0)}\x1b[K`, doneLine])
   assert.equal(loader.stop(), false, 'a second stop writes nothing and reports no checkpoint')
   assert.equal(loader.stop({ done: true }), false, 'a third done stop is idempotent and reports no checkpoint')
   t.mock.timers.tick(1000)
-  assert.deepEqual(chunks, [`\r${dim('Waiting for response')} ${frameAt(0)}\x1b[K`, doneLine])
+  assert.deepEqual(chunks, [`\r${dim('Waiting for response · 0.2s')} ${frameAt(0)}\x1b[K`, doneLine])
 })
 
 test('stop with done before grace writes nothing', async (t) => {
@@ -103,16 +114,23 @@ test('start with a new label while shown redraws immediately', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const chunks = []
   const stdout = { write(chunk) { chunks.push(String(chunk)); return true } }
-  const loader = createLoader({ stdout, graceMs: 200, tickMs: 150 })
+  let nowMs = 0
+  const loader = createLoader({ stdout, graceMs: 200, tickMs: 150, now: () => nowMs })
   loader.start('First')
+  nowMs = 200
   t.mock.timers.tick(200)
   loader.start('Second')
-  assert.deepEqual(chunks, [`\r${dim('First')} ${frameAt(0)}\x1b[K`, `\r${dim('Second')} ${frameAt(0)}\x1b[K`])
+  // The clock re-anchors at the new start() — the label swap redraw is
+  // synchronous, so the fresh clock reads 0s (the next tick shows real
+  // elapsed). Same behavior as the meter's start() re-anchor.
+  assert.deepEqual(chunks, [`\r${dim('First · 0.2s')} ${frameAt(0)}\x1b[K`, `\r${dim('Second · 0s')} ${frameAt(0)}\x1b[K`])
+  nowMs = 350
   t.mock.timers.tick(150)
+  // Elapsed is measured from the second start() anchor (200ms): 150ms → 0.2s.
   assert.deepEqual(chunks, [
-    `\r${dim('First')} ${frameAt(0)}\x1b[K`,
-    `\r${dim('Second')} ${frameAt(0)}\x1b[K`,
-    `\r${dim('Second')} ${frameAt(1)}\x1b[K`,
+    `\r${dim('First · 0.2s')} ${frameAt(0)}\x1b[K`,
+    `\r${dim('Second · 0s')} ${frameAt(0)}\x1b[K`,
+    `\r${dim('Second · 0.2s')} ${frameAt(1)}\x1b[K`,
   ])
 })
 

@@ -98,6 +98,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     onSignal = registerSignalHandlers,
     input = process.stdin,
     createStreamKeyMonitor,
+    now = null,
   } = deps
 
   const saveSessionFile = deps.saveSession ?? persistSessionFile
@@ -251,8 +252,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
     smoothCharsPerTick: cpsToCharsPerTick(state.smoothSpeed),
     assistantMarker: rpgMarkers.assistantMarker,
     compactThinking: tty && state.compactThinking,
+    now,
   })
-  const loader = createLoader({ stdout })
+  const loader = createLoader({ stdout, now: now ?? undefined })
 
   const saveCurrentSession = async () => {
     if (!state.sessionId) return

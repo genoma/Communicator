@@ -79,7 +79,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 │   ├── md-it.js          — markdown-it engine: ANSI token rendering, line classification, aligned tables
 │   ├── wrap.js           — word-aware folding of terminal lines (styled lines + streaming plain pieces)
 │   ├── hyperlink.js      — OSC 8 hyperlink escape helper
-│   ├── loader.js         — waiting indicator (braille spinner) for pending responses
+│   ├── loader.js         — waiting indicator (live wait clock + braille spinner) for pending responses
 │   └── stream.js         — stream renderer + history replay
 └── chat.js               — runChatSession: DI chat loop (readInput/renderer/stdout/exit/save/signals), banner, SIGINT
 ```

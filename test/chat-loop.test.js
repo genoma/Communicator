@@ -1434,7 +1434,8 @@ test('loader shows frames during a delayed response and clears on the first toke
     opts.onToken(' there', 'content')
     return { content: 'Hi there' }
   }
-  const harness = makeDeps({ readInput: scriptedInput(['hello', '/quit']), stdout })
+  let nowMs = 0
+  const harness = makeDeps({ readInput: scriptedInput(['hello', '/quit']), stdout, now: () => nowMs })
   const session = runChatSession(baseCtx(provider), harness.deps)
   const step = () => new Promise((resolve) => setImmediate(resolve))
 
@@ -1442,10 +1443,15 @@ test('loader shows frames during a delayed response and clears on the first toke
   await step()
   t.mock.timers.tick(199)
   assert.ok(!writes.some((w) => w.includes('Waiting for response')))
+  // Advance the clock BEFORE the grace fires so the first frame reads the
+  // real elapsed time; t.mock.timers does not advance performance.now().
+  nowMs = 200
   t.mock.timers.tick(1)
-  assert.ok(writes.some((w) => w.includes('Waiting for response')))
+  const firstFrame = writes.find((w) => w.includes('Waiting for response'))
+  assert.ok(firstFrame.includes('Waiting for response · 0.2s'), JSON.stringify(firstFrame))
+  nowMs = 350
   t.mock.timers.tick(150)
-  assert.ok(writes.some((w) => w.includes('Waiting for response ⠙')))
+  assert.ok(writes.some((w) => w.includes('Waiting for response · 0.4s ⠙')))
 
   release()
   await session
