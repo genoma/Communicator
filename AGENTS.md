@@ -37,6 +37,12 @@
 - Delete branches once merged into main: local via `git branch -d`, using `git branch --merged main` as the check, and on the remote via `git push origin --delete <branch>` — the agent **may and should push** to `origin` after the merge into `main` (fast-forward or merge commit), including deleting merged remote branches. Pushing after a fast-forward merge is expected, not forbidden. The merge commit preserves the full history, so cleanup is lossless. Never delete unmerged branches.
 - Merge with fast-forward when possible; if main has advanced, use a regular merge commit. Never rebase a pushed branch (avoids force-push).
 
+## UX change approval
+
+- **Every UX change must be asked first and approved by the user before implementation.** This covers all user-facing behavior, look, or output: commands and flags, prompts, messages, markers/separators, terminal layout, streaming/history-replay/rebuild rendering, mode differences, compact/full TTY output — anything the user sees or interacts with.
+- Propose the change (what changes, which modes/paths it affects, visible before/after) and wait for explicit approval; implementation starts only after approval is given.
+- Never bundle UX tweaks into unrelated work ("while we're at it") — a UX change is its own change, and parity fixes/restorations count as UX changes too: ask first, then fix.
+
 ## Code quality
 
 - Write very clean code: readable, consistent with existing style, no dead code or leftovers.
