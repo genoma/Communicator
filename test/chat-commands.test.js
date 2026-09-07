@@ -748,6 +748,58 @@ test('/retry reports nothing to retry', async (t) => {
   assert.equal(harness.turnCount, 0)
 })
 
+test('/retry prints the failure notice when a prior turn failed', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  const harness = makeCtx({ stdout })
+  const { ctx } = harness
+  ctx.state.appendUser('hello')
+  ctx.state.lastError = { message: 'Rate limited by OpenRouter. Wait a moment and try again.', status: 429 }
+  ctx.runTurn = async () => { ctx.state.appendAssistant({ role: 'assistant', content: 'new answer' }) }
+
+  await chatCommands['/retry'](ctx)
+
+  const output = writes.join('')
+  assert.match(output, /Retrying the turn that failed with: Rate limited/)
+})
+
+test('/retry does not print the failure notice on a non-TTY output', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const stdout = { isTTY: false, write(chunk) { writes.push(String(chunk)); return true } }
+  const harness = makeCtx({ stdout })
+  const { ctx } = harness
+  ctx.state.appendUser('hello')
+  ctx.state.lastError = { message: 'boom' }
+  ctx.runTurn = async () => { ctx.state.appendAssistant({ role: 'assistant', content: 'new answer' }) }
+
+  await chatCommands['/retry'](ctx)
+
+  const output = writes.join('')
+  assert.doesNotMatch(output, /Retrying the turn that failed with:/)
+})
+
+test('/retry notice is a single sanitized line with a leading newline and no trailing one', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  const harness = makeCtx({ stdout })
+  const { ctx } = harness
+  ctx.state.appendUser('hello')
+  // A provider error body carrying ANSI must not deform the single-line notice.
+  ctx.state.lastError = { message: 'bad \u001b[31mRED\u001b[0m error' }
+  ctx.runTurn = async () => { ctx.state.appendAssistant({ role: 'assistant', content: 'new answer' }) }
+
+  await chatCommands['/retry'](ctx)
+
+  const notice = writes.find((w) => /Retrying the turn that failed with:/.test(w))
+  assert.ok(notice, 'notice was written')
+  // One leading newline, no trailing newline (the rerun's own \n\n supplies the
+  // blank row below), and the ANSI stripped from the sanitized message.
+  assert.equal(notice, '\nRetrying the turn that failed with: bad RED error')
+})
+
 test('/retry is blocked by the budget guard', async (t) => {
   const consoleSpy = mockConsole(t)
   const harness = makeCtx(); const { ctx } = harness

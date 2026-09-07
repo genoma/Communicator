@@ -133,7 +133,7 @@ test('runTurn resolves true only when an assistant message was appended', async 
   assert.equal(state.messages.at(-1).role, 'assistant')
 })
 
-test('runTurn resolves false when the provider returns no content', async (t) => {
+test('runTurn resolves false on no content and stashes the turn for /retry', async (t) => {
   mockConsole(t)
   const { deps } = makeDeps({ provider: okProvider({ chatCompletion: async () => ({ usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }) }) })
   const state = fakeState()
@@ -141,7 +141,8 @@ test('runTurn resolves false when the provider returns no content', async (t) =>
   const ok = await runTurn(deps, state)
 
   assert.equal(ok, false)
-  assert.equal(state.messages.at(-1).role, 'user')
+  assert.equal(state.retryTurn, 'hello')
+  assert.equal(state.messages.at(-1).role, 'system')
 })
 
 test('forwards the session top-p to chatCompletion', async (t) => {
@@ -429,6 +430,75 @@ test('a non-retryable error keeps the user message', async (t) => {
   await runTurn(deps, state)
 
   assert.equal(state.messages.length, 2)
+})
+
+test('a non-retryable mid-stream error salvages the rendered partial as an assistant message', async (t) => {
+  mockConsole(t)
+  const provider = okProvider({
+    async chatCompletion({ onToken }) {
+      onToken('Hello ', 'content')
+      onToken('world', 'content')
+      throw new ApiError('Content generated was filtered', { retryable: false, errorType: 'content_filter' })
+    },
+  })
+  const state = fakeState()
+  const { deps } = makeDeps({ provider })
+
+  await runTurn(deps, state)
+
+  // The rendered partial is preserved as an assistant message so a rebuild or
+  // /retry keeps what the user already saw, and the user message is not popped
+  // (non-retryable error).
+  assert.equal(state.messages.length, 3)
+  assert.equal(state.messages.at(-1).role, 'assistant')
+  assert.equal(state.messages.at(-1).content, 'Hello world')
+  assert.equal(state.retryTurn, undefined)
+  assert.equal(state.lastError.retryable, false)
+  assert.equal(state.lastError.type, 'content_filter')
+})
+
+test('a retryable failure records the failure summary on state.lastError', async (t) => {
+  mockConsole(t)
+  const provider = okProvider({
+    async chatCompletion() {
+      throw new ApiError('Rate limited', { status: 429, retryable: true, errorType: 'rate_limit_exceeded' })
+    },
+  })
+  const state = fakeState()
+  const { deps } = makeDeps({ provider })
+
+  await runTurn(deps, state)
+
+  assert.equal(state.messages.length, 1)
+  assert.equal(state.retryTurn, 'hello')
+  assert.deepEqual(state.lastError, { message: 'Rate limited', status: 429, code: null, type: 'rate_limit_exceeded', retryable: true })
+})
+
+test('an empty-content turn is surfaced as a real failure and stashed for /retry', async (t) => {
+  mockConsole(t)
+  const provider = okProvider({ async chatCompletion() { return { content: '' } } })
+  const state = fakeState()
+  const { deps } = makeDeps({ provider })
+
+  await runTurn(deps, state)
+
+  assert.equal(state.messages.length, 1)
+  assert.equal(state.retryTurn, 'hello')
+  assert.equal(state.lastError.retryable, true)
+  assert.match(state.lastError.message, /Provider returned no output/)
+})
+
+test('an empty-content turn with a content-filter finish reason names it', async (t) => {
+  mockConsole(t)
+  const provider = okProvider({ async chatCompletion() { return { content: '', finishReason: 'content_filter' } } })
+  const state = fakeState()
+  const { deps } = makeDeps({ provider })
+
+  await runTurn(deps, state)
+
+  assert.equal(state.messages.length, 1)
+  assert.equal(state.retryTurn, 'hello')
+  assert.match(state.lastError.message, /no output.*content_filter/)
 })
 
 test('an interrupted stream salvages the partial response, saves and exits 130', async (t) => {

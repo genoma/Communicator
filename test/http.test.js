@@ -424,6 +424,86 @@ test('fetchWithRetry still retries retryable HTTP statuses on POSTs', async (t) 
   assert.equal(calls, 2)
 })
 
+test('fetchWithRetry passes the Retry-After seconds through errorResponse meta and honors it in the delay', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++
+    return new Response('slow down', { status: 429, headers: { 'retry-after': '30' } })
+  })
+  const seen = []
+  const promise = fetchWithRetry('https://example.test', {}, {
+    errorResponse: (status, body, meta) => {
+      seen.push({ status, body, retryAfter: meta?.retryAfter ?? null })
+      return new ApiError(`status ${status}`, { status, retryable: true })
+    },
+    retryDelays: [0],
+    attempts: 2,
+  })
+  const assertion = assert.rejects(promise, (err) => err instanceof ApiError && err.status === 429)
+  // The first retry sleeps 30s (Retry-After); tick past it, flushing
+  // microtasks so the second attempt runs.
+  for (let i = 0; i < 31; i++) {
+    t.mock.timers.tick(1000)
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  await assertion
+  assert.equal(calls, 2)
+  assert.equal(seen[0].retryAfter, 30)
+})
+
+test('fetchWithRetry derives retryAfter from the Venice reset header', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const resetAt = Math.floor(Date.now() / 1000) + 12
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++
+    return new Response('slow down', { status: 429, headers: { 'x-ratelimit-reset-requests': String(resetAt) } })
+  })
+  const seen = []
+  const promise = fetchWithRetry('https://example.test', {}, {
+    errorResponse: (status, body, meta) => {
+      seen.push({ retryAfter: meta?.retryAfter ?? null })
+      return new ApiError('429', { status, retryable: true })
+    },
+    retryDelays: [0],
+    attempts: 2,
+  })
+  const assertion = assert.rejects(promise, (err) => err instanceof ApiError && err.status === 429)
+  for (let i = 0; i < 14; i++) {
+    t.mock.timers.tick(1000)
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  await assertion
+  assert.equal(calls, 2)
+  assert.ok(seen[0].retryAfter >= 10 && seen[0].retryAfter <= 12, `got ${seen[0].retryAfter}`)
+})
+
+test('fetchWithRetry clamps a long Retry-After to the cap so the loop cannot stall', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++
+    return new Response('slow down', { status: 429, headers: { 'retry-after': '300' } })
+  })
+  const promise = fetchWithRetry('https://example.test', {}, {
+    errorResponse: (status) => new ApiError(`status ${status}`, { status, retryable: true }),
+    retryDelays: [0],
+    attempts: 2,
+  })
+  const assertion = assert.rejects(promise, (err) => err instanceof ApiError && err.status === 429)
+  // Without the cap the first retry would sleep 300s; with RETRY_AFTER_CAP_MS
+  // (60s) it retries after ~60 ticks. Tick well past 60s to be safe. If the
+  // cap were ever removed, this tick loop would not reach the second attempt
+  // and the rejection would not resolve in time.
+  for (let i = 0; i < 62; i++) {
+    t.mock.timers.tick(1000)
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  await assertion
+  assert.equal(calls, 2)
+})
+
 test('pinnedFetch settles immediately when the caller aborts (timer cleared)', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const controller = new AbortController()

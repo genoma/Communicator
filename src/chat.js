@@ -484,8 +484,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
         const content = buildContent(trailing, state.pendingAttachments)
         state.pendingAttachments = []
         // A fresh user prompt supersedes any failed turn that /retry could
-        // have replayed.
+        // have replayed, and any stale failure notice.
         state.retryTurn = null
+        state.lastError = null
         state.appendUser(content)
         await runTurn()
       }
@@ -502,8 +503,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
     const content = buildContent(rawInput, state.pendingAttachments)
     state.pendingAttachments = []
     // A fresh user prompt supersedes any failed turn that /retry could
-    // have replayed.
+    // have replayed, and any stale failure notice.
     state.retryTurn = null
+    state.lastError = null
     state.appendUser(content)
     await runTurn()
   }

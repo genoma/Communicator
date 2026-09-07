@@ -314,14 +314,37 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       }
       render.flush({ sync: true })
       debug(err?.stack)
+      const retryable = err instanceof ApiError && err.retryable
+      // A non-retryable mid-stream failure (e.g. a content-refusal stream
+      // error) can leave output the user already saw out of the transcript;
+      // preserve it as an assistant message (mirroring finishStopped) so a
+      // rebuild or /retry keeps the live partial, then surface the error.
+      // Retryable failures keep the pop-and-stash path below (the partial is
+      // discarded because /retry replays the exact user turn, and a salvaged
+      // assistant message would make `messages.at(-1)` an assistant and block
+      // the pop). buildPartial handles the pending-buffer tail and reasoning
+      // timestamp.
+      if (!retryable) {
+        const partial = buildPartial(err)
+        if (partial.content || partial.reasoning) state.appendAssistant(partial)
+      }
       console.error(`\nError: ${formatError(err)}\n`)
+      // Record the failure summary so /retry can re-surface what it is
+      // retrying, and a fresh prompt can supersede the stale notice.
+      state.lastError = {
+        message: err?.message ?? 'Unknown error',
+        status: err instanceof ApiError ? err.status : null,
+        code: err instanceof ApiError ? (err.code ?? null) : null,
+        type: err instanceof ApiError ? (err.errorType ?? null) : null,
+        retryable,
+      }
       // A retryable failure drops the user message that triggered this turn
       // whenever it is still the last one, so it is never silently re-sent
       // with the next prompt (the /retry path re-runs an existing message
       // without appending a new one). The popped message (attachments
       // embedded in its content) is stashed as `retryTurn`: /retry replays
       // exactly this turn instead of re-running the previous one.
-      if (err instanceof ApiError && err.retryable && state.messages[state.messages.length - 1]?.role === 'user') {
+      if (retryable && state.messages[state.messages.length - 1]?.role === 'user') {
         state.retryTurn = state.messages.pop().content
       }
       return
@@ -339,7 +362,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
     // The verdict is what /retry and /edit need: true only when an assistant
     // message was appended, so callers can tell a successful replacement
     // (already rendered live, plus its metrics footer) from a failed turn
-    // whose stale error/partial view still needs a screen wipe.
+    // whose error is kept on screen (rerunTurn skips its post-run wipe).
     if (apiResult.content) {
       const message = apiResultMessage(apiResult)
       // A reasoning-less turn owns the loader row: it resolved to the green
@@ -353,7 +376,27 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         message.waitLine = state.webSearch === 'always' ? 'Searching the web' : 'Waiting for response'
       }
       state.appendAssistant(message)
+      // A successful turn supersedes any prior failure notice.
+      state.lastError = null
       return true
+    }
+    // An image-generation chat turn can produce non-text parts with no
+    // assistant text to append; keep the existing silent-false path so a
+    // produced image is never misreported as a failure.
+    if (apiResult.parts && apiResult.parts.length > 0) return false
+    // A completed turn with no content (a refusal / content-filter / empty
+    // response) never throws, so it used to end with no error at all. Surface
+    // a real failure so /retry and /edit act on it instead of silently
+    // re-running the turn.
+    const reason = apiResult.finishReason ? ` (finish reason: ${apiResult.finishReason})` : ''
+    const message = `Provider returned no output${reason}.`
+    state.lastError = { message, status: null, code: null, type: null, retryable: true }
+    // The success-path `\n\n` before the metrics block already supplied the
+    // one blank row below the loader/meter row, so the error line itself must
+    // not add another leading newline (it would double the gap).
+    console.error(`Error: ${message}\n`)
+    if (state.messages[state.messages.length - 1]?.role === 'user') {
+      state.retryTurn = state.messages.pop().content
     }
     return false
   }

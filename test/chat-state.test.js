@@ -25,7 +25,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   const s = makeState()
   assert.deepEqual(
     Object.keys(s).sort(),
-    ['budget', 'compactThinking', 'contextLength', 'costSummary', 'createdAt', 'e2ee', 'e2eeContext', 'endpointProviderName', 'fileSupported', 'imageOutputSupported', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'reasoningMandatory', 'retryTurn', 'scrapes', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'topP', 'updatedAt', 'visionSupported', 'webResults', 'webSearch', 'webSearchExplicit', 'webSearchSupported', 'zdr']
+    ['budget', 'compactThinking', 'contextLength', 'costSummary', 'createdAt', 'e2ee', 'e2eeContext', 'endpointProviderName', 'fileSupported', 'imageOutputSupported', 'lastError', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'reasoningMandatory', 'retryTurn', 'scrapes', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'topP', 'updatedAt', 'visionSupported', 'webResults', 'webSearch', 'webSearchExplicit', 'webSearchSupported', 'zdr']
   )
   assert.equal(s.modelId, 'org/model')
   assert.equal(s.endpointProviderName, 'Provider')
@@ -45,6 +45,8 @@ test('constructor keeps parity with the old state literal fields', () => {
   assert.equal(s.sessionId, '2026-01-01T00-00-00')
   assert.equal(s.createdAt, '2026-01-01T00:00:00.000Z')
   assert.equal(s.updatedAt, null)
+  assert.equal(s.retryTurn, null)
+  assert.equal(s.lastError, null)
   assert.deepEqual(s.modelReasoning, { supported: true })
   assert.equal(s.markdown, true)
   assert.equal(s.smoothStreaming, true)
@@ -121,6 +123,8 @@ test('toFinalState returns exactly the finalState field list', () => {
 test('resetForNewSession clears messages, budget, webResults and returns the reset marker', () => {
   const s = makeState({ messages: [{ role: 'system', content: 'x' }, { role: 'user', content: 'hi' }] })
   s.pendingAttachments.push({ kind: 'image', filename: 'a.png', size: 1 })
+  s.retryTurn = 'failed'
+  s.lastError = { message: 'boom', status: 429 }
   const marker = s.resetForNewSession('Fresh prompt.')
 
   assert.equal(marker, true)
@@ -131,6 +135,8 @@ test('resetForNewSession clears messages, budget, webResults and returns the res
   assert.equal(s.temperature, 1.1)
   assert.equal(s.webSearch, 'auto')
   assert.equal(s.sessionId, '2026-01-01T00-00-00')
+  assert.equal(s.retryTurn, null)
+  assert.equal(s.lastError, null)
 })
 
 test('transitions mutate only their own fields', () => {

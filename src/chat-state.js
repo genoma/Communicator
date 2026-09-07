@@ -33,6 +33,10 @@ export class ChatState {
     // `messages` (so it is never re-sent silently with the next prompt) but
     // preserved here, attachments included, for /retry. Never persisted.
     this.retryTurn = null
+    // The last failed-turn summary (message/status/code/type/retryable) so
+    // /retry can re-surface what failed. Never persisted; cleared on success,
+    // a fresh prompt and resetForNewSession.
+    this.lastError = null
     this.sessionId = sessionId
     this.createdAt = createdAt
     this.updatedAt = updatedAt
@@ -89,6 +93,7 @@ export class ChatState {
     this.updatedAt = null
     this.pendingAttachments = []
     this.retryTurn = null
+    this.lastError = null
     return true
   }
 

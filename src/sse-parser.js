@@ -3,6 +3,14 @@ import { createHash } from 'node:crypto'
 import { ApiError } from './errors.js'
 import { isEncryptedHex } from './e2ee.js'
 
+// True when an SSE stream error (a 200-status error event) is transient — an
+// upstream rate-limit / at-capacity / congestion condition a /retry could
+// recover from — as opposed to a permanent refusal or content filter.
+function isTransientStreamError(type) {
+  if (!type) return false
+  return /rate[-_]?limit|overload|capacity|congestion|temporar|timeout/i.test(String(type))
+}
+
 function unescapeJson(s) {
   try {
     return JSON.parse(`"${s}"`)
@@ -99,6 +107,7 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
   let reasoningStartedAt = requestStartedAt ?? null
   let reasoningMs = null
   let finalUsage = null
+  let finishReason = null
   let skippedChunks = 0
   const fullSources = []
   const seenUrls = new Set()
@@ -183,7 +192,20 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     // they would silently end the stream as an empty success.
     const streamError = parsed.error ?? parsed.choices?.[0]?.error
     if (streamError) {
-      throw new ApiError(typeof streamError === 'string' ? streamError : (streamError?.message || 'Provider error'), { retryable: false })
+      const message = typeof streamError === 'string' ? streamError : (streamError?.message || 'Provider error')
+      const errorType = typeof streamError === 'object' && streamError ? (streamError.metadata?.error_type ?? streamError.type ?? null) : null
+      const code = typeof streamError === 'object' && streamError?.code != null ? String(streamError.code) : null
+      const status = typeof streamError === 'object' && streamError?.status != null ? streamError.status : null
+      // Transient stream errors (upstream at-capacity / rate-limit / congestion)
+      // are stashable for a user-initiated /retry; permanent errors (a content
+      // refusal / filter) are not. Without a typed error the stream error stays
+      // non-retryable — a started generation must never be auto-resent.
+      throw new ApiError(message, {
+        retryable: errorType ? isTransientStreamError(errorType) : false,
+        code,
+        errorType,
+        ...(status != null ? { status } : {}),
+      })
     }
 
     collectSources(parsed, fullSources, seenUrls, onSources)
@@ -193,6 +215,10 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     if (parsed.usage) finalUsage = parsed.usage
 
     const choice = parsed.choices?.[0]
+    // The last non-null finish_reason (carried on the final chunk) is returned
+    // so an empty-content turn can be classified (e.g. 'content_filter'), and
+    // reused for the empty-verdict failure message.
+    if (choice?.finish_reason != null) finishReason = choice.finish_reason
     const delta = choice?.delta
     const finalContent = choice?.message?.content
 
@@ -367,5 +393,5 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     await reader.cancel?.().catch(() => {})
   }
 
-  return { fullText: fullTextParts.join(''), fullReasoning: fullReasoningParts.join(''), finalUsage, fullSources, skippedChunks, fullParts, reasoningMs }
+  return { fullText: fullTextParts.join(''), fullReasoning: fullReasoningParts.join(''), finalUsage, fullSources, skippedChunks, fullParts, reasoningMs, finishReason }
 }

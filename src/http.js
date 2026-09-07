@@ -18,6 +18,11 @@ const DEFAULT_BODY_LIMIT_BYTES = 8 * 1024 * 1024
 // generation cannot idle for 10 minutes on a stalled error page.
 const ERROR_BODY_LIMIT_BYTES = 512 * 1024
 const RETRY_DELAYS = [500, 1000]
+// A provider's Retry-After / reset header is honored in the retry delay, but
+// clamped: a long window (common on a saturated upstream) must never stall the
+// interactive loop; the error is surfaced with its retry-after so the user
+// can decide instead of the client sitting idle for minutes.
+const RETRY_AFTER_CAP_MS = 60_000
 
 function isPrivateAddress(address) {
   if (isIP(address) === 4) {
@@ -329,6 +334,28 @@ export async function fetchWithTimeout(url, opts = {}, { timeoutMs = DEFAULT_TIM
   }
 }
 
+// Reads a provider retry hint out of the response headers, in seconds.
+// OpenRouter sends a standard `Retry-After` (seconds); Venice sends
+// `x-ratelimit-reset-requests` as an epoch (seconds, or ms when > 1e12) at
+// which the limit resets. Returns null when no usable hint exists.
+function retryAfterFromHeaders(headers) {
+  if (!headers || typeof headers.get !== 'function') return null
+  const retryAfter = headers.get('retry-after')
+  if (retryAfter != null) {
+    const seconds = Number(retryAfter)
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds
+  }
+  const reset = headers.get('x-ratelimit-reset-requests')
+  if (reset != null) {
+    const ts = Number(reset)
+    if (Number.isFinite(ts) && ts > 0) {
+      const resetSeconds = ts > 1e12 ? Math.floor(ts / 1000) : ts
+      return Math.max(0, resetSeconds - Math.floor(Date.now() / 1000))
+    }
+  }
+  return null
+}
+
 export async function fetchWithRetry(url, opts = {}, { timeoutMs = DEFAULT_TIMEOUT_MS, attempts = 3, signal, errorResponse, retryDelays = RETRY_DELAYS } = {}) {
   if (attempts < 1) throw new Error('fetchWithRetry requires attempts >= 1')
   const idempotent = ['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE'].includes(String((opts.method || 'GET').toUpperCase()))
@@ -347,13 +374,17 @@ export async function fetchWithRetry(url, opts = {}, { timeoutMs = DEFAULT_TIMEO
           body = ''
         }
         let err
+        let retryAfter = null
         try {
-          err = errorResponse(res.status, body)
+          retryAfter = retryAfterFromHeaders(res.headers)
+          err = errorResponse(res.status, body, { retryAfter, headers: res.headers })
         } catch (thrown) {
           err = thrown
         }
         if (attempt < attempts && err?.retryable) {
-          await sleep(retryDelays[attempt - 1] ?? retryDelays[retryDelays.length - 1], signal)
+          const baseDelay = retryDelays[attempt - 1] ?? retryDelays[retryDelays.length - 1]
+          const wait = retryAfter != null ? Math.min(Math.max(baseDelay, retryAfter * 1000), RETRY_AFTER_CAP_MS) : baseDelay
+          await sleep(wait, signal)
           continue
         }
         // A misbehaving errorResponse may return undefined instead of

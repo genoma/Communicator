@@ -6,6 +6,7 @@ import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmooth
 import { budgetStatusLine, budgetExhaustedMessage, UsageTracker, seedTracker } from '../../tracker.js'
 import { sessionLabel } from '../../ui/format.js'
 import { dim } from '../../ui/style.js'
+import { sanitizeSingleLine } from '../../ui/hyperlink.js'
 import { attachmentLine, renderHistory } from '../../ui/stream.js'
 import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
@@ -135,14 +136,34 @@ function rebuildScreen(ctx, { turnFooter, tailBlank = false }) {
   })
 }
 
-// Redraw after a rerun only when the turn did not produce a replacement:
-// a successful turn streams its answer (and the tokens/cost footer) live
-// after the pre-run redraw, so a second wipe would erase them.
+// Redraw after a rerun only when the turn produced neither a replacement nor
+// an error: a successful turn streams its answer live after the pre-run
+// redraw, and a failed turn prints its `Error:` line (or the empty-content
+// failure) in runTurn and records `state.lastError` — a second wipe would
+// erase that error on a TTY. The pre-run redraw in /retry and /edit already
+// cleared any stale view, so the post-run wipe is only needed to bring a
+// non-streamed state change (a stopped turn) back on screen.
 function rerunTurn(ctx) {
   return ctx.runTurn().then((produced) => {
-    if (!produced) rebuildScreen(ctx, { turnFooter: false })
+    if (!produced && !ctx.state.lastError) rebuildScreen(ctx, { turnFooter: false })
     return produced
   })
+}
+
+// A one-line notice on /retry after a failed turn, so the user knows what the
+// retry is re-running. TTY-only (piped output stays mechanical); printed with
+// a leading newline and no trailing one so the rerun's own `\n\n` supplies the
+// single blank row below the notice (the same one-blank marker rule). The
+// message is sanitized single-line (a provider-controlled error body may carry
+// ANSI or newlines that would deform the notice or forge a row) and truncated
+// so a long provider error cannot span many rows.
+function retryNotice(ctx) {
+  if (ctx.stdout?.isTTY !== true) return
+  const lastError = ctx.state.lastError
+  if (!lastError) return
+  const message = sanitizeSingleLine(lastError.message ?? '')
+  const short = message.length > 80 ? `${message.slice(0, 80)}…` : message
+  ctx.stdout.write(`\nRetrying the turn that failed with: ${short}`)
 }
 
 const handlers = {
@@ -459,6 +480,7 @@ const handlers = {
       ctx.state.retryTurn = null
       ctx.state.appendUser(retryTurn)
       rebuildScreen(ctx, { turnFooter: false })
+      retryNotice(ctx)
       await rerunTurn(ctx)
       return
     }
@@ -468,11 +490,13 @@ const handlers = {
       // Wipe the stale answer before starting the replacement so the old
       // response is not left on screen while the new one streams.
       rebuildScreen(ctx, { turnFooter: false })
+      retryNotice(ctx)
       await rerunTurn(ctx)
     } else if (last?.role === 'user') {
       // A failed attempt can leave partial output on screen without a saved
       // assistant message. Clear that stale view before re-running the turn.
       rebuildScreen(ctx, { turnFooter: false })
+      retryNotice(ctx)
       await rerunTurn(ctx)
     } else {
       console.log('Nothing to retry yet.\n')
@@ -533,8 +557,9 @@ const handlers = {
       // dropped: /delete discards that pending turn and shows the session as
       // it was before it — the surviving transcript and its turn-metrics
       // footer stay. The stash is never persisted, so there is nothing to
-      // save or recompute.
+      // save or recompute. The stale failure notice is dropped with it.
       ctx.state.retryTurn = null
+      ctx.state.lastError = null
       // The surviving transcript is followed by the turn-metrics footer, whose
       // printTurn block opens with its own separator line, so the transcript
       // keeps its trailing blank row — the separator must not glue to the
@@ -550,6 +575,8 @@ const handlers = {
     // Removes the last user prompt and everything after it — the assistant
     // response that completed the turn.
     ctx.state.messages.splice(userIdx)
+    // The deleted turn's failure notice (if any) no longer applies.
+    ctx.state.lastError = null
     // Recompute the tracker from the surviving messages exactly like a
     // resumed session, so /cost and the persisted cost summary never count
     // the deleted turn. This must run before saveSession, which stamps

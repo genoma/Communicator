@@ -397,6 +397,28 @@ test('throws an ApiError on SSE-level error events instead of an empty success',
   )
 })
 
+test('classifies a transient typed SSE error as retryable and attaches its type', async () => {
+  await assert.rejects(
+    parseSSEStream(
+      streamReader([event({ error: { message: 'busy', code: 429, metadata: { error_type: 'rate_limit_exceeded' } } })]),
+      () => {}
+    ),
+    (err) => err instanceof ApiError && err.retryable === true && err.errorType === 'rate_limit_exceeded' && err.code === '429'
+  )
+})
+
+test('captures the last non-null finish_reason on a completed stream', async () => {
+  const { fullText, finishReason } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: 'ok' }, finish_reason: null }] }),
+      event({ choices: [{ delta: {}, finish_reason: 'content_filter' }] }),
+    ]),
+    () => {}
+  )
+  assert.equal(fullText, 'ok')
+  assert.equal(finishReason, 'content_filter')
+})
+
 test('propagates renderer errors instead of counting them as malformed chunks', async () => {
   await assert.rejects(
     parseSSEStream(

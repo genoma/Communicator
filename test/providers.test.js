@@ -200,6 +200,41 @@ test('venice 429 is retried twice then throws rate limited message', async (t) =
   assert.equal(calls, 3)
 })
 
+test('venice 429 at capacity is surfaced, not auto-retried', async (t) => {
+  resetModels()
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++
+    return jsonResponse({ error: { code: 'MODEL_OVERLOADED', message: 'overloaded', type: 'MODEL_OVERLOADED' } }, 429)
+  })
+
+  await assert.rejects(
+    venice.fetchModels('key'),
+    (err) => err instanceof ApiError && err.status === 429 && err.retryable === false && err.errorType === 'MODEL_OVERLOADED' && /at capacity/i.test(err.message)
+  )
+  assert.equal(calls, 1)
+})
+
+test('openrouter 429 rate limit is retried and carries retryAfter and error_type', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  resetModels()
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++
+    return jsonResponse({ error: { code: 429, message: 'Rate limit exceeded', metadata: { error_type: 'rate_limit_exceeded' } } }, 429, { 'retry-after': '5' })
+  })
+
+  const promise = openrouter.fetchModels('key')
+  const assertion = assert.rejects(promise, (err) => err instanceof ApiError && err.status === 429 && err.retryable === true && err.errorType === 'rate_limit_exceeded' && err.retryAfter === 5 && /Retry in 5s/.test(err.message))
+  // Attempts 1 and 2 each sleep 5s (Retry-After); the third attempt throws.
+  for (let i = 0; i < 12; i++) {
+    t.mock.timers.tick(1000)
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  await assertion
+  assert.equal(calls, 3)
+})
+
 test('network errors are retried with backoff before succeeding', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   resetModels()
