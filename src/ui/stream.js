@@ -2,10 +2,15 @@ import { dim, italic, green, you, thinking, answer } from './style.js'
 import { createMarkdownRenderer, renderText } from './markdown.js'
 import { createWordWrap, wrapWords } from './wrap.js'
 import { hyperlink, sanitizeAnsi, sanitizeSingleLine } from './hyperlink.js'
-import { SMOOTH_CHARS_PER_TICK, SMOOTH_TICK_MS } from '../constants.js'
+import { SMOOTH_CHARS_PER_TICK, SMOOTH_TICK_MS, STREAM_IDLE_DOTS_ARM_MS, STREAM_IDLE_DOTS_TICK_MS } from '../constants.js'
 import { contentText, contentAttachments } from '../attachments.js'
 import { createThinkingMeter } from './loader.js'
 import { formatCompactCount, formatElapsedSeconds } from './format.js'
+
+// Dim animated dots shown at the cursor once the answer has started and the
+// stream goes quiet. Three frames cycling in place, never labeled (the client
+// cannot distinguish a search/thinking/slow-generate gap on the wire).
+const IDLE_DOT_FRAMES = ['.', '..', '...']
 
 // The one attachment/artifact line format shared by history replay, live
 // /attach confirmations, artifact reports and image outcomes: dim italic
@@ -27,9 +32,21 @@ export function attachmentLine(word, label, { meta = null, note = null, link = n
 }
 
 export function createStreamRenderer({ markdown = false, stdout = process.stdout, smooth = false, smoothCharsPerTick = SMOOTH_CHARS_PER_TICK, smoothTickMs = SMOOTH_TICK_MS, assistantMarker = null, compactThinking = false, now = null } = {}) {
+  // Content writes go through this proxy so a transient idle-dots suffix is
+  // erased (bare) before the next content byte is written — neither the
+  // markdown nor the plain wrapper rewinds, so the erase must happen here.
+  // Reasoning is never written after content starts (the parser drops late
+  // reasoning), so only the content writers need the proxy.
+  const dotStdout = {
+    write: (chunk) => { eraseIdleDots(); return stdout.write(chunk) },
+    // Mirror the real stream's width onto the proxy so the markdown renderer
+    // (which reads stdout.columns for folding and its own freeCols) sees the
+    // same terminal width as the raw write path.
+    get columns() { return stdout.columns },
+  }
   const md = createMarkdownRenderer({
     getSources: () => render.sources,
-    stdout,
+    stdout: dotStdout,
     partialFlushMs: smooth ? smoothTickMs : undefined,
   })
 
@@ -37,7 +54,7 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   // new text at the new width instead of the width at renderer creation.
   const cols = () => (typeof stdout.columns === 'number' ? stdout.columns : null)
   const reasoningWrap = createWordWrap({ stdout, cols, style: dim })
-  const contentWrap = createWordWrap({ stdout, cols })
+  const contentWrap = createWordWrap({ stdout: dotStdout, cols })
 
   const meter = createThinkingMeter({ stdout, now: now ?? undefined })
 
@@ -51,6 +68,74 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   // after the `✓ Waiting for response` checkpoint with no `❯ Answer` label,
   // and live/history both float on a bare checkpoint.
   let answerOpen = false
+
+  // Idle-dots state: a transient, TTY-only, dim animated `. `..` `...` suffix
+  // shown at the cursor once content has started and the stream goes quiet.
+  // Like the answer-wait row it is never checkpointed and never persisted; the
+  // erase is a bare `\x1b[<len>D\x1b[0K` so the completed layout stays
+  // byte-identical. Pure render-side — the parser and providers are untouched.
+  let idleArmTimer = null
+  const idleDots = { active: false, tickTimer: null, frame: 0, len: 0 }
+
+  const eraseIdleDots = () => {
+    if (!idleDots.active) return
+    if (idleDots.tickTimer !== null) {
+      clearTimeout(idleDots.tickTimer)
+      idleDots.tickTimer = null
+    }
+    idleDots.active = false
+    stdout.write(`\x1b[${idleDots.len}D\x1b[0K`)
+    idleDots.len = 0
+  }
+
+  const cancelIdleArm = () => {
+    if (idleArmTimer !== null) {
+      clearTimeout(idleArmTimer)
+      idleArmTimer = null
+    }
+  }
+
+  const showIdleDots = () => {
+    idleDots.active = true
+    idleDots.frame = 0
+    idleDots.len = 1
+    stdout.write(dim(IDLE_DOT_FRAMES[0]))
+    const scheduleTick = () => {
+      idleDots.tickTimer = setTimeout(() => {
+        const prevLen = idleDots.len
+        stdout.write(`\x1b[${prevLen}D\x1b[0K`)
+        idleDots.frame = (idleDots.frame + 1) % IDLE_DOT_FRAMES.length
+        const frame = IDLE_DOT_FRAMES[idleDots.frame]
+        stdout.write(dim(frame))
+        idleDots.len = frame.length
+        scheduleTick()
+      }, STREAM_IDLE_DOTS_TICK_MS)
+      idleDots.tickTimer.unref?.()
+    }
+    scheduleTick()
+  }
+
+  const armIdleDots = () => {
+    cancelIdleArm()
+    idleArmTimer = setTimeout(fireIdleDots, STREAM_IDLE_DOTS_ARM_MS)
+    idleArmTimer.unref?.()
+  }
+
+  const fireIdleDots = () => {
+    idleArmTimer = null
+    if (stdout.isTTY !== true) return
+    if (!messageStarted) return
+    // Still draining the pacing queue: more content is on its way, re-arm
+    // instead of painting dots over the tail of a draining answer.
+    if (queue.length > 0 || pumpTimer !== null) {
+      armIdleDots()
+      return
+    }
+    const free = render.markdown ? md.freeCols() : contentWrap.freeCols()
+    if (free == null || free < IDLE_DOT_FRAMES[IDLE_DOT_FRAMES.length - 1].length) return
+    if (idleDots.active) return
+    showIdleDots()
+  }
 
   const writeSegment = (type, text) => {
     if (type === 'start_reasoning') {
@@ -79,6 +164,9 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
       }
       if (render.markdown) md.write(text)
       else contentWrap.write(text)
+      // The write above went through the content proxy, which erased any
+      // active dots first; re-arm the idle countdown from this latest byte.
+      armIdleDots()
     }
   }
 
@@ -182,6 +270,10 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
   render.resetMessage = () => {
     messageStarted = false
     answerOpen = false
+    // A fresh turn: a pending idle-dots arm or an on-screen suffix must not
+    // survive into the new turn's rendering.
+    cancelIdleArm()
+    eraseIdleDots()
   }
   // Compact mode: the meter owns the turn's status line, so the runner starts
   // it at turn start (waiting phase) instead of the loader. The clock is
@@ -211,6 +303,10 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
     // Never leave a live meter line behind (interrupts, errors, aborted
     // streams): the checkpoint only comes from end_reasoning.
     meter.stop()
+    // A live idle-dots suffix is transient: erase it bare (never checkpointed)
+    // and stop the arm timer, so nothing paints after the completion layout.
+    eraseIdleDots()
+    cancelIdleArm()
     if (sync) {
       if (pumpTimer !== null) {
         clearTimeout(pumpTimer)
@@ -221,10 +317,12 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
         writeSegment(segment.type, segment.text)
       }
       flushBodies()
+      cancelIdleArm()
       return
     }
     if (queue.length === 0) {
       flushBodies()
+      cancelIdleArm()
       return
     }
     if (drainWaiter) return drainWaiter.promise
@@ -234,6 +332,7 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
       promise,
       resolve: () => {
         flushBodies()
+        cancelIdleArm()
         resolveDrain()
       },
     }

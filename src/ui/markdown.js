@@ -310,6 +310,21 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
     }
   }
 
+  // Free display columns on the current row at the cursor. While a partial
+  // is on screen the cursor sits at the end of its last wrapped row (the
+  // partial never ends in a newline — `buffer` holds no `\n`). Otherwise the
+  // cursor is at a row start (a completed line or an open held table). The
+  // renderer uses this to keep a transient suffix (the idle dots) on the row.
+  const freeCols = () => {
+    const cols = terminalCols()
+    if (cols == null) return null
+    if (displayed) {
+      const last = displayedStyled.slice(displayedStyled.lastIndexOf('\n') + 1)
+      return Math.max(0, cols - stringWidth(last))
+    }
+    return cols
+  }
+
   return {
     write(token) {
       buffer += token
@@ -370,6 +385,7 @@ export function createMarkdownRenderer({ getSources = null, stdout = process.std
       scanBoundaryFrom = 0
       openFence = -1
     },
+    freeCols,
   }
 }
 

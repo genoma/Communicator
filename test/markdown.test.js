@@ -721,3 +721,17 @@ test('history replay wraps reasoning and plain content at the terminal width', (
   const plain = chunks.join('').replace(ANSI, '')
   assert.ok(plain.includes('short words that\nexceed the width'))
 })
+
+test('createMarkdownRenderer freeCols is the visible partial row width', () => {
+  const chunks = []
+  const stdout = { columns: 10, isTTY: true, write: (c) => chunks.push(String(c)) }
+  const renderer = createMarkdownRenderer({ stdout })
+  // Nothing displayed yet: the cursor is at a row start, so the whole row is free.
+  assert.equal(renderer.freeCols(), 10)
+  renderer.write('hello')
+  // A partial is on screen ('hello', 5 cols) and the cursor sits at its end.
+  assert.equal(renderer.freeCols(), 5)
+  renderer.flush()
+  // After a flush nothing is displayed: back to a full free row.
+  assert.equal(renderer.freeCols(), 10)
+})

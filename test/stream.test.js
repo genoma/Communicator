@@ -3,6 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createStreamRenderer, printSources, renderHistory } from '../src/ui/stream.js'
+import { STREAM_IDLE_DOTS_ARM_MS, STREAM_IDLE_DOTS_TICK_MS } from '../src/constants.js'
 
 const ANSI = /\x1b\[[0-9;]*m/g
 const OSC8 = /\x1b\]8;;[^\x1b]*\x1b\\|\x1b\]8;;\x1b\\/g
@@ -749,4 +750,131 @@ test('instant reasoning-less turn still gets the Answer marker', () => {
   render.startTurn('Waiting for response')
   render('Instant', 'content')
   assert.equal(plain(), '❯ Answer\n\nInstant')
+})
+
+// Idle dots: a transient, TTY-only, dim `. `..` `...` suffix shown at the
+// cursor once the answer has started and the stream goes quiet. These tests
+// assert the exact byte stream (the in-place cursor/erase codes the renderer
+// emits), matching the loader/meter test style.
+test('idle dots appear after the arm delay and cycle in place', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { isTTY: true, columns: 80, write: (c) => chunks.push(String(c)) }
+  const render = createStreamRenderer({ stdout })
+  render('hello ', 'content')
+  assert.equal(chunks.join(''), '❯ Answer\n\nhello')
+  t.mock.timers.tick(STREAM_IDLE_DOTS_ARM_MS)
+  assert.equal(chunks.join(''), '❯ Answer\n\nhello.')
+  t.mock.timers.tick(STREAM_IDLE_DOTS_TICK_MS)
+  assert.equal(chunks.join(''), '❯ Answer\n\nhello.\x1b[1D\x1b[0K..')
+  t.mock.timers.tick(STREAM_IDLE_DOTS_TICK_MS)
+  assert.equal(chunks.join(''), '❯ Answer\n\nhello.\x1b[1D\x1b[0K..\x1b[2D\x1b[0K...')
+})
+
+test('idle dots erase before the next flushed content byte and re-arm', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { isTTY: true, columns: 80, write: (c) => chunks.push(String(c)) }
+  const render = createStreamRenderer({ stdout })
+  render('hello world', 'content')
+  t.mock.timers.tick(STREAM_IDLE_DOTS_ARM_MS)
+  assert.equal(chunks.join(''), '❯ Answer\n\nhello.')
+  t.mock.timers.tick(STREAM_IDLE_DOTS_TICK_MS)
+  t.mock.timers.tick(STREAM_IDLE_DOTS_TICK_MS)
+  assert.ok(chunks.join('').includes('\x1b[2D\x1b[0K...')) // on the '...' frame (len 3)
+  const before = chunks.join('')
+  render(' again', 'content') // ' ' flushes the held 'world' as ' world' through the proxy
+  const out = chunks.join('')
+  const eraseIdx = out.indexOf('\x1b[3D\x1b[0K', before.length)
+  assert.ok(eraseIdx !== -1, 'the erase must precede the next flushed content')
+  assert.ok(out.slice(eraseIdx).includes(' world'))
+  // The erased dots re-arm: after another arm delay they reappear.
+  t.mock.timers.tick(STREAM_IDLE_DOTS_ARM_MS)
+  assert.ok(chunks.join('').endsWith('.'))
+})
+
+test('no idle dots before the first content token', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { isTTY: true, columns: 80, write: (c) => chunks.push(String(c)) }
+  const render = createStreamRenderer({ stdout })
+  t.mock.timers.tick(1000)
+  assert.equal(chunks.join(''), '')
+  render('', 'start_reasoning')
+  render('reasoning text', 'reasoning')
+  t.mock.timers.tick(1000)
+  assert.ok(!chunks.join('').includes('.'), 'reasoning alone must not paint dots')
+})
+
+test('no idle dots when stdout is not a TTY', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { isTTY: false, columns: 80, write: (c) => chunks.push(String(c)) }
+  const render = createStreamRenderer({ stdout })
+  render('hello world', 'content')
+  t.mock.timers.tick(1000)
+  assert.equal(chunks.join(''), '❯ Answer\n\nhello')
+})
+
+test('flush erases active idle dots and leaves a clean completion layout', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { isTTY: true, columns: 80, write: (c) => chunks.push(String(c)) }
+  const render = createStreamRenderer({ stdout })
+  render('hello world', 'content')
+  t.mock.timers.tick(STREAM_IDLE_DOTS_ARM_MS)
+  assert.ok(chunks.join('').endsWith('.'))
+  render.flush({ sync: true })
+  const out = chunks.join('')
+  // The dot is erased (bare) then the held 'world' flushes; no stray blank
+  // row and no lingering checkpoint line.
+  assert.equal(out, '❯ Answer\n\nhello.\x1b[1D\x1b[0K world')
+  t.mock.timers.tick(1000)
+  assert.equal(chunks.join(''), out, 'nothing paints after the turn ends')
+})
+
+test('smooth mode does not paint dots while the pacing queue is draining', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { isTTY: true, columns: 80, write: (c) => chunks.push(String(c)) }
+  const render = createStreamRenderer({ stdout, smooth: true, smoothCharsPerTick: 2, smoothTickMs: 20 })
+  render('abc def ghi', 'content')
+  // Drain the queue: 11 chars at 2 chars/tick takes ~6 ticks (120 ms). Because
+  // every paced write re-arms the idle countdown, the arm delay never elapses
+  // while the queue is still draining, so no dots are painted.
+  for (let i = 0; i < 6; i++) t.mock.timers.tick(20)
+  assert.ok(!chunks.join('').includes('.'), 'dots must not appear while the queue is draining')
+  // Headroom to be safely past the last paced write, then let the 400 ms idle
+  // arm elapse: the dots appear now that the queue is drained and silent.
+  t.mock.timers.tick(2 * 20)
+  t.mock.timers.tick(STREAM_IDLE_DOTS_ARM_MS)
+  assert.ok(chunks.join('').includes('.'), 'dots appear once the queue drains and stays silent')
+})
+
+test('idle dots are cleared on resetMessage so a pending arm cannot fire early', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { isTTY: true, columns: 80, write: (c) => chunks.push(String(c)) }
+  const render = createStreamRenderer({ stdout })
+  render('hello ', 'content')
+  render.resetMessage()
+  t.mock.timers.tick(1000)
+  assert.equal(chunks.join(''), '❯ Answer\n\nhello', 'a cancelled arm must not paint dots')
+})
+
+test('markdown path shows idle dots and clears them on the next partial redraw', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const chunks = []
+  const stdout = { isTTY: true, columns: 80, write: (c) => chunks.push(String(c)) }
+  const render = createStreamRenderer({ stdout, markdown: true })
+  render('hello', 'content')
+  assert.equal(chunks.join(''), '❯ Answer\n\nhello')
+  t.mock.timers.tick(STREAM_IDLE_DOTS_ARM_MS)
+  assert.equal(chunks.join(''), '❯ Answer\n\nhello.')
+  // Next markdown content is buffered (the partial redraw runs on the 200 ms
+  // timer); only when it writes does the proxy clear the dots first.
+  render(' world', 'content')
+  assert.equal(chunks.join(''), '❯ Answer\n\nhello.')
+  t.mock.timers.tick(200)
+  assert.equal(chunks.join(''), '❯ Answer\n\nhello.\x1b[1D\x1b[0K\r\x1b[Jhello world')
 })

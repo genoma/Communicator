@@ -79,6 +79,15 @@ export const LOADER_GRACE_MS = 200
 
 export const LOADER_TICK_MS = 150
 
+// Idle-dots hint: after the first visible content byte the renderer waits
+// STREAM_IDLE_DOTS_ARM_MS of no new content before painting the dim animated
+// dots, then cycles a frame every STREAM_IDLE_DOTS_TICK_MS. Purely a
+// render-side hint (TTY only); must never be so small it flickers on ordinary
+// inter-token gaps.
+export const STREAM_IDLE_DOTS_ARM_MS = 400
+
+export const STREAM_IDLE_DOTS_TICK_MS = 500
+
 export const STREAM_IDLE_TIMEOUT_MS = 60_000
 
 // Bytes flowing but never a non-empty data event (a keep-alive-only stream)

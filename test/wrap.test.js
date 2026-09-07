@@ -150,3 +150,28 @@ test('wrapWords survives an escape run whose terminator clusters with a followin
   const longer = wrapWords('\x1b[1ma\x1b[22m\u0301x', 10)
   assert.deepEqual(longer, ['\x1b[1ma\x1b[22m\u0301x'])
 })
+
+test('createWordWrap freeCols reports the visible free width at the cursor', () => {
+  const out = []
+  const wrap = createWordWrap({ stdout: { write: (s) => out.push(String(s)) }, cols: 10 })
+  // Nothing written yet: the whole row is free.
+  assert.equal(wrap.freeCols(), 10)
+  // A bare word is held (not emitted) until a space/newline flushes it, so the
+  // cursor is still at column 0 and the full row is free on screen.
+  wrap.write('hello')
+  assert.equal(wrap.freeCols(), 10)
+  // A space flushes 'hello' (5 cols) then leaves one pending separated space
+  // (not yet emitted): the cursor sits at column 5 + 1 = 6, and the held 'wo'
+  // is not on screen yet.
+  wrap.write(' wo')
+  assert.equal(wrap.freeCols(), 4)
+  // flush emits the pending space + 'wo' (8 cols) and resets the
+  // separated-space count.
+  wrap.flush()
+  assert.equal(wrap.freeCols(), 2)
+})
+
+test('createWordWrap freeCols returns null without a usable width', () => {
+  const wrap = createWordWrap({ stdout: { write: () => {} }, cols: () => null })
+  assert.equal(wrap.freeCols(), null)
+})

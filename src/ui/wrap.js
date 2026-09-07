@@ -345,5 +345,19 @@ export function createWordWrap({ stdout, cols, style = null }) {
     overflow = false
   }
 
-  return { write, flush }
+  // Free display columns on the current row at the physical cursor. The held
+  // word and pending separated spaces are NOT yet emitted (they live in
+  // `held`/`sepCount` until a space/newline/overflow flushes them), so the
+  // cursor sits at lineW and the next flushed word will fill the sepCount
+  // columns. Subtracting sepCount is conservative: the suffix never steps into
+  // columns a not-yet-emitted space will later fill. The renderer uses this to
+  // avoid letting a transient suffix (the idle dots) soft-wrap past the
+  // terminal width.
+  const freeCols = () => {
+    const width = colsOf()
+    if (!(width > 0)) return null
+    return Math.max(0, width - lineW - sepCount)
+  }
+
+  return { write, flush, freeCols }
 }
