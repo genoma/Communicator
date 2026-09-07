@@ -140,7 +140,11 @@ export function formatMarkdown(sessionData, attachmentLink = null) {
   for (const msg of visibleMessages) {
     if (msg.role === 'user') {
       md += '## You\n\n'
-      md += `> ${neutralizeLinkSchemes(escapeHtml(contentText(msg.content)))}\n\n`
+      const quoted = neutralizeLinkSchemes(escapeHtml(contentText(msg.content)))
+        .split('\n')
+        .map((line) => `> ${line}`)
+        .join('\n')
+      md += `${quoted}\n\n`
       for (const part of attachmentParts(msg.content)) {
         const link = attachmentLink?.(part)
         md += link

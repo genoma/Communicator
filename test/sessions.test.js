@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { deleteSession, deleteAllSessions, deleteSessions, generateTitle, listSessions, saveSession, loadSession, generateSessionId, removeEmptySessionClaim, buildSessionPayload } from '../src/sessions.js'
 import { formatSessionItem } from '../src/ui/format.js'
+import { attachmentDirFor } from '../src/attachment-store.js'
 import { CliError } from '../src/errors.js'
 
 async function tempDir(t) {
@@ -883,6 +884,31 @@ test('deleteSessions records invalid ids as failures and continues', async (t) =
   assert.equal(removed, 1)
   assert.deepEqual(failures, ['../escape'])
   await assert.rejects(readFile(join(dir, '2026-01-03T00-00-00.json')))
+})
+
+test('deleteSessions counts a session as removed when only its attachment dir fails', async (t) => {
+  const dir = await tempDir(t)
+  const imageUrl = `data:image/png;base64,${Buffer.from('fake-png-content').toString('base64')}`
+  await saveSession(dir, '2026-01-05T00-00-00', sessionData({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: [{ type: 'text', text: 'what is this?' }, { type: 'image_url', image_url: { url: imageUrl } }] },
+      { role: 'assistant', content: 'an image' },
+    ],
+  }))
+  // Replace the attachment dir with a regular file: rm(recursive:true) then
+  // fails with ENOTDIR, which must not stop the session from counting as
+  // removed (the .json file is already gone) nor keep its sidecar entry.
+  const attachmentDir = attachmentDirFor(dir, '2026-01-05T00-00-00')
+  await rm(attachmentDir, { recursive: true, force: true })
+  await writeFile(attachmentDir, 'not a directory')
+
+  const { removed, failures } = await deleteSessions(dir, ['2026-01-05T00-00-00'])
+
+  assert.equal(removed, 1)
+  assert.deepEqual(failures, [])
+  await assert.rejects(readFile(join(dir, '2026-01-05T00-00-00.json')))
+  assert.deepEqual(await listSessions(dir), [])
 })
 
 test('deleteSessions does not fabricate an empty sidecar when none existed', async (t) => {

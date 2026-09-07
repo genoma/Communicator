@@ -26,14 +26,15 @@ const RETRY_AFTER_CAP_MS = 60_000
 
 function isPrivateAddress(address) {
   if (isIP(address) === 4) {
-    const [a, b] = address.split('.').map(Number)
+    const [a, b, c] = address.split('.').map(Number)
     if (a === 127 || a === 10 || a === 0) return true
     if (a === 172 && b >= 16 && b <= 31) return true
     if (a === 192 && b === 168) return true
     if (a === 169 && b === 254) return true
     if (a === 100 && b >= 64 && b <= 127) return true
-    // IANA special-purpose and TEST-NET-1 (192.0.0.0/24, 192.0.2.0/24).
-    if (a === 192 && b === 0) return true
+    // IANA special-purpose (192.0.0.0/24) and TEST-NET-1 (192.0.2.0/24);
+    // only those two /24s, not the whole /16.
+    if (a === 192 && b === 0 && (c === 0 || c === 2)) return true
     // RFC 2544 benchmark range 198.18.0.0/15.
     if (a === 198 && (b === 18 || b === 19)) return true
     if (a >= 224) return true
@@ -236,7 +237,7 @@ export async function readBodyWithDeadline(res, { limit = Infinity, timeoutMs = 
       } finally {
         clearTimeout(timer)
       }
-      if (timedOut) throw new Error('could not read response body')
+      if (timedOut) throw new TimeoutError('could not read response body')
       const { done, value } = next
       if (done) break
       total += value.byteLength

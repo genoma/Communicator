@@ -156,9 +156,9 @@ test('buildContent builds a parts array with text plus wire parts', () => {
   ])
 })
 
-test('contentText passes strings through and concatenates text parts', () => {
+test('contentText passes strings through and joins text parts with newlines', () => {
   assert.equal(contentText('plain'), 'plain')
-  assert.equal(contentText([{ type: 'text', text: 'a' }, { type: 'image_url', image_url: { url: 'x' } }, { type: 'text', text: 'b' }]), 'ab')
+  assert.equal(contentText([{ type: 'text', text: 'a' }, { type: 'image_url', image_url: { url: 'x' } }, { type: 'text', text: 'b' }]), 'a\nb')
   assert.equal(contentText(null), '')
   assert.equal(contentText(undefined), '')
 })

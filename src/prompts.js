@@ -196,10 +196,10 @@ function providerSearchPrompt(message, providerChoices, backChoice, { withBack, 
         filterFields.some((f) => (c.value[f] || '').toLowerCase().includes(q))
     )
     if (filtered.length === 0 && withBack) {
-      const backMatch =
-        '← back to model selection'.includes(q) ||
-        'back'.includes(q)
-      return backMatch ? [backChoice] : []
+      // Only a targeted "back" query is a back request; the old substring
+      // test over the whole phrase also matched single letters and hid the
+      // no-match empty state.
+      return q === 'back' || 'back'.startsWith(q) ? [backChoice] : []
     }
     return filtered
   })

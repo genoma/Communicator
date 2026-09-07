@@ -15,7 +15,7 @@ export function parseScrapeUrl(value) {
   return parsed && (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? parsed : null
 }
 
-export function scrapeContext(url, content) {
+export function scrapeContext(content) {
   const full = String(content || '')
   const truncated = full.length > MAX_SCRAPE_CHARS
   const text = truncated ? full.slice(0, MAX_SCRAPE_CHARS) : full

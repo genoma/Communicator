@@ -16,6 +16,9 @@ export function isPixelModel(model) {
 
 export function computePixelSize(ratio, divisor) {
   const [w, h] = ratio.split(':').map(Number)
+  if (!Number.isFinite(w) || w <= 0 || !Number.isFinite(h) || h <= 0) {
+    throw new Error(`invalid aspect ratio ${ratio}.`)
+  }
   const scale = MAX_IMAGE_DIMENSION / Math.max(w, h)
   const small = Math.floor((Math.min(w, h) * scale) / divisor) * divisor
   if (small === 0) {
@@ -28,10 +31,17 @@ export function computePixelSize(ratio, divisor) {
 export function sizePresets(model) {
   const divisor = model?.constraints?.widthHeightDivisor
   if (divisor == null) return []
-  return SIZE_PRESET_RATIOS.map((ratio) => {
-    const { width, height } = computePixelSize(ratio, divisor)
-    return { ratio, width, height }
-  })
+  const presets = []
+  for (const ratio of SIZE_PRESET_RATIOS) {
+    try {
+      const { width, height } = computePixelSize(ratio, divisor)
+      presets.push({ ratio, width, height })
+    } catch {
+      // A preset that floors to zero under this model's divisor must not
+      // take the whole table down with it.
+    }
+  }
+  return presets
 }
 
 export function formatSize(width, height) {

@@ -6,7 +6,7 @@ import { messageText } from './attachments.js'
 import { attachmentDirFor, externalizeAttachments, hydrateAttachments } from './attachment-store.js'
 import { CliError } from './errors.js'
 import { computeCostSummary } from './tracker.js'
-import { writeFileAtomic } from './fs-utils.js'
+import { swapFileAtomic, writeFileAtomic } from './fs-utils.js'
 import { readSidecar, writeSidecar, sessionFileMtimes, sidecarMtimeMs, updateSidecar, dropSidecarEntry, reconcileSidecar, SIDECAR_FILE } from './session-sidecar.js'
 
 // Session ids are app-generated timestamps; anything else (path separators,
@@ -360,21 +360,26 @@ async function saveSessionSerialized(dir, id, data) {
     // A concurrent instance (same session id, same directory) may have
     // written since this process last saw the file: preserve its version as
     // a timestamped backup instead of silently overwriting it. The backup
-    // name does not end in .json, so listings and parsers ignore it.
+    // name does not end in .json, so listings and parsers ignore it. The new
+    // payload is staged before the old file is moved aside, so a staging
+    // failure (e.g. ENOSPC) leaves the live session intact.
     const onDisk = await stat(filePath).catch(() => null)
-    if (onDisk && onDisk.size > 0 && onDisk.mtimeMs > (sessionBaselines.get(baselineKey(dir, id)) ?? 0)) {
+    const stageBackup = async () => {
+      if (!(onDisk && onDisk.size > 0 && onDisk.mtimeMs > (sessionBaselines.get(baselineKey(dir, id)) ?? 0))) return null
       const backup = `${filePath}.conflict-${new Date().toISOString().replace(/[:.]/g, '-')}`
       try {
         await rename(filePath, backup)
         console.error(`Warning: session ${id} changed on disk (another instance may be using it); the previous version was preserved at ${basename(backup)}`)
+        return backup
       } catch {
         // The file could not be moved aside (e.g. a sharing violation on
         // Windows): the write below still proceeds so the current turn is
         // not lost, at the cost of overwriting the other version.
         console.error('Warning: session ' + id + ' changed on disk (another instance may be using it) but could not be preserved; the version on disk will be replaced.')
+        return null
       }
     }
-    await writeFileAtomic(filePath, JSON.stringify(payload, null, 2) + '\n', { mode: 0o600 })
+    await swapFileAtomic(filePath, JSON.stringify(payload, null, 2) + '\n', { mode: 0o600, stageBackup })
     const written = await stat(filePath).catch(() => null)
     sessionBaselines.set(baselineKey(dir, id), written?.mtimeMs ?? Date.now())
     await updateSidecarEntry(dir, id, payload, written?.mtimeMs ?? null)
@@ -499,30 +504,40 @@ export async function deleteSessions(dir, ids) {
   const index = await readSidecar(dir)
   const removed = []
   const failures = []
+  const seen = new Set()
   for (const id of ids) {
+    if (seen.has(id)) continue
+    seen.add(id)
     if (!validSessionId(id)) {
       failures.push(id)
       continue
     }
-    let ok = true
+    let fileRemoved = true
+    let attachmentsRemoved = true
     try {
       await rm(join(dir, `${id}.json`), { force: true })
       await removeConflictBackups(dir, id)
     } catch {
-      ok = false
+      fileRemoved = false
     }
-    if (ok) {
+    if (fileRemoved) {
       try {
         await rm(attachmentDirFor(dir, id), { recursive: true, force: true })
       } catch {
-        ok = false
+        // The session file itself is gone, so the delete is effective; a
+        // lingering attachment dir (or an unremovable one) must not keep the
+        // sidecar entry alive, or the session reports failed forever.
+        attachmentsRemoved = false
       }
     }
-    if (ok) {
+    if (fileRemoved) {
       removed.push(id)
       if (index && index[id]) delete index[id]
     } else {
       failures.push(id)
+    }
+    if (!attachmentsRemoved) {
+      console.error(`Warning: could not remove attachments for session ${id}`)
     }
   }
   // Only rewrite the sidecar when one actually existed and we dropped entries

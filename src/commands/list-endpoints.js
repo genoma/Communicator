@@ -1,4 +1,4 @@
-import { formatModelPrice } from '../ui/format.js'
+import { formatModelPrice, padDisplayWidth } from '../ui/format.js'
 import { sanitizeSingleLine } from '../ui/hyperlink.js'
 import { selectModel } from '../prompts.js'
 import { CliError } from '../errors.js'
@@ -38,7 +38,7 @@ async function printEndpoints(provider, apiKey, modelId) {
     const zdrCol = ep.zdr !== undefined ? ` | zdr ${ep.zdr ? 'yes' : 'no'}` : ''
     const privacyCol = ep.privacyPolicyURL ? ` | privacy ${sanitizeSingleLine(ep.privacyPolicyURL)}` : ''
     console.log(
-      `${sanitizeSingleLine(ep.providerName).padEnd(20)} | ${priceText.padEnd(26)} | uptime ${uptime} | tag ${sanitizeSingleLine(ep.tag)}${zdrCol}${privacyCol}`
+      `${padDisplayWidth(sanitizeSingleLine(ep.providerName), 20)} | ${padDisplayWidth(priceText, 26)} | uptime ${uptime} | tag ${sanitizeSingleLine(ep.tag)}${zdrCol}${privacyCol}`
     )
   }
 }

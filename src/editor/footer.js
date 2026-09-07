@@ -1,6 +1,6 @@
 /* eslint-disable no-control-regex */
 // Help footer + kitty keyboard protocol detection.
-import { stringWidth } from './chars.js'
+import { segmentGraphemes, stringWidth } from './chars.js'
 import { applyStyle } from './style.js'
 
 // Ctrl+D is deliberately unbound (it would exit the chat): never advertised.
@@ -43,7 +43,11 @@ export function _resetKittyDetection(value) {
  * confirmed positive stays cached (the protocol cannot change mid-process).
  */
 export function resetKittyDetectionCache() {
-  if (_kittySupported === false) {
+  // Forget anything but a confirmed positive. A negative detection is only
+  // valid for the session that observed it (a slow terminal can miss the
+  // 100 ms window once), and a session that ended before detection settled
+  // must not let its still-pending timeout poison the next session either.
+  if (_kittySupported !== true) {
     _kittySupported = undefined
     _kittyDetectionPromise = null
   }
@@ -60,13 +64,16 @@ export function detectKittyProtocol(input, output) {
     _kittyDetectionPromise = Promise.resolve(_kittySupported)
     return _kittyDetectionPromise
   }
-  _kittyDetectionPromise = new Promise((resolve) => {
+  const promise = new Promise((resolve) => {
     let settled = false
     const timeout = setTimeout(() => {
       if (!settled) {
         settled = true
         cleanup()
-        _kittySupported = false
+        // Only cache the negative if this promise is still the active one: a
+        // session that ended mid-detection resets the cache, and this stale
+        // timeout must not overwrite a later session's positive result.
+        if (promise === _kittyDetectionPromise) _kittySupported = false
         resolve(false)
       }
     }, DETECT_TIMEOUT_MS)
@@ -90,7 +97,8 @@ export function detectKittyProtocol(input, output) {
     // Query kitty keyboard protocol flags
     output.write('\x1b[?u')
   })
-  return _kittyDetectionPromise
+  _kittyDetectionPromise = promise
+  return promise
 }
 
 // --- Help footer ---
@@ -168,6 +176,41 @@ function formatInline(items, keyStyle, actionStyle, separator) {
   return items.map((item) => formatItem(item, keyStyle, actionStyle, false)).join(separator)
 }
 
+// Escape runs copied whole by clipToWidth: CSI (\x1b[ ... final byte), OSC
+// (\x1b] ... \x1b\\), charset selection (\x1b( / \x1b) + byte) and two-byte
+// escapes (\x1b + 0x40-0x5f). Mirrors the grammar sanitizeAnsi recognizes.
+const ESCAPE_RUN_RE = /\x1b(?:\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]|\][^\x1b]*(?:\x1b\\)?|[()][0-9A-Za-z]|[\x40-\x5f])/y
+
+// Display-width clip of a styled string that never splits an ANSI escape
+// run: escape sequences measure zero columns, so they are copied whole and
+// only a printable cluster is dropped when the width budget is exhausted.
+function clipToWidth(styled, width) {
+  let out = ''
+  let w = 0
+  let i = 0
+  while (i < styled.length) {
+    ESCAPE_RUN_RE.lastIndex = i
+    const match = ESCAPE_RUN_RE.exec(styled)
+    if (match) {
+      out += match[0]
+      i = ESCAPE_RUN_RE.lastIndex
+      continue
+    }
+    let consumed = 0
+    for (const { segment } of segmentGraphemes(styled.slice(i))) {
+      consumed += segment.length
+      const cw = stringWidth(segment)
+      if (w + cw > width) break
+      w += cw
+      out += segment
+      break
+    }
+    if (consumed === 0) break
+    i += consumed
+  }
+  return out
+}
+
 function formatGrid(items, keyStyle, actionStyle, termWidth, maxLines) {
   const formatted = items.map((item) => formatItem(item, keyStyle, actionStyle))
   const itemWidths = formatted.map((text) => stringWidth(text))
@@ -188,7 +231,11 @@ function formatGrid(items, keyStyle, actionStyle, termWidth, maxLines) {
       }
       return text
     })
-    rows.push(parts.join(''))
+    // A terminal narrower than the widest item must still not soft-wrap:
+    // clip the overflowing row at the display width without splitting an
+    // escape sequence.
+    const row = parts.join('')
+    rows.push(stringWidth(row) > termWidth ? clipToWidth(row, termWidth) : row)
   }
   return rows.join('\n')
 }

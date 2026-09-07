@@ -46,7 +46,6 @@ const modelsCache = { fetchedAt: 0, models: null }
 
 export const meta = {
   name: 'openrouter',
-  baseURL: OPENROUTER_BASE,
   apiKeyEnv: 'OPENROUTER_API_KEY',
   hasEndpoints: true,
   supportsWebSearchOnAll: true,

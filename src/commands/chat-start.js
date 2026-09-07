@@ -56,7 +56,12 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
       })
     }
 
-    const resumedEffort = result.reasoningEffort === 'auto' ? undefined : (result.reasoningEffort ?? null)
+    // persisted 'auto' or a missing field (legacy files) means "model
+    // default"; a stored null means an explicit "off" and stays null.
+    const resumedEffort =
+      result.reasoningEffort === 'auto' || result.reasoningEffort === undefined
+        ? undefined
+        : (result.reasoningEffort ?? null)
     // "default" flags: unset for this run and clear the persisted per-model value.
     if (forcedTemperature === null) {
       syncPreferenceUpdates(prefs, { modelId: result.modelId, temperature: null })

@@ -14,7 +14,7 @@ after(() => rm(tempHome, { recursive: true, force: true }))
 
 const { readInput } = await import('../src/input.js')
 const { readEditor } = await import('../src/editor/index.js')
-const { _resetKittyDetection } = await import('../src/editor/footer.js')
+const { _resetKittyDetection, detectKittyProtocol, resetKittyDetectionCache } = await import('../src/editor/footer.js')
 
 function fakeStdin() {
   const stdin = new EventEmitter()
@@ -113,7 +113,7 @@ async function runEditor(t, { rows, chunks, submit }) {
     linePrefix: '> ',
     helpFooter: false,
     maxLines: 50,
-    theme: { linePrefix: { pending: 'cyan', submitted: 'dim', cancelled: 'dim' }, submitRender: 'preserve' },
+    theme: { linePrefix: { pending: 'cyan', submitted: 'dim', cancelled: 'dim' } },
   })
   for (const chunk of chunks) stdin.emit('data', chunk)
   if (submit) stdin.emit('data', '\r')
@@ -140,7 +140,7 @@ function runEditorTuple(t, { rows, chunks, onResizeRepaint } = {}) {
     helpFooter: false,
     maxLines: 50,
     onResizeRepaint,
-    theme: { linePrefix: { pending: 'cyan', submitted: 'dim', cancelled: 'dim' }, submitRender: 'preserve' },
+    theme: { linePrefix: { pending: 'cyan', submitted: 'dim', cancelled: 'dim' } },
   })
   for (const chunk of chunks) stdin.emit('data', chunk)
   return { pending, writes, stdin, listeners, output }
@@ -481,4 +481,38 @@ test('submit still redraws in place when the editor fits the terminal', async (t
   const { value, writes } = await runEditor(t, { rows: 10, chunks: ['one'], submit: true })
   assert.equal(value, 'one')
   assert.equal(writes.some((w) => w.includes('\r\x1b[J')), true)
+})
+
+test('resetKittyDetectionCache forgets a negative still pending detection', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  _resetKittyDetection(undefined)
+  const stdin = fakeStdin()
+  const output = { write: () => true }
+  // Session ends before the 100 ms window lapses: the cache reset must run
+  // even though the detection has not settled yet.
+  const pending = detectKittyProtocol(stdin, output)
+  resetKittyDetectionCache()
+  await t.mock.timers.tick(150)
+  await pending
+  // Next session must re-detect rather than inherit the stale negative.
+  const second = detectKittyProtocol(stdin, output)
+  assert.equal(second !== pending, true, 'a new session must start a new detection')
+  stdin.emit('data', '\x1b[?1u')
+  assert.equal(await second, true)
+  // Cleanup for the rest of the suite.
+  const third = detectKittyProtocol(stdin, output)
+  await third
+  resetKittyDetectionCache()
+  _resetKittyDetection(false)
+})
+
+test('formatGrid clips an over-wide styled row without splitting an escape run', async () => {
+  const { buildHelpFooter } = await import('../src/editor/footer.js')
+  const text = buildHelpFooter({ columns: 15, keyStyle: 'dim', actionStyle: 'cyan' })
+  const completeRun = /\x1b\[[0-9;]*m/g
+  for (const row of text.split('\n')) {
+    const stripped = row.replace(completeRun, '')
+    assert.equal(stripped.includes('\x1b'), false, `dangling escape in row: ${JSON.stringify(row)}`)
+    assert.ok(stripped.length <= 15, `row over width: ${stripped}`)
+  }
 })

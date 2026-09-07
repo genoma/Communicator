@@ -8,6 +8,8 @@ import { createStreamRenderer, renderHistory, printSources, attachmentLine } fro
 import { printArtifacts, printArtifactsSummary } from '../src/artifacts.js'
 import { printImageOutcome } from '../src/commands/image-gen.js'
 import { connectedBanner, wrapStatusLine } from '../src/status-line.js'
+import { padDisplayWidth } from '../src/ui/format.js'
+import stringWidth from 'string-width'
 import { styleText } from 'node:util'
 
 const ANSI = /\x1b\[[0-9;]*m/g
@@ -66,6 +68,15 @@ test('wrapStatusLine keeps segments atomic and aligns continuation lines under t
   )
   // No usable width (pipes) keeps the canonical single line.
   assert.equal(wrapStatusLine('Connected to', segments, 0), `Connected to ${segments.join('  ')}`)
+})
+
+test('wrapStatusLine measures width in display columns, not code units', () => {
+  // Prefix 13 + sep 1 + CJK segment 9 code units / 12 columns + sep 2 +
+  // ASCII segment 9: 34 code units but 37 display columns. At width 36 a
+  // code-unit oracle keeps the single row (and lets the terminal
+  // soft-wrap it); a column oracle starts a continuation row.
+  const line = wrapStatusLine('Connected to', ['[model: 汉汉汉]', '[temp: 1]'], 36)
+  assert.ok(line.includes('\n'), 'row wider than the width must wrap')
 })
 
 test('connectedBanner wraps long segment lists at the given width', () => {
@@ -211,4 +222,12 @@ test('printSources numbering is shared by live turns and history replay', (t) =>
   const { stdout, plain } = capture()
   printSources([{ title: 'One', url: 'https://one.example' }], stdout)
   assert.equal(plain(), '\nSources (1)\n[1] One\n')
+})
+
+test('padDisplayWidth pads by display columns, not code units', () => {
+  // '汉' is 1 code unit but 2 columns: a code-unit pad would leave the
+  // column short by one space per CJK character.
+  assert.equal(padDisplayWidth('汉', 4), '汉  ')
+  assert.equal(stringWidth(padDisplayWidth('汉', 4)), 4)
+  assert.equal(padDisplayWidth('abc', 2), 'abc')
 })

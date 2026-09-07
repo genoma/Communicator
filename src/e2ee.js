@@ -70,7 +70,9 @@ export async function fetchModelPubKey({ apiKey, modelId }) {
       } catch {
         // keep the generic message
       }
-      return new ApiError(message, { retryable: false })
+      // The GET is idempotent and not billed: transient 429/5xx upstreams
+      // follow the same retry contract as the other endpoints.
+      return new ApiError(message, { retryable: status === 429 || status >= 500 })
     },
   })
   const attestation = await readJsonBounded(res)

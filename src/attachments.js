@@ -219,7 +219,7 @@ function textParts(content) {
 }
 
 export function contentText(content) {
-  return textParts(content).join('')
+  return textParts(content).join('\n')
 }
 
 export function messageText(content) {

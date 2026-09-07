@@ -9,7 +9,6 @@ import { encryptMessages, decryptToken } from '../e2ee.js'
 
 export const meta = {
   name: 'venice',
-  baseURL: VENICE_BASE,
   apiKeyEnv: 'VENICE_API_KEY',
   hasEndpoints: false,
 }
@@ -323,9 +322,6 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
   }, { errorResponse: handleHttpError, signal })
 
   const reader = res.body.getReader()
-  // Anchor the thinking clock at the moment the request is dispatched, so
-  // parseSSEStream reports real user-wait time even when the endpoint flushes
-  // the reasoning in a single burst (the sub-millisecond delta-span bug).
   const streamOptions = e2ee
     ? { decryptToken: (hex) => decryptToken(hex, e2eeContext.clientKey), requestStartedAt }
     : { requestStartedAt }

@@ -213,13 +213,12 @@ export function computeGrid(ctx) {
   }
   if (statusText) {
     const errorStyle = statusColor === 'red' ? theme?.error : undefined
-    const successStyle = statusColor === 'green' ? theme?.success : undefined
-    const themeStyle = errorStyle ?? successStyle
+    const themeStyle = errorStyle
     let statusRow
     if (themeStyle) {
       statusRow = applyStyle(statusText, themeStyle)
-    } else if (statusColor === 'red' || statusColor === 'green') {
-      statusRow = `\x1b[3${statusColor === 'red' ? '1' : '2'}m${statusText}\x1b[0m`
+    } else if (statusColor === 'red') {
+      statusRow = `\x1b[31m${statusText}\x1b[0m`
     } else {
       statusRow = statusText
     }

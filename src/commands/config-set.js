@@ -6,7 +6,7 @@ import { resolveFlagValues, normalizeWebSearchMode, webSearchGate, resolveAspect
 import { formatModelPrice, getEffortLabel } from '../ui/format.js'
 import { sanitizeSingleLine } from '../ui/hyperlink.js'
 import { CliError } from '../errors.js'
-import { DEFAULT_CONFIG_FILE, formatSmoothSpeed } from '../constants.js'
+import { DEFAULT_CONFIG_FILE, formatCost, formatSmoothSpeed } from '../constants.js'
 
 const PER_MODEL_FLAGS = '--temperature, --reasoning-effort, --web-search and --top-p'
 
@@ -102,7 +102,7 @@ export async function configSetCmd({ opts, prefs, providerType, apiKey }) {
   if (values.topP !== undefined) console.log(`Top-p set to ${values.topP ?? 'default'} for ${opts.model}`)
   if (values.reasoningEffort !== undefined) console.log(`Reasoning effort set to ${getEffortLabel(values.reasoningEffort)} for ${opts.model}`)
   if (values.webSearch !== undefined) console.log(`Web search set to ${values.webSearch} for ${opts.model}`)
-  if (values.budget !== undefined) console.log(`Budget set to $${values.budget}`)
+  if (values.budget !== undefined) console.log(`Budget set to ${formatCost(values.budget)}`)
   if (values.webResults !== undefined) console.log(`Web search results set to ${values.webResults} (OpenRouter only)`)
   if (values.smoothSpeed !== undefined) console.log(`Smooth speed set to ${formatSmoothSpeed(values.smoothSpeed)}`)
   if (values.smoothStreaming === false) console.log('Smooth streaming disabled')

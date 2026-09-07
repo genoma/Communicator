@@ -4,6 +4,7 @@ import { dim } from './ui/style.js'
 import { sanitizeAnsi } from './ui/hyperlink.js'
 import { getImageDefaults } from './config.js'
 import { isPixelModel } from './image-sizing.js'
+import stringWidth from 'string-width'
 
 // Badge keys and brackets are dimmed so values read as the headline; the
 // model label and the values themselves stay plain. styleText emits nothing
@@ -17,13 +18,13 @@ const tag = (text) => `${dim('[')}${text}${dim(']')}`
 // unwrapped, so non-TTY output is byte-identical to the pre-wrap layout.
 export function wrapStatusLine(prefix, segments, width = process.stdout.columns ?? 0) {
   if (!(width > 0)) return `${prefix} ${segments.join('  ')}`
-  const indent = ' '.repeat(sanitizeAnsi(prefix).length + 1)
+  const indent = ' '.repeat(stringWidth(sanitizeAnsi(prefix)) + 1)
   const rows = []
   let row = prefix
   for (const segment of segments) {
     const sep = row === prefix ? ' ' : '  '
     const next = `${row}${sep}${segment}`
-    if (row === prefix || sanitizeAnsi(next).length <= width) {
+    if (row === prefix || stringWidth(sanitizeAnsi(next)) <= width) {
       row = next
     } else {
       rows.push(row)

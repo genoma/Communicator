@@ -459,7 +459,7 @@ const handlers = {
       console.error(`Error: ${formatError(err)}\n`)
       return
     }
-    const { text, sizeLabel } = scrapeContext(url, result.content)
+    const { text, sizeLabel } = scrapeContext(result.content)
     ctx.state.appendUser(scrapeMessage(url, text))
     ctx.state.scrapes += 1
     ctx.tracker.addScrapeCost(SCRAPE_COST_USD)

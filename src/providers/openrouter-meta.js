@@ -60,16 +60,25 @@ export async function getZdrIndex() {
   return zdrInFlight
 }
 
+let policiesInFlight = null
 export async function getProviderPolicies() {
   if (policiesCache.policies && Date.now() - policiesCache.fetchedAt < CACHE_TTL_MS) return policiesCache.policies
-  try {
-    return await loadPolicies()
-  } catch {
-    // non-fatal: degrade to no links
-    policiesCache.policies = new Map()
-    policiesCache.fetchedAt = Date.now()
-    return policiesCache.policies
-  }
+  // Same in-flight dedupe as getZdrIndex: concurrent callers (model list,
+  // endpoint list, selection) share one request instead of repeating it.
+  if (policiesInFlight) return policiesInFlight
+  policiesInFlight = (async () => {
+    try {
+      return await loadPolicies()
+    } catch {
+      // non-fatal: degrade to no links
+      policiesCache.policies = new Map()
+      policiesCache.fetchedAt = Date.now()
+      return policiesCache.policies
+    }
+  })().finally(() => {
+    policiesInFlight = null
+  })
+  return policiesInFlight
 }
 
 export function resetMetadataCaches() {

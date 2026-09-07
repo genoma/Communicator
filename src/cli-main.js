@@ -27,7 +27,7 @@ async function scrapeForSession({ provider, apiKey, url }) {
     throw new CliError(`Error: --scrape is not supported by provider ${provider.meta.name}.`)
   }
   const result = await provider.scrapePage({ apiKey, url })
-  const { text, sizeLabel } = scrapeContext(url, result.content)
+  const { text, sizeLabel } = scrapeContext(result.content)
   console.log(`Scraped ${url} (${sizeLabel}) into context.`)
   return { url, content: text }
 }
@@ -214,6 +214,18 @@ async function main(opts, promptArg) {
     }
     const apiKey = getApiKey(providerType)
     const prefs = await loadPreferences(opts.config)
+    // --no-safe-mode persists as a global Venice setting in every launch
+    // path (chat, one-shot, image), per its documented behavior; the image
+    // path exits before the shared notice below, so say it here.
+    if (opts.safeMode === false) {
+      prefs.safeMode = false
+      try {
+        await savePreferences(prefs, opts.config)
+      } catch (err) {
+        fail(`Error: could not save the safe mode preference: ${err.message}`)
+      }
+      console.log('Venice safe mode disabled')
+    }
     const { imageGenCmd } = await import('./commands/image-gen.js')
     await imageGenCmd({ apiKey, opts, prefs, providerType, prompt: promptArg })
     process.exit(0)

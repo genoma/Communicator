@@ -40,7 +40,6 @@ export async function readInput({ commands, onResizeRepaint, initialValue } = {}
       },
       theme: {
         linePrefix: { pending: 'cyan', submitted: 'dim', cancelled: 'dim' },
-        submitRender: 'preserve',
       },
       suggest: commands
         ? ({ value }) => matchCommands(value, commands)

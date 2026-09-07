@@ -102,7 +102,7 @@ The chat flow is built around four pieces:
 Adding a new provider requires implementing the following exports:
 
 ```js
-export const meta = { name, baseURL, apiKeyEnv, hasEndpoints }
+export const meta = { name, apiKeyEnv, hasEndpoints }
 export async function fetchModels(apiKey) → [{id, name, provider, contextLength, description, reasoning, pricing, capabilities}]
 export async function fetchEndpoints(apiKey, modelId, allModels?) → [{name, providerName, tag, status, uptime30m, pricing, ...}]
 export async function chatCompletion({apiKey, model, messages, onToken, provider, reasoningEffort, supportsReasoning, sessionId, temperature, topP, webSearch, webResults, signal}) → {content, reasoning, usage}

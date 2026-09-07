@@ -97,11 +97,16 @@ export function printArtifacts(results, stdout = process.stdout) {
     const part = res.part
     if (!part) continue
     const word = part.type === 'image_url' ? 'image' : 'file'
-    // The URL is model-controlled and only reaches the terminal when
-    // hyperlink() refuses it (it requires a scheme with `//`), so the raw
-    // fallback is the one path that could carry escape bytes to stdout.
-    const url = sanitizeSingleLine(partUrl(part) ?? '')
-    const link = url && /^https?:\/\//i.test(url) ? ` ${hyperlink(url, url) || url}` : null
+    // The URL is model-controlled and only reaches the terminal through
+    // hyperlink() (which requires a scheme with `//`); anything else is
+    // never printed, so a downloaded artifact's data: URL is discarded
+    // without being sanitized for nothing.
+    const rawUrl = partUrl(part) ?? ''
+    let link = null
+    if (/^https?:\/\//i.test(rawUrl)) {
+      const safe = sanitizeSingleLine(rawUrl)
+      link = ` ${hyperlink(safe, safe) || safe}`
+    }
     const note = res.savedTo ? `saved to ${res.savedTo}` : res.error ? `download failed: ${res.error}` : null
     stdout.write(`${attachmentLine(word, res.label || partLabel(part), { link, note })}\n`)
   }

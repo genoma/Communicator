@@ -604,6 +604,9 @@ function loadContent(model, content, cursor = 'end') {
     model.row = 0
     model.col = 0
   }
+  // A recalled entry may fit while the previous buffer was over a limit:
+  // clear the stale red status the same way a content edit would.
+  postEdit(model)
 }
 
 /** Navigate to the previous history entry, saving current content as draft */

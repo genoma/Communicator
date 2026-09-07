@@ -226,7 +226,6 @@ function setup(t, { cols = 80, rows = 24, autoDsr = true, options = {} } = {}) {
     maxLines: 50,
     theme: {
       linePrefix: { pending: 'cyan', submitted: 'dim', cancelled: 'dim' },
-      submitRender: 'preserve',
     },
     ...options,
   })

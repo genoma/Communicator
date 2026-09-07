@@ -1,5 +1,13 @@
 import { sanitizeAnsi, sanitizeSingleLine } from './hyperlink.js'
 import { formatCost, EFFORT_LABELS } from '../constants.js'
+import stringWidth from 'string-width'
+
+// Pads `text` to `width` display columns (not UTF-16 units), so CJK/emoji
+// model or provider names cannot misalign a column or overflow a row.
+export function padDisplayWidth(text, width, fill = ' ') {
+  const extra = Math.max(0, width - stringWidth(text))
+  return text + fill.repeat(extra)
+}
 
 // Reasoning-effort display label (kept here, not in prompts.js, so the
 // banner/status line never loads @inquirer/prompts just to format one word).
@@ -117,17 +125,35 @@ function pickerTimestamp(value) {
   return date.toISOString().replace(/:/g, '-').replace(/\.\d+.*$/, '')
 }
 
+// Truncates `text` to at most `width - 3` display columns plus an ellipsis
+// (never splits a grapheme cluster), so display-width padding below is not
+// defeated by a code-unit guard.
+function widthTruncate(text, width) {
+  if (stringWidth(text) <= width) return text
+  let out = ''
+  let w = 0
+  for (const { segment } of graphemeSegmenter.segment(text)) {
+    const cw = stringWidth(segment)
+    if (w + cw > width - 3) break
+    w += cw
+    out += segment
+  }
+  return `${out}...`
+}
+
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
 export function formatSessionItem(s) {
   // The leading timestamp is last activity (updatedAt), not creation: after a
   // resume an old session surfaces with its fresh date instead of its birth.
   const time = sanitizeSingleLine(formatSessionTime(pickerTimestamp(s.updatedAt || s.createdAt || s.id)))
   const model = sanitizeSingleLine(s.model)
-  const modelText = model.length > 35 ? model.slice(0, 32) + '...' : model
+  const modelText = widthTruncate(model, 35)
   const count = `${s.messageCount} msg${s.messageCount !== 1 ? 's' : ''}`
   const preview = sanitizeSingleLine(s.title || s.preview || '')
-  const previewText = preview ? `"${preview}${preview.length >= 60 ? '...' : ''}"` : ''
+  const previewText = preview ? `"${preview}${stringWidth(preview) >= 60 ? '...' : ''}"` : ''
   const costSummary = s.costSummary
   const costText = costSummary?.cost > 0 ? `  · ${formatCost(costSummary.cost)}` : ''
-  const line = `${time}  ${modelText.padEnd(37)} ${count.padEnd(12)} ${costText}${previewText}`
+  const line = `${time}  ${padDisplayWidth(modelText, 37)} ${padDisplayWidth(count, 12)} ${costText}${previewText}`
   return { time, model: modelText, count, preview, costSummary: costSummary ?? null, line }
 }

@@ -61,12 +61,20 @@ const DSR_FALLBACK_MS = 400
 function readFromPipe(input) {
   return new Promise((resolve) => {
     let data = ''
-    input.on('data', (chunk) => {
+    const onData = (chunk) => {
       data += typeof chunk === 'string' ? chunk : chunk.toString()
-    })
-    input.on('end', () => {
-      resolve([data.endsWith('\n') ? data.slice(0, -1) : data, null])
-    })
+    }
+    const finish = ([value, error]) => {
+      input.removeListener('data', onData)
+      input.removeListener('end', onEnd)
+      input.removeListener('error', onError)
+      resolve([value, error])
+    }
+    const onEnd = () => finish([data.endsWith('\n') ? data.slice(0, -1) : data, null])
+    const onError = () => finish([data, { kind: 'eof', message: 'Piped input error' }])
+    input.on('data', onData)
+    input.on('end', onEnd)
+    input.on('error', onError)
   })
 }
 
@@ -83,6 +91,9 @@ export function readEditor(prompt, options = {}) {
     if (options[unsupported] != null) {
       throw new Error(`readEditor: the "${unsupported}" option is not supported by editor-bufferdiff-v2`)
     }
+  }
+  if (options.theme?.submitRender != null) {
+    throw new Error('readEditor: the theme.submitRender option is not supported by editor-bufferdiff-v2')
   }
   return readFromTTY(input, output, prompt, options)
 }
@@ -140,7 +151,7 @@ function readFromTTY(input, output, prompt, options) {
     const rawLinePrefixWidth = () =>
       stringWidth(resolveStateful(resolvedLinePrefixOption, model.visualState))
 
-    let rebuildFooter = buildFooterRegular
+    const rebuildFooter = buildFooterRegular
 
     // Suggestion list rows for the active suggestion session: the window is
     // centred around the selected match, selected entry bold/cyan with a

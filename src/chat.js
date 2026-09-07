@@ -427,19 +427,19 @@ export async function runChatSession(ctx = {}, deps = {}) {
     // the raw input: intentional leading indentation and trailing whitespace
     // of a pasted multi-line message must survive to the API.
     const rawInput = result.value
-    const input = rawInput.trim()
+    const trimmedInput = rawInput.trim()
     // Seam: a submitted line leaves the cursor glued to its end, so every
     // branch that returns to the prompt without running a turn writes the
     // line break itself. The turn path writes its own '\n' (plus a TTY blank
     // row).
-    if (!input) {
+    if (!trimmedInput) {
       stdout.write('\n')
       continue
     }
 
-    if (input.startsWith('/')) {
+    if (trimmedInput.startsWith('/')) {
       stdout.write('\n')
-      const lines = input.split('\n')
+      const lines = trimmedInput.split('\n')
       const firstLine = lines[0]
       const spaceIdx = firstLine.indexOf(' ')
       const cmd = spaceIdx === -1 ? firstLine : firstLine.slice(0, spaceIdx)
@@ -453,7 +453,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
       // loop continues.
       let outcome
       try {
-        outcome = await handler({ ...chatCtx, input, args: spaceIdx === -1 ? '' : firstLine.slice(spaceIdx + 1).trim() })
+        outcome = await handler({ ...chatCtx, input: trimmedInput, args: spaceIdx === -1 ? '' : firstLine.slice(spaceIdx + 1).trim() })
       } catch (err) {
         if (isExitPromptError(err)) {
           console.log('Aborted.')

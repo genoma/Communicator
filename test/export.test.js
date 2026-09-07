@@ -429,9 +429,23 @@ test('keeps text-file attachments inline and writes no file', async (t) => {
   const folder = await exportSession(data, dir, '2026-07-30T19-11-45')
 
   const md = await readFile(join(folder, 'session-2026-07-30T19-11-45.md'), 'utf-8')
+  assert.match(md, /> Read this file\n> some inline file contents/)
   assert.ok(md.includes('Read this file'))
   assert.ok(md.includes('some inline file contents'))
   assert.deepEqual(await readdir(folder), ['session-2026-07-30T19-11-45.md'])
+})
+
+test('blockquotes every line of a multi-line user message', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const data = session({ messages: [
+    { role: 'system', content: 'You are helpful.' },
+    { role: 'user', content: 'line one\nline two' },
+    { role: 'assistant', content: 'ok' },
+  ] })
+  const folder = await exportSession(data, dir, '2026-07-30T19-11-45')
+  const md = await readFile(join(folder, 'session-2026-07-30T19-11-45.md'), 'utf-8')
+  assert.match(md, /> line one\n> line two/)
 })
 
 test('warns and renders the backtick fallback for corrupt data URLs', async (t) => {
