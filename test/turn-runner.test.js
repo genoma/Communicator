@@ -1067,12 +1067,14 @@ test('an instant reply adds no stray blank row (checkpoint never shown)', async 
   await runTurn(deps, state)
 
   // The spinner was never shown, so `stop({done:true})` returned false: the
-  // runner wrote no checkpoint and no extra blank row — the answer follows the
-  // turn-start `\n\n` directly.
+  // runner wrote no checkpoint and no extra blank row — the answer follows
+  // the turn-start `\n\n` directly. The message must not carry a waitLine
+  // either, so a resize/retry rebuild replays exactly what the live stream
+  // showed.
   const live = writes.join('')
   assert.ok(!live.includes('Waiting for response'), 'no waiting line may appear for an instant reply')
   assert.equal(live, '\n\nHello\n\n', 'the answer must follow the turn-start newlines directly')
-  assert.equal(state.messages[2].waitLine, 'Waiting for response')
+  assert.equal(state.messages[2].waitLine, undefined)
 })
 
 test('Esc stop persists accumulated content AND reasoning in the partial', async (t) => {

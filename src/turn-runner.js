@@ -164,6 +164,12 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       if (!render.compactThinking) loader.stop()
     }
 
+    // Whether the waiting row actually resolved to its green checkpoint on
+    // screen (the loader/meter was visible): an instant reply within the
+    // grace window writes no checkpoint live, so the message must not carry
+    // a waitLine either — history replay has to match the live stream.
+    let waitLineShown = false
+
     try {
       stdout.write('\n')
       if (tty) {
@@ -219,9 +225,13 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
             // within the grace window) and non-TTY output never gain a stray
             // blank row.
             if (render.compactThinking) {
-              if (render.resolveWaitingLine()) stdout.write('\n')
+              if (render.resolveWaitingLine()) {
+                stdout.write('\n')
+                waitLineShown = true
+              }
             } else if (loader.stop({ done: true })) {
               stdout.write('\n')
+              waitLineShown = true
             }
           }
           if (type === 'reasoning') reasoningParts.push(token)
@@ -369,10 +379,12 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       // checkpoint (`✓ Waiting for response` / `✓ Searching the web`) with
       // one blank row below it before the answer. Stash the label on the
       // message so history replay (resize rebuild, resume) shows the same
-      // line instead of silently dropping it. With reasoning, the thinking
-      // marker (or the compact meter checkpoint) owns that row and no label
-      // is stored.
-      if (tty && !apiResult.reasoning) {
+      // line instead of silently dropping it — but only when the checkpoint
+      // was actually written live (spinner shown): an instant reply within
+      // the grace window showed no line and must replay without one. With
+      // reasoning, the thinking marker (or the compact meter checkpoint)
+      // owns that row and no label is stored.
+      if (tty && !apiResult.reasoning && waitLineShown) {
         message.waitLine = state.webSearch === 'always' ? 'Searching the web' : 'Waiting for response'
       }
       state.appendAssistant(message)

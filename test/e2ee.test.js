@@ -94,7 +94,11 @@ test('decryptToken rejects chunks that are too short', () => {
 test('decryptToken rejects tampered chunks', () => {
   const client = createE2eeClient()
   const wire = serverEncrypt('hello', Buffer.from(client.clientPubKeyHex, 'hex'))
-  const flipped = `${wire.slice(0, wire.length - 2)}00`
+  // Flip the final auth-tag byte to a value that is always different: a blind
+  // `... + '00'` only differs when the last byte is not 0x00 (1/256 chance of
+  // a no-op that silently passes).
+  const last = wire.slice(-2)
+  const flipped = `${wire.slice(0, -2)}${last === '00' ? '01' : '00'}`
   assert.throws(() => decryptToken(flipped, client.clientKey), /unable to authenticate data/)
 })
 

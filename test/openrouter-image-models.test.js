@@ -121,6 +121,22 @@ test('fetchImageModels with pricing fetches endpoints and takes the minimum', as
   assert.deepEqual(models[0].pricing, { perImage: 0.015, perToken: null, byResolution: null, byQuality: null })
 })
 
+test('fetchImageModels with pricing degrades one bad model instead of failing the catalog', async (t) => {
+  resetImageModelCaches()
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (String(url).includes('/endpoints')) {
+      return jsonResponse({ error: 'not found' }, 404)
+    }
+    return jsonResponse({ data: [IMAGE_MODEL, NO_PARAM_MODEL] })
+  })
+
+  const models = await fetchImageModels('key', { withPricing: true })
+
+  assert.equal(models.length, 2)
+  assert.equal(models[0].pricing, null)
+  assert.equal(models[1].pricing, null)
+})
+
 test('fetchImageModels pricing falls back to the variant-tier minimum when no flat entry exists', async (t) => {
   resetImageModelCaches()
   t.mock.method(globalThis, 'fetch', async (url) => {
@@ -269,6 +285,16 @@ test('fetchImageModels maps 400 bodies through handleHttpError with the message'
   await assert.rejects(
     fetchImageModels('key'),
     (err) => err instanceof ApiError && err.status === 400 && err.message.includes('Invalid model')
+  )
+})
+
+test('image endpoint 404s hint at --list-image-models, not --list-models', async (t) => {
+  resetImageModelCaches()
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ error: { message: 'not found' } }), { status: 404 }))
+
+  await assert.rejects(
+    fetchImageModelEndpoints('key', 'org/missing'),
+    (err) => err instanceof ApiError && err.status === 404 && err.message.includes('--list-image-models') && !err.message.includes('--list-models')
   )
 })
 

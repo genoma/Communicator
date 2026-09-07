@@ -59,6 +59,15 @@ export const handleHttpError = makeHandleHttpError({
   notFoundMessage: 'Model not found on OpenRouter. Use --list-models to list available models.',
 })
 
+// Image-endpoint 404s (missing image model id, missing endpoints) should
+// point at the image catalog, not the text one.
+const handleImageHttpError = makeHandleHttpError({
+  providerName: 'OpenRouter',
+  providerId: 'openrouter',
+  apiKeyEnv: 'OPENROUTER_API_KEY',
+  notFoundMessage: 'Image model not found on OpenRouter. Use --list-image-models to list available image models.',
+})
+
 // Generation errors must never re-POST (a gateway 5xx can fire after the
 // generation was produced and billed server-side); 429 stays retryable.
 const handleGenerationError = makeHandleHttpError({
@@ -182,7 +191,7 @@ export async function fetchImageModelEndpoints(apiKey, modelId) {
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.endpoints
   const res = await fetchWithRetry(`${OPENROUTER_BASE}/images/models/${modelPathId(modelId)}/endpoints`, {
     headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-  }, { errorResponse: handleHttpError })
+  }, { errorResponse: handleImageHttpError })
   const parsed = await readJsonBounded(res)
   const endpoints = Array.isArray(parsed.data) ? parsed.data : parsed.endpoints || parsed.data?.endpoints || []
   const mapped = endpoints.map((ep) => ({
@@ -212,7 +221,7 @@ export async function fetchImageModels(apiKey, { withPricing = false } = {}) {
   if (!models || Date.now() - imageModelsCache.fetchedAt >= CACHE_TTL_MS) {
     const res = await fetchWithRetry(`${OPENROUTER_BASE}/images/models`, {
       headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-    }, { errorResponse: handleHttpError })
+    }, { errorResponse: handleImageHttpError })
     const { data } = await readJsonBounded(res)
     models = (data || []).map((m) => ({
       id: m.id,
@@ -230,7 +239,18 @@ export async function fetchImageModels(apiKey, { withPricing = false } = {}) {
   if (!withPricing) return models
   // The pricing fan-out (one endpoints request per model) is capped so a
   // large catalog cannot burst the API; only --list-image-models uses it.
-  return mapWithConcurrency(models, 8, async (m) => ({ ...m, pricing: await fetchImageModelPricing(apiKey, m.id) }))
+  // One model's failed endpoints fetch (e.g. a 404 or an endpoint without
+  // pricing) must not take the whole catalog down: it degrades to null
+  // pricing for that model only.
+  return mapWithConcurrency(models, 8, async (m) => {
+    let pricing = null
+    try {
+      pricing = await fetchImageModelPricing(apiKey, m.id)
+    } catch {
+      // keep null: the row still lists, without a price column
+    }
+    return { ...m, pricing }
+  })
 }
 
 export function resetImageModelCaches() {

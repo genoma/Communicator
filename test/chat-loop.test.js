@@ -848,7 +848,10 @@ test('resize repaint restores the separators and the turn-metrics footer after a
   const newLogs = consoleSpy.allLogs().slice(logCountBefore)
   const rebuilt = writes.join('')
   assert.ok(rebuilt.includes('hello'), 'resize repaint should include the user message')
-  assert.ok(rebuilt.includes('✓ Waiting for response'), 'resize repaint should restore the loader checkpoint')
+  // The reply arrived within the loader's grace window (spinner never shown,
+  // checkpoint never written live), so the message carries no waitLine and
+  // the rebuild must not invent one — live and history replay identical.
+  assert.ok(!rebuilt.includes('✓ Waiting for response'), 'an instant reply must not restore a never-shown checkpoint')
   assert.equal(newLogs.filter((line) => line.includes(THIN_SEP)).length >= 3, true, 'resize repaint should restore the separators')
   assert.ok(newLogs.some((line) => line.includes('Tokens')), 'resize repaint should restore the tokens footer')
   assert.ok(newLogs.some((line) => line.includes('Cost')), 'resize repaint should restore the cost footer')
@@ -864,6 +867,45 @@ test('resize repaint restores the separators and the turn-metrics footer after a
   assert.ok(retryLogs.some((line) => line.includes('Connected to')), 'a continuation redraw re-renders the banner')
   assert.ok(!retryLogs.some((line) => line.includes('Tokens')), 'a continuation redraw must not restore the stale footer')
   assert.ok(writes.join('').includes('hello'), 'a continuation redraw keeps the transcript')
+
+  release({ cancelled: true })
+  await session
+})
+
+test('resize repaint restores a checkpoint that was actually written live', async () => {
+  const writes = []
+  const stdout = { isTTY: true, write(chunk) { writes.push(String(chunk)); return true } }
+  let repaint
+  let release
+  let calls = 0
+  const readInput = ({ onResizeRepaint } = {}) => {
+    calls += 1
+    if (calls === 1) return { value: 'hello' }
+    repaint = onResizeRepaint
+    return new Promise((resolve) => { release = resolve })
+  }
+  const { provider } = fakeProvider()
+  provider.chatCompletion = async (opts) => {
+    // Deliver after the loader's grace window (200 ms), so the spinner is
+    // visible and the checkpoint is written live.
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    opts.onToken('Hello!', 'content')
+    return { content: 'Hello!', usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }
+  }
+  const harness = makeDeps({ readInput, stdout })
+  const session = runChatSession(baseCtx(provider), harness.deps)
+
+  await new Promise((resolve) => setImmediate(resolve))
+  while (!writes.some((w) => w.includes('✓ Waiting for response'))) {
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  assert.equal(typeof repaint, 'function', 'readInput should receive the resize repaint hook')
+
+  writes.length = 0
+  repaint()
+  const rebuilt = writes.join('')
+  assert.ok(rebuilt.includes('✓ Waiting for response'), 'a shown checkpoint must be restored on rebuild')
+  assert.ok(rebuilt.includes('Hello!'), 'resize repaint should include the assistant message')
 
   release({ cancelled: true })
   await session
