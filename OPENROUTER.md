@@ -111,13 +111,14 @@ Consequences:
   `✓ Thinking · N` + `❯ Answer` after the answer, and the stored reasoning
   stays byte-equal to what the live meter counted; the `writeCompact`
   renderer guards the same case. The first content token's leading space
-  (deepseek outputs `' Ah, ...'`) is normalized away by the parser (single
-  gate → live, replay, persisted and piped output agree; multi-space
-  indentation is never touched, so fenceless 4-space code blocks survive).
-  That normalization stops at the first visible content: deepseek also
-  streams `' '` and `'\n'` as STANDALONE tokens mid-stream, and they are
-  preserved verbatim — dropping them corrupts the text (`The"where`, list
-  items glued together).
+  (deepseek outputs `' Ah, ...'`) is preserved verbatim by the parser — it
+  never edits visible content, so live, replay, persisted and piped output
+  all keep the same leading byte; multi-space indentation likewise stays
+  content, so fenceless 4-space code blocks survive. The only pre-content
+  adjustment is the whitespace-only guard, which stops at the first visible
+  content: deepseek also streams `' '` and `'\n'` as STANDALONE tokens
+  mid-stream, and they are preserved verbatim — dropping them corrupts the
+  text (`The"where`, list items glued together).
 - **Visual smoothing**: smooth-streaming pacing (default on TTY) buffers tokens
   and renders at a steady rate, absorbing the first post-search burst; piped
   output is never paced.

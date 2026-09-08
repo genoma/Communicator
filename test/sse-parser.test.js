@@ -1041,10 +1041,13 @@ test('keeps one thinking block when reasoning resumes after content in the same 
   ])
 })
 
-test('strips exactly one leading space from the first content token', async () => {
-  // deepseek-family models open the answer with a stray space (' Ah, ...');
-  // it is generation noise and must not show before the first line. Only the
-  // FIRST content text is normalized; every later space stays content.
+test('preserves a leading space on the first content token verbatim', async () => {
+  // deepseek-family models open the answer with a stray space (' Ah, ...').
+  // The parser never edits visible content: it is preserved exactly as the
+  // provider emitted it, so live, replay, persisted, export and piped output
+  // all keep the same leading space. The whitespace-only guard below is the
+  // only pre-content adjustment; it never rewrites a real space that is part
+  // of the first content token.
   const tokens = []
   const { fullText } = await parseSSEStream(
     streamReader([
@@ -1054,22 +1057,22 @@ test('strips exactly one leading space from the first content token', async () =
     ]),
     (t, type) => tokens.push([type, t])
   )
-  assert.equal(fullText, 'Ah, hello here again')
+  assert.equal(fullText, ' Ah, hello here again')
   assert.deepEqual(tokens, [
-    ['content', 'Ah, hello'],
+    ['content', ' Ah, hello'],
     ['content', ' here'],
     ['content', ' again'],
   ])
 })
 
-test('strips the leading space from a final-only content delivery too', async () => {
+test('preserves the leading space on a final-only content delivery too', async () => {
   const { fullText } = await parseSSEStream(
     streamReader([
       event({ choices: [{ message: { content: ' Final answer text' } }] }),
     ]),
     () => {}
   )
-  assert.equal(fullText, 'Final answer text')
+  assert.equal(fullText, ' Final answer text')
 })
 
 test('keeps non-first content tokens verbatim (leading space untouched)', async () => {
@@ -1135,9 +1138,11 @@ test('does not arm the no-progress timer when its budget is zero', async () => {
   assert.equal(fullText, 'ok')
 })
 
-test('strips a lone-space first token and still normalizes the next one', async () => {
-  // A first content token that is ONLY a space must not close the
-  // normalization gate: the following ' The' token still loses its space.
+test('drops a lone-space first token without closing the gate or stripping the next one', async () => {
+  // A first content token that is ONLY a space is leading noise and is
+  // dropped WITHOUT closing the gate, so a following ' The answer' token is
+  // still treated as the first visible content — but the parser no longer
+  // strips its leading space, so it is preserved verbatim.
   const { fullText } = await parseSSEStream(
     streamReader([
       event({ choices: [{ delta: { content: ' ' } }] }),
@@ -1146,13 +1151,14 @@ test('strips a lone-space first token and still normalizes the next one', async 
     ]),
     () => {}
   )
-  assert.equal(fullText, 'The answer here')
+  assert.equal(fullText, ' The answer here')
 })
 
 test('keeps multi-space indentation on the first content token (fenceless code block)', async () => {
   // A first token with 4-space indentation is markdown code, not the
-  // deepseek one-space preamble noise; stripping it would drop below the
-  // 4-space code-block threshold and corrupt the rendering.
+  // deepseek one-space preamble; the parser never edits visible content, so
+  // the indentation is preserved verbatim and stays at the 4-space
+  // code-block threshold.
   const { fullText } = await parseSSEStream(
     streamReader([
       event({ choices: [{ delta: { content: '    const x = 1' } }] }),
@@ -1176,7 +1182,7 @@ test('a whitespace-only stream stores empty content (no phantom placeholder)', a
 
 test('preserves whitespace-only tokens mid-stream (lone spaces and newlines are content)', async () => {
   // deepseek streams ' ' and '\n' as SEPARATE content tokens mid-stream; the
-  // leading-noise normalization must only apply BEFORE the first visible
+  // whitespace-only guard must only apply BEFORE the first visible
   // content, never after — dropping them merges words ('The"where',
   // 'it's2025', '😄So') and eats newlines between list items ('1978\n-T').
   const tokens = []

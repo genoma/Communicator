@@ -207,27 +207,25 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     onToken(null, 'end_reasoning')
   }
 
-  // Content text is emitted through this single gate so the first-token
-  // normalization (below) and the content-started flag can never be missed
-  // by a final-only or delta-only delivery.
+  // Content text is emitted through this single gate so the content-started
+  // flag and the whitespace-only guard below can never be missed by a
+  // final-only or delta-only delivery. The parser never edits visible
+  // content: once a token passes the guard it is pushed verbatim, so a
+  // leading space on the first content token is preserved exactly as the
+  // provider (and model) emitted it.
   const pushContent = (text) => {
     // Before the first visible content, whitespace-only tokens are leading
     // noise (deepseek emits a lone ' '/newline as its very first content
     // token): drop them WITHOUT closing the gate, so a following ' The'
-    // still gets normalized. Once content has started, EVERY token is
-    // content — including whitespace-only ones: the same model emits ' '
-    // and '\n' as separate tokens mid-stream, and dropping them merges
-    // words ('The"where'), eats newlines ('1978\n- Terminal' →
-    // '1978- Terminal'), and corrupts the stored session text.
+    // is still treated as the first visible content. Once content has
+    // started, EVERY token is content — including whitespace-only ones:
+    // the same model emits ' ' and '\n' as separate tokens mid-stream, and
+    // dropping them merges words ('The"where'), eats newlines
+    // ('1978\n- Terminal' → '1978- Terminal'), and corrupts the stored
+    // session text.
     if (!contentStarted) {
       if (text.trim() === '') return
       contentStarted = true
-      // A single stray leading space (' Ah, ...') is the deepseek preamble
-      // noise that reads as a phantom space before the first line. Strip
-      // exactly ONE, and only when not followed by another space —
-      // multi-space indentation is content (a fenceless 4-space markdown
-      // code block must keep its threshold).
-      if (text.startsWith(' ') && !text.startsWith('  ')) text = text.slice(1)
     }
     fullTextParts.push(text)
     onToken(text, 'content')
