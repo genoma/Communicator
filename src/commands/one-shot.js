@@ -15,8 +15,9 @@ import { createE2eeSession } from '../e2ee.js'
 import { runImageCommand } from './image-gen.js'
 import { connectedBanner, buildStatusLine } from '../status-line.js'
 import { sanitizeAnsi } from '../ui/hyperlink.js'
+import { char } from '../ui/style.js'
 
-export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, providerType, prompt, scraped = null }) {
+export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, rpgCharName = null, providerType, prompt, scraped = null }) {
   const provider = getProvider(providerType)
   const stdinPiped = !process.stdin.isTTY
 
@@ -163,6 +164,10 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
         smooth: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
         smoothCharsPerTick: cpsToCharsPerTick(smoothSpeed),
         compactThinking: compactThinking && ttyOut,
+        // RPG one-shot: the reply is spoken by the character, so the
+        // character marker labels it instead of `❯ Answer` (same replacement
+        // as the chat REPL, see MEMORY.md §Display consistency contract).
+        assistantMarker: rpgCharName ? char(rpgCharName) : null,
       })
       // Anchor the compact-thinking meter clock at request start so the
       // checkpoint reports the real wait even when the endpoint flushes the

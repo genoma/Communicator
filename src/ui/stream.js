@@ -146,7 +146,13 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
       reasoningWrap.write(text)
     } else if (type === 'end_reasoning') {
       reasoningWrap.flush()
-      stdout.write(`\n\n${answer()}\n\n`)
+      // In RPG mode the character marker replaces the Answer label: the turn
+      // is spoken by the character, so its marker alone labels it. It is
+      // emitted with the first content byte (see 'content') — never here —
+      // so a reasoning-only partial (no content) shows no marker at all,
+      // exactly as history replay renders it.
+      if (assistantMarker) stdout.write('\n\n')
+      else stdout.write(`\n\n${answer()}\n\n`)
       answerOpen = true
     } else if (type === 'content') {
       // Compact mode: the transient answer-wait row (post-thinking silent
@@ -157,10 +163,17 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
       if (!messageStarted) {
         messageStarted = true
         if (!answerOpen) {
-          stdout.write(`${answer()}\n\n`)
+          // Reasoning-less turn: end_reasoning never ran, so the first
+          // content byte emits the turn marker (the character marker in
+          // RPG mode).
+          stdout.write(`${assistantMarker ?? answer()}\n\n`)
           answerOpen = true
+        } else if (assistantMarker) {
+          // Reasoning turn in RPG mode: end_reasoning only opened the blank
+          // row above, so the character marker goes here, right before the
+          // content (a reasoning-only partial never reaches it).
+          stdout.write(`${assistantMarker}\n\n`)
         }
-        if (assistantMarker) stdout.write(`${assistantMarker}\n\n`)
       }
       if (render.markdown) md.write(text)
       else contentWrap.write(text)
@@ -194,7 +207,10 @@ export function createStreamRenderer({ markdown = false, stdout = process.stdout
     } else if (type === 'end_reasoning') {
       if (messageStarted) return
       meter.stop({ done: true })
-      stdout.write(`\n${answer()}\n\n`)
+      // Same RPG split as writeSegment: in character mode only the blank row
+      // opens here; the marker arrives with the first content byte.
+      if (assistantMarker) stdout.write('\n')
+      else stdout.write(`\n${answer()}\n\n`)
       answerOpen = true
       // Re-arm a TRANSIENT live row on the content row: after the checkpoint
       // the meter is stopped and the timer is gone, and with a bursty
@@ -419,11 +435,11 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
             const seconds = formatElapsedSeconds(msg.reasoningMs)
             if (seconds !== '0s') duration = ` · ${seconds}`
           }
-          out += `${green('✓')} Thinking · ${count}${duration}\n\n${answer()}\n\n`
+          out += `${green('✓')} Thinking · ${count}${duration}\n\n${assistantMarker ?? answer()}\n\n`
         } else {
           out += `${thinking()}\n\n`
           out += `${dim(wrapPlain(sanitizeAnsi(msg.reasoning)))}\n`
-          out += `\n${answer()}\n\n`
+          out += `\n${assistantMarker ?? answer()}\n\n`
         }
       }
       // A reasoning-less turn resolved its loader row to a green checkpoint
@@ -435,15 +451,16 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
       if (msg.waitLine) {
         out += `${green('✓')} ${sanitizeSingleLine(msg.waitLine)}\n\n`
       }
-      // Every completed content-bearing turn carries the `❯ Answer` marker
-      // (live writeSegment now emits it on the first content byte when no
-      // end_reasoning preceded it); replay must match, or a resumed session
-      // shows a bare checkpoint before the answer. Reasoning turns already
-      // wrote it above.
+      // Every completed content-bearing turn carries the turn marker — the
+      // character marker in RPG mode (`❯ <char>` replaces `❯ Answer`, exactly
+      // as the live stream renders it, so a turn never shows both), `❯
+      // Answer` otherwise; live writeSegment emits it on the first content
+      // byte when no end_reasoning preceded it, and replay must match, or a
+      // resumed session shows a bare checkpoint before the answer. Reasoning
+      // turns already wrote it above.
       if (!msg.reasoning) {
-        out += `${answer()}\n\n`
+        out += `${assistantMarker ?? answer()}\n\n`
       }
-      if (assistantMarker) out += `${assistantMarker}\n\n`
       out += `${markdown ? renderText(sanitizeAnsi(contentText(msg.content)), msg.sources || [], cols) : wrapPlain(sanitizeAnsi(contentText(msg.content)))}\n\n`
       for (const att of contentAttachments(msg.content)) {
         out += `${attachmentLine(att.kind, att.filename)}\n`

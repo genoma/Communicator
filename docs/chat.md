@@ -141,7 +141,7 @@ A plain `--rpg <dir>` run always starts a **new** story: the greeting from `firs
 
 `/new` in RPG mode saves the current chapter and restarts the story **with the first message** — the opening greeting from `first-message.md` is rendered and seeded again instead of a blank page (in non-RPG chat `/new` still clears to an empty conversation as usual).
 
-RPG transcripts use named speaker markers: replayed user turns are shown under `❯ <your name>` (instead of the usual `❯ You`) and the character's turns under `❯ <character name>`, both taken from the `# Name` headings in `user.md` and `char.md`. Live replies stream under the character marker too, placed after the `❯ Thinking`/`❯ Answer` block when the model reasons. Non-RPG chat is unchanged.
+RPG transcripts use named speaker markers: replayed user turns are shown under `❯ <your name>` (instead of the usual `❯ You`) and the character's turns under `❯ <character name>`, both taken from the `# Name` headings in `user.md` and `char.md`. In RPG mode the character marker replaces the `❯ Answer` label entirely — the character's turn is labelled by its speaker alone, so a turn never shows both (this follows SillyTavern's card-per-character style). Live replies (including one-shot TTY runs) stream under the character marker with the same one-blank-above-and-below spacing. Non-RPG chat is unchanged.
 
 ### Inspecting the prompt
 

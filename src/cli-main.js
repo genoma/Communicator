@@ -262,7 +262,7 @@ async function main(opts, promptArg) {
 
   if (promptArg || !process.stdin.isTTY) {
     const { oneShotCmd } = await import('./commands/one-shot.js')
-    await oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, providerType, prompt: promptArg, scraped })
+    await oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, rpgCharName, providerType, prompt: promptArg, scraped })
     process.exit(0)
   }
 
