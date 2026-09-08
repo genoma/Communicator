@@ -106,6 +106,9 @@ Consequences:
 - **Late reasoning after content** (the burst quirk's worst case): a bursty
   stream can flush the answer's content first and the `reasoning_content`
   deltas afterwards (sub-ms spans / late-arriving reasoning). `parseSSEStream`
+- **Late reasoning after content** (the burst quirk's worst case): a bursty
+  stream can flush the answer's content first and the `reasoning_content`
+  deltas afterwards (sub-ms spans / late-arriving reasoning). `parseSSEStream`
   buffers such late reasoning (in `lateReasoningParts`) — never emitted
   through `onToken`, so the thinking block is never re-opened (no marker
   cycle, compact mode cannot print `✓ Thinking · N` + `❯ Answer` after the
@@ -120,13 +123,14 @@ Consequences:
   `✓ Waiting for response` until the frame is rebuilt some other way — but the
   persisted session, export and replay all carry the merged reasoning, and
   the piped one-shot path never renders markers anyway. The first content token's leading space
-  (deepseek outputs `' Ah, ...'`) is normalized away by the parser (single
-  gate → live, replay, persisted and piped output agree; multi-space
-  indentation is never touched, so fenceless 4-space code blocks survive).
-  That normalization stops at the first visible content: deepseek also
-  streams `' '` and `'\n'` as STANDALONE tokens mid-stream, and they are
-  preserved verbatim — dropping them corrupts the text (`The"where`, list
-  items glued together).
+  (deepseek outputs `' Ah, ...'`) is preserved verbatim by the parser — it
+  never edits visible content, so live, replay, persisted and piped output
+  all keep the same leading byte; multi-space indentation likewise stays
+  content, so fenceless 4-space code blocks survive. The only pre-content
+  adjustment is the whitespace-only guard, which stops at the first visible
+  content: deepseek also streams `' '` and `'\n'` as STANDALONE tokens
+  mid-stream, and they are preserved verbatim — dropping them corrupts the
+  text (`The"where`, list items glued together).
 - **Visual smoothing**: smooth-streaming pacing (default on TTY) buffers tokens
   and renders at a steady rate, absorbing the first post-search burst; piped
   output is never paced.
