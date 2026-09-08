@@ -84,6 +84,14 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
   // growing string is quadratic in the answer length.
   const fullTextParts = []
   const fullReasoningParts = []
+  // Reasoning deltas that arrive AFTER the first visible content (an
+  // OpenRouter web-search burst flushes the whole reasoning block at the end)
+  // are held here rather than dropped: merged into fullReasoningParts at
+  // stream close so the stored/exported/replayed reasoning is complete, while
+  // never emitting them through onToken (the thinking block must not re-open
+  // mid-stream and print a second `✓ Thinking`/`❯ Answer` cycle).
+  const lateReasoningParts = []
+  let sawLateReasoning = false
   const fullParts = []
   const seenParts = new Set()
   // Fragments of the trailing line that no newline has terminated yet. Kept
@@ -323,10 +331,10 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
       // A reasoning delta arriving after content already streamed is a late
       // burst (OpenRouter web-search delivery can flush reasoning after the
       // answer started). The live stream already rendered the answer, so it
-      // is dropped outright — never folded into the stored reasoning, which
-      // would inflate the replayed checkpoint count against the live meter,
-      // nor re-open the block (which would print `✓ Thinking` + `❯ Answer`
-      // at the bottom of the message).
+      // is buffered (merged into stored reasoning at stream close) but never
+      // emitted through onToken: emitting it here would re-open the thinking
+      // block and print a second `✓ Thinking` + `❯ Answer` cycle at the
+      // bottom of the message.
       if (!contentStarted) {
         fullReasoningParts.push(text)
         if (!inThinking) {
@@ -335,6 +343,9 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
           onToken('\n', 'start_reasoning')
         }
         onToken(text, 'reasoning')
+      } else if (text) {
+        lateReasoningParts.push(text)
+        sawLateReasoning = true
       }
     }
 
@@ -451,6 +462,19 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     // A stream that ends mid-thinking (reasoning deltas with no content
     // delta) must still close the thinking block for the renderer.
     closeThinking()
+    // Late-reasoning bridge (OpenRouter web-search burst): reasoning deltas
+    // that arrived after content started were buffered, never emitted live.
+    // Fold them into the stored reasoning so the session/export/replay keep
+    // the full thinking, and re-stamp the duration from the request anchor
+    // (closeThinking may have stamped a too-early value based on only the
+    // early reasoning that preceded content).
+    if (lateReasoningParts.length > 0) {
+      for (const part of lateReasoningParts) fullReasoningParts.push(part)
+      // OVERRIDE whatever closeThinking stamped: the real wait covers the
+      // whole stream (the late blob arrives at the very end).
+      if (reasoningStartedAt != null) reasoningMs = now() - reasoningStartedAt
+      else if (requestStartedAt != null) reasoningMs = now() - requestStartedAt
+    }
   } finally {
     if (noProgressTimer !== null) clearTimeout(noProgressTimer)
     noProgressTimer = null
@@ -460,5 +484,5 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     await reader.cancel?.().catch(() => {})
   }
 
-  return { fullText: fullTextParts.join(''), fullReasoning: fullReasoningParts.join(''), finalUsage, fullSources, skippedChunks, fullParts, reasoningMs, finishReason }
+  return { fullText: fullTextParts.join(''), fullReasoning: fullReasoningParts.join(''), finalUsage, fullSources, skippedChunks, fullParts, reasoningMs, finishReason, lateReasoning: sawLateReasoning }
 }

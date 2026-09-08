@@ -106,11 +106,20 @@ Consequences:
 - **Late reasoning after content** (the burst quirk's worst case): a bursty
   stream can flush the answer's content first and the `reasoning_content`
   deltas afterwards (sub-ms spans / late-arriving reasoning). `parseSSEStream`
-  drops such late reasoning outright — never stored, never re-opens the
-  thinking block (no marker cycle) — so compact mode cannot print
-  `✓ Thinking · N` + `❯ Answer` after the answer, and the stored reasoning
-  stays byte-equal to what the live meter counted; the `writeCompact`
-  renderer guards the same case. The first content token's leading space
+  buffers such late reasoning (in `lateReasoningParts`) — never emitted
+  through `onToken`, so the thinking block is never re-opened (no marker
+  cycle, compact mode cannot print `✓ Thinking · N` + `❯ Answer` after the
+  answer) — and merges it into the stored reasoning at stream close, with
+  `reasoningMs` re-stamped from the request anchor and a `lateReasoning: true`
+  flag threaded to `apiResult`. On TTY the turn-runner then triggers the
+  end-of-turn frame rebuild (chat.js wipe + `renderAboveEditor`) so live ends
+  byte-identical to replay (`✓ Thinking · N` compact / `❯ Thinking` full),
+  and `message.waitLine` is not stashed. The `writeCompact` renderer guards
+  the same no-re-open case. One-shot TTY (`--compact-thinking` in one-shot)
+  keeps the screen exactly as streamed, so a burst turn there may show
+  `✓ Waiting for response` until the frame is rebuilt some other way — but the
+  persisted session, export and replay all carry the merged reasoning, and
+  the piped one-shot path never renders markers anyway. The first content token's leading space
   (deepseek outputs `' Ah, ...'`) is normalized away by the parser (single
   gate → live, replay, persisted and piped output agree; multi-space
   indentation is never touched, so fenceless 4-space code blocks survive).

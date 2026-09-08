@@ -1366,12 +1366,65 @@ test('copies the stamped reasoning duration onto a stopped reply', async (t) => 
   assert.equal(produced, true)
 })
 
-test('compact content-first turn with folded-late reasoning stashes the waitLine, not a phantom checkpoint', async (t) => {
-  // The OpenRouter web-search burst quirk can deliver ALL content before ANY
-  // reasoning arrives; with the late-reasoning drop the parser emits only
-  // content tokens, so apiResult.reasoning is empty and the message must
-  // replay through the waitLine path — exactly what the live stream showed
-  // (✓ Waiting for response + answer, no phantom ✓ Thinking / ❯ Answer).
+test('rebuilds the frame after a turn whose reasoning arrived late, and does not stash a waitLine', async (t) => {
+  // Late-reasoning bridge: when the provider returns late reasoning (content
+  // streamed first, reasoning merged at close), apiResult.reasoning is truthy,
+  // so waitLine is NOT stashed; instead the turn triggers the injected
+  // rebuildAfterTurn so live becomes byte-identical to replay (`✓ Thinking`).
+  mockConsole(t)
+  const stdout = { write() {} }
+  const render = () => {}
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => {}
+  render.compactThinking = true
+  render.startTurn = () => {}
+  const rebuilt = []
+  const provider = {
+    async chatCompletion() {
+      return { content: 'Hello', reasoning: 'the late reasoning', reasoningMs: 500, lateReasoning: true }
+    },
+  }
+  const state = fakeState({ compactThinking: true })
+  const { deps } = makeDeps({ render, loader: { start() {}, stop() {} }, provider, tty: true, stdout })
+
+  await runTurn(deps, state, {}, { rebuildAfterTurn: () => rebuilt.push(true) })
+
+  assert.deepEqual(rebuilt, [true], 'the rebuild must fire exactly once on a late-reasoning turn')
+  assert.equal(state.messages[2].reasoning, 'the late reasoning')
+  assert.equal(state.messages[2].waitLine, undefined, 'a merged-reasoning turn must not carry a waitLine')
+})
+
+test('does not rebuild when no late reasoning (early-only or reasoning-less)', async (t) => {
+  mockConsole(t)
+  const stdout = { write() {} }
+  const render = () => {}
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => {}
+  render.compactThinking = true
+  render.startTurn = () => {}
+  const rebuilt = []
+  const provider = {
+    async chatCompletion() {
+      return { content: 'Hello', reasoning: 'early', lateReasoning: false }
+    },
+  }
+  const state = fakeState({ compactThinking: true })
+  const { deps } = makeDeps({ render, loader: { start() {}, stop() {} }, provider, tty: true, stdout })
+
+  await runTurn(deps, state, {}, { rebuildAfterTurn: () => rebuilt.push(true) })
+
+  assert.deepEqual(rebuilt, [], 'no rebuild when lateReasoning is false')
+  assert.equal(state.messages[2].reasoning, 'early')
+})
+
+test('compact reasoning-less turn stashes the waitLine checkpoint, not a thinking marker', async (t) => {
+  // A turn that genuinely streamed no reasoning (the model did not think, or
+  // the endpoint delivered none) resolves the row to the waitLine checkpoint
+  // (✓ Waiting for response + answer). This is the reasoning-less path; a
+  // content-first burst that DID carry late reasoning merges it and instead
+  // rebuilds through the late-reasoning bridge (✓ Thinking · N · Xs).
   mockConsole(t)
   const stdout = { write() {} }
   const render = () => {}

@@ -443,7 +443,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
   const cacheStatus = res.headers.get(CACHE_HEADER)
   const reader = res.body.getReader()
 
-  const { fullText, fullReasoning, finalUsage, fullSources, skippedChunks, fullParts, reasoningMs, finishReason } = await parseSSEStream(reader, onToken, onSources, { requestStartedAt })
+  const { fullText, fullReasoning, finalUsage, fullSources, skippedChunks, fullParts, reasoningMs, finishReason, lateReasoning } = await parseSSEStream(reader, onToken, onSources, { requestStartedAt })
 
   const usage = finalUsage
 
@@ -456,6 +456,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
       skippedChunks,
       parts: fullParts.length > 0 ? fullParts : undefined,
       reasoningMs,
+      lateReasoning,
       finishReason,
     }
   }
@@ -464,5 +465,5 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
     usage.cacheHit = true
   }
 
-  return { content: fullText, reasoning: fullReasoning || undefined, usage, sources: fullSources, skippedChunks, parts: fullParts.length > 0 ? fullParts : undefined, reasoningMs, finishReason }
+  return { content: fullText, reasoning: fullReasoning || undefined, usage, sources: fullSources, skippedChunks, parts: fullParts.length > 0 ? fullParts : undefined, reasoningMs, lateReasoning, finishReason }
 }

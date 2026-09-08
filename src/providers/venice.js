@@ -325,7 +325,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
   const streamOptions = e2ee
     ? { decryptToken: (hex) => decryptToken(hex, e2eeContext.clientKey), requestStartedAt }
     : { requestStartedAt }
-  const { fullText, fullReasoning, finalUsage, fullSources, skippedChunks, fullParts, reasoningMs, finishReason } = await parseSSEStream(reader, onToken, onSources, streamOptions)
+  const { fullText, fullReasoning, finalUsage, fullSources, skippedChunks, fullParts, reasoningMs, finishReason, lateReasoning } = await parseSSEStream(reader, onToken, onSources, streamOptions)
 
-  return { content: fullText, reasoning: fullReasoning || undefined, usage: finalUsage, sources: fullSources, skippedChunks, parts: fullParts.length > 0 ? fullParts : undefined, reasoningMs, finishReason }
+  return { content: fullText, reasoning: fullReasoning || undefined, usage: finalUsage, sources: fullSources, skippedChunks, parts: fullParts.length > 0 ? fullParts : undefined, reasoningMs, lateReasoning, finishReason }
 }

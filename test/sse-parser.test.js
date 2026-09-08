@@ -994,16 +994,16 @@ test('does not stamp a reasoning duration on a content-only reader error', async
   )
 })
 
-test('does not re-open the thinking block when reasoning arrives after content', async () => {
+test('does not re-open the thinking block when reasoning arrives after content (but stores it)', async () => {
   // OpenRouter web-search "burst mode" can flush the answer's content first
-  // and the reasoning_content deltas afterwards (late burst). Re-opening the
-  // block made compact mode print a second `✓ Thinking · N` checkpoint + a
-  // trailing `❯ Answer` at the BOTTOM of the message. Late reasoning is
-  // dropped outright — no start/end markers, no clock re-anchor, and NOT
-  // stored (the live meter never counted it, so the replayed checkpoint
-  // count must match the live one).
+  // and the reasoning_content deltas afterwards (late burst). The block must
+  // NOT re-open: no start/end markers (compact mode would print a second
+  // `✓ Thinking · N` checkpoint + a trailing `❯ Answer`). But the late
+  // reasoning is now BUFFERED and merged into the stored reasoning at stream
+  // close (live == replay), with the duration re-stamped from the request
+  // anchor.
   const tokens = []
-  const { fullText, fullReasoning, reasoningMs } = await parseSSEStream(
+  const { fullText, fullReasoning, reasoningMs, lateReasoning } = await parseSSEStream(
     streamReader([
       event({ choices: [{ delta: { content: 'the answer' } }] }),
       event({ choices: [{ delta: { reasoning_content: 'late thought' } }] }),
@@ -1014,17 +1014,18 @@ test('does not re-open the thinking block when reasoning arrives after content',
     { requestStartedAt: 1000, now: () => 1500 }
   )
   assert.equal(fullText, 'the answer')
-  assert.equal(fullReasoning, '')
-  assert.equal(reasoningMs, null)
+  assert.equal(fullReasoning, 'late thoughtmore late')
+  assert.equal(reasoningMs, 500)
+  assert.equal(lateReasoning, true)
   assert.deepEqual(tokens, [['content', 'the answer']])
 })
 
-test('keeps one thinking block when reasoning resumes after content in the same stream', async () => {
-  // Reasoning → content → MORE reasoning (tool use / post-answer search):
-  // the late burst is dropped, so the renderer never gets a second start/end
-  // cycle AND the stored reasoning equals what the live meter counted.
+test('keeps one thinking block when reasoning resumes after content in the same stream (late merged)', async () => {
+  // Reasoning → content → MORE reasoning (tool use / post-answer search): the
+  // late burst is buffered (no second start/end cycle for the renderer) and
+  // merged into the stored reasoning at close, so stored == live count.
   const tokens = []
-  const { fullReasoning } = await parseSSEStream(
+  const { fullReasoning, lateReasoning } = await parseSSEStream(
     streamReader([
       event({ choices: [{ delta: { reasoning_content: 'early' } }] }),
       event({ choices: [{ delta: { content: 'answer now' } }] }),
@@ -1032,12 +1033,65 @@ test('keeps one thinking block when reasoning resumes after content in the same 
     ]),
     (t, type) => tokens.push([type, t])
   )
-  assert.equal(fullReasoning, 'early')
+  assert.equal(fullReasoning, 'earlylate')
+  assert.equal(lateReasoning, true)
   assert.deepEqual(tokens, [
     ['start_reasoning', '\n'],
     ['reasoning', 'early'],
     ['end_reasoning', null],
     ['content', 'answer now'],
+  ])
+})
+
+test('flags late reasoning only when reasoning actually arrived after content (early-only is false)', async () => {
+  // DeepSeek shape: reasoning streams first, then content. No late reasoning
+  // → the lateReasoning flag stays false so non-burst turns are untouched.
+  const { lateReasoning, fullReasoning } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { reasoning_content: 'early only' } }] }),
+      event({ choices: [{ delta: { content: 'answer' } }] }),
+    ]),
+    () => {}
+  )
+  assert.equal(lateReasoning, false)
+  assert.equal(fullReasoning, 'early only')
+})
+
+test('pure-late reasoning (content first, no early reasoning) merges and flags', async () => {
+  // The all-late case: content streams first and the ENTIRE reasoning block
+  // arrives after it (oi-3 shape). Merged at close, flag set, stored reasoning
+  // complete.
+  const { fullText, fullReasoning, lateReasoning } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: 'Here is the answer.' } }] }),
+      event({ choices: [{ delta: { reasoning: 'the whole reasoning block' } }] }),
+    ]),
+    () => {}
+  )
+  assert.equal(fullText, 'Here is the answer.')
+  assert.equal(fullReasoning, 'the whole reasoning block')
+  assert.equal(lateReasoning, true)
+})
+
+test('a reasoning-only stream (no content) does not flag late reasoning', async () => {
+  // Reasoning with no content at all: it is never "late" (contentStarted stays
+  // false), so it is stored as normal early reasoning and the flag stays false.
+  const tokens = []
+  const { fullReasoning, lateReasoning, reasoningMs } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { reasoning_content: 'thought without answer' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t]),
+    null,
+    { requestStartedAt: 1000, now: () => 2000 }
+  )
+  assert.equal(fullReasoning, 'thought without answer')
+  assert.equal(lateReasoning, false)
+  assert.equal(reasoningMs, 1000)
+  assert.deepEqual(tokens, [
+    ['start_reasoning', '\n'],
+    ['reasoning', 'thought without answer'],
+    ['end_reasoning', null],
   ])
 })
 

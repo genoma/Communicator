@@ -26,7 +26,7 @@ export function createSessionState() {
   }
 }
 
-export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState, requestFn, onRequest = null, postHistoryInstruction = null, input = process.stdin, createStreamKeyMonitor = defaultStreamKeyMonitor }) {
+export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState, requestFn, onRequest = null, postHistoryInstruction = null, rebuildAfterTurn = null, input = process.stdin, createStreamKeyMonitor = defaultStreamKeyMonitor }) {
   const apiResultMessage = (apiResult) => {
     const msg = { role: 'assistant', content: apiResult.content }
     if (apiResult.reasoning) {
@@ -390,6 +390,14 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       state.appendAssistant(message)
       // A successful turn supersedes any prior failure notice.
       state.lastError = null
+      // Late-reasoning bridge: reasoning deltas arrived after content started
+      // (OpenRouter web-search burst) and were merged into message.reasoning at
+      // stream close. The live stream resolved the row to `✓ Waiting for
+      // response` while reasoning is now stored and will replay as
+      // `✓ Thinking · N`; to keep live == replay, rebuild the frame from the
+      // stored transcript (same wipe + renderHistory path as /retry). The
+      // wipe is the caller's (chat.js rebuildAfterTurn); this is TTY-only.
+      if (tty && apiResult.lateReasoning) rebuildAfterTurn?.()
       return true
     }
     // An image-generation chat turn can produce non-text parts with no

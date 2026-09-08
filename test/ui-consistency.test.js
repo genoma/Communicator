@@ -135,6 +135,33 @@ test('compact live streaming and history replay emit the same checkpoint block',
   assert.ok(history.text().includes(checkpointBlock), 'history replay must include the same checkpoint block')
 })
 
+test('a late-merged reasoning message replays the same compact checkpoint and full thinking block', () => {
+  // Late-reasoning bridge: a message whose reasoning was merged at stream
+  // close (content streamed first, then the whole reasoning block arrived)
+  // must render, through the history path the end-of-turn rebuild uses, the
+  // same `✓ Thinking · N[ · s]` (compact) and `❯ Thinking` block (full) that
+  // the corrected live layout shows.
+  const reasoning = 'the late reasoning'
+  const compact = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: 'answer', reasoning, reasoningMs: 1500 },
+  ], { markdown: false, stdout: compact.stdout, compactThinking: true })
+  assert.ok(
+    compact.plain().includes('✓ Thinking · 18 · 1.5s\n\n❯ Answer\n\nanswer'),
+    'compact replay must emit the same `✓ Thinking · N` checkpoint a corrected live turn would'
+  )
+
+  const full = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: 'answer', reasoning, reasoningMs: 1500 },
+  ], { markdown: false, stdout: full.stdout, compactThinking: false })
+  assert.match(full.plain(), /❯ Thinking\n\nthe late reasoning\n\n❯ Answer\n\nanswer/)
+})
+
 test('renderHistory tailBlank: false ends flush so the rerun adds the one blank row', () => {
   const history = capture()
   renderHistory([

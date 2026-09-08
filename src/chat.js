@@ -352,6 +352,18 @@ export async function runChatSession(ctx = {}, deps = {}) {
       }
     : null
 
+  // End-of-turn frame rebuild for the late-reasoning bridge: the live stream
+  // resolved the waiting row while reasoning arrived after content (OpenRouter
+  // web-search burst). After the turn appends the message with that reasoning,
+  // wipe and re-render the transcript from state so live becomes byte-identical
+  // to replay (`✓ Thinking · N · Xs` in compact, `❯ Thinking` block in full).
+  // The wipe is the caller's — renderAboveEditor is shared with the resize path
+  // and must not clear the screen itself.
+  const rebuildAfterTurn = (opts = { turnFooter: true, tailBlank: true, loopSep: false }) => {
+    stdout.write('\x1b[2J\x1b[3J\x1b[H')
+    renderAboveEditor(opts)
+  }
+
   const runner = createTurnRunner({
     state,
     provider,
@@ -366,6 +378,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     sessionState,
     onRequest,
     postHistoryInstruction: rpgPostHistoryInstruction,
+    rebuildAfterTurn,
     input,
     createStreamKeyMonitor,
   })
