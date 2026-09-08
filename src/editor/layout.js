@@ -4,6 +4,7 @@
 // terminal's own soft-wrap never engages inside the block.
 import { clusterWidth, segmentGraphemes, stringWidth } from './chars.js'
 import { applyStyle } from './style.js'
+import { clipToWidth } from './footer.js'
 
 /** Widen-safe available width for one input row */
 function usableWidth(termWidth, prefixWidth) {
@@ -169,7 +170,33 @@ export function computeGrid(ctx) {
     theme,
     footerRows,
     inputStyle,
+    submittedMarker,
   } = ctx
+  // Submitted-marker form (chat replays the user line as `❯ You\n\n<text>`):
+  // the block becomes [blank, marker, blank, body rows at FULL width (no line
+  // prefix, matching renderHistory's wrapPlain(cols))] with the cursor parked
+  // at the end of the last body row, so the turn runner's `\n` + TTY `\n`
+  // yields exactly the replay form `\n❯ You\n\n<text>\n\n`. Live and history
+  // replay must be byte-identical (Display consistency contract).
+  if (submittedMarker) {
+    const bodyRows = []
+    for (const line of lines) {
+      for (const segment of wrapSegmentsDetailed(line, width).segments) {
+        bodyRows.push(segment)
+      }
+    }
+    // The marker row must never exceed the terminal width (the grid↔screen 1:1
+    // invariant — an over-wide cell would soft-wrap and desync). The marker is
+    // styled ANSI text (e.g. a long RPG user name on a narrow terminal), so
+    // clip escape-safely.
+    const markerRow = stringWidth(submittedMarker) > width ? clipToWidth(submittedMarker, width) : submittedMarker
+    const rows = ['', markerRow, '', ...bodyRows]
+    return {
+      rows,
+      cursor: { r: rows.length - 1, c: stringWidth(bodyRows.at(-1) ?? '') },
+      width,
+    }
+  }
   const rows = [...headerRows]
   const limit = usableWidth(width, linePrefixWidth)
   // Wrap each logical line once; the cursor-row math reuses the same result

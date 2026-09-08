@@ -137,10 +137,14 @@ export function paintRefresh(out, grid, rewindRow = grid.cursor.r) {
 /**
  * Submit-render rewrite (unbatched):
  * rewinds to the block top and rewrites every row in the submitted style.
+ * `rewindRow` is the row the physical cursor sits on BEFORE the rewrite
+ * (normally grid.cursor.r — the submitted grid's cursor is at the same row;
+ * the marker form parks it at the body end instead, so the caller must pass
+ * the previous grid's cursor row, mirroring paintRefresh's rewindRow).
  */
-export function paintSubmit(out, grid) {
+export function paintSubmit(out, grid, rewindRow = grid.cursor.r) {
   let body = ''
-  if (grid.cursor.r > 0) body += `\x1b[${grid.cursor.r}A`
+  if (rewindRow > 0) body += `\x1b[${rewindRow}A`
   body += '\r\x1b[J'
   body += rowBody(grid.rows, grid.width)
   out.write(rewindCursor(body, grid))

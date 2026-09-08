@@ -1598,3 +1598,77 @@ test('a picker abort inside a command returns to the prompt', async (t) => {
   assert.equal(harness.exitCodes.length, 0)
   assert.equal(finalState.modelId, 'org/model')
 })
+
+test('the chat prompt passes a submitMarker predicate with replay-form semantics', async (t) => {
+  mockConsole(t)
+  const optsSeen = []
+  const harness = makeDeps({
+    readInput: async (opts) => {
+      optsSeen.push(opts)
+      return { cancelled: true }
+    },
+  })
+
+  await runChatSession(baseCtx(fakeProvider().provider), harness.deps)
+
+  const opts = optsSeen[0]
+  assert.equal(typeof opts.submitMarker, 'function', 'the chat prompt wires a submitMarker predicate')
+  // Command values are not user messages: they keep the classic submitted line.
+  assert.equal(opts.submitMarker('/help'), null)
+  assert.equal(opts.submitMarker(''), null)
+  assert.equal(opts.submitMarker('   '), null)
+  // A message returns the replay marker form (`❯ You\n\n<text>`).
+  const marker = opts.submitMarker('What is the capital of France?')
+  assert.ok(marker.includes('❯ You'), 'message marker is the ❯ You form')
+  // The marker is the styled marker string only (body wrapping is the grid's job).
+  assert.equal(marker.split('\n').length, 1, 'the marker itself is a single row')
+})
+
+
+test('RPG chat turns pass a submitMarker predicate using the user name, not ❯ You', async (t) => {
+  mockConsole(t)
+  const e2e = makeDeps({
+    readInput: async (opts) => {
+      const marker = opts.submitMarker('hello')
+      // RPG marker is the styled `❯ Kael` row (you(rpgUserName)) — never `❯ You`.
+      assert.ok(marker.includes('Kael'), 'RPG marker carries the user name')
+      assert.ok(!marker.includes('You'), 'RPG marker is never `❯ You`')
+      return { cancelled: true }
+    },
+  })
+
+  await runChatSession(baseCtx(fakeProvider().provider, { rpgUserName: 'Kael' }), e2e.deps)
+})
+
+test('the edit prompt submits user content with a marker even when it starts with a slash', async (t) => {
+  mockConsole(t)
+  let sawEditRead = false
+  const queue = ['/edit', '/starts-with-slash', '/quit']
+  const harness = makeDeps({
+    readInput: async (opts) => {
+      const value = queue.shift() ?? null
+      if (opts.initialValue != null) {
+        // The /edit nested prompt: its content is a user message, never a
+        // command — even when the edited message starts with `/`.
+        sawEditRead = true
+        assert.equal(opts.initialValue, '/starts-with-slash', 'the nested editor edits the user message')
+        const marker = opts.submitMarker('/starts-with-slash')
+        assert.ok(marker.includes('❯ You'), 'edited user content carries the user marker')
+        return { value }
+      }
+      if (value == null) return { cancelled: true }
+      return { value }
+    },
+  })
+
+  const { provider } = fakeProvider()
+  await runChatSession(baseCtx(provider, {
+    initialMessages: [
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'user', content: '/starts-with-slash' },
+      { role: 'assistant', content: 'old answer', usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 } },
+    ],
+  }), harness.deps)
+
+  assert.equal(sawEditRead, true, 'the /edit nested prompt ran with its predicate')
+})

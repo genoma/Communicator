@@ -428,6 +428,18 @@ export async function runChatSession(ctx = {}, deps = {}) {
       // above the prompt (session-start layout), then the editor redraws its
       // block at the current cursor position.
       onResizeRepaint: renderAboveEditor,
+      // Live/replay parity for the user line: a submitted message repaints as
+      // the same marker block renderHistory replays (`❯ You\n\n<text>`, or the
+      // RPG `❯ <user>` form), so a live turn and its rebuilt resume frame are
+      // byte-identical. Commands and empty submits are not user messages:
+      // they keep the classic dim `❯ <text>` submitted line. The budget-guard
+      // branch still prints its note below the marker block (the value was
+      // submitted as a message; the guard explains why no turn ran).
+      submitMarker: (value) => {
+        const trimmed = value.trim()
+        if (trimmed === '' || trimmed.startsWith('/')) return null
+        return rpgMarkers.userMarker ?? you()
+      },
     })
 
     if (result.cancelled) {

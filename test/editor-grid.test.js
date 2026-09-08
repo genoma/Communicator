@@ -618,6 +618,80 @@ test('submit erases the suggestion list so picker output lands clean', async (t)
   )
 })
 
+// Submitted-marker form (chat live user line): the block is repainted in
+// place as [blank, marker, blank, body rows] at FULL width, matching the
+// renderHistory user block `\n❯ You\n\n<text>\n\n` — so a live turn and its
+// rebuilt transcript are byte-identical (Display consistency contract).
+test('submitMarker repaints the block as blank + marker + blank + body', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, {
+    options: { submitMarker: () => '❯ You' },
+  })
+  type(stdin, 'what is the capital of france')
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'what is the capital of france')
+  // The EXACT screen rows (blank rows included): the filter below would
+  // collapse blanks and could not tell `[❯ You,'',body]` (no blank above)
+  // from the required `['', ❯ You, '', body]`.
+  assert.deepEqual(
+    term.lines().slice(0, 4),
+    ['', '❯ You', '', 'what is the capital of france'],
+    'blank row, marker row, blank row, body — the renderHistory user block'
+  )
+  assert.deepEqual(
+    term.lines().filter((l) => l !== ''),
+    ['❯ You', 'what is the capital of france'],
+    'no stray rows below the body'
+  )
+})
+
+test('submitMarker uses the caller marker (RPG user name), never a hardcoded ❯ You', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, {
+    options: { submitMarker: () => '❯ Kael' },
+  })
+  type(stdin, 'hello')
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'hello')
+  assert.deepEqual(
+    term.lines().filter((l) => l !== ''),
+    ['❯ Kael', 'hello'],
+    'the RPG user marker replaces ❯ You'
+  )
+})
+
+test('submitMarker null keeps the classic dim ❯ text submitted line', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, {
+    options: { submitMarker: () => null },
+  })
+  type(stdin, '/quit')
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, '/quit')
+  assert.deepEqual(
+    term.lines().filter((l) => l !== ''),
+    ['❯ /quit'],
+    'commands keep the classic submitted line'
+  )
+})
+
+test('submitMarker cursor parks at the end of the last body row', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { term, stdin, editor } = setup(t, {
+    options: { submitMarker: () => '❯ You' },
+  })
+  type(stdin, 'one')
+  submit(stdin)
+  await editor
+  // The cursor sits at the body end: the turn seam `\n` + TTY `\n` must
+  // continue from there, exactly like renderHistory's trailing `\n\n`.
+  assert.equal(term.cursor.r, 3)
+  assert.equal(term.cursor.c, 'one'.length)
+})
+
 test('command suggestions fill the line with Tab and dismiss with Escape', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const { stdin, editor } = setup(t, {

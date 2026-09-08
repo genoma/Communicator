@@ -101,7 +101,7 @@ function fakeOutput(t, rows) {
   return { output, writes, listeners }
 }
 
-async function runEditor(t, { rows, chunks, submit }) {
+async function runEditor(t, { rows, chunks, submit, submitMarker }) {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   _resetKittyDetection(false)
   const { output, writes } = fakeOutput(t, rows)
@@ -113,6 +113,7 @@ async function runEditor(t, { rows, chunks, submit }) {
     linePrefix: '> ',
     helpFooter: false,
     maxLines: 50,
+    submitMarker,
     theme: { linePrefix: { pending: 'cyan', submitted: 'dim', cancelled: 'dim' } },
   })
   for (const chunk of chunks) stdin.emit('data', chunk)
@@ -483,6 +484,49 @@ test('submit still redraws in place when the editor fits the terminal', async (t
   assert.equal(writes.some((w) => w.includes('\r\x1b[J')), true)
 })
 
+// The submitted-marker form (chat live user line): on submit, the block is
+// repainted as [blank, marker, blank, body rows] at FULL width with the cursor
+// parked at the end of the last body row, so the turn seam `\n` + TTY `\n`
+// yields exactly the renderHistory user block and live == replay.
+function normalizePaint(writes) {
+  return writes.join('').replace(/\x1b\[[0-9;?<>]*[a-zA-Z]/g, '').replace(/\r/g, '')
+}
+
+test('submit with a marker predicate repaints the block as the marker form', async (t) => {
+  const { value, writes } = await runEditor(t, { rows: 12, chunks: ['one line'], submit: true, submitMarker: () => '❯ You' })
+  assert.equal(value, 'one line')
+  const paint = normalizePaint(writes)
+  assert.match(paint, /\n❯ You\n\none line/, 'the submitted block is blank + marker + blank + body')
+  // The trailing newline comes from the turn seam, never the editor: the
+  // submitted paint ends flush at the body with the cursor parked after it.
+  assert.ok(!paint.endsWith('\n\none line\n\n'), 'the editor never closes the body line')
+})
+
+test('submit marker is blank-row separated from the body like renderHistory', async (t) => {
+  const { writes } = await runEditor(t, { rows: 12, chunks: ['a', '\n', 'b'], submit: true, submitMarker: () => '❯ You' })
+  const paint = normalizePaint(writes)
+  // Multiline body: every row of the marker block keeps its own row.
+  assert.match(paint, /\n❯ You\n\na\nb/, 'multiline body rows follow the marker block')
+})
+
+test('an empty body with a marker still paints the marker block deterministically', async (t) => {
+  const { value, writes } = await runEditor(t, { rows: 12, chunks: [], submit: true, submitMarker: () => '❯ You' })
+  assert.equal(value, '')
+  // The editor contract is mechanical: the predicate decides, the block is
+  // [blank, marker, blank, body] — here body is one empty row. The chat
+  // predicate never returns a marker for an empty submit, so this shape only
+  // exists at the editor level.
+  const paint = normalizePaint(writes)
+  assert.match(paint, /\n❯ You\n\n\n?/, 'marker block with an empty body row')
+})
+
+test('submit marker null keeps the classic dim submitted line', async (t) => {
+  const { writes } = await runEditor(t, { rows: 12, chunks: ['/help'], submit: true, submitMarker: () => null })
+  const paint = normalizePaint(writes)
+  assert.ok(!paint.includes('❯ You'), 'no marker when the predicate returns null')
+  assert.match(paint, /> \/help/, 'the classic submitted line stays')
+})
+
 test('resetKittyDetectionCache forgets a negative still pending detection', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   _resetKittyDetection(undefined)
@@ -515,4 +559,33 @@ test('formatGrid clips an over-wide styled row without splitting an escape run',
     assert.equal(stripped.includes('\x1b'), false, `dangling escape in row: ${JSON.stringify(row)}`)
     assert.ok(stripped.length <= 15, `row over width: ${stripped}`)
   }
+})
+
+test('readInput forwards submitMarker to the editor (real input.js hop)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const writes = []
+  Object.defineProperty(process.stdout, 'columns', { value: 80, configurable: true })
+  Object.defineProperty(process.stdout, 'rows', { value: 12, configurable: true })
+  Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
+  t.mock.method(process.stdout, 'write', (chunk) => { writes.push(String(chunk)); return true })
+  _resetKittyDetection(false)
+
+  const stdin = fakeStdin()
+  installFakeStdin(t, stdin)
+
+  const pending = readInput({
+    commands: [],
+    submitMarker: (value) => (value.trim() === '' || value.trim().startsWith('/') ? null : '❯ You'),
+  })
+  stdin.emit('data', 'hello')
+  stdin.emit('data', '\r')
+  const result = await pending
+  assert.deepEqual(result, { value: 'hello' })
+  const paint = writes.join('').replace(/\x1b\[[0-9;?<>]*[a-zA-Z]/g, '').replace(/\r/g, '')
+  assert.match(paint, /\n❯ You\n\nhello/, 'readInput forwards submitMarker; the live paint is the marker block')
+  t.after(() => {
+    delete process.stdout.columns
+    delete process.stdout.rows
+    Object.defineProperty(process.stdout, 'isTTY', { value: false, configurable: true })
+  })
 })

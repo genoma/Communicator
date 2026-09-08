@@ -5,7 +5,7 @@ import { resolveTemperatureFlag, resolveTopPFlag, resolveWebResultsFlag, resolve
 import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed, formatSamplingValue, SCRAPE_COST_USD } from '../../constants.js'
 import { budgetStatusLine, budgetExhaustedMessage, UsageTracker, seedTracker } from '../../tracker.js'
 import { sessionLabel } from '../../ui/format.js'
-import { dim } from '../../ui/style.js'
+import { dim, you } from '../../ui/style.js'
 import { sanitizeSingleLine } from '../../ui/hyperlink.js'
 import { attachmentLine, renderHistory } from '../../ui/stream.js'
 import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
@@ -519,7 +519,15 @@ const handlers = {
       console.log('Nothing to edit yet.\n')
       return
     }
-    const result = await ctx.readInput({ initialValue: messageText(target), onResizeRepaint: ctx.onResizeRepaint })
+    const result = await ctx.readInput({
+      initialValue: messageText(target),
+      onResizeRepaint: ctx.onResizeRepaint,
+      // The edited content is a user message (never a command, even when it
+      // starts with `/`), so the submitted line carries the user marker — but
+      // the empty-edit branch below returns to the prompt without a turn, so
+      // an empty submit keeps the classic bare submitted line.
+      submitMarker: (value) => (value.trim() === '' ? null : (ctx.rpgMarkers?.userMarker ?? you())),
+    })
     if (result?.cancelled) return
     const text = result.value
     if (!text.trim()) {

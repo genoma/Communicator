@@ -5,6 +5,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createStreamRenderer, renderHistory, printSources, attachmentLine } from '../src/ui/stream.js'
+import { computeGrid } from '../src/editor/layout.js'
+import { wrapWords } from '../src/ui/wrap.js'
 import { printArtifacts, printArtifactsSummary } from '../src/artifacts.js'
 import { printImageOutcome } from '../src/commands/image-gen.js'
 import { connectedBanner, wrapStatusLine } from '../src/status-line.js'
@@ -109,6 +111,87 @@ test('live streaming and history replay emit the same reasoning marker block', (
 
   assert.equal(live.plain(), '❯ Thinking\n\nthinking text\n\n❯ Answer\n\nanswer')
   assert.match(history.plain(), /❯ Thinking\n\nthinking text\n\n❯ Answer\n\nanswer/)
+})
+
+// The user-line marker must be the SAME block in live and replay. Live comes
+// from the editor's submitted-marker grid (src/editor/layout.js computeGrid
+// submittedMarker branch: [blank, marker, blank, body rows] with the cursor
+// parked at the body end; the turn seam's `\n` + TTY `\n` then closes the
+// body row + blank row); replay comes from renderHistory. Assert the REAL
+// producers converge on `\n❯ You\n\n<text>\n\n` — a live turn whose user line
+// lacked the marker (pre-fix) fails here.
+test('the live user-marker block and renderHistory user block are byte-identical', () => {
+  const text = 'What is the capital of France?'
+
+  // Replay side: renderHistory's user branch (stream.js:380,384): leading \n
+  // + marker + \n\n + body + \n\n.
+  const history = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: text },
+  ], { markdown: false, stdout: history.stdout })
+
+  // Live side: the actual computeGrid submittedMarker branch — the producer
+  // the editor uses at submit. Body rows wrap at FULL width (no `❯ ` prefix);
+  // the cursor parks at the end of the last body row.
+  const grid = computeGrid({
+    width: 80,
+    headerRows: [],
+    linePrefix: '❯ ',
+    linePrefixWidth: 2,
+    lines: [text],
+    row: 0,
+    col: text.length,
+    statusText: '',
+    statusColor: undefined,
+    theme: undefined,
+    footerRows: [],
+    inputStyle: undefined,
+    submittedMarker: '❯ You',
+  })
+  assert.deepEqual(grid.rows, ['', '❯ You', '', text], 'marker grid: blank, marker, blank, body')
+  assert.equal(grid.cursor.r, grid.rows.length - 1, 'cursor parks on the last body row')
+  assert.equal(grid.cursor.c, text.length, 'cursor parks at the end of the body')
+  // The turn seam (turn-runner.ts:174-180) writes \n (closes the body row) +
+  // TTY \n (blank row) from the parked cursor, so the emitted user block is
+  // `\n` + marker + `\n\n` + body + `\n\n` — exactly renderHistory's.
+  const liveBlock = `\n${grid.rows.slice(1).join('\n')}\n\n`
+  assert.equal(liveBlock, history.plain(), 'live user block must equal the renderHistory user block')
+})
+
+// Same parity claim for a body that WRAPS: live wraps via wrapSegmentsDetailed
+// (editor), replay wraps via wrapWords (renderHistory). Both must fold the
+// body into identical rows at the same terminal width, or a rebuild/resume
+// re-renders the user line differently from what the live turn showed.
+test('live and replay wrap a long user body into identical rows', () => {
+  const cols = 40
+  const text = 'The quick brown fox jumps over the lazy dog while the world keeps turning without a pause.'
+
+  // Replay side: renderHistory sorts renderHistory's wrapPlain at cols, i.e.
+  // wrapWords(line, cols) — the same function its body passes through.
+  const replayRows = wrapWords(text, cols).join('\n')
+
+  // Live side: computeGrid's submittedMarker branch wraps each body line at
+  // FULL width with wrapSegmentsDetailed, rows collapsed to text.
+  const grid = computeGrid({
+    width: cols,
+    headerRows: [],
+    linePrefix: '❯ ',
+    linePrefixWidth: 2,
+    lines: [text],
+    row: 0,
+    col: text.length,
+    statusText: '',
+    statusColor: undefined,
+    theme: undefined,
+    footerRows: [],
+    inputStyle: undefined,
+    submittedMarker: '❯ You',
+  })
+  const liveBodyRows = grid.rows.slice(3)
+  // wrapWords may return a trailing line of the input unchanged; the editor's
+  // hard-cut/trailing segments should agree row-for-row.
+  assert.deepEqual(liveBodyRows, replayRows.split('\n'), 'body rows must fold identically')
 })
 
 test('compact live streaming and history replay emit the same checkpoint block', () => {

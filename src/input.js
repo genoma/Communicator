@@ -5,7 +5,7 @@ import { DATA_DIR } from './constants.js'
 
 const HISTORY_PATH = join(DATA_DIR, 'history.json')
 
-export async function readInput({ commands, onResizeRepaint, initialValue } = {}) {
+export async function readInput({ commands, onResizeRepaint, initialValue, submitMarker } = {}) {
   const input = process.stdin
   return new Promise((resolve) => {
     let settled = false
@@ -41,6 +41,7 @@ export async function readInput({ commands, onResizeRepaint, initialValue } = {}
       theme: {
         linePrefix: { pending: 'cyan', submitted: 'dim', cancelled: 'dim' },
       },
+      submitMarker,
       suggest: commands
         ? ({ value }) => matchCommands(value, commands)
         : undefined,

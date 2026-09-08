@@ -184,7 +184,7 @@ const ESCAPE_RUN_RE = /\x1b(?:\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]|\][^\x1b]*(?
 // Display-width clip of a styled string that never splits an ANSI escape
 // run: escape sequences measure zero columns, so they are copied whole and
 // only a printable cluster is dropped when the width budget is exhausted.
-function clipToWidth(styled, width) {
+export function clipToWidth(styled, width) {
   let out = ''
   let w = 0
   let i = 0

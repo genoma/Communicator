@@ -115,6 +115,7 @@ function readFromTTY(input, output, prompt, options) {
       helpFooter = true,
       suggest,
       onResizeRepaint,
+      submitMarker = null,
     } = options
     const resolvedLinePrefixOption = linePrefixOption ?? prefixOption
     const themeInputStyle = theme?.input
@@ -184,6 +185,11 @@ function readFromTTY(input, output, prompt, options) {
     }
 
     let grid = null
+    // Marker for the in-flight submit repaint: set by submit() before the
+    // fitsOnScreen check and the submit paint, null while typing (the pending
+    // `❯ <text>` form never carries a marker). The caller's predicate decides
+    // (null keeps the classic dim submitted line, e.g. commands/empty submit).
+    let submitMarkerValue = null
     const computeGridFn = (opts = {}) => {
       updateSuggestionSession(model)
       grid = computeGrid({
@@ -199,6 +205,7 @@ function readFromTTY(input, output, prompt, options) {
         theme,
         footerRows: opts.noFooter ? [] : footerRows(),
         inputStyle: themeInputStyle,
+        submittedMarker: submitMarkerValue,
       })
       return grid
     }
@@ -246,7 +253,11 @@ function readFromTTY(input, output, prompt, options) {
       }
       if (mode === 'submit') {
         if (view.shadow && !view.windowed && fitsOnScreen(g)) {
-          paintSubmit(output, g)
+          // The marker form parks the submitted grid's cursor at the body end
+          // (a row BELOW the pending cursor row), so the rewind must use the
+          // row the physical cursor really sits on — the previous grid's — or
+          // paintSubmit climbs above the block and erases the wrong region.
+          paintSubmit(output, g, view.shadow?.cursor?.r ?? g.cursor.r)
           setShadow(g)
         }
         return
@@ -525,6 +536,10 @@ function readFromTTY(input, output, prompt, options) {
     function submit() {
       if (!active) return
       const result = model.lines.join('\n')
+      // The submitted line becomes the user marker block only when the caller
+      // opts in (predicate returns a styled marker for this value); commands
+      // and empty submits keep the classic dim `❯ <text>` line.
+      submitMarkerValue = submitMarker ? submitMarker(result) : null
       model.visualState = 'submitted'
       if (!view.windowed && fitsOnScreen(computeGridFn())) {
         repaintMode('submit')
