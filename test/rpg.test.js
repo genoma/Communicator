@@ -524,6 +524,7 @@ test('--rpg without --resume starts fresh and announces the single saved story',
   assert.equal(exitCode, 1)
   assert.ok(logs.every((line) => !line.includes('Resumed RPG conversation')))
   assert.ok(errors.every((line) => !line.includes('Resumed RPG conversation')))
+  assert.ok(logs.every((line) => !line.includes('Starting a new story')))
   assert.ok(errors.some((line) => line.includes(`Starting a new story in ${dir} (1 earlier session available; use --rpg ${dir} --resume to continue one).`)))
   assert.ok(warnings.every((line) => !line.includes('will be replaced on save')))
   assert.ok(errors.some((line) => line.includes('OPENROUTER_API_KEY environment variable is not set.')))
@@ -547,6 +548,12 @@ test('--rpg without --resume counts every earlier chapter session', async (t) =>
   })
   await writeFile(join(sessionsDir, '2026-01-01T00-00-00.json'), payload('2026-01-01', 'first'))
   await writeFile(join(sessionsDir, '2026-01-02T00-00-00.json'), payload('2026-01-02', 'second'))
+  // A legacy history.json alongside the chapters must not be double-counted:
+  // the chapters win, so the count stays 2, not 3.
+  await saveRpgHistory(dir, [
+    { role: 'assistant', content: 'The gate creaks open.' },
+    { role: 'user', content: 'I step through.' },
+  ])
 
   const logs = []
   const errors = []
@@ -598,6 +605,7 @@ test('--rpg without --resume counts every earlier chapter session', async (t) =>
 
   await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal)
   assert.equal(exitCode, 1)
+  assert.ok(logs.every((line) => !line.includes('Starting a new story')))
   assert.ok(errors.some((line) => line.includes(`Starting a new story in ${dir} (2 earlier sessions available; use --rpg ${dir} --resume to continue one).`)))
 })
 

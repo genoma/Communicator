@@ -104,6 +104,8 @@ async function main(opts, promptArg) {
       // fresh start never destroys an earlier one. Count what is available to
       // resume: chapter sessions take precedence, and a legacy dir that only
       // has history.json still has one earlier story.
+      // Piped stdout must stay pure content (one-shot): send the notice to
+      // stderr there, like the artifact lines do.
       const { listSessions } = await import('./sessions.js')
       const chapters = await listSessions(rpgSessionsDir(rpgContext.dir))
       const available = chapters.length > 0 ? chapters.length : (rpgContext.history?.length > 0 ? 1 : 0)
