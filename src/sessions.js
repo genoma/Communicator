@@ -86,7 +86,7 @@ export function generateTitle(messages) {
   return collapsed.length > 50 ? collapsed.slice(0, 50) + '...' : collapsed
 }
 
-export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, topP, budget, webSearch, webResults, pricing, contextLength, supportsReasoning, reasoningMandatory = false, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, isImageModel = false, e2ee = false, scrapes = 0, createdAt, updatedAt, costSummary = null }) {
+export function buildSessionPayload({ messages, modelId, endpointProviderName, providerType, reasoningEffort, temperature, topP, budget, webSearch, webResults, pricing, contextLength, supportsReasoning, reasoningMandatory = false, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, isImageModel = false, e2ee = false, scrapes = 0, createdAt, updatedAt, costSummary = null }, rpg = {}) {
   return {
     model: modelId,
     providerName: endpointProviderName,
@@ -109,6 +109,14 @@ export function buildSessionPayload({ messages, modelId, endpointProviderName, p
     e2ee,
     scrapes,
     costSummary: costSummary ?? null,
+    // RPG chapter identity: the story directory (and speaker names / opening
+    // message snapshot) so a resumed chapter can recover its markers and story
+    // even when it is resumed outside the usual --rpg flow. Null for plain
+    // sessions.
+    rpgDir: rpg.rpgDir ?? null,
+    rpgCharName: rpg.rpgCharName ?? null,
+    rpgUserName: rpg.rpgUserName ?? null,
+    rpgFirstMessage: rpg.rpgFirstMessage ?? null,
     createdAt: createdAt || new Date().toISOString(),
     // Carried by ChatState (and the image REPL): stamped only when new turn
     // content was added, never by an unchanged resume.

@@ -1,5 +1,4 @@
 import { getProvider } from '../providers/index.js'
-import { resolveWebSearchFlag, resolveBudget, resolveWebResultsFlag, resolvePrefOrNull } from '../flags.js'
 import { DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { scrapeMessage } from '../scrape.js'
 import { CliError } from '../errors.js'
@@ -7,8 +6,8 @@ import { startChat } from '../chat.js'
 import { createNewSession } from '../sessions.js'
 import { ensureRpgSessionsDir } from '../rpg.js'
 import { resumeCmd } from './resume.js'
-import { getApiKey, syncPreferenceUpdates } from '../config.js'
-import { resolveSessionFlags, persistSession, buildSessionContext } from '../session-setup.js'
+import { getApiKey } from '../config.js'
+import { resolveSessionFlags, persistSession, buildSessionContext, resumeSessionContext } from '../session-setup.js'
 import { findImageModel } from '../model-selection.js'
 import { startImageSession } from './image-session.js'
 
@@ -19,8 +18,16 @@ function imageSessionContext({ provider, apiKey, prefs, imageModelId, sessionId,
 async function createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, scraped = null, modelsPromise = null, rpgResume = null }) {
   const { forcedEffort, forcedTemperature, forcedTopP, forcedBudget, budget, forcedWebResults, smoothSpeed, compactThinking, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
-  if (opts.resume !== undefined && opts.rpg === undefined) {
-    const result = await resumeCmd(opts.resume)
+  if (opts.resume !== undefined && (opts.rpg === undefined || rpgResume)) {
+    const result = opts.rpg === undefined
+      ? await resumeCmd(opts.resume)
+      : {
+          ...rpgResume,
+          initialMessages: [
+            { role: 'system', content: systemPrompt || DEFAULT_SYSTEM_PROMPT },
+            ...rpgResume.turns,
+          ],
+        }
     if (!result) process.exit(0)
 
     // E2EE sessions never silently degrade: an encrypted session may only be
@@ -57,45 +64,46 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
       })
     }
 
-    // persisted 'auto' or a missing field (legacy files) means "model
-    // default"; a stored null means an explicit "off" and stays null.
-    const resumedEffort =
-      result.reasoningEffort === 'auto' || result.reasoningEffort === undefined
-        ? undefined
-        : (result.reasoningEffort ?? null)
-    // "default" flags: unset for this run and clear the persisted per-model value.
-    if (forcedTemperature === null) {
-      syncPreferenceUpdates(prefs, { modelId: result.modelId, temperature: null })
-    }
-    if (forcedTopP === null) {
-      syncPreferenceUpdates(prefs, { modelId: result.modelId, topP: null })
-    }
+    // Settings precedence is shared with the one-shot resume path: flags win,
+    // then the per-model prefs, then the persisted session snapshot.
+    const { selection, reasoningEffort, temperature, topP, budget, webSearch, webSearchExplicit, webResults } = await resumeSessionContext({
+      result,
+      opts,
+      prefs,
+      forcedEffort,
+      forcedTemperature,
+      forcedTopP,
+      forcedBudget,
+      forcedWebResults,
+      provider,
+      apiKey,
+      zdr,
+      e2ee,
+      modelsPromise,
+    })
     return {
-      modelId: result.modelId,
-      endpointProviderName: result.providerName,
-      reasoningEffort: forcedEffort !== undefined ? forcedEffort : resumedEffort,
-      temperature: forcedTemperature === null ? undefined : (forcedTemperature ?? result.temperature),
-      topP: forcedTopP === null ? undefined : (forcedTopP ?? result.topP),
-      budget: forcedBudget ?? resolvePrefOrNull(resolveBudget, result.budget) ?? null,
-      webSearch: e2ee ? 'off' : resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: prefs.webSearch?.[result.modelId] ?? (result.webSearchSnapshot != null ? result.webSearch : undefined) }),
-      // The per-model pref wins over a session snapshot (which may be a stale
-      // default 'off' written by an older version); the snapshot is only a
-      // fallback when the pref has never been set for that model.
-      webSearchExplicit: !e2ee && (opts.webSearch !== undefined || forcedWebResults != null),
-      webResults: e2ee ? null : forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), result.webResults) ?? null,
+      modelId: selection.modelId,
+      endpointProviderName: selection.endpointProviderName,
+      reasoningEffort,
+      temperature,
+      topP,
+      budget,
+      webSearch,
+      webSearchExplicit,
+      webResults,
       zdr,
       e2ee,
       smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
       smoothSpeed,
       compactThinking,
-      pricing: result.pricing,
-      contextLength: result.contextLength,
-      supportsReasoning: result.supportsReasoning,
-      reasoningMandatory: result.reasoningMandatory === true,
-      webSearchSupported: result.webSearchSupported,
-      visionSupported: result.visionSupported,
-      fileSupported: result.fileSupported,
-      imageOutputSupported: result.imageOutputSupported,
+      pricing: selection.pricing,
+      contextLength: selection.contextLength,
+      supportsReasoning: selection.supportsReasoning,
+      reasoningMandatory: selection.reasoningMandatory,
+      webSearchSupported: selection.webSearchSupported,
+      visionSupported: selection.visionSupported,
+      fileSupported: selection.fileSupported,
+      imageOutputSupported: selection.imageOutputSupported,
       initialMessages: result.initialMessages,
       sessionId: result.sessionId,
       sessionCreatedAt: result.sessionCreatedAt,
@@ -108,6 +116,14 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
       // and the session file permanently loses the scrape history.
       scrapes: result.scrapes ?? 0,
       resumeCostSummary: result.costSummary,
+      // RPG chapter identity: the story directory and speaker/opening
+      // snapshot so markers, saves and /new survive every resume path. The
+      // live story files win over the persisted snapshot (edits apply).
+      rpgDir: result.rpgDir ?? opts.rpg ?? null,
+      rpgCharName: rpgCharName ?? result.rpgCharName ?? null,
+      rpgUserName: rpgUserName ?? result.rpgUserName ?? null,
+      rpgFirstMessage: rpgFirstMessage ?? result.rpgFirstMessage ?? null,
+      rpgPostHistoryInstruction,
     }
   }
 
@@ -127,20 +143,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     modelsPromise,
   })
 
-  // A resumed RPG chapter continues its own session file; everything else
-  // claims a fresh session id (in the RPG sessions dir when --rpg is set).
-  let sessionId
-  let createdAt
-  let sessionUpdatedAt = null
-  if (rpgResume) {
-    sessionId = rpgResume.sessionId
-    createdAt = rpgResume.createdAt ?? new Date().toISOString()
-    sessionUpdatedAt = rpgResume.updatedAt ?? null
-  } else {
-    const created = await createNewSession(opts.rpg !== undefined ? await ensureRpgSessionsDir(opts.rpg) : null)
-    sessionId = created.sessionId
-    createdAt = created.createdAt
-  }
+  const { sessionId, createdAt } = await createNewSession(opts.rpg !== undefined ? await ensureRpgSessionsDir(opts.rpg) : null)
 
   if (selection.isImageModel === true) {
     return imageSessionContext({
@@ -185,7 +188,6 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     modelReasoning: selection.modelReasoning,
     sessionId,
     sessionCreatedAt: createdAt,
-    sessionUpdatedAt,
     // A launch-time --scrape injects its page as the first user turn so it
     // persists in the session like any other message; the flat cost rides on
     // the scrapes counter (chat.js seeds the tracker from it once).
@@ -244,7 +246,7 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
     compactThinking: ctx.compactThinking,
     scrapes: ctx.scrapes,
     resumeCostSummary: ctx.resumeCostSummary,
-    rpgDir: opts.rpg,
+    rpgDir: ctx.rpgDir ?? opts.rpg,
     rpgDebug: opts.debug === true,
     rpgPostHistoryInstruction: ctx.rpgPostHistoryInstruction ?? null,
     rpgFirstMessage: ctx.rpgFirstMessage ?? null,
@@ -253,7 +255,7 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
     prefs,
     configPath: opts.config,
   })
-  await persistSession({ finalState, prefs, config: opts.config, rpgDir: opts.rpg })
+  await persistSession({ finalState, prefs, config: opts.config, rpgDir: ctx.rpgDir ?? opts.rpg, rpgCharName: ctx.rpgCharName, rpgUserName: ctx.rpgUserName, rpgFirstMessage: ctx.rpgFirstMessage })
 }
 
 export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, providerType, scraped = null, modelsPromise = null, rpgResume = null }) {

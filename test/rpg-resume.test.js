@@ -27,6 +27,24 @@ function chapterPayload(id, { text, updatedAt } = {}) {
   return {
     model: 'org/model',
     providerName: 'openrouter',
+    providerType: 'openrouter',
+    reasoningEffort: 'high',
+    temperature: 0.9,
+    topP: 0.8,
+    budget: 5,
+    webSearch: 'auto',
+    webResults: null,
+    pricing: { prompt: 0.000001, completion: 0.000002 },
+    contextLength: 128000,
+    supportsReasoning: true,
+    reasoningMandatory: false,
+    webSearchSupported: true,
+    visionSupported: true,
+    fileSupported: true,
+    imageOutputSupported: false,
+    e2ee: false,
+    scrapes: 0,
+    costSummary: null,
     createdAt: `${id}T08:00:00.000Z`,
     updatedAt: updatedAt ?? `${id}T09:00:00.000Z`,
     messages: [
@@ -49,8 +67,16 @@ test('resolveRpgResume auto-resumes the only chapter and strips the system messa
 
   const resumed = await resolveRpgResume(dir)
   assert.equal(resumed.sessionId, '2026-01-01T00-00-00')
-  assert.equal(resumed.createdAt, '2026-01-01T08:00:00.000Z')
-  assert.equal(resumed.updatedAt, '2026-01-01T09:00:00.000Z')
+  assert.equal(resumed.sessionCreatedAt, '2026-01-01T08:00:00.000Z')
+  assert.equal(resumed.sessionUpdatedAt, '2026-01-01T09:00:00.000Z')
+  assert.equal(resumed.modelId, 'org/model')
+  assert.equal(resumed.temperature, 0.9)
+  assert.equal(resumed.topP, 0.8)
+  assert.equal(resumed.reasoningEffort, 'high')
+  assert.equal(resumed.budget, 5)
+  assert.equal(resumed.webSearch, 'auto')
+  assert.equal(resumed.e2ee, false)
+  assert.equal(resumed.rpgDir, dir)
   assert.deepEqual(resumed.turns, [
     { role: 'user', content: 'user msg 2026-01-01' },
     { role: 'assistant', content: 'assistant msg 2026-01-01' },

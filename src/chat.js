@@ -270,7 +270,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
       // right before writing, so the session file and sidecar carry a durable
       // summary (the resume path reads it / falls back to replay).
       state.costSummary = trackerCostSummary(sessionState.tracker)
-      await saveSessionFile(state.sessionId, buildSessionPayload(state.toFinalState(provider.meta.name)))
+      await saveSessionFile(state.sessionId, buildSessionPayload(state.toFinalState(provider.meta.name), { rpgDir, rpgCharName, rpgUserName, rpgFirstMessage }))
       if (rpgDir) {
         await saveRpgHistory(rpgDir, state.messages)
       }

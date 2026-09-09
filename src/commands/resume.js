@@ -1,12 +1,9 @@
 import { ensureSessionsDir, resolveSessionInteractive, loadSession } from '../sessions.js'
 import { normalizeWebSearchMode } from '../flags.js'
 
-export async function resumeCmd(partialId) {
-  const dir = await ensureSessionsDir()
-  const matchedId = await resolveSessionInteractive(dir, partialId, { message: 'Select a session to resume' })
-  if (!matchedId) return null
-
-  const sessionData = await loadSession(dir, matchedId)
+// Maps a loaded session file to the resume shape the chat/one-shot flows
+// consume (settings, identity, messages). Rpg chapter resume shares it.
+export function sessionToResumeResult(sessionData, matchedId) {
   return {
     modelId: sessionData.model,
     providerName: sessionData.providerName || null,
@@ -39,4 +36,13 @@ export async function resumeCmd(partialId) {
     sessionCreatedAt: sessionData.createdAt,
     sessionUpdatedAt: sessionData.updatedAt ?? null,
   }
+}
+
+export async function resumeCmd(partialId) {
+  const dir = await ensureSessionsDir()
+  const matchedId = await resolveSessionInteractive(dir, partialId, { message: 'Select a session to resume' })
+  if (!matchedId) return null
+
+  const sessionData = await loadSession(dir, matchedId)
+  return sessionToResumeResult(sessionData, matchedId)
 }

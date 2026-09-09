@@ -89,7 +89,7 @@ test('rpg session files are written to <rpgdir>/sessions/ and not the global ses
   const { dir, sessionId } = await createNewSession(await ensureRpgSessionsDir(story))
   assert.equal(dir, rpgSessionsDir(story))
 
-  await runChatSession(baseCtx(provider, { rpgDir: story, sessionId, createdAt: new Date().toISOString() }), makeDeps())
+  await runChatSession(baseCtx(provider, { rpgDir: story, rpgCharName: 'Kael', rpgUserName: 'Riv', sessionId, createdAt: new Date().toISOString() }), makeDeps())
 
   // The session file and sidecar land in the RPG folder's sessions subdir.
   const stored = await readFile(join(dir, `${sessionId}.json`), 'utf8')
@@ -108,10 +108,12 @@ test('rpg session files are written to <rpgdir>/sessions/ and not the global ses
   assert.equal(loaded.model, 'org/model')
   assert.ok(Array.isArray(loaded.messages) && loaded.messages.length >= 3)
 
-  // M1 does not add RPG-specific fields to the payload.
-  assert.equal('rpgDir' in loaded, false)
-  assert.equal('rpgCharName' in loaded, false)
-  assert.equal('rpgUserName' in loaded, false)
+  // M4 stores the RPG chapter identity on the payload so any resume path can
+  // recover markers and the story directory.
+  assert.equal(loaded.rpgDir, story)
+  assert.equal(loaded.rpgCharName, 'Kael')
+  assert.equal(loaded.rpgUserName, 'Riv')
+  assert.equal(loaded.rpgFirstMessage, null)
 })
 
 test('rpg session attachments are stored under <rpgdir>/sessions/attachments/', async (t) => {

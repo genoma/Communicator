@@ -9,16 +9,20 @@ import { CliError, formatError, isExitPromptError } from '../errors.js'
 import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { loadAttachments, buildContent } from '../attachments.js'
 import { resolveArtifacts, printArtifactsSummary } from '../artifacts.js'
-import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
+import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext, resumeSessionContext } from '../session-setup.js'
 import { saveRpgHistory, logRpgPrompt, ensureRpgSessionsDir, rpgSessionsDir } from '../rpg.js'
+import { getApiKey } from '../config.js'
 import { createE2eeSession } from '../e2ee.js'
 import { runImageCommand } from './image-gen.js'
 import { connectedBanner, buildStatusLine } from '../status-line.js'
 import { sanitizeAnsi } from '../ui/hyperlink.js'
 import { char } from '../ui/style.js'
 
-export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, rpgCharName = null, providerType, prompt, scraped = null, rpgResume = null }) {
-  const provider = getProvider(providerType)
+export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, rpgCharName = null, rpgUserName = null, providerType, prompt, scraped = null, rpgResume = null }) {
+  // A resumed RPG chapter brings its own provider and key; the run's default
+  // provider only applies to fresh runs.
+  const provider = getProvider(rpgResume?.providerType ?? providerType)
+  const runApiKey = rpgResume ? getApiKey(rpgResume.providerType ?? providerType) : apiKey
   const stdinPiped = !process.stdin.isTTY
 
   let text = prompt
@@ -29,36 +33,51 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     throw new CliError(NO_PROMPT_MESSAGE)
   }
 
-  const { forcedEffort, forcedTemperature, forcedTopP, budget, forcedWebResults, smoothSpeed, compactThinking, zdr, e2ee } = resolveSessionFlags(opts, prefs)
+  const { forcedEffort, forcedTemperature, forcedTopP, forcedBudget, budget, forcedWebResults, smoothSpeed, compactThinking, zdr, e2ee } = resolveSessionFlags(opts, prefs)
+
+  // E2EE chapters never silently degrade, exactly like the chat resume path.
+  if (rpgResume) {
+    if (e2ee && rpgResume.e2ee !== true) {
+      throw new CliError('Error: this session was not created with --e2ee; refusing to resume it unencrypted.')
+    }
+    if (rpgResume.e2ee === true && !e2ee) {
+      throw new CliError('Error: this session was created with --e2ee; resume it with --e2ee to keep it encrypted.')
+    }
+  }
 
   const tracker = new UsageTracker()
 
   let context
   try {
-    context = await buildSessionContext({
-      provider,
-      apiKey,
-      opts,
-      prefs,
-      forcedEffort,
-      forcedTemperature,
-      forcedTopP,
-      forcedWebResults,
-      zdr,
-      e2ee,
-      allowInteractive: !stdinPiped,
-    })
+    context = rpgResume
+      ? await resumeSessionContext({ result: rpgResume, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedBudget, forcedWebResults, provider, apiKey: runApiKey, zdr, e2ee })
+      : await buildSessionContext({
+          provider,
+          apiKey: runApiKey,
+          opts,
+          prefs,
+          forcedEffort,
+          forcedTemperature,
+          forcedTopP,
+          forcedWebResults,
+          zdr,
+          e2ee,
+          allowInteractive: !stdinPiped,
+        })
   } catch (err) {
     if (err instanceof CliError || isExitPromptError(err)) throw err
     fail(`Error: ${formatError(err)}`)
   }
-  const { selection, temperature, topP, webSearch, webSearchExplicit, webResults } = context
+  const { selection, temperature, topP, webSearch, webSearchExplicit, webResults, budget: resumeBudget } = context
+  // A resumed chapter restores its own budget; the prefs default only
+  // applies to fresh runs.
+  const runBudget = resumeBudget ?? budget
 
   if (selection.isImageModel === true) {
     if (opts.attach?.length) {
       throw new CliError('Error: --attach is not supported with image models.')
     }
-    await runImageCommand({ provider, apiKey, opts, prefs, providerType: provider.meta.name, prompt: text, model: selection })
+    await runImageCommand({ provider, apiKey: runApiKey, opts, prefs, providerType: provider.meta.name, prompt: text, model: selection })
     return
   }
 
@@ -74,7 +93,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   // updatedAt is deliberately not carried: the one-shot always adds a turn,
   // so the payload stamps the save time (never an untouched-resume value).
   const { dir, sessionId, createdAt } = rpgResume
-    ? { dir: rpgSessionsDir(opts.rpg), sessionId: rpgResume.sessionId, createdAt: rpgResume.createdAt ?? new Date().toISOString() }
+    ? { dir: rpgSessionsDir(opts.rpg), sessionId: rpgResume.sessionId, createdAt: rpgResume.sessionCreatedAt ?? new Date().toISOString() }
     : await createNewSession(opts.rpg !== undefined ? await ensureRpgSessionsDir(opts.rpg) : null)
   const messages = [
     { role: 'system', content: systemPrompt || DEFAULT_SYSTEM_PROMPT },
@@ -97,7 +116,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   let e2eeContext = null
   if (e2ee) {
     try {
-      e2eeContext = await createE2eeSession({ apiKey, modelId: selection.modelId })
+      e2eeContext = await createE2eeSession({ apiKey: runApiKey, modelId: selection.modelId })
     } catch (err) {
       throw new CliError(`Error: ${formatError(err)}`)
     }
@@ -116,7 +135,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   let result
   try {
     const completionOpts = {
-      apiKey,
+      apiKey: runApiKey,
       model: selection.modelId,
       messages: requestMessages,
       provider: selection.endpointProviderName,
@@ -159,7 +178,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
         webResults,
         zdr,
         e2ee,
-        budget,
+        budget: runBudget,
         smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
         smoothSpeed,
         compactThinking: compactThinking && ttyOut,
@@ -251,8 +270,8 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   if (ttyOut) {
     if (result.usage) {
       tracker.printTurn(result.usage, selection.pricing, selection.contextLength)
-      if (budget != null) {
-        const line = budgetLine(tracker.cost, budget)
+      if (runBudget != null) {
+        const line = budgetLine(tracker.cost, runBudget)
         if (line) console.log(`  ${line}`)
       }
     }
@@ -269,7 +288,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     reasoningEffort: selection.reasoningEffort,
     temperature,
     topP,
-    budget,
+    budget: runBudget,
     webSearch,
     webSearchExplicit,
     webResults,
@@ -287,7 +306,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   state.costSummary = trackerCostSummary(tracker)
   const finalState = state.toFinalState(provider.meta.name)
 
-  await persistSession({ finalState, prefs, config: opts.config, rpgDir: opts.rpg })
+  await persistSession({ finalState, prefs, config: opts.config, rpgDir: opts.rpg, rpgCharName, rpgUserName, rpgFirstMessage })
   if (opts.rpg !== undefined) {
     await saveRpgHistory(opts.rpg, messages)
   }

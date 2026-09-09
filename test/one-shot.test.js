@@ -312,8 +312,19 @@ test('one-shot with --rpg --resume continues the resolved chapter session', asyn
 
   const sessionsDir = await ensureRpgSessionsDir(rpgDir)
   await saveSession(sessionsDir, '2026-01-01T00-00-00', {
-    model: 'test/model',
+    model: 'org/model',
     providerName: 'openrouter',
+    providerType: 'openrouter',
+    reasoningEffort: 'medium',
+    temperature: 0.9,
+    topP: 0.8,
+    budget: 5,
+    webSearch: 'auto',
+    webResults: null,
+    pricing: { prompt: 1e-6, completion: 2e-6 },
+    contextLength: 64000,
+    supportsReasoning: true,
+    webSearchSupported: true,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-02T00:00:00.000Z',
     messages: [
@@ -324,7 +335,7 @@ test('one-shot with --rpg --resume continues the resolved chapter session', asyn
   })
 
   const { exited } = await runOneShot(t, {
-    overrides: { config: file, rpg: rpgDir, resume: true },
+    overrides: { config: file, rpg: rpgDir, resume: true, model: undefined },
     systemPrompt: 'RPG system prompt',
     // cli-main resolves the chapter and passes its turns + identity through.
     rpgHistory: [
@@ -332,13 +343,43 @@ test('one-shot with --rpg --resume continues the resolved chapter session', asyn
       { role: 'assistant', content: 'The gate creaks open.' },
     ],
     rpgResume: {
+      modelId: 'org/model',
+      providerName: 'openrouter',
+      providerType: 'openrouter',
+      reasoningEffort: 'medium',
+      temperature: 0.9,
+      topP: 0.8,
+      budget: 5,
+      webSearch: 'auto',
+      webSearchSnapshot: 'auto',
+      webResults: null,
+      pricing: { prompt: 1e-6, completion: 2e-6 },
+      contextLength: 64000,
+      supportsReasoning: true,
+      reasoningMandatory: false,
+      webSearchSupported: true,
+      visionSupported: false,
+      fileSupported: true,
+      imageOutputSupported: false,
+      isImageModel: false,
+      e2ee: false,
+      scrapes: 0,
+      costSummary: null,
       sessionId: '2026-01-01T00-00-00',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-02T00:00:00.000Z',
+      sessionCreatedAt: '2026-01-01T00:00:00.000Z',
+      sessionUpdatedAt: '2026-01-02T00:00:00.000Z',
+      turns: [
+        { role: 'user', content: 'Hello' },
+        { role: 'assistant', content: 'The gate creaks open.' },
+      ],
+      rpgDir,
     },
   })
 
   assert.equal(exited, false)
+  // No -m and no TTY picker: the chapter's own model is restored.
+  assert.equal(bodies[0].model, 'org/model')
+  assert.equal(bodies[0].temperature, 0.9)
   assert.deepEqual(bodies[0].messages.slice(1, 3), [
     { role: 'user', content: 'Hello' },
     { role: 'assistant', content: 'The gate creaks open.' },

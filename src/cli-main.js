@@ -101,7 +101,7 @@ async function main(opts, promptArg) {
       if (rpgResume) {
         // Piped stdout must stay pure content (one-shot): send the notice to
         // stderr there, like the artifact lines do.
-        const saved = rpgResume.updatedAt ? `, saved ${new Date(rpgResume.updatedAt).toISOString().slice(0, 10)}` : ''
+        const saved = rpgResume.sessionUpdatedAt ? `, saved ${new Date(rpgResume.sessionUpdatedAt).toISOString().slice(0, 10)}` : ''
         const notice = `Resumed RPG conversation from ${rpgContext.dir}/sessions/${rpgResume.sessionId}.json (${rpgResume.turns.length} messages${saved}).`
         if (process.stdin.isTTY) console.log(notice)
         else console.error(notice)
@@ -258,11 +258,15 @@ async function main(opts, promptArg) {
     process.exit(0)
   }
 
-  if (!process.stdin.isTTY && !opts.model) {
+  // A piped run without -m normally needs a TTY for model selection; a
+  // resumed RPG chapter carries its own model, so it is exempt.
+  if (!process.stdin.isTTY && !opts.model && !rpgResume) {
     throw new CliError('Interactive selection needs a TTY. Use -m <model-id> when piping input.')
   }
 
-  const apiKey = getApiKey(providerType)
+  // A resumed RPG chapter brings its own provider, so the key must follow it
+  // (the run's default provider is only for fresh runs).
+  const apiKey = rpgResume ? getApiKey(rpgResume.providerType ?? providerType) : getApiKey(providerType)
   const prefs = await loadPreferences(opts.config)
   const systemPrompt = rpgContext?.systemPrompt ?? await loadSystemPrompt(opts.systemPrompt)
   const rpgFirstMessage = rpgContext?.firstMessage ?? null
@@ -289,7 +293,7 @@ async function main(opts, promptArg) {
 
   if (promptArg || !process.stdin.isTTY) {
     const { oneShotCmd } = await import('./commands/one-shot.js')
-    await oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, rpgCharName, providerType, prompt: promptArg, scraped, rpgResume })
+    await oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, rpgCharName, rpgUserName, providerType, prompt: promptArg, scraped, rpgResume })
     process.exit(0)
   }
 

@@ -76,10 +76,60 @@ export async function buildSessionContext({ provider, apiKey, opts, prefs, force
   }
 }
 
-export async function persistSession({ finalState, prefs, config, rpgDir = null }) {
+// Builds the run settings for a resumed session (normal --resume and RPG
+// chapter resume share this): the payload's model/sampling/provider values
+// win unless the run forces them, mirroring buildSessionContext's precedence
+// for a fresh run. An explicit --model always overrides the payload.
+export async function resumeSessionContext({ result, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedBudget, forcedWebResults, provider, apiKey, zdr, e2ee = false, modelsPromise = null }) {
+  let selection
+  if (opts.model) {
+    selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort, zdr, e2ee, modelsPromise })
+  } else {
+    selection = {
+      modelId: result.modelId,
+      endpointProviderName: result.providerName,
+      pricing: result.pricing,
+      contextLength: result.contextLength,
+      supportsReasoning: result.supportsReasoning,
+      modelReasoning: null,
+      reasoningMandatory: result.reasoningMandatory === true,
+      webSearchSupported: result.webSearchSupported,
+      visionSupported: result.visionSupported,
+      fileSupported: result.fileSupported,
+      imageOutputSupported: result.imageOutputSupported,
+    }
+  }
+  // persisted 'auto' or a missing field (legacy files) means "model
+  // default"; a stored null means an explicit "off" and stays null.
+  const resumedEffort =
+    result.reasoningEffort === 'auto' || result.reasoningEffort === undefined
+      ? undefined
+      : (result.reasoningEffort ?? null)
+  // "default" flags: unset for this run and clear the persisted per-model value.
+  if (forcedTemperature === null) {
+    syncPreferenceUpdates(prefs, { modelId: selection.modelId, temperature: null })
+  }
+  if (forcedTopP === null) {
+    syncPreferenceUpdates(prefs, { modelId: selection.modelId, topP: null })
+  }
+  return {
+    selection,
+    reasoningEffort: forcedEffort !== undefined ? forcedEffort : resumedEffort,
+    temperature: forcedTemperature === null ? undefined : (forcedTemperature ?? result.temperature),
+    topP: forcedTopP === null ? undefined : (forcedTopP ?? result.topP),
+    budget: forcedBudget ?? resolvePrefOrNull(resolveBudget, result.budget) ?? null,
+    webSearch: e2ee ? 'off' : resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: prefs.webSearch?.[selection.modelId] ?? (result.webSearchSnapshot != null ? result.webSearch : undefined) }),
+    webSearchExplicit: !e2ee && (opts.webSearch !== undefined || forcedWebResults != null),
+    // The session's own snapshot is the last fallback, like the prefs above.
+    webResults: e2ee ? null : forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), result.webResults) ?? null,
+  }
+}
+
+export async function persistSession({ finalState, prefs, config, rpgDir = null, rpgCharName = null, rpgUserName = null, rpgFirstMessage = null }) {
   if (finalState.sessionId && finalState.messages && finalState.messages.length > 1) {
-    if (rpgDir) await persistSessionFileTo(rpgSessionsDir(rpgDir), finalState.sessionId, buildSessionPayload(finalState))
-    else await persistSessionFile(finalState.sessionId, buildSessionPayload(finalState))
+    const payload = buildSessionPayload(finalState, { rpgDir, rpgCharName, rpgUserName, rpgFirstMessage })
+    if (rpgDir) await persistSessionFileTo(rpgSessionsDir(rpgDir), finalState.sessionId, payload)
+    else await persistSessionFile(finalState.sessionId, payload)
   }
 
   // prefs save failures are non-fatal: the session already persisted

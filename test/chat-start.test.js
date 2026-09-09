@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { CliError } from '../src/errors.js'
 
 const tempHome = await mkdtemp(join(tmpdir(), 'communicator-home-'))
 after(() => rm(tempHome, { recursive: true, force: true }))
@@ -402,16 +403,43 @@ test('chatStart rpg resume continues the resolved chapter session', async (t) =>
 
   await chatStart({
     apiKey: 'ignored',
-    opts: baseOpts({ rpg: dir, resume: true, model: 'test/model', config: configFile }),
+    opts: baseOpts({ rpg: dir, resume: true, config: configFile }),
     prefs: {},
     systemPrompt: 'You are Kael.',
     providerType: 'openrouter',
     rpgHistory: [{ role: 'user', content: 'Hello' }, { role: 'assistant', content: 'The gate creaks open.' }],
+    // The full resume shape resolveRpgResume returns for a chapter.
     rpgResume: {
+      modelId: 'org/model',
+      providerName: 'ProviderX',
+      providerType: 'openrouter',
+      reasoningEffort: 'low',
+      temperature: 0.9,
+      topP: 0.8,
+      budget: 5,
+      webSearch: 'auto',
+      webSearchSnapshot: 'auto',
+      webResults: null,
+      pricing: { prompt: 1e-6, completion: 2e-6 },
+      contextLength: 128000,
+      supportsReasoning: true,
+      reasoningMandatory: false,
+      webSearchSupported: true,
+      visionSupported: false,
+      fileSupported: true,
+      imageOutputSupported: false,
+      isImageModel: false,
+      e2ee: false,
+      scrapes: 0,
+      costSummary: null,
       sessionId: '2026-01-01T00-00-00',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-02T00:00:00.000Z',
+      sessionCreatedAt: '2026-01-01T00:00:00.000Z',
+      sessionUpdatedAt: '2026-01-02T00:00:00.000Z',
+      turns: [{ role: 'user', content: 'Hello' }, { role: 'assistant', content: 'The gate creaks open.' }],
+      rpgDir: dir,
     },
+    rpgCharName: 'Kael',
+    rpgUserName: 'Riv',
   })
 
   assert.equal(startChatCalls.length, startChatCallsBefore + 1)
@@ -421,11 +449,75 @@ test('chatStart rpg resume continues the resolved chapter session', async (t) =>
   assert.equal(call.opts.createdAt, '2026-01-01T00:00:00.000Z')
   assert.equal(call.opts.updatedAt, '2026-01-02T00:00:00.000Z')
   assert.equal(call.opts.rpgDir, dir)
+  // The chapter's settings are restored (no interactive model selection).
+  assert.equal(call.model, 'org/model')
+  assert.equal(call.endpointProviderName, 'ProviderX')
+  assert.equal(call.reasoningEffort, 'low')
+  assert.equal(call.temperature, 0.9)
+  assert.equal(call.opts.topP, 0.8)
+  assert.equal(call.opts.budget, 5)
+  assert.equal(call.opts.webSearch, 'auto')
+  assert.equal(call.opts.contextLength, 128000)
+  assert.equal(call.opts.visionSupported, false)
+  // The story's speaker names ride the resumed run so markers survive.
+  assert.equal(call.opts.rpgCharName, 'Kael')
+  assert.equal(call.opts.rpgUserName, 'Riv')
   assert.deepEqual(call.opts.initialMessages, [
     { role: 'system', content: 'You are Kael.' },
     { role: 'user', content: 'Hello' },
     { role: 'assistant', content: 'The gate creaks open.' },
   ])
+})
+
+test('chatStart refuses an e2ee mismatch when resuming an RPG chapter', async (t) => {
+  resumeResult = null
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const configFile = await tempConfig(t)
+
+  await assert.rejects(
+    chatStart({
+      apiKey: 'ignored',
+      opts: baseOpts({ rpg: dir, resume: true, e2ee: true, config: configFile }),
+      prefs: {},
+      systemPrompt: 'You are Kael.',
+      providerType: 'openrouter',
+      rpgResume: {
+        modelId: 'org/model',
+        providerName: 'openrouter',
+        providerType: 'openrouter',
+        e2ee: false,
+        sessionId: '2026-01-01T00-00-00',
+        sessionCreatedAt: '2026-01-01T00:00:00.000Z',
+        sessionUpdatedAt: null,
+        turns: [{ role: 'user', content: 'Hello' }],
+        rpgDir: dir,
+      },
+    }),
+    (err) => err instanceof CliError && /not created with --e2ee/.test(err.message)
+  )
+  // The reverse direction must be refused too.
+  await assert.rejects(
+    chatStart({
+      apiKey: 'ignored',
+      opts: baseOpts({ rpg: dir, resume: true, config: configFile }),
+      prefs: {},
+      systemPrompt: 'You are Kael.',
+      providerType: 'openrouter',
+      rpgResume: {
+        modelId: 'org/model',
+        providerName: 'openrouter',
+        providerType: 'openrouter',
+        e2ee: true,
+        sessionId: '2026-01-01T00-00-00',
+        sessionCreatedAt: '2026-01-01T00:00:00.000Z',
+        sessionUpdatedAt: null,
+        turns: [{ role: 'user', content: 'Hello' }],
+        rpgDir: dir,
+      },
+    }),
+    (err) => err instanceof CliError && /created with --e2ee/.test(err.message)
+  )
 })
 
 test('chatStart non-resume branch builds the context from selection and prefs', async (t) => {

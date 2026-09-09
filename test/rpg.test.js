@@ -468,7 +468,7 @@ test('--rpg --resume with a single chapter announces the chapter session', async
   await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal)
   assert.equal(exitCode, 1)
   // The chapter session wins over the legacy history.json story.
-  assert.ok(errors.some((line) => line.includes(`Resumed RPG conversation from ${dir}/sessions/2026-01-01T00-00-00.json (2 messages, saved 2026-01-02)`)))
+  assert.ok(errors.some((line) => line.includes(`Resumed RPG conversation from ${dir}/sessions/2026-01-01T00-00-00.json (2 messages, saved 2026-01-02)`)), `notice missing; errors: ${JSON.stringify(errors)}`)
   assert.ok(errors.every((line) => !line.includes('history.json')))
   assert.ok(logs.every((line) => !line.includes('Resumed RPG conversation')))
 })
