@@ -163,7 +163,7 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
   }
 
   if (opts.rpg !== undefined && opts.resume !== undefined && opts.resume !== true) {
-    errors.push("Error: --rpg --resume does not take a session id (the story resumes from the RPG directory's history.json).")
+    errors.push("Error: --rpg --resume does not take a session id (the story resumes from the RPG directory's chapter sessions, or its history.json for stories saved before that layout).")
   }
 
   if (opts.scrape !== undefined && opts.provider !== 'venice') {

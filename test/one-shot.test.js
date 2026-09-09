@@ -349,6 +349,10 @@ test('one-shot with --rpg --resume continues the resolved chapter session', asyn
   assert.deepEqual(files, ['2026-01-01T00-00-00.json'])
   const saved = JSON.parse(await readFile(join(sessionsDir, '2026-01-01T00-00-00.json'), 'utf-8'))
   assert.equal(saved.createdAt, '2026-01-01T00:00:00.000Z')
+  // The chapter got new turns, so the payload must stamp the save time, not
+  // the chapter's own updatedAt.
+  assert.notEqual(saved.updatedAt, '2026-01-02T00:00:00.000Z')
+  assert.ok(Date.parse(saved.updatedAt) > Date.parse('2026-01-02T00:00:00.000Z'))
   assert.deepEqual(saved.messages.map((m) => m.role), ['system', 'user', 'assistant', 'user', 'assistant'])
 })
 

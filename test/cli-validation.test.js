@@ -85,7 +85,7 @@ test('--rpg rejects --system-prompt and a session-id --resume', () => {
   )
   assert.deepEqual(
     validateCliFlags(opts({ rpg: '/tmp/rpg', resume: 'x' }), TTY),
-    ["Error: --rpg --resume does not take a session id (the story resumes from the RPG directory's history.json)."]
+    ["Error: --rpg --resume does not take a session id (the story resumes from the RPG directory's chapter sessions, or its history.json for stories saved before that layout)."]
   )
   assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg', resume: true }), TTY), [])
   assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg', resume: true }), NO_TTY), [])
