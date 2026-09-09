@@ -382,6 +382,11 @@ function sourcesText(sources) {
     const link = label && cleanUrl ? hyperlink(cleanUrl, label) : null
     out += `${dim(`[${i + 1}]`)} ${italic(link || label || dim(cleanUrl))}\n`
   })
+  // One blank row below the list — the same spacing the block gets above it —
+  // so the follower (metrics separator, next turn's marker, malformed-chunks
+  // note) never sits glued to the last entry. Shared by live, replay and
+  // one-shot, so live == replay stays byte-identical.
+  out += '\n'
   return out
 }
 

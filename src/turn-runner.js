@@ -282,8 +282,14 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       }
       if (sessionState.stopped) {
         // The post-stream separator already provides the blank row above when
-        // the metrics block printed nothing.
-        if (wroteMetrics) stdout.write('\n\n')
+        // the metrics block printed nothing; when it printed lines it ends
+        // with a bare newline, except the sources block, which owns its own
+        // trailing blank row (only when nothing prints after it — the
+        // skipped-chunks note does). Add the separator only for the bare
+        // endings, or a sources-ending stop gains a doubled gap above
+        // `Stopped`.
+        const metricsEndedWithBlank = (apiResult.sources?.length ?? 0) > 0 && (apiResult.skippedChunks ?? 0) === 0
+        if (wroteMetrics && !metricsEndedWithBlank) stdout.write('\n\n')
         stdout.write(`${dim('Stopped')}\n\n`)
         return await finishStopped(buildPartial(null, apiResult.reasoningMs))
       }

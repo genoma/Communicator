@@ -8,10 +8,12 @@ import { dim } from '../src/ui/style.js'
 let metrics = { emits: false, line: null, entered: false, resolve: null }
 mock.module(new URL('../src/artifacts.js', import.meta.url).href, {
   namedExports: {
-    printPostStreamMetrics: async (_apiResult, { stdout }) => {
+    printPostStreamMetrics: async (apiResult, { stdout }) => {
       metrics.entered = true
       const gate = new Promise((resolve) => { metrics.resolve = resolve })
       await gate
+      if (metrics.sources) apiResult.sources = metrics.sources
+      if (metrics.skippedChunks != null) apiResult.skippedChunks = metrics.skippedChunks
       if (metrics.line != null) stdout.write(metrics.line)
       return metrics.emits
     },
@@ -144,5 +146,54 @@ test('post-metrics Esc stop adds a blank row above the Stopped note when the met
   assert.deepEqual(saves, ['session'])
   assert.equal(state.messages[2].content, 'Hello!')
   assert.deepEqual(writes, ['\n', '\n\n', 'file.txt saved\n', '\n\n', `${dim('Stopped')}\n\n`])
+  assert.equal(produced, true)
+})
+
+test('post-metrics Esc stop with a sources-ending block writes no extra separator above Stopped', async () => {
+  const writes = []
+  metrics = { emits: true, line: '\nSources (1)\n[1] One\n\n', sources: [{ title: 'One', url: 'https://one.example' }], entered: false, resolve: null }
+  const state = fakeState()
+  const sessionState = createSessionState()
+  const { deps, exitCodes, saves } = makeDeps({
+    provider: okProvider(),
+    sessionState,
+    stdout: { write: (s) => writes.push(String(s)) },
+  })
+
+  const turn = runTurn(deps, state)
+  while (!metrics.entered) await new Promise((resolve) => setTimeout(resolve, 0))
+  sessionState.stopped = true
+  metrics.resolve()
+  const produced = await turn
+
+  assert.deepEqual(exitCodes, [])
+  assert.deepEqual(saves, ['session'])
+  // The sources block ends with its own blank row, so the stop note must not
+  // add a second separator (that would triple the gap above Stopped).
+  assert.deepEqual(writes, ['\n', '\n\n', '\nSources (1)\n[1] One\n\n', `${dim('Stopped')}\n\n`])
+  assert.equal(produced, true)
+})
+
+test('post-metrics Esc stop with a skipped-chunks note after sources keeps the separator above Stopped', async () => {
+  const writes = []
+  metrics = { emits: true, line: '\nSources (1)\n[1] One\n\n2 malformed stream chunks skipped\n', sources: [{ title: 'One', url: 'https://one.example' }], skippedChunks: 2, entered: false, resolve: null }
+  const state = fakeState()
+  const sessionState = createSessionState()
+  const { deps, exitCodes, saves } = makeDeps({
+    provider: okProvider(),
+    sessionState,
+    stdout: { write: (s) => writes.push(String(s)) },
+  })
+
+  const turn = runTurn(deps, state)
+  while (!metrics.entered) await new Promise((resolve) => setTimeout(resolve, 0))
+  sessionState.stopped = true
+  metrics.resolve()
+  const produced = await turn
+
+  assert.deepEqual(exitCodes, [])
+  assert.deepEqual(saves, ['session'])
+  // The note ends with a bare newline, so the round-trip needs the separator.
+  assert.deepEqual(writes, ['\n', '\n\n', '\nSources (1)\n[1] One\n\n2 malformed stream chunks skipped\n', '\n\n', `${dim('Stopped')}\n\n`])
   assert.equal(produced, true)
 })

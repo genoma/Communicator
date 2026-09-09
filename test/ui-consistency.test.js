@@ -310,7 +310,7 @@ test('printArtifactsSummary dims the malformed-chunk notice and honors the pipe 
     skippedChunks: 2,
   }
   printArtifactsSummary([], apiResult, stdout)
-  assert.equal(plain(), '\nSources (1)\n[1] S\n2 malformed stream chunks skipped\n')
+  assert.equal(plain(), '\nSources (1)\n[1] S\n\n2 malformed stream chunks skipped\n')
   assert.match(text(), /\x1b\[2m2 malformed stream chunks skipped\x1b\[22m/)
 
   const piped = capture()
@@ -331,7 +331,7 @@ test('printSources numbering is shared by live turns and history replay', (t) =>
   enableAnsi(t)
   const { stdout, plain } = capture()
   printSources([{ title: 'One', url: 'https://one.example' }], stdout)
-  assert.equal(plain(), '\nSources (1)\n[1] One\n')
+  assert.equal(plain(), '\nSources (1)\n[1] One\n\n')
 })
 
 test('padDisplayWidth pads by display columns, not code units', () => {

@@ -35,7 +35,7 @@ test('printSources renders clickable italic links with numbered entries', (t) =>
     { title: 'Mistral deal', url: 'https://msft.example/b' },
   ], stdout)
   const out = text()
-  assert.equal(plain(), '\nSources (2)\n[1] Samsung in talks\n[2] Mistral deal\n')
+  assert.equal(plain(), '\nSources (2)\n[1] Samsung in talks\n[2] Mistral deal\n\n')
   assert.match(out, /\x1b\[2mSources \(2\)\x1b\[22m/)
   assert.match(out, /\x1b\[2m\[1\]\x1b\[22m \x1b\[3m\x1b\]8;;https:\/\/econ\.example\/a\x1b\\Samsung in talks\x1b\]8;;\x1b\\\x1b\[23m/)
   assert.match(out, /\x1b\[2m\[2\]\x1b\[22m \x1b\[3m\x1b\]8;;https:\/\/msft\.example\/b\x1b\\Mistral deal\x1b\]8;;\x1b\\\x1b\[23m/)
@@ -48,7 +48,7 @@ test('printSources falls back to hostname and dimmed italic URL', (t) => {
     { title: null, url: 'https://host.example/x' },
     { title: 'No URL', url: '' },
   ], stdout)
-  assert.equal(plain(), '\nSources (2)\n[1] host.example\n[2] No URL\n')
+  assert.equal(plain(), '\nSources (2)\n[1] host.example\n[2] No URL\n\n')
   const out = text()
   assert.match(out, /\x1b\[2m\[1\]\x1b\[22m \x1b\[3m\x1b\]8;;https:\/\/host\.example\/x\x1b\\host\.example\x1b\]8;;\x1b\\\x1b\[23m/)
 })
