@@ -447,6 +447,137 @@ test('emits end_reasoning before final-only content after streamed reasoning', a
   ])
 })
 
+// Some providers attach reasoning only on the final chunk's `message` object
+// (no reasoning deltas at all; OpenAI-style `reasoning_content` field). The
+// message content closing the block it carries must produce the exact same
+// token sequence as delta-delivered reasoning + final-only content.
+test('captures reasoning delivered only in the final message object (reasoning_content)', async () => {
+  const tokens = []
+  const { fullText, fullReasoning, reasoningMs, lateReasoning } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ message: { reasoning_content: 'deep thought', content: 'Final answer' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t]),
+    null,
+    { requestStartedAt: 1000, now: () => 2000 }
+  )
+  assert.equal(fullText, 'Final answer')
+  assert.equal(fullReasoning, 'deep thought')
+  assert.equal(reasoningMs, 1000)
+  assert.equal(lateReasoning, false)
+  assert.deepEqual(tokens, [
+    ['start_reasoning', '\n'],
+    ['reasoning', 'deep thought'],
+    ['end_reasoning', null],
+    ['content', 'Final answer'],
+  ])
+})
+
+test('captures DeepSeek-family reasoning delivered only in the final message object', async () => {
+  const tokens = []
+  const { fullReasoning, lateReasoning } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ message: { reasoning: 'think hard', content: 'answer' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t])
+  )
+  assert.equal(fullReasoning, 'think hard')
+  assert.equal(lateReasoning, false)
+  assert.deepEqual(tokens, [
+    ['start_reasoning', '\n'],
+    ['reasoning', 'think hard'],
+    ['end_reasoning', null],
+    ['content', 'answer'],
+  ])
+})
+
+// The final message is a snapshot: when reasoning already streamed (early or
+// late), the message copy is a duplicate and must not be added (nor flag
+// late reasoning for an early-delivered stream).
+test('does not duplicate reasoning when the final message repeats streamed reasoning', async () => {
+  const tokens = []
+  const { fullReasoning, lateReasoning } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { reasoning_content: 'streamed' } }] }),
+      event({ choices: [{ delta: { content: 'answer' } }] }),
+      event({ choices: [{ message: { reasoning_content: 'streamed', content: 'answer' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t])
+  )
+  assert.equal(fullReasoning, 'streamed')
+  assert.equal(lateReasoning, false)
+  assert.deepEqual(tokens, [
+    ['start_reasoning', '\n'],
+    ['reasoning', 'streamed'],
+    ['end_reasoning', null],
+    ['content', 'answer'],
+  ])
+})
+
+// A chunk carrying the same reasoning in BOTH delta and message: the message
+// emits first, the same-chunk delta must be skipped (like the content path's
+// finalTextEmitted skip), or the stored reasoning is doubled.
+test('does not double-emit when the final chunk carries reasoning in delta and message', async () => {
+  const tokens = []
+  const { fullReasoning } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { reasoning_content: 'same' }, message: { reasoning_content: 'same', content: 'ok' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t])
+  )
+  assert.equal(fullReasoning, 'same')
+  assert.deepEqual(tokens, [
+    ['start_reasoning', '\n'],
+    ['reasoning', 'same'],
+    ['end_reasoning', null],
+    ['content', 'ok'],
+  ])
+})
+
+// Content streamed first, then the final message carries ONLY reasoning: it
+// is a burst-style late delivery and must join the late-reasoning bridge
+// (buffered, merged at close, flagged) — never re-open the thinking block.
+test('buffers final-message reasoning arriving after streamed content', async () => {
+  const tokens = []
+  const { fullText, fullReasoning, reasoningMs, lateReasoning } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ delta: { content: 'the answer' } }] }),
+      event({ choices: [{ message: { reasoning_content: 'thought after' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t]),
+    null,
+    { requestStartedAt: 1000, now: () => 1600 }
+  )
+  assert.equal(fullText, 'the answer')
+  assert.equal(fullReasoning, 'thought after')
+  assert.equal(reasoningMs, 600)
+  assert.equal(lateReasoning, true)
+  assert.deepEqual(tokens, [['content', 'the answer']])
+})
+
+// A final message with reasoning and no content anywhere (a reasoning-only
+// turn) still closes the block at stream end with the full duration — the
+// same semantics as a reasoning-only delta stream.
+test('closes a final-message-only reasoning block at stream end (no content)', async () => {
+  const tokens = []
+  const { fullReasoning, lateReasoning, reasoningMs } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ message: { reasoning_content: 'only thinking' } }] }),
+    ]),
+    (t, type) => tokens.push([type, t]),
+    null,
+    { requestStartedAt: 5000, now: () => 6000 }
+  )
+  assert.equal(fullReasoning, 'only thinking')
+  assert.equal(lateReasoning, false)
+  assert.equal(reasoningMs, 1000)
+  assert.deepEqual(tokens, [
+    ['start_reasoning', '\n'],
+    ['reasoning', 'only thinking'],
+    ['end_reasoning', null],
+  ])
+})
+
 test('rethrows reader errors with the pending buffer attached', async () => {
   const partial = 'data: {"choices":[{"delta":{"content":"par'
   let first = true
@@ -854,6 +985,40 @@ test('decryptToken mode fails closed on plaintext tokens', async () => {
     ),
     (err) => /unencrypted chunk/.test(err.message)
   )
+
+  // A plaintext final-message reasoning is rejected the same way.
+  await assert.rejects(
+    parseSSEStream(
+      streamReader([event({ choices: [{ message: { reasoning_content: 'think', content: 'x' } }] })]),
+      () => {},
+      null,
+      { decryptToken: () => 'NOPE' }
+    ),
+    (err) => /unencrypted chunk/.test(err.message)
+  )
+})
+
+// The final message object may carry reasoning that never streamed via deltas
+// (a snapshot delivery); in E2EE mode that reasoning is encrypted too and must
+// be decrypted like delta reasoning.
+test('decryptToken option decrypts final message reasoning', async () => {
+  const tokens = []
+  const { fullText, fullReasoning } = await parseSSEStream(
+    streamReader([
+      event({ choices: [{ message: { reasoning_content: ENCRYPTED, content: ENCRYPTED } }] }),
+    ]),
+    (t, type) => tokens.push([type, t]),
+    null,
+    { decryptToken: (hex) => (hex === ENCRYPTED ? 'PLAIN' : hex) }
+  )
+  assert.equal(fullText, 'PLAIN')
+  assert.equal(fullReasoning, 'PLAIN')
+  assert.deepEqual(tokens, [
+    ['start_reasoning', '\n'],
+    ['reasoning', 'PLAIN'],
+    ['end_reasoning', null],
+    ['content', 'PLAIN'],
+  ])
 })
 
 test('a delta carrying reasoning and content emits both', async () => {

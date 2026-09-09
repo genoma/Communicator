@@ -239,6 +239,26 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     onToken(text, 'content')
   }
 
+  // Reasoning text is emitted through this single gate (delta AND final
+  // message delivery): the early/late split — a reasoning chunk arriving
+  // after the first visible content is a burst-mode delivery, buffered for
+  // stream close and never emitted live (the thinking block must not
+  // re-open) — is identical for both delivery shapes.
+  const emitReasoning = (text) => {
+    if (!contentStarted) {
+      fullReasoningParts.push(text)
+      if (!inThinking) {
+        inThinking = true
+        if (reasoningStartedAt === null) reasoningStartedAt = now()
+        onToken('\n', 'start_reasoning')
+      }
+      onToken(text, 'reasoning')
+    } else if (text) {
+      lateReasoningParts.push(text)
+      sawLateReasoning = true
+    }
+  }
+
   let pendingDataLines = []
   const handleDataEvent = (data) => {
     if (data === SSE_DONE) return
@@ -290,6 +310,21 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     if (choice?.finish_reason != null) finishReason = choice.finish_reason
     const delta = choice?.delta
     const finalContent = choice?.message?.content
+    // Some providers attach reasoning only on the final message object (no
+    // reasoning deltas at all). Mirror the content dedup gate below: the
+    // message snapshot duplicates streamed reasoning, so it is collected
+    // only when NOTHING streamed (early or late). It is processed before
+    // the content block (so message content closes the block it opens) and
+    // before the `!delta` early return, which a message-only final chunk
+    // would otherwise hit.
+    const finalReasoning =
+      (typeof choice?.message?.reasoning_content === 'string' ? choice?.message?.reasoning_content : undefined)
+      ?? (typeof choice?.message?.reasoning === 'string' ? choice?.message?.reasoning : undefined)
+    let finalReasoningEmitted = false
+    if (finalReasoning && fullReasoningParts.length === 0 && lateReasoningParts.length === 0) {
+      emitReasoning(maybeDecrypt(finalReasoning))
+      finalReasoningEmitted = true
+    }
 
     // Some providers attach the full message only on the final chunk; its
     // text duplicates what deltas already streamed, so non-text parts are
@@ -319,32 +354,17 @@ export async function parseSSEStream(reader, onToken, onSources = null, { idleTi
     if (!delta) return
 
     const reasoningToken = delta.reasoning_content ?? (typeof delta.reasoning === 'string' ? delta.reasoning : undefined)
-    if (reasoningToken) {
+    if (reasoningToken && !finalReasoningEmitted) {
       // No early return here: providers may deliver `reasoning_content` and
       // `content` in the SAME delta (the transition chunk). Returning would
       // drop the content — and the final-message dedup gate would then
       // discard the full text only when no text was streamed, so the dropped
       // content was never recovered.
-      const text = maybeDecrypt(reasoningToken)
-      // A reasoning delta arriving after content already streamed is a late
-      // burst (OpenRouter web-search delivery can flush reasoning after the
-      // answer started). The live stream already rendered the answer, so it
-      // is buffered (merged into stored reasoning at stream close) but never
-      // emitted through onToken: emitting it here would re-open the thinking
-      // block and print a second `✓ Thinking` + `❯ Answer` cycle at the
-      // bottom of the message.
-      if (!contentStarted) {
-        fullReasoningParts.push(text)
-        if (!inThinking) {
-          inThinking = true
-          if (reasoningStartedAt === null) reasoningStartedAt = now()
-          onToken('\n', 'start_reasoning')
-        }
-        onToken(text, 'reasoning')
-      } else if (text) {
-        lateReasoningParts.push(text)
-        sawLateReasoning = true
-      }
+      // `finalReasoningEmitted` skips a same-chunk delta when the final
+      // message already emitted it (a delta and a message snapshot carrying
+      // the same reasoning on one chunk mirror the content path's
+      // `finalTextEmitted` skip).
+      emitReasoning(maybeDecrypt(reasoningToken))
     }
 
     const contentToken = delta.content
