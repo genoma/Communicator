@@ -2,7 +2,8 @@ import { resolveFlagValues, resolveWebSearchFlag, webSearchGate, resolvePrefOrNu
 import { CliError } from './errors.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from './model-selection.js'
 
-import { persistSessionFile, buildSessionPayload } from './sessions.js'
+import { persistSessionFile, persistSessionFileTo, buildSessionPayload } from './sessions.js'
+import { rpgSessionsDir } from './rpg.js'
 import { savePreferences, savePrefsBestEffort, syncPreferenceUpdates } from './config.js'
 
 export function resolveSessionFlags(opts, prefs) {
@@ -75,9 +76,10 @@ export async function buildSessionContext({ provider, apiKey, opts, prefs, force
   }
 }
 
-export async function persistSession({ finalState, prefs, config }) {
+export async function persistSession({ finalState, prefs, config, rpgDir = null }) {
   if (finalState.sessionId && finalState.messages && finalState.messages.length > 1) {
-    await persistSessionFile(finalState.sessionId, buildSessionPayload(finalState))
+    if (rpgDir) await persistSessionFileTo(rpgSessionsDir(rpgDir), finalState.sessionId, buildSessionPayload(finalState))
+    else await persistSessionFile(finalState.sessionId, buildSessionPayload(finalState))
   }
 
   // prefs save failures are non-fatal: the session already persisted

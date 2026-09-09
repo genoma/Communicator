@@ -10,7 +10,7 @@ import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { loadAttachments, buildContent } from '../attachments.js'
 import { resolveArtifacts, printArtifactsSummary } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
-import { saveRpgHistory, logRpgPrompt } from '../rpg.js'
+import { saveRpgHistory, logRpgPrompt, ensureRpgSessionsDir } from '../rpg.js'
 import { createE2eeSession } from '../e2ee.js'
 import { runImageCommand } from './image-gen.js'
 import { connectedBanner, buildStatusLine } from '../status-line.js'
@@ -69,7 +69,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     attachments.push(...loaded.attachments)
   }
 
-  const { dir, sessionId, createdAt } = await createNewSession()
+  const { dir, sessionId, createdAt } = await createNewSession(opts.rpg !== undefined ? await ensureRpgSessionsDir(opts.rpg) : null)
   const messages = [
     { role: 'system', content: systemPrompt || DEFAULT_SYSTEM_PROMPT },
     ...(rpgHistory ? rpgHistory : rpgFirstMessage ? [{ role: 'assistant', content: rpgFirstMessage }] : []),
@@ -281,7 +281,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   state.costSummary = trackerCostSummary(tracker)
   const finalState = state.toFinalState(provider.meta.name)
 
-  await persistSession({ finalState, prefs, config: opts.config })
+  await persistSession({ finalState, prefs, config: opts.config, rpgDir: opts.rpg })
   if (opts.rpg !== undefined) {
     await saveRpgHistory(opts.rpg, messages)
   }

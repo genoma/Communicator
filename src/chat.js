@@ -8,8 +8,8 @@ import { createStreamRenderer, renderHistory } from './ui/stream.js'
 import { createLoader } from './ui/loader.js'
 import { dim, sep, you, char } from './ui/style.js'
 import { out } from './ui/io.js'
-import { ensureSessionsDir, generateSessionId, persistSessionFile, buildSessionPayload, removeEmptySessionClaim } from './sessions.js'
-import { saveRpgHistory, logRpgPrompt } from './rpg.js'
+import { ensureSessionsDir, generateSessionId, persistSessionFile, persistSessionFileTo, buildSessionPayload, removeEmptySessionClaim } from './sessions.js'
+import { saveRpgHistory, logRpgPrompt, rpgSessionsDir, ensureRpgSessionsDir } from './rpg.js'
 import { savePreferences, syncPreferenceUpdates, savePrefsBestEffort } from './config.js'
 import { copyText } from './clipboard.js'
 import { ChatState } from './chat-state.js'
@@ -101,14 +101,15 @@ export async function runChatSession(ctx = {}, deps = {}) {
     now = null,
   } = deps
 
-  const saveSessionFile = deps.saveSession ?? persistSessionFile
+  const rpgSessionDir = rpgDir ? rpgSessionsDir(rpgDir) : null
+  const saveSessionFile = deps.saveSession ?? ((id, payload) => (rpgSessionDir ? persistSessionFileTo(rpgSessionDir, id, payload) : persistSessionFile(id, payload)))
 
   const savePrefsFile = deps.savePrefs ?? (async (updates) => {
     await savePreferences(syncPreferenceUpdates(prefs, updates), configPath)
   })
 
   const newSessionId = deps.newSessionId ?? (async () => {
-    const dir = await ensureSessionsDir()
+    const dir = rpgSessionDir ? await ensureRpgSessionsDir(rpgDir) : await ensureSessionsDir()
     return generateSessionId(dir)
   })
 
@@ -261,7 +262,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     if (state.messages.length <= 1) {
       // Nothing worth saving: drop the empty claim file generateSessionId
       // created so it does not linger on disk.
-      await removeEmptySessionClaim(SESSIONS_DIR, state.sessionId)
+      await removeEmptySessionClaim(rpgSessionDir ?? SESSIONS_DIR, state.sessionId)
       return
     }
     try {

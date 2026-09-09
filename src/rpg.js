@@ -9,6 +9,21 @@ const RPG_TEMPLATE_MARKER = 'RPG_TEMPLATE'
 const RPG_FIRST_MESSAGE_PLACEHOLDER = 'RPG_FIRST_MESSAGE_TODO'
 const RPG_HISTORY_FILE = 'history.json'
 const RPG_PROMPT_LOG_FILE = 'prompt-log.jsonl'
+const RPG_SESSIONS_SUBDIR = 'sessions'
+
+// Session files for an RPG story live in a subdirectory of the RPG folder,
+// mirroring the global sessions layout (*.json, .index.json, attachments/).
+// Keeping them out of the global SESSIONS_DIR keeps chapters separate from
+// ordinary chats and lets a folder hold many chapters side by side.
+export function rpgSessionsDir(rpgDir) {
+  return join(rpgDir, RPG_SESSIONS_SUBDIR)
+}
+
+export async function ensureRpgSessionsDir(rpgDir) {
+  const dir = rpgSessionsDir(rpgDir)
+  await mkdir(dir, { recursive: true, mode: 0o700 })
+  return dir
+}
 
 const CARD_TEMPLATE = `<!-- RPG_TEMPLATE: delete this comment after filling in this file.
      Fill every section below (rename, remove, or add sections as needed).

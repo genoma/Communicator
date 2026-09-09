@@ -5,6 +5,7 @@ import { scrapeMessage } from '../scrape.js'
 import { CliError } from '../errors.js'
 import { startChat } from '../chat.js'
 import { createNewSession } from '../sessions.js'
+import { ensureRpgSessionsDir } from '../rpg.js'
 import { resumeCmd } from './resume.js'
 import { getApiKey, syncPreferenceUpdates } from '../config.js'
 import { resolveSessionFlags, persistSession, buildSessionContext } from '../session-setup.js'
@@ -126,7 +127,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     modelsPromise,
   })
 
-  const { sessionId, createdAt } = await createNewSession()
+  const { sessionId, createdAt } = await createNewSession(opts.rpg !== undefined ? await ensureRpgSessionsDir(opts.rpg) : null)
 
   if (selection.isImageModel === true) {
     return imageSessionContext({
@@ -238,7 +239,7 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
     prefs,
     configPath: opts.config,
   })
-  await persistSession({ finalState, prefs, config: opts.config })
+  await persistSession({ finalState, prefs, config: opts.config, rpgDir: opts.rpg })
 }
 
 export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, providerType, scraped = null, modelsPromise = null }) {

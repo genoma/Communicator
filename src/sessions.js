@@ -305,7 +305,17 @@ export async function listSessions(dir) {
 
 export async function persistSessionFile(id, payload) {
   try {
-    const dir = await ensureSessionsDir()
+    await persistSessionFileTo(await ensureSessionsDir(), id, payload)
+  } catch {
+    // saveSession already logs its own warnings; a mkdir failure must stay
+    // best-effort too, exactly as before.
+  }
+}
+
+// Same as persistSessionFile but for an explicit sessions directory (RPG
+// chapters keep their own session store in <rpgdir>/sessions/).
+export async function persistSessionFileTo(dir, id, payload) {
+  try {
     await saveSession(dir, id, payload)
   } catch {
     // saveSession already logs its own warnings

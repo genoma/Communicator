@@ -332,10 +332,14 @@ test('one-shot appends the RPG post-history instruction after the user message w
     'Hello world',
   ])
 
-  const created = (await readdir(sessionsDir))
-    .filter((f) => f.endsWith('.json') && !f.startsWith('.') && !before.has(f))
+  // RPG chapters keep their own session store in the RPG folder; the global
+  // sessions dir must not receive them.
+  const rpgSessionsDir = join(rpgDir, 'sessions')
+  const created = (await readdir(rpgSessionsDir))
+    .filter((f) => f.endsWith('.json') && !f.startsWith('.'))
   assert.equal(created.length, 1)
-  const saved = JSON.parse(await readFile(join(sessionsDir, created[0]), 'utf-8'))
+  assert.equal(await readdir(sessionsDir).then((f) => f.filter((x) => x.endsWith('.json') && !x.startsWith('.') && !before.has(x)).length).catch(() => 0), 0)
+  const saved = JSON.parse(await readFile(join(rpgSessionsDir, created[0]), 'utf-8'))
   assert.deepEqual(saved.messages.map((m) => m.role), ['system', 'assistant', 'user', 'assistant'])
   assert.ok(!saved.messages.some((m) => m.role === 'system' && m.content === 'Stay in character.'))
 })

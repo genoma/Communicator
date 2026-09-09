@@ -14,6 +14,7 @@ mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 mock.module('node:fs/promises', {
   namedExports: {
     access: realFs.access,
+    appendFile: realFs.appendFile,
     copyFile: realFs.copyFile,
     mkdir: realFs.mkdir,
     readdir: realFs.readdir,
