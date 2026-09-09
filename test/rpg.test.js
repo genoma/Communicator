@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CliError } from '../src/errors.js'
@@ -462,7 +462,7 @@ test('--rpg --resume with a saved history announces the resumed conversation', a
   assert.ok(errors.some((line) => line.includes('OPENROUTER_API_KEY environment variable is not set.')))
 })
 
-test('--rpg without --resume starts fresh and warns that the saved story will be replaced', async (t) => {
+test('--rpg without --resume starts fresh and announces the single saved story', async (t) => {
   const dir = await tempDir(t)
   await writeFilled(dir)
   await saveRpgHistory(dir, [
@@ -524,6 +524,134 @@ test('--rpg without --resume starts fresh and warns that the saved story will be
   assert.equal(exitCode, 1)
   assert.ok(logs.every((line) => !line.includes('Resumed RPG conversation')))
   assert.ok(errors.every((line) => !line.includes('Resumed RPG conversation')))
-  assert.ok(warnings.some((line) => line.includes(`Warning: starting a new story — ${dir}/history.json (2 messages) will be replaced on save. Continue it with --rpg ${dir} --resume.`)))
+  assert.ok(errors.some((line) => line.includes(`Starting a new story in ${dir} (1 earlier session available; use --rpg ${dir} --resume to continue one).`)))
+  assert.ok(warnings.every((line) => !line.includes('will be replaced on save')))
   assert.ok(errors.some((line) => line.includes('OPENROUTER_API_KEY environment variable is not set.')))
+})
+
+test('--rpg without --resume counts every earlier chapter session', async (t) => {
+  const dir = await tempDir(t)
+  await writeFilled(dir)
+  const sessionsDir = join(dir, 'sessions')
+  await mkdir(sessionsDir, { recursive: true })
+  const payload = (id, text) => JSON.stringify({
+    model: 'test/model',
+    providerName: 'openrouter',
+    createdAt: `${id}T00:00:00.000Z`,
+    updatedAt: `${id}T00:00:01.000Z`,
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: text },
+      { role: 'assistant', content: 'A reply.' },
+    ],
+  })
+  await writeFile(join(sessionsDir, '2026-01-01T00-00-00.json'), payload('2026-01-01', 'first'))
+  await writeFile(join(sessionsDir, '2026-01-02T00-00-00.json'), payload('2026-01-02', 'second'))
+
+  const logs = []
+  const errors = []
+  const previousKey = process.env.OPENROUTER_API_KEY
+  delete process.env.OPENROUTER_API_KEY
+  t.after(() => {
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY
+    else process.env.OPENROUTER_API_KEY = previousKey
+  })
+  t.mock.method(console, 'log', (msg) => logs.push(String(msg)))
+  t.mock.method(console, 'error', (msg) => errors.push(String(msg)))
+  let exitCode = null
+  t.mock.method(process, 'exit', (code) => {
+    exitCode = code
+    throw new ExitSignal(code)
+  })
+
+  const { runCli } = await import(`../src/cli-main.js?t=${Date.now()}`)
+  const opts = {
+    model: 'test/model',
+    provider: 'openrouter',
+    listModels: undefined,
+    listImageModels: undefined,
+    listEndpoints: undefined,
+    resume: undefined,
+    export: undefined,
+    outputDir: undefined,
+    listSessions: undefined,
+    config: undefined,
+    systemPrompt: undefined,
+    rpg: dir,
+    reasoningEffort: undefined,
+    temperature: undefined,
+    budget: undefined,
+    webSearch: undefined,
+    webResults: undefined,
+    smoothStreaming: true,
+    smoothSpeed: undefined,
+    zdr: undefined,
+    e2ee: undefined,
+    image: undefined,
+    imageModel: undefined,
+    safeMode: true,
+    watermark: true,
+    delete: undefined,
+    deleteAllSessions: undefined,
+    attach: [],
+  }
+
+  await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal)
+  assert.equal(exitCode, 1)
+  assert.ok(errors.some((line) => line.includes(`Starting a new story in ${dir} (2 earlier sessions available; use --rpg ${dir} --resume to continue one).`)))
+})
+
+test('--rpg without --resume stays silent when nothing was saved yet', async (t) => {
+  const dir = await tempDir(t)
+  await writeFilled(dir)
+
+  const errors = []
+  const previousKey = process.env.OPENROUTER_API_KEY
+  delete process.env.OPENROUTER_API_KEY
+  t.after(() => {
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY
+    else process.env.OPENROUTER_API_KEY = previousKey
+  })
+  t.mock.method(console, 'error', (msg) => errors.push(String(msg)))
+  let exitCode = null
+  t.mock.method(process, 'exit', (code) => {
+    exitCode = code
+    throw new ExitSignal(code)
+  })
+
+  const { runCli } = await import(`../src/cli-main.js?t=${Date.now()}`)
+  const opts = {
+    model: 'test/model',
+    provider: 'openrouter',
+    listModels: undefined,
+    listImageModels: undefined,
+    listEndpoints: undefined,
+    resume: undefined,
+    export: undefined,
+    outputDir: undefined,
+    listSessions: undefined,
+    config: undefined,
+    systemPrompt: undefined,
+    rpg: dir,
+    reasoningEffort: undefined,
+    temperature: undefined,
+    budget: undefined,
+    webSearch: undefined,
+    webResults: undefined,
+    smoothStreaming: true,
+    smoothSpeed: undefined,
+    zdr: undefined,
+    e2ee: undefined,
+    image: undefined,
+    imageModel: undefined,
+    safeMode: true,
+    watermark: true,
+    delete: undefined,
+    deleteAllSessions: undefined,
+    attach: [],
+  }
+
+  await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal)
+  assert.equal(exitCode, 1)
+  assert.ok(errors.every((line) => !line.includes('Starting a new story')))
 })

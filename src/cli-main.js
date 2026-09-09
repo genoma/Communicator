@@ -8,7 +8,7 @@ import { resolveFlagOrExit, fail } from './cli-utils.js'
 import { isConfigSetter, isPureConfigSetter, hasConfigSetterFlags, validateCliFlags } from './cli-validation.js'
 import { parseScrapeUrl, scrapeContext } from './scrape.js'
 import { seedModelFetch } from './model-selection.js'
-import { loadRpgContext } from './rpg.js'
+import { loadRpgContext, rpgSessionsDir } from './rpg.js'
 
 // Command modules are loaded lazily at their dispatch points: markdown-it and
 // the inquirer pickers live behind one-shot/image/list/export/delete/config
@@ -99,8 +99,19 @@ async function main(opts, promptArg) {
         if (process.stdin.isTTY) console.log(notice)
         else console.error(notice)
       }
-    } else if (rpgContext.history?.length > 0) {
-      console.warn(`Warning: starting a new story — ${rpgContext.dir}/history.json (${rpgContext.history.length} messages) will be replaced on save. Continue it with --rpg ${rpgContext.dir} --resume.`)
+    } else {
+      // Every run saves its own chapter session under <dir>/sessions/, so a
+      // fresh start never destroys an earlier one. Count what is available to
+      // resume: chapter sessions take precedence, and a legacy dir that only
+      // has history.json still has one earlier story.
+      const { listSessions } = await import('./sessions.js')
+      const chapters = await listSessions(rpgSessionsDir(rpgContext.dir))
+      const available = chapters.length > 0 ? chapters.length : (rpgContext.history?.length > 0 ? 1 : 0)
+      if (available > 0) {
+        const notice = `Starting a new story in ${rpgContext.dir} (${available} earlier session${available === 1 ? '' : 's'} available; use --rpg ${rpgContext.dir} --resume to continue one).`
+        if (process.stdin.isTTY) console.log(notice)
+        else console.error(notice)
+      }
     }
   } else if (opts.e2ee === true) {
     // Plain --e2ee chats persist their transcript to the sessions dir just
