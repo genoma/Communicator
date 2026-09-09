@@ -1,7 +1,8 @@
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { CliError } from './errors.js'
-import { writeFileAtomic } from './fs-utils.js'
+import { listSessions, generateSessionId, saveSession, buildSessionPayload } from './sessions.js'
+import { loadPreferences } from './config.js'
 
 const RPG_FILES = ['char.md', 'user.md', 'prompt.md', 'scenario.md', 'first-message.md']
 const RPG_POST_HISTORY_FILE = 'post-history-instruction.md'
@@ -258,21 +259,55 @@ export async function loadRpgContext(dir) {
   }
 }
 
-// The conversation log lives in the RPG directory so the story continues on
-// the next --rpg run. The system prompt is deliberately not stored: it is
-// rebuilt from the current Markdown files on every launch, so edits to the
-// story files apply to resumed conversations too.
-export async function saveRpgHistory(dir, messages) {
-  const turns = messages.filter((m) => m.role !== 'system')
-  // A session with no user turn yet (e.g. quitting right after the greeting)
-  // must not create or touch the file: nothing worth resuming, and a
-  // greeting-only log would freeze the opening message into the story.
-  if (!turns.some((m) => m.role === 'user')) return
-  try {
-    await writeFileAtomic(join(dir, RPG_HISTORY_FILE), JSON.stringify({ updatedAt: new Date().toISOString(), messages: turns }, null, 2) + '\n')
-  } catch (err) {
-    console.error(`Warning: could not save RPG history: ${err.message}`)
-  }
+// The legacy single-story log (<rpgdir>/history.json) is no longer written:
+// every run stores a chapter session under <rpgdir>/sessions/. When a story
+// dir still holds only history.json, it is imported once as chapter #1 so
+// the old story becomes an ordinary resumable chapter. Best-effort by
+// design: history.json never stored settings, so the imported chapter gets
+// the run's/last known model (null → skip, the legacy fallback stays) and
+// default sampling values; the original file is left in place untouched.
+export async function importLegacyRpgHistory({ rpgDir, history, historyUpdatedAt = null, config = null, model = null, providerType = 'openrouter', charName = null, userName = null, firstMessage = null }) {
+  // Sessions are at least two messages by the session-machinery contract, so
+  // a 1-message story stays on the legacy fallback instead of an invisible
+  // chapter that neither the picker nor resume could ever see.
+  if (!history || history.length < 2) return null
+  const dir = await ensureRpgSessionsDir(rpgDir)
+  const existing = await listSessions(dir)
+  if (existing.length > 0) return null
+
+  const prefs = config ? await loadPreferences(config).catch(() => null) : null
+  const modelId = model ?? prefs?.lastModel ?? null
+  if (!modelId) return null
+
+  const createdAt = historyUpdatedAt ?? new Date().toISOString()
+  const sessionId = await generateSessionId(dir)
+  await saveSession(dir, sessionId, buildSessionPayload({
+    messages: history,
+    modelId,
+    endpointProviderName: prefs?.lastProvider ?? providerType,
+    providerType,
+    reasoningEffort: 'auto',
+    temperature: null,
+    topP: null,
+    budget: null,
+    webSearch: 'off',
+    webResults: null,
+    pricing: null,
+    contextLength: null,
+    supportsReasoning: null,
+    reasoningMandatory: false,
+    webSearchSupported: null,
+    visionSupported: null,
+    fileSupported: null,
+    imageOutputSupported: null,
+    isImageModel: false,
+    e2ee: false,
+    scrapes: 0,
+    costSummary: null,
+    createdAt,
+    updatedAt: createdAt,
+  }, { rpgDir, rpgCharName: charName, rpgUserName: userName, rpgFirstMessage: firstMessage }))
+  return { sessionId, messages: history.length }
 }
 
 // The prompt log is a debug artifact: one JSON object per API request, with

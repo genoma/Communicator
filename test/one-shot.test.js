@@ -262,7 +262,7 @@ test('one-shot sends the RPG first message as the opening assistant turn', async
   assert.deepEqual(bodies[0].messages[2], { role: 'user', content: 'Hello' })
 })
 
-test('one-shot seeds the RPG history and appends the exchange to history.json', async (t) => {
+test('one-shot with a seeded RPG story saves the whole exchange as a chapter session', async (t) => {
   const bodies = []
   mockOpenRouterStream(t, [], bodies)
   withApiKey(t)
@@ -288,16 +288,21 @@ test('one-shot seeds the RPG history and appends the exchange to history.json', 
   assert.deepEqual(bodies[0].messages[3], { role: 'assistant', content: 'Shadows shift ahead.' })
   assert.deepEqual(bodies[0].messages[4], { role: 'user', content: 'Hello' })
 
-  const history = JSON.parse(await readFile(join(rpgDir, 'history.json'), 'utf-8'))
-  assert.deepEqual(history.messages.map((m) => m.content), [
+  // The whole exchange lands in one chapter session; history.json is no
+  // longer written at all.
+  const sessionsDir = join(rpgDir, 'sessions')
+  const files = (await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.'))
+  assert.equal(files.length, 1)
+  const saved = JSON.parse(await readFile(join(sessionsDir, files[0]), 'utf-8'))
+  assert.deepEqual(saved.messages.map((m) => m.content), [
+    'RPG system prompt',
     'The gate creaks open.',
     'I step through.',
     'Shadows shift ahead.',
     'Hello',
     'Hello world',
   ])
-  assert.equal(history.messages[0].role, 'assistant')
-  assert.equal(history.messages[4].role, 'assistant')
+  await assert.rejects(readFile(join(rpgDir, 'history.json'), 'utf-8'), { code: 'ENOENT' })
 })
 
 test('one-shot refuses an e2ee mismatch when resuming an RPG chapter', async (t) => {
@@ -463,21 +468,20 @@ test('one-shot appends the RPG post-history instruction after the user message w
   assert.equal(bodies.length, 1)
   assert.deepEqual(bodies[0].messages[3], { role: 'system', content: 'Stay in character.' })
 
-  const history = JSON.parse(await readFile(join(rpgDir, 'history.json'), 'utf-8'))
-  assert.deepEqual(history.messages.map((m) => m.content), [
-    'The gate creaks open.',
-    'Hello',
-    'Hello world',
-  ])
-
   // RPG chapters keep their own session store in the RPG folder; the global
-  // sessions dir must not receive them.
+  // sessions dir must not receive them, and history.json is never written.
   const rpgSessionsDir = join(rpgDir, 'sessions')
   const created = (await readdir(rpgSessionsDir))
     .filter((f) => f.endsWith('.json') && !f.startsWith('.'))
   assert.equal(created.length, 1)
   assert.equal(await readdir(sessionsDir).then((f) => f.filter((x) => x.endsWith('.json') && !x.startsWith('.') && !before.has(x)).length).catch(() => 0), 0)
   const saved = JSON.parse(await readFile(join(rpgSessionsDir, created[0]), 'utf-8'))
+  assert.deepEqual(saved.messages.map((m) => m.content), [
+    'RPG system prompt',
+    'The gate creaks open.',
+    'Hello',
+    'Hello world',
+  ])
   assert.deepEqual(saved.messages.map((m) => m.role), ['system', 'assistant', 'user', 'assistant'])
   assert.ok(!saved.messages.some((m) => m.role === 'system' && m.content === 'Stay in character.'))
 })

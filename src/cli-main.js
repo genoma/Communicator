@@ -81,13 +81,33 @@ async function main(opts, promptArg) {
   if (opts.rpg !== undefined) {
     rpgContext = await loadRpgContext(opts.rpg)
     if (opts.e2ee === true) {
-      const localFiles = opts.debug === true ? 'history.json and prompt-log.jsonl' : 'history.json'
-      console.warn(`Warning: --e2ee encrypts messages sent to the API, but RPG ${localFiles} and the session file store them unencrypted.`)
+      const localFiles = opts.debug === true ? 'the chapter session, prompt-log.jsonl and any legacy history.json' : 'the chapter session and any legacy history.json'
+      console.warn(`Warning: --e2ee encrypts messages sent to the API, but RPG ${localFiles} store them unencrypted.`)
     }
     if (rpgContext.created) {
       console.log(`RPG mode setup: created ${rpgContext.createdFiles.join(', ')} in ${rpgContext.dir}`)
       console.log('Fill in the story files, delete the HTML comment at the top of each, then rerun with the same --rpg directory. post-history-instruction.md starts empty and is optional — leave it empty to skip it.')
       process.exit(0)
+    }
+    // A story dir that only holds the legacy history.json log gets it
+    // imported once as chapter #1; afterwards history.json is read-only
+    // (and no longer written), and every run saves one chapter session.
+    const { importLegacyRpgHistory } = await import('./rpg.js')
+    const migrated = await importLegacyRpgHistory({
+      rpgDir: rpgContext.dir,
+      history: rpgContext.history,
+      historyUpdatedAt: rpgContext.historyUpdatedAt,
+      config: opts.config,
+      model: opts.model,
+      providerType,
+      charName: rpgContext.charName,
+      userName: rpgContext.userName,
+      firstMessage: rpgContext.firstMessage,
+    })
+    if (migrated) {
+      const notice = `Migrated the saved story (${migrated.messages} messages) into ${rpgContext.dir}/sessions/${migrated.sessionId}.json; history.json is no longer written.`
+      if (process.stdin.isTTY) console.log(notice)
+      else console.error(notice)
     }
     // A bare --resume (no session id) is the only way to continue a story;
     // without it the same directory starts a brand-new one.

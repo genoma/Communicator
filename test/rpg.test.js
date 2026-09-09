@@ -1,10 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CliError } from '../src/errors.js'
-import { buildRpgSystemPrompt, expandRpgVariables, isPlaceholderName, loadRpgContext, loadRpgHistory, logRpgPrompt, parseRpgName, saveRpgHistory, ensureRpgSessionsDir } from '../src/rpg.js'
+import { buildRpgSystemPrompt, expandRpgVariables, isPlaceholderName, loadRpgContext, loadRpgHistory, logRpgPrompt, parseRpgName, ensureRpgSessionsDir, importLegacyRpgHistory } from '../src/rpg.js'
 import { saveSession } from '../src/sessions.js'
 
 async function tempDir(t) {
@@ -13,7 +13,13 @@ async function tempDir(t) {
   return dir
 }
 
+// Writes the legacy dir-local log the way pre-M5 versions did, as a fixture.
+async function saveLegacyHistory(dir, messages, updatedAt = new Date().toISOString()) {
+  await writeFile(join(dir, 'history.json'), JSON.stringify({ updatedAt, messages: messages.filter((m) => m.role !== 'system') }, null, 2) + '\n')
+}
+
 async function writeFilled(dir) {
+
   await writeFile(join(dir, 'char.md'), '# Zara\n\n## Personality\nSharp and warm.\n')
   await writeFile(join(dir, 'user.md'), '# Alex\n\n## Description\nThe operator.\n')
   await writeFile(join(dir, 'prompt.md'), '## Tone\nNoir.\n\n## Rules\n- {{user}} decides; {{char}} reacts.\n')
@@ -188,45 +194,60 @@ test('expandRpgVariables keeps dollar sequences in names literal', () => {
   assert.equal(expandRpgVariables('Hi {{char}}, meet {{user}}.', { charName: 'R2-$&-D2', userName: '$$Bill' }), 'Hi R2-$&-D2, meet $$Bill.')
 })
 
-test('saveRpgHistory stores non-system messages and loadRpgHistory returns them', async (t) => {
-  const dir = await tempDir(t)
-  const messages = [
-    { role: 'system', content: 'fixed system prompt' },
-    { role: 'assistant', content: 'The gate creaks open.' },
-    { role: 'user', content: 'I step through.' },
-    { role: 'assistant', content: 'Shadows shift.', usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } },
-  ]
-  await saveRpgHistory(dir, messages)
-
-  const raw = JSON.parse(await readFile(join(dir, 'history.json'), 'utf-8'))
-  assert.ok(raw.updatedAt)
-  assert.deepEqual(raw.messages, messages.slice(1))
-
-  const history = await loadRpgHistory(dir)
-  assert.ok(history)
-  assert.equal(history.updatedAt, raw.updatedAt)
-  assert.deepEqual(history.messages, messages.slice(1))
-})
-
-test('saveRpgHistory skips the write when only the system message is present', async (t) => {
-  const dir = await tempDir(t)
-  await writeFile(join(dir, 'history.json'), 'previous story\n')
-  await saveRpgHistory(dir, [{ role: 'system', content: 'prompt' }])
-  assert.equal(await readFile(join(dir, 'history.json'), 'utf-8'), 'previous story\n')
-})
-
-test('saveRpgHistory skips the write when no user turn exists yet', async (t) => {
-  const dir = await tempDir(t)
-  await saveRpgHistory(dir, [
-    { role: 'system', content: 'prompt' },
-    { role: 'assistant', content: 'The greeting.' },
-  ])
-  await assert.rejects(readFile(join(dir, 'history.json'), 'utf-8'), { code: 'ENOENT' })
-})
-
 test('loadRpgHistory returns null when the history file is missing', async (t) => {
   const dir = await tempDir(t)
   assert.equal(await loadRpgHistory(dir), null)
+})
+
+test('importLegacyRpgHistory turns a legacy history.json into chapter #1', async (t) => {
+  const dir = await tempDir(t)
+  await saveLegacyHistory(dir, [
+    { role: 'assistant', content: 'The gate creaks open.' },
+    { role: 'user', content: 'I step through.' },
+  ], '2026-01-01T00:00:00.000Z')
+
+  const result = await importLegacyRpgHistory({
+    rpgDir: dir,
+    history: [{ role: 'assistant', content: 'The gate creaks open.' }, { role: 'user', content: 'I step through.' }],
+    historyUpdatedAt: '2026-01-01T00:00:00.000Z',
+    model: 'test/model',
+    providerType: 'openrouter',
+    charName: 'Zara',
+    userName: 'Alex',
+    firstMessage: 'The rain had stopped.',
+  })
+
+  assert.ok(result)
+  const file = join(dir, 'sessions', `${result.sessionId}.json`)
+  const saved = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(saved.model, 'test/model')
+  assert.equal(saved.createdAt, '2026-01-01T00:00:00.000Z')
+  assert.equal(saved.rpgDir, dir)
+  assert.equal(saved.rpgCharName, 'Zara')
+  assert.equal(saved.rpgUserName, 'Alex')
+  assert.equal(saved.rpgFirstMessage, 'The rain had stopped.')
+  assert.deepEqual(saved.messages, [{ role: 'assistant', content: 'The gate creaks open.' }, { role: 'user', content: 'I step through.' }])
+})
+
+test('importLegacyRpgHistory only imports once and skips without a model', async (t) => {
+  const dir = await tempDir(t)
+  await saveLegacyHistory(dir, [{ role: 'user', content: 'I step through.' }, { role: 'assistant', content: 'Shadows shift.' }])
+
+  // No model resolved → nothing to stamp, the legacy fallback stays.
+  assert.equal(await importLegacyRpgHistory({ rpgDir: dir, history: [{ role: 'user', content: 'I step through.' }, { role: 'assistant', content: 'Shadows shift.' }], providerType: 'openrouter' }), null)
+  assert.equal((await readdir(join(dir, 'sessions'))).filter((f) => f.endsWith('.json') && !f.startsWith('.')).length, 0)
+
+  // A single-message story is not a session and stays on the legacy fallback.
+  const tinyDir = await tempDir(t)
+  assert.equal(await importLegacyRpgHistory({ rpgDir: tinyDir, history: [{ role: 'user', content: 'I step through.' }], model: 'test/model', providerType: 'openrouter' }), null)
+
+  // First successful import runs once; a second run sees the chapter and
+  // does not duplicate.
+  const first = await importLegacyRpgHistory({ rpgDir: dir, history: [{ role: 'user', content: 'I step through.' }, { role: 'assistant', content: 'Shadows shift.' }], model: 'test/model', providerType: 'openrouter' })
+  assert.ok(first)
+  assert.equal(await importLegacyRpgHistory({ rpgDir: dir, history: [{ role: 'user', content: 'I step through.' }, { role: 'assistant', content: 'Shadows shift.' }], model: 'test/model', providerType: 'openrouter' }), null)
+  const files = (await readdir(join(dir, 'sessions'))).filter((f) => f.endsWith('.json') && !f.startsWith('.'))
+  assert.deepEqual(files, [`${first.sessionId}.json`])
 })
 
 test('loadRpgHistory returns null for an empty messages array', async (t) => {
@@ -326,7 +347,7 @@ test('logRpgPrompt warns without throwing when the write fails', async (t) => {
 test('loadRpgContext returns the saved history alongside the rebuilt prompt', async (t) => {
   const dir = await tempDir(t)
   await writeFilled(dir)
-  await saveRpgHistory(dir, [
+  await saveLegacyHistory(dir, [
     { role: 'user', content: 'I step through.' },
     { role: 'assistant', content: 'The gate creaks open.' },
   ])
@@ -401,7 +422,7 @@ test('--rpg setup exits 0 without an API key', async (t) => {
 test('--rpg --resume with a single chapter announces the chapter session', async (t) => {
   const dir = await tempDir(t)
   await writeFilled(dir)
-  await saveRpgHistory(dir, [
+  await saveLegacyHistory(dir, [
     { role: 'assistant', content: 'The gate creaks open.' },
     { role: 'user', content: 'I step through.' },
   ])
@@ -473,10 +494,10 @@ test('--rpg --resume with a single chapter announces the chapter session', async
   assert.ok(logs.every((line) => !line.includes('Resumed RPG conversation')))
 })
 
-test('--rpg --resume stays on the legacy notice when only history.json exists', async (t) => {
+test('--rpg --resume migrates a legacy history-only dir and resumes the imported chapter', async (t) => {
   const dir = await tempDir(t)
   await writeFilled(dir)
-  await saveRpgHistory(dir, [
+  await saveLegacyHistory(dir, [
     { role: 'assistant', content: 'The gate creaks open.' },
     { role: 'user', content: 'I step through.' },
   ])
@@ -531,13 +552,16 @@ test('--rpg --resume stays on the legacy notice when only history.json exists', 
 
   await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal)
   assert.equal(exitCode, 1)
-  assert.ok(errors.some((line) => line.includes(`Resumed RPG conversation from ${dir}/history.json (2 messages, saved `)))
+  // The legacy log is imported once as chapter #1, then resumed as a chapter.
+  assert.ok(errors.some((line) => line.includes(`Migrated the saved story (2 messages) into ${dir}/sessions/`)), `migration notice missing; errors: ${JSON.stringify(errors)}`)
+  assert.ok(errors.some((line) => line.includes(`Resumed RPG conversation from ${dir}/sessions/`) && line.includes('(2 messages, saved ')), `chapter resume notice missing; errors: ${JSON.stringify(errors)}`)
+  assert.ok(errors.every((line) => !line.includes('history.json') || line.includes('Migrated the saved story')))
 })
 
-test('--rpg --resume with a saved history announces the resumed conversation', async (t) => {
+test('--rpg --resume with a legacy saved story migrates and resumes it', async (t) => {
   const dir = await tempDir(t)
   await writeFilled(dir)
-  await saveRpgHistory(dir, [
+  await saveLegacyHistory(dir, [
     { role: 'assistant', content: 'The gate creaks open.' },
     { role: 'user', content: 'I step through.' },
   ])
@@ -594,7 +618,8 @@ test('--rpg --resume with a saved history announces the resumed conversation', a
 
   await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal)
   assert.equal(exitCode, 1)
-  assert.ok(errors.some((line) => line.includes(`Resumed RPG conversation from ${dir}/history.json (2 messages, saved `)))
+  assert.ok(errors.some((line) => line.includes(`Migrated the saved story (2 messages) into ${dir}/sessions/`)))
+  assert.ok(errors.some((line) => line.includes(`Resumed RPG conversation from ${dir}/sessions/`) && line.includes('(2 messages, saved ')))
   assert.ok(warnings.every((line) => !line.includes('starting a new story')))
   assert.ok(errors.some((line) => line.includes('OPENROUTER_API_KEY environment variable is not set.')))
 })
@@ -602,7 +627,7 @@ test('--rpg --resume with a saved history announces the resumed conversation', a
 test('--rpg without --resume starts fresh and announces the single saved story', async (t) => {
   const dir = await tempDir(t)
   await writeFilled(dir)
-  await saveRpgHistory(dir, [
+  await saveLegacyHistory(dir, [
     { role: 'assistant', content: 'The gate creaks open.' },
     { role: 'user', content: 'I step through.' },
   ])
@@ -687,7 +712,7 @@ test('--rpg without --resume counts every earlier chapter session', async (t) =>
   await writeFile(join(sessionsDir, '2026-01-02T00-00-00.json'), payload('2026-01-02', 'second'))
   // A legacy history.json alongside the chapters must not be double-counted:
   // the chapters win, so the count stays 2, not 3.
-  await saveRpgHistory(dir, [
+  await saveLegacyHistory(dir, [
     { role: 'assistant', content: 'The gate creaks open.' },
     { role: 'user', content: 'I step through.' },
   ])

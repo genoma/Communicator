@@ -263,7 +263,7 @@ test('/new mid-session resets messages and the tracker and saves the prior sessi
   assert.match(costLine, /0 request\(s\)/)
 })
 
-test('rpg history is written to the rpg dir on exit and excludes the system prompt', async (t) => {
+test('rpg saves the chapter session on exit via the rpg dir', async (t) => {
   mockConsole(t)
   const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
@@ -273,10 +273,13 @@ test('rpg history is written to the rpg dir on exit and excludes the system prom
 
   await runChatSession(baseCtx(provider, { rpgDir: dir, systemPrompt: 'RPG prompt' }), harness.deps)
 
-  const history = JSON.parse(await readFile(join(dir, 'history.json'), 'utf-8'))
-  assert.ok(history.updatedAt)
-  assert.deepEqual(history.messages.map((m) => m.role), ['user', 'assistant'])
-  assert.equal(history.messages[1].content, 'Hello!')
+  assert.equal(harness.saveCalls.length, 1)
+  const { payload } = harness.saveCalls[0]
+  assert.equal(payload.rpgDir, dir)
+  assert.deepEqual(payload.messages.map((m) => m.role), ['system', 'user', 'assistant'])
+  assert.equal(payload.messages[2].content, 'Hello!')
+  // history.json is legacy: never written anymore.
+  await assert.rejects(readFile(join(dir, 'history.json'), 'utf-8'), { code: 'ENOENT' })
 })
 
 test('rpg debug logs the request body to prompt-log.jsonl for each turn', async (t) => {
@@ -288,11 +291,14 @@ test('rpg debug logs the request body to prompt-log.jsonl for each turn', async 
   const harness = makeDeps({ readInput: scriptedInput(['hello', 'again', '/quit']) })
 
   await runChatSession(baseCtx(provider, { rpgDir: dir, rpgDebug: true }), harness.deps)
-  await tick()
-
-  const raw = await readFile(join(dir, 'prompt-log.jsonl'), 'utf-8')
-  const entries = raw.trim().split('\n').map((line) => JSON.parse(line))
-  assert.equal(entries.length, 2)
+  // The prompt-log appends are fire-and-forget on a chain; wait for both.
+  let entries = []
+  for (let i = 0; i < 100 && entries.length < 2; i++) {
+    await tick()
+    entries = (await readFile(join(dir, 'prompt-log.jsonl'), 'utf-8').catch(() => ''))
+      .trim().split('\n').filter(Boolean).map((line) => JSON.parse(line))
+  }
+  assert.equal(entries.length, 2, `calls=${calls.length}`)
   assert.equal(entries[0].model, 'org/model')
   assert.equal(entries[0].provider, 'openrouter')
   assert.deepEqual(entries[0].request.messages.map((m) => m.role), ['system', 'user'])
@@ -315,7 +321,7 @@ test('rpg debug without turns writes no prompt-log.jsonl', async (t) => {
   await assert.rejects(readFile(join(dir, 'prompt-log.jsonl'), 'utf-8'), { code: 'ENOENT' })
 })
 
-test('/new in rpg mode saves the prior story, restarts with the first message, and later saves overwrite with the new chapter', async (t) => {
+test('/new in rpg mode saves the prior chapter, restarts with the first message, and saves a new chapter', async (t) => {
   mockConsole(t)
   const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
@@ -342,8 +348,12 @@ test('/new in rpg mode saves the prior story, restarts with the first message, a
   assert.deepEqual(postNew.messages.map((m) => m.role), ['system', 'assistant', 'user'])
   assert.equal(postNew.messages[1].content, 'The gate creaks open.')
 
-  const history = JSON.parse(await readFile(join(dir, 'history.json'), 'utf-8'))
-  assert.deepEqual(history.messages.map((m) => m.content), ['The gate creaks open.', 'second', 'Hello!'])
+  // Two saves: the chapter /new closed and the fresh-2 chapter on quit;
+  // history.json is never written.
+  assert.deepEqual(harness.saveCalls.map((c) => c.id), ['2026-01-01T00-00-00', 'fresh-2'])
+  const fresh = harness.saveCalls[1].payload
+  assert.deepEqual(fresh.messages.map((m) => m.content), ['RPG prompt', 'The gate creaks open.', 'second', 'Hello!'])
+  await assert.rejects(readFile(join(dir, 'history.json'), 'utf-8'), { code: 'ENOENT' })
 
   assert.deepEqual(finalState.messages.map((m) => m.content), ['RPG prompt', 'The gate creaks open.', 'second', 'Hello!'])
   const out = writes.join('')

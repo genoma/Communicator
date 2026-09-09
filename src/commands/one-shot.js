@@ -10,7 +10,7 @@ import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { loadAttachments, buildContent } from '../attachments.js'
 import { resolveArtifacts, printArtifactsSummary } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext, resumeSessionContext } from '../session-setup.js'
-import { saveRpgHistory, logRpgPrompt, ensureRpgSessionsDir, rpgSessionsDir } from '../rpg.js'
+import { logRpgPrompt, ensureRpgSessionsDir, rpgSessionsDir } from '../rpg.js'
 import { getApiKey } from '../config.js'
 import { createE2eeSession } from '../e2ee.js'
 import { runImageCommand } from './image-gen.js'
@@ -309,7 +309,4 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   const finalState = state.toFinalState(provider.meta.name)
 
   await persistSession({ finalState, prefs, config: opts.config, rpgDir: opts.rpg, rpgCharName, rpgUserName, rpgFirstMessage })
-  if (opts.rpg !== undefined) {
-    await saveRpgHistory(opts.rpg, messages)
-  }
 }

@@ -9,7 +9,7 @@ import { createLoader } from './ui/loader.js'
 import { dim, sep, you, char } from './ui/style.js'
 import { out } from './ui/io.js'
 import { ensureSessionsDir, generateSessionId, persistSessionFile, persistSessionFileTo, buildSessionPayload, removeEmptySessionClaim } from './sessions.js'
-import { saveRpgHistory, logRpgPrompt, rpgSessionsDir, ensureRpgSessionsDir } from './rpg.js'
+import { logRpgPrompt, rpgSessionsDir, ensureRpgSessionsDir } from './rpg.js'
 import { savePreferences, syncPreferenceUpdates, savePrefsBestEffort } from './config.js'
 import { copyText } from './clipboard.js'
 import { ChatState } from './chat-state.js'
@@ -271,9 +271,6 @@ export async function runChatSession(ctx = {}, deps = {}) {
       // summary (the resume path reads it / falls back to replay).
       state.costSummary = trackerCostSummary(sessionState.tracker)
       await saveSessionFile(state.sessionId, buildSessionPayload(state.toFinalState(provider.meta.name), { rpgDir, rpgCharName, rpgUserName, rpgFirstMessage }))
-      if (rpgDir) {
-        await saveRpgHistory(rpgDir, state.messages)
-      }
     } catch {
       // save failures are non-fatal
     }
