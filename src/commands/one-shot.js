@@ -10,14 +10,14 @@ import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { loadAttachments, buildContent } from '../attachments.js'
 import { resolveArtifacts, printArtifactsSummary } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext } from '../session-setup.js'
-import { saveRpgHistory, logRpgPrompt, ensureRpgSessionsDir } from '../rpg.js'
+import { saveRpgHistory, logRpgPrompt, ensureRpgSessionsDir, rpgSessionsDir } from '../rpg.js'
 import { createE2eeSession } from '../e2ee.js'
 import { runImageCommand } from './image-gen.js'
 import { connectedBanner, buildStatusLine } from '../status-line.js'
 import { sanitizeAnsi } from '../ui/hyperlink.js'
 import { char } from '../ui/style.js'
 
-export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, rpgCharName = null, providerType, prompt, scraped = null }) {
+export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, rpgCharName = null, providerType, prompt, scraped = null, rpgResume = null }) {
   const provider = getProvider(providerType)
   const stdinPiped = !process.stdin.isTTY
 
@@ -69,7 +69,13 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     attachments.push(...loaded.attachments)
   }
 
-  const { dir, sessionId, createdAt } = await createNewSession(opts.rpg !== undefined ? await ensureRpgSessionsDir(opts.rpg) : null)
+  // A resumed RPG chapter continues its own session file so it stays one
+  // chapter; a fresh or legacy history.json run claims a new session id.
+  // updatedAt is deliberately not carried: the one-shot always adds a turn,
+  // so the payload stamps the save time (never an untouched-resume value).
+  const { dir, sessionId, createdAt } = rpgResume
+    ? { dir: rpgSessionsDir(opts.rpg), sessionId: rpgResume.sessionId, createdAt: rpgResume.createdAt ?? new Date().toISOString() }
+    : await createNewSession(opts.rpg !== undefined ? await ensureRpgSessionsDir(opts.rpg) : null)
   const messages = [
     { role: 'system', content: systemPrompt || DEFAULT_SYSTEM_PROMPT },
     ...(rpgHistory ? rpgHistory : rpgFirstMessage ? [{ role: 'assistant', content: rpgFirstMessage }] : []),

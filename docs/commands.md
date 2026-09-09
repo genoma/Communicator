@@ -26,7 +26,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
 |       | `--list-endpoints`    | `[model]`| List providers for a model (pricing, uptime, ZDR support, privacy policy link). No arg = picker, partial ID = fuzzy match |
 |       | `--list-sessions`     | —        | List saved sessions (ID, last-activity timestamp, model, message count, title) and exit                |
-| `-r`  | `--resume`            | `[partial-id]` | Resume a saved session. No arg = picker, partial ID = prefix match. With `--rpg`, must be bare: continues the story from the RPG directory's `history.json` |
+| `-r`  | `--resume`            | `[partial-id]` | Resume a saved session. No arg = picker, partial ID = prefix match. With `--rpg`, must be bare: continues a story chapter from `<dir>/sessions/` (chapter picker when more than one exists; most recent chapter when piping) |
 | `-x`  | `--export`            | `[partial-id]` | Export saved session(s). No arg = multi-select checkbox; partial ID = prefix match, unique prefix exports directly. Export is best-effort per session; any session it could not export is reported and it exits 1 |
 |       | `--export-format`     | `<markdown\|jsonl>` | Export format: `markdown` (default) or `jsonl` |
 |       | `--delete`            | `[partial-id]` | Delete saved session(s) (asks for confirmation). No arg = multi-select checkbox; partial ID = prefix match, unique prefix deletes directly. Removal is best-effort per session; anything it could not remove is reported and it exits 1 |

@@ -380,6 +380,54 @@ test('chatStart resumes an e2ee session with --e2ee and keeps the marker', async
   assert.equal(call.opts.webResults, null)
 })
 
+test('chatStart rpg resume continues the resolved chapter session', async (t) => {
+  resumeResult = null
+  nonInteractiveSelection = {
+    modelId: 'test/model',
+    endpointProviderName: 'ProviderX',
+    reasoningEffort: 'medium',
+    webSearchSupported: true,
+    visionSupported: undefined,
+    fileSupported: true,
+    pricing: { prompt: 1e-6, completion: 2e-6 },
+    contextLength: 64000,
+    supportsReasoning: true,
+    modelReasoning: null,
+  }
+
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const configFile = await tempConfig(t)
+  const startChatCallsBefore = startChatCalls.length
+
+  await chatStart({
+    apiKey: 'ignored',
+    opts: baseOpts({ rpg: dir, resume: true, model: 'test/model', config: configFile }),
+    prefs: {},
+    systemPrompt: 'You are Kael.',
+    providerType: 'openrouter',
+    rpgHistory: [{ role: 'user', content: 'Hello' }, { role: 'assistant', content: 'The gate creaks open.' }],
+    rpgResume: {
+      sessionId: '2026-01-01T00-00-00',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-02T00:00:00.000Z',
+    },
+  })
+
+  assert.equal(startChatCalls.length, startChatCallsBefore + 1)
+  const call = startChatCalls[startChatCalls.length - 1]
+  // The chapter's own session identity is reused, not a fresh claim.
+  assert.equal(call.opts.sessionId, '2026-01-01T00-00-00')
+  assert.equal(call.opts.createdAt, '2026-01-01T00:00:00.000Z')
+  assert.equal(call.opts.updatedAt, '2026-01-02T00:00:00.000Z')
+  assert.equal(call.opts.rpgDir, dir)
+  assert.deepEqual(call.opts.initialMessages, [
+    { role: 'system', content: 'You are Kael.' },
+    { role: 'user', content: 'Hello' },
+    { role: 'assistant', content: 'The gate creaks open.' },
+  ])
+})
+
 test('chatStart non-resume branch builds the context from selection and prefs', async (t) => {
   resumeResult = null
   nonInteractiveSelection = {

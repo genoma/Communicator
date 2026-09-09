@@ -4,7 +4,8 @@ import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CliError } from '../src/errors.js'
-import { buildRpgSystemPrompt, expandRpgVariables, isPlaceholderName, loadRpgContext, loadRpgHistory, logRpgPrompt, parseRpgName, saveRpgHistory } from '../src/rpg.js'
+import { buildRpgSystemPrompt, expandRpgVariables, isPlaceholderName, loadRpgContext, loadRpgHistory, logRpgPrompt, parseRpgName, saveRpgHistory, ensureRpgSessionsDir } from '../src/rpg.js'
+import { saveSession } from '../src/sessions.js'
 
 async function tempDir(t) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
@@ -395,6 +396,142 @@ test('--rpg setup exits 0 without an API key', async (t) => {
   assert.ok(logs.some((line) => line.includes('post-history-instruction.md starts empty and is optional')))
   assert.match(await readFile(join(dir, 'char.md'), 'utf8'), /RPG_TEMPLATE/)
   assert.equal(await readFile(join(dir, 'post-history-instruction.md'), 'utf8'), '')
+})
+
+test('--rpg --resume with a single chapter announces the chapter session', async (t) => {
+  const dir = await tempDir(t)
+  await writeFilled(dir)
+  await saveRpgHistory(dir, [
+    { role: 'assistant', content: 'The gate creaks open.' },
+    { role: 'user', content: 'I step through.' },
+  ])
+  await saveSession(await ensureRpgSessionsDir(dir), '2026-01-01T00-00-00', {
+    model: 'test/model',
+    providerName: 'openrouter',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-02T00:00:00.000Z',
+    messages: [
+      { role: 'system', content: 'You are Kael.' },
+      { role: 'user', content: 'Hello' },
+      { role: 'assistant', content: 'The gate creaks open.' },
+    ],
+  })
+
+  const logs = []
+  const errors = []
+  const previousKey = process.env.OPENROUTER_API_KEY
+  delete process.env.OPENROUTER_API_KEY
+  t.after(() => {
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY
+    else process.env.OPENROUTER_API_KEY = previousKey
+  })
+  t.mock.method(console, 'log', (msg) => logs.push(String(msg)))
+  t.mock.method(console, 'error', (msg) => errors.push(String(msg)))
+  let exitCode = null
+  t.mock.method(process, 'exit', (code) => {
+    exitCode = code
+    throw new ExitSignal(code)
+  })
+
+  const { runCli } = await import(`../src/cli-main.js?t=${Date.now()}`)
+  const opts = {
+    model: 'test/model',
+    provider: 'openrouter',
+    listModels: undefined,
+    listImageModels: undefined,
+    listEndpoints: undefined,
+    resume: true,
+    export: undefined,
+    outputDir: undefined,
+    listSessions: undefined,
+    config: undefined,
+    systemPrompt: undefined,
+    rpg: dir,
+    reasoningEffort: undefined,
+    temperature: undefined,
+    budget: undefined,
+    webSearch: undefined,
+    webResults: undefined,
+    smoothStreaming: true,
+    smoothSpeed: undefined,
+    zdr: undefined,
+    e2ee: undefined,
+    image: undefined,
+    imageModel: undefined,
+    safeMode: true,
+    watermark: true,
+    delete: undefined,
+    deleteAllSessions: undefined,
+    attach: [],
+  }
+
+  await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal)
+  assert.equal(exitCode, 1)
+  // The chapter session wins over the legacy history.json story.
+  assert.ok(errors.some((line) => line.includes(`Resumed RPG conversation from ${dir}/sessions/2026-01-01T00-00-00.json (2 messages, saved 2026-01-02)`)))
+  assert.ok(errors.every((line) => !line.includes('history.json')))
+  assert.ok(logs.every((line) => !line.includes('Resumed RPG conversation')))
+})
+
+test('--rpg --resume stays on the legacy notice when only history.json exists', async (t) => {
+  const dir = await tempDir(t)
+  await writeFilled(dir)
+  await saveRpgHistory(dir, [
+    { role: 'assistant', content: 'The gate creaks open.' },
+    { role: 'user', content: 'I step through.' },
+  ])
+
+  const logs = []
+  const errors = []
+  const previousKey = process.env.OPENROUTER_API_KEY
+  delete process.env.OPENROUTER_API_KEY
+  t.after(() => {
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY
+    else process.env.OPENROUTER_API_KEY = previousKey
+  })
+  t.mock.method(console, 'log', (msg) => logs.push(String(msg)))
+  t.mock.method(console, 'error', (msg) => errors.push(String(msg)))
+  let exitCode = null
+  t.mock.method(process, 'exit', (code) => {
+    exitCode = code
+    throw new ExitSignal(code)
+  })
+
+  const { runCli } = await import(`../src/cli-main.js?t=${Date.now()}`)
+  const opts = {
+    model: 'test/model',
+    provider: 'openrouter',
+    listModels: undefined,
+    listImageModels: undefined,
+    listEndpoints: undefined,
+    resume: true,
+    export: undefined,
+    outputDir: undefined,
+    listSessions: undefined,
+    config: undefined,
+    systemPrompt: undefined,
+    rpg: dir,
+    reasoningEffort: undefined,
+    temperature: undefined,
+    budget: undefined,
+    webSearch: undefined,
+    webResults: undefined,
+    smoothStreaming: true,
+    smoothSpeed: undefined,
+    zdr: undefined,
+    e2ee: undefined,
+    image: undefined,
+    imageModel: undefined,
+    safeMode: true,
+    watermark: true,
+    delete: undefined,
+    deleteAllSessions: undefined,
+    attach: [],
+  }
+
+  await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal)
+  assert.equal(exitCode, 1)
+  assert.ok(errors.some((line) => line.includes(`Resumed RPG conversation from ${dir}/history.json (2 messages, saved `)))
 })
 
 test('--rpg --resume with a saved history announces the resumed conversation', async (t) => {

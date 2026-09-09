@@ -7,8 +7,10 @@ export function hasAttachments(opts) {
 }
 
 export function isInteractiveFlag(opts) {
-  // Bare --resume next to --rpg resumes the story from the RPG directory's
-  // history.json and needs no picker, so it is not an interactive flag.
+  // Bare --resume next to --rpg continues a story chapter: the chapter picker
+  // only opens when more than one chapter exists and stdin is a TTY, while
+  // piped/prompt one-shots fall back to the most recent chapter, so it never
+  // needs a TTY here.
   return (opts.resume !== undefined && opts.rpg === undefined) || opts.export !== undefined || opts.delete !== undefined
 }
 

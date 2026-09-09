@@ -16,7 +16,7 @@ function imageSessionContext({ provider, apiKey, prefs, imageModelId, sessionId,
   return { imageModelId, provider, apiKey, prefs, sessionId, createdAt, updatedAt, initialMessages, configPath, imageProviderName, pricing }
 }
 
-async function createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, scraped = null, modelsPromise = null }) {
+async function createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, scraped = null, modelsPromise = null, rpgResume = null }) {
   const { forcedEffort, forcedTemperature, forcedTopP, forcedBudget, budget, forcedWebResults, smoothSpeed, compactThinking, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
   if (opts.resume !== undefined && opts.rpg === undefined) {
@@ -127,7 +127,20 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     modelsPromise,
   })
 
-  const { sessionId, createdAt } = await createNewSession(opts.rpg !== undefined ? await ensureRpgSessionsDir(opts.rpg) : null)
+  // A resumed RPG chapter continues its own session file; everything else
+  // claims a fresh session id (in the RPG sessions dir when --rpg is set).
+  let sessionId
+  let createdAt
+  let sessionUpdatedAt = null
+  if (rpgResume) {
+    sessionId = rpgResume.sessionId
+    createdAt = rpgResume.createdAt ?? new Date().toISOString()
+    sessionUpdatedAt = rpgResume.updatedAt ?? null
+  } else {
+    const created = await createNewSession(opts.rpg !== undefined ? await ensureRpgSessionsDir(opts.rpg) : null)
+    sessionId = created.sessionId
+    createdAt = created.createdAt
+  }
 
   if (selection.isImageModel === true) {
     return imageSessionContext({
@@ -171,7 +184,8 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     reasoningMandatory: selection.modelReasoning?.mandatory === true,
     modelReasoning: selection.modelReasoning,
     sessionId,
-    sessionCreatedAt: new Date().toISOString(),
+    sessionCreatedAt: createdAt,
+    sessionUpdatedAt,
     // A launch-time --scrape injects its page as the first user turn so it
     // persists in the session like any other message; the flat cost rides on
     // the scrapes counter (chat.js seeds the tracker from it once).
@@ -242,8 +256,8 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
   await persistSession({ finalState, prefs, config: opts.config, rpgDir: opts.rpg })
 }
 
-export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, providerType, scraped = null, modelsPromise = null }) {
-  const ctx = await createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage, rpgCharName, rpgUserName, rpgHistory, rpgPostHistoryInstruction, scraped, modelsPromise })
+export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgCharName = null, rpgUserName = null, rpgHistory = null, rpgPostHistoryInstruction = null, providerType, scraped = null, modelsPromise = null, rpgResume = null }) {
+  const ctx = await createSessionContext({ apiKey, opts, prefs, providerType, systemPrompt, rpgFirstMessage, rpgCharName, rpgUserName, rpgHistory, rpgPostHistoryInstruction, scraped, modelsPromise, rpgResume })
   if (ctx.imageModelId) {
     const imageResult = await startImageSession({
       provider: ctx.provider,

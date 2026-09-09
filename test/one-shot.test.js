@@ -23,6 +23,10 @@ mock.module('@inquirer/prompts', {
   },
 })
 
+// Loaded after the @inquirer mock so the picker graph never loads the real
+// module (a static import would bind it before mock.module applies).
+const { saveSession } = await import('../src/sessions.js')
+const { ensureRpgSessionsDir } = await import('../src/rpg.js')
 // Loaded after the node:os mock so constants.js resolves the temp home.
 const { resetModelCaches: resetOpenRouterModelCaches } = await import('../src/providers/openrouter.js')
 const { resetModelCaches: resetVeniceModelCaches } = await import('../src/providers/venice.js')
@@ -125,10 +129,10 @@ function mockExit(t) {
   return () => exitCode
 }
 
-async function runOneShot(t, { overrides = {}, prefs = {}, prompt = 'Hello', systemPrompt = null, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null } = {}) {
+async function runOneShot(t, { overrides = {}, prefs = {}, prompt = 'Hello', systemPrompt = null, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, rpgResume = null } = {}) {
   const { oneShotCmd } = await import('../src/commands/one-shot.js')
   try {
-    await oneShotCmd({ apiKey: 'test-key', opts: opts(overrides), prefs, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, providerType: 'openrouter', prompt })
+    await oneShotCmd({ apiKey: 'test-key', opts: opts(overrides), prefs, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, providerType: 'openrouter', prompt, rpgResume })
     return { exited: false }
   } catch (e) {
     if (e instanceof CliError) return { exited: true, exitCode: e.exitCode, message: e.message }
@@ -294,6 +298,58 @@ test('one-shot seeds the RPG history and appends the exchange to history.json', 
   ])
   assert.equal(history.messages[0].role, 'assistant')
   assert.equal(history.messages[4].role, 'assistant')
+})
+
+test('one-shot with --rpg --resume continues the resolved chapter session', async (t) => {
+  const bodies = []
+  mockOpenRouterStream(t, [], bodies)
+  withApiKey(t)
+  const file = await tempConfig(t)
+  const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(rpgDir, { recursive: true, force: true }))
+  t.mock.method(process.stdout, 'write', () => true)
+  mockExit(t)
+
+  const sessionsDir = await ensureRpgSessionsDir(rpgDir)
+  await saveSession(sessionsDir, '2026-01-01T00-00-00', {
+    model: 'test/model',
+    providerName: 'openrouter',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-02T00:00:00.000Z',
+    messages: [
+      { role: 'system', content: 'You are Kael.' },
+      { role: 'user', content: 'Hello' },
+      { role: 'assistant', content: 'The gate creaks open.' },
+    ],
+  })
+
+  const { exited } = await runOneShot(t, {
+    overrides: { config: file, rpg: rpgDir, resume: true },
+    systemPrompt: 'RPG system prompt',
+    // cli-main resolves the chapter and passes its turns + identity through.
+    rpgHistory: [
+      { role: 'user', content: 'Hello' },
+      { role: 'assistant', content: 'The gate creaks open.' },
+    ],
+    rpgResume: {
+      sessionId: '2026-01-01T00-00-00',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-02T00:00:00.000Z',
+    },
+  })
+
+  assert.equal(exited, false)
+  assert.deepEqual(bodies[0].messages.slice(1, 3), [
+    { role: 'user', content: 'Hello' },
+    { role: 'assistant', content: 'The gate creaks open.' },
+  ])
+
+  // The chapter keeps its file: the same session id, extended in place.
+  const files = (await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.'))
+  assert.deepEqual(files, ['2026-01-01T00-00-00.json'])
+  const saved = JSON.parse(await readFile(join(sessionsDir, '2026-01-01T00-00-00.json'), 'utf-8'))
+  assert.equal(saved.createdAt, '2026-01-01T00:00:00.000Z')
+  assert.deepEqual(saved.messages.map((m) => m.role), ['system', 'user', 'assistant', 'user', 'assistant'])
 })
 
 test('one-shot appends the RPG post-history instruction after the user message without persisting it', async (t) => {

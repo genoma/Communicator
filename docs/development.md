@@ -20,6 +20,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 │   ├── config-view.js    — bare --config: print the current preferences
 │   ├── one-shot.js       — one-shot mode: prompt argument / stdin piping
 │   ├── resume.js         — --resume handler (load session, return params)
+│   ├── rpg-resume.js     — --rpg --resume chapter resolution (picker / most recent)
 │   ├── chat-start.js     — session context setup, chat start, end-of-chat persist
 │   ├── image-gen.js      — image generation command (--image flag, sizing validation, persistence)
 │   ├── image-session.js  — interactive image session REPL (sizing commands, /model handoff to chat)

@@ -77,6 +77,7 @@ async function main(opts, promptArg) {
   }
 
   let rpgContext = null
+  let rpgResume = null
   if (opts.rpg !== undefined) {
     rpgContext = await loadRpgContext(opts.rpg)
     if (opts.e2ee === true) {
@@ -91,7 +92,20 @@ async function main(opts, promptArg) {
     // A bare --resume (no session id) is the only way to continue a story;
     // without it the same directory starts a brand-new one.
     if (opts.resume === true) {
-      if (rpgContext.history?.length > 0) {
+      // Chapter sessions take precedence over the legacy history.json: the
+      // only chapter resumes directly, more than one opens the same picker
+      // a normal -r uses (piped one-shots fall back to the most recent
+      // chapter), and no chapters yet falls back to the history.json story.
+      const { resolveRpgResume } = await import('./commands/rpg-resume.js')
+      rpgResume = await resolveRpgResume(rpgContext.dir)
+      if (rpgResume) {
+        // Piped stdout must stay pure content (one-shot): send the notice to
+        // stderr there, like the artifact lines do.
+        const saved = rpgResume.updatedAt ? `, saved ${new Date(rpgResume.updatedAt).toISOString().slice(0, 10)}` : ''
+        const notice = `Resumed RPG conversation from ${rpgContext.dir}/sessions/${rpgResume.sessionId}.json (${rpgResume.turns.length} messages${saved}).`
+        if (process.stdin.isTTY) console.log(notice)
+        else console.error(notice)
+      } else if (rpgContext.history?.length > 0) {
         // Piped stdout must stay pure content (one-shot): send the notice to
         // stderr there, like the artifact lines do.
         const saved = rpgContext.historyUpdatedAt ? `, saved ${new Date(rpgContext.historyUpdatedAt).toISOString().slice(0, 10)}` : ''
@@ -254,7 +268,7 @@ async function main(opts, promptArg) {
   const rpgFirstMessage = rpgContext?.firstMessage ?? null
   const rpgCharName = rpgContext?.charName ?? null
   const rpgUserName = rpgContext?.userName ?? null
-  const rpgHistory = opts.rpg !== undefined && opts.resume === true ? (rpgContext?.history ?? null) : null
+  const rpgHistory = opts.rpg !== undefined && opts.resume === true ? (rpgResume?.turns ?? rpgContext?.history ?? null) : null
   const rpgPostHistoryInstruction = rpgContext?.postHistoryInstruction ?? null
 
   const scraped = opts.scrape !== undefined
@@ -275,7 +289,7 @@ async function main(opts, promptArg) {
 
   if (promptArg || !process.stdin.isTTY) {
     const { oneShotCmd } = await import('./commands/one-shot.js')
-    await oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, rpgCharName, providerType, prompt: promptArg, scraped })
+    await oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, rpgCharName, providerType, prompt: promptArg, scraped, rpgResume })
     process.exit(0)
   }
 
@@ -288,5 +302,5 @@ async function main(opts, promptArg) {
     ? seedModelFetch({ provider: getProvider(providerType), apiKey, zdr: opts.zdr === true })
     : null
   const { chatStart } = await import('./commands/chat-start.js')
-  await chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgCharName, rpgUserName, rpgHistory, rpgPostHistoryInstruction, providerType, scraped, modelsPromise })
+  await chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage, rpgCharName, rpgUserName, rpgHistory, rpgPostHistoryInstruction, providerType, scraped, modelsPromise, rpgResume })
 }
