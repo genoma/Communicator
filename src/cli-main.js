@@ -97,7 +97,6 @@ async function main(opts, promptArg) {
       rpgDir: rpgContext.dir,
       history: rpgContext.history,
       historyUpdatedAt: rpgContext.historyUpdatedAt,
-      config: opts.config,
       model: opts.model,
       providerType,
       charName: rpgContext.charName,

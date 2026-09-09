@@ -2,7 +2,6 @@ import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { CliError } from './errors.js'
 import { listSessions, generateSessionId, saveSession, buildSessionPayload } from './sessions.js'
-import { loadPreferences } from './config.js'
 
 const RPG_FILES = ['char.md', 'user.md', 'prompt.md', 'scenario.md', 'first-message.md']
 const RPG_POST_HISTORY_FILE = 'post-history-instruction.md'
@@ -264,27 +263,27 @@ export async function loadRpgContext(dir) {
 // dir still holds only history.json, it is imported once as chapter #1 so
 // the old story becomes an ordinary resumable chapter. Best-effort by
 // design: history.json never stored settings, so the imported chapter gets
-// the run's/last known model (null → skip, the legacy fallback stays) and
+// the run's own model/provider (no -m → the import is skipped and the
+// legacy fallback stays — prefs carry a provider NAME but never its type,
+// so nothing but the run's explicit choice can be stamped faithfully) and
 // default sampling values; the original file is left in place untouched.
-export async function importLegacyRpgHistory({ rpgDir, history, historyUpdatedAt = null, config = null, model = null, providerType = 'openrouter', charName = null, userName = null, firstMessage = null }) {
+export async function importLegacyRpgHistory({ rpgDir, history, historyUpdatedAt = null, model = null, providerType = 'openrouter', charName = null, userName = null, firstMessage = null }) {
   // Sessions are at least two messages by the session-machinery contract, so
   // a 1-message story stays on the legacy fallback instead of an invisible
   // chapter that neither the picker nor resume could ever see.
   if (!history || history.length < 2) return null
-  const dir = await ensureRpgSessionsDir(rpgDir)
+  const dir = rpgSessionsDir(rpgDir)
   const existing = await listSessions(dir)
   if (existing.length > 0) return null
+  if (!model) return null
 
-  const prefs = config ? await loadPreferences(config).catch(() => null) : null
-  const modelId = model ?? prefs?.lastModel ?? null
-  if (!modelId) return null
-
+  await ensureRpgSessionsDir(rpgDir)
   const createdAt = historyUpdatedAt ?? new Date().toISOString()
   const sessionId = await generateSessionId(dir)
   await saveSession(dir, sessionId, buildSessionPayload({
     messages: history,
-    modelId,
-    endpointProviderName: prefs?.lastProvider ?? providerType,
+    modelId: model,
+    endpointProviderName: providerType,
     providerType,
     reasoningEffort: 'auto',
     temperature: null,

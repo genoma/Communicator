@@ -233,9 +233,10 @@ test('importLegacyRpgHistory only imports once and skips without a model', async
   const dir = await tempDir(t)
   await saveLegacyHistory(dir, [{ role: 'user', content: 'I step through.' }, { role: 'assistant', content: 'Shadows shift.' }])
 
-  // No model resolved → nothing to stamp, the legacy fallback stays.
+  // No model resolved → nothing to stamp, the legacy fallback stays (and no
+  // sessions dir is even created).
   assert.equal(await importLegacyRpgHistory({ rpgDir: dir, history: [{ role: 'user', content: 'I step through.' }, { role: 'assistant', content: 'Shadows shift.' }], providerType: 'openrouter' }), null)
-  assert.equal((await readdir(join(dir, 'sessions'))).filter((f) => f.endsWith('.json') && !f.startsWith('.')).length, 0)
+  assert.equal((await readdir(join(dir, 'sessions')).catch(() => [])).filter((f) => f.endsWith('.json') && !f.startsWith('.')).length, 0)
 
   // A single-message story is not a session and stays on the legacy fallback.
   const tinyDir = await tempDir(t)
@@ -769,6 +770,69 @@ test('--rpg without --resume counts every earlier chapter session', async (t) =>
   assert.equal(exitCode, 1)
   assert.ok(logs.every((line) => !line.includes('Starting a new story')))
   assert.ok(errors.some((line) => line.includes(`Starting a new story in ${dir} (2 earlier sessions available; use --rpg ${dir} --resume to continue one).`)))
+})
+
+test('--rpg without --resume counts a legacy history-only dir as one earlier session', async (t) => {
+  const dir = await tempDir(t)
+  await writeFilled(dir)
+  await saveLegacyHistory(dir, [
+    { role: 'assistant', content: 'The gate creaks open.' },
+    { role: 'user', content: 'I step through.' },
+    { role: 'assistant', content: 'Shadows shift.' },
+  ])
+
+  const errors = []
+  const previousKey = process.env.OPENROUTER_API_KEY
+  delete process.env.OPENROUTER_API_KEY
+  t.after(() => {
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY
+    else process.env.OPENROUTER_API_KEY = previousKey
+  })
+  t.mock.method(console, 'error', (msg) => errors.push(String(msg)))
+  let exitCode = null
+  t.mock.method(process, 'exit', (code) => {
+    exitCode = code
+    throw new ExitSignal(code)
+  })
+
+  const { runCli } = await import(`../src/cli-main.js?t=${Date.now()}`)
+  const opts = {
+    model: undefined,
+    provider: 'openrouter',
+    listModels: undefined,
+    listImageModels: undefined,
+    listEndpoints: undefined,
+    resume: undefined,
+    export: undefined,
+    outputDir: undefined,
+    listSessions: undefined,
+    config: undefined,
+    systemPrompt: undefined,
+    rpg: dir,
+    reasoningEffort: undefined,
+    temperature: undefined,
+    budget: undefined,
+    webSearch: undefined,
+    webResults: undefined,
+    smoothStreaming: true,
+    smoothSpeed: undefined,
+    zdr: undefined,
+    e2ee: undefined,
+    image: undefined,
+    imageModel: undefined,
+    safeMode: true,
+    watermark: true,
+    delete: undefined,
+    deleteAllSessions: undefined,
+    attach: [],
+  }
+
+  await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal)
+  assert.equal(exitCode, 1)
+  // No -m: the import is skipped and the legacy count branch announces one
+  // earlier session; no migration notice appears.
+  assert.ok(errors.some((line) => line.includes(`Starting a new story in ${dir} (1 earlier session available; use --rpg ${dir} --resume to continue one).`)), `errors: ${JSON.stringify(errors)}`)
+  assert.ok(errors.every((line) => !line.includes('Migrated')))
 })
 
 test('--rpg without --resume stays silent when nothing was saved yet', async (t) => {
