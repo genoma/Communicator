@@ -117,6 +117,9 @@ export async function resumeSessionContext({ result, opts, prefs, forcedEffort, 
     reasoningEffort: forcedEffort !== undefined ? forcedEffort : resumedEffort,
     temperature: forcedTemperature === null ? undefined : (forcedTemperature ?? result.temperature),
     topP: forcedTopP === null ? undefined : (forcedTopP ?? result.topP),
+    // The snapshot is the last fallback for the session's own settings: a
+    // resumed run restores what the session was saved with, and only the
+    // per-model pref may step in for webSearch.
     budget: forcedBudget ?? resolvePrefOrNull(resolveBudget, result.budget) ?? null,
     webSearch: e2ee ? 'off' : resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: prefs.webSearch?.[selection.modelId] ?? (result.webSearchSnapshot != null ? result.webSearch : undefined) }),
     webSearchExplicit: !e2ee && (opts.webSearch !== undefined || forcedWebResults != null),

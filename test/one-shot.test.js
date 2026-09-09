@@ -300,6 +300,43 @@ test('one-shot seeds the RPG history and appends the exchange to history.json', 
   assert.equal(history.messages[4].role, 'assistant')
 })
 
+test('one-shot refuses an e2ee mismatch when resuming an RPG chapter', async (t) => {
+  const file = await tempConfig(t)
+  const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(rpgDir, { recursive: true, force: true }))
+  const rpgResume = {
+    modelId: 'org/model',
+    providerName: 'openrouter',
+    providerType: 'openrouter',
+    e2ee: false,
+    sessionId: '2026-01-01T00-00-00',
+    sessionCreatedAt: '2026-01-01T00:00:00.000Z',
+    sessionUpdatedAt: null,
+    turns: [{ role: 'user', content: 'Hello' }],
+    rpgDir,
+  }
+
+  // --e2ee on a plaintext chapter must refuse (before any API call).
+  const resumed = await runOneShot(t, {
+    overrides: { config: file, rpg: rpgDir, resume: true, e2ee: true },
+    systemPrompt: 'RPG system prompt',
+    rpgHistory: [{ role: 'user', content: 'Hello' }],
+    rpgResume,
+  })
+  assert.equal(resumed.exited, true)
+  assert.match(resumed.message, /not created with --e2ee/)
+
+  // The reverse direction too.
+  const resumed2 = await runOneShot(t, {
+    overrides: { config: file, rpg: rpgDir, resume: true },
+    systemPrompt: 'RPG system prompt',
+    rpgHistory: [{ role: 'user', content: 'Hello' }],
+    rpgResume: { ...rpgResume, e2ee: true },
+  })
+  assert.equal(resumed2.exited, true)
+  assert.match(resumed2.message, /created with --e2ee/)
+})
+
 test('one-shot with --rpg --resume continues the resolved chapter session', async (t) => {
   const bodies = []
   mockOpenRouterStream(t, [], bodies)

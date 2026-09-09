@@ -19,10 +19,6 @@ import { sanitizeAnsi } from '../ui/hyperlink.js'
 import { char } from '../ui/style.js'
 
 export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, rpgCharName = null, rpgUserName = null, providerType, prompt, scraped = null, rpgResume = null }) {
-  // A resumed RPG chapter brings its own provider and key; the run's default
-  // provider only applies to fresh runs.
-  const provider = getProvider(rpgResume?.providerType ?? providerType)
-  const runApiKey = rpgResume ? getApiKey(rpgResume.providerType ?? providerType) : apiKey
   const stdinPiped = !process.stdin.isTTY
 
   let text = prompt
@@ -35,7 +31,8 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
 
   const { forcedEffort, forcedTemperature, forcedTopP, forcedBudget, budget, forcedWebResults, smoothSpeed, compactThinking, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
-  // E2EE chapters never silently degrade, exactly like the chat resume path.
+  // E2EE chapters never silently degrade, exactly like the chat resume path;
+  // the guard runs before any provider/key lookup.
   if (rpgResume) {
     if (e2ee && rpgResume.e2ee !== true) {
       throw new CliError('Error: this session was not created with --e2ee; refusing to resume it unencrypted.')
@@ -44,6 +41,11 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
       throw new CliError('Error: this session was created with --e2ee; resume it with --e2ee to keep it encrypted.')
     }
   }
+
+  // A resumed RPG chapter brings its own provider and key; the run's default
+  // provider only applies to fresh runs.
+  const provider = getProvider(rpgResume?.providerType ?? providerType)
+  const runApiKey = rpgResume ? getApiKey(rpgResume.providerType ?? providerType) : apiKey
 
   const tracker = new UsageTracker()
 
@@ -69,9 +71,9 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     fail(`Error: ${formatError(err)}`)
   }
   const { selection, temperature, topP, webSearch, webSearchExplicit, webResults, budget: resumeBudget } = context
-  // A resumed chapter restores its own budget; the prefs default only
-  // applies to fresh runs.
-  const runBudget = resumeBudget ?? budget
+  // A resumed chapter restores its own budget (null stays null); the prefs
+  // default only applies to fresh runs.
+  const runBudget = rpgResume ? resumeBudget : budget
 
   if (selection.isImageModel === true) {
     if (opts.attach?.length) {
