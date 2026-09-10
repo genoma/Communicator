@@ -9,7 +9,7 @@ import { CliError, formatError, isExitPromptError } from '../errors.js'
 import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { loadAttachments, buildContent } from '../attachments.js'
 import { resolveArtifacts, printArtifactsSummary } from '../artifacts.js'
-import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext, resumeSessionContext, assertResumeE2eeMatch } from '../session-setup.js'
+import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext, resumeSessionContext, assertResumeFlags } from '../session-setup.js'
 import { logRpgPrompt, ensureRpgSessionsDir, rpgSessionsDir } from '../rpg.js'
 import { getApiKey } from '../config.js'
 import { createE2eeSession } from '../e2ee.js'
@@ -31,14 +31,15 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
 
   const { forcedEffort, forcedTemperature, forcedTopP, forcedBudget, budget, forcedWebResults, smoothSpeed, compactThinking, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
-  // E2EE chapters never silently degrade, exactly like the chat resume path;
-  // the guard runs before any provider/key lookup.
-  if (rpgResume) assertResumeE2eeMatch(rpgResume, e2ee)
-
   // A resumed RPG chapter brings its own provider and key; the run's default
   // provider only applies to fresh runs.
   const provider = getProvider(rpgResume?.providerType ?? providerType)
   const runApiKey = rpgResume ? getApiKey(rpgResume.providerType ?? providerType) : apiKey
+
+  // E2EE chapters never silently degrade, exactly like the chat resume path;
+  // the provider-only flags answer first so a chapter whose provider cannot
+  // run --e2ee reports that, not the encryption mismatch.
+  if (rpgResume) assertResumeFlags({ result: rpgResume, providerName: provider.meta.name, zdr, e2ee, forcedWebResults })
 
   const tracker = new UsageTracker()
 

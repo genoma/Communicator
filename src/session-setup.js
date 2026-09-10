@@ -34,10 +34,14 @@ export function attachGateOptions(selection, providerMeta) {
   }
 }
 
-// --zdr and a --web-results count only shape an OpenRouter run. Validation
-// only sees the flag's own --provider, and a resumed session executes on the
-// provider saved in its file, so the resolved provider is checked here too.
-function assertOpenRouterOnlyFlags({ providerName, zdr, forcedWebResults }) {
+// --zdr and a --web-results count only shape an OpenRouter run, while --e2ee
+// requires Venice. Validation only sees the flag's own --provider, and a
+// resumed session executes on the provider saved in its file, so the resolved
+// provider is checked here too.
+function assertResolvedProviderFlags({ providerName, zdr, forcedWebResults, e2ee }) {
+  if (e2ee === true && providerName !== 'venice') {
+    throw new CliError('Error: --e2ee is only available with --provider venice.')
+  }
   if (providerName === 'openrouter') return
   if (zdr === true) {
     throw new CliError('Error: --zdr is only available with --provider openrouter.')
@@ -61,7 +65,7 @@ function samplingPrefValue(forced, persisted, prefs, section, modelId) {
 }
 
 export async function buildSessionContext({ provider, apiKey, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedWebResults, zdr, e2ee = false, allowInteractive = true, modelsPromise = null }) {
-  assertOpenRouterOnlyFlags({ providerName: provider.meta.name, zdr, forcedWebResults })
+  assertResolvedProviderFlags({ providerName: provider.meta.name, zdr, forcedWebResults, e2ee })
   let selection
   if (opts.model) {
     selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort, zdr, e2ee, modelsPromise })
@@ -93,7 +97,7 @@ export async function buildSessionContext({ provider, apiKey, opts, prefs, force
 // E2EE sessions never silently degrade: an encrypted session may only be
 // resumed with --e2ee, and --e2ee refuses to resume an unencrypted one.
 // Shared by the normal resume and RPG chapter resume paths (chat + one-shot).
-export function assertResumeE2eeMatch(result, e2ee = false) {
+function assertResumeE2eeMatch(result, e2ee = false) {
   if (e2ee && result.e2ee !== true) {
     throw new CliError('Error: this session was not created with --e2ee; refusing to resume it unencrypted.')
   }
@@ -102,12 +106,20 @@ export function assertResumeE2eeMatch(result, e2ee = false) {
   }
 }
 
+// The order decides which message a user sees: a session whose provider cannot
+// run --e2ee at all must report that limitation, not the encryption mismatch
+// that meeting it would fix.
+export function assertResumeFlags({ result, providerName, zdr, e2ee, forcedWebResults }) {
+  assertResolvedProviderFlags({ providerName, zdr, forcedWebResults, e2ee })
+  assertResumeE2eeMatch(result, e2ee)
+}
+
 // Builds the run settings for a resumed session (normal --resume and RPG
 // chapter resume share this): the payload's model/sampling/provider values
 // win unless the run forces them, mirroring buildSessionContext's precedence
 // for a fresh run. An explicit --model always overrides the payload.
 export async function resumeSessionContext({ result, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedBudget, forcedWebResults, provider, apiKey, zdr, e2ee = false, modelsPromise = null }) {
-  assertOpenRouterOnlyFlags({ providerName: provider.meta.name, zdr, forcedWebResults })
+  assertResolvedProviderFlags({ providerName: provider.meta.name, zdr, forcedWebResults, e2ee })
   let selection
   if (opts.model) {
     selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort, zdr, e2ee, modelsPromise })

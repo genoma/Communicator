@@ -349,7 +349,9 @@ test('one-shot refuses an e2ee mismatch when resuming an RPG chapter', async (t)
     rpgResume,
   })
   assert.equal(resumed.exited, true)
-  assert.match(resumed.message, /not created with --e2ee/)
+  // The chapter's provider cannot run --e2ee at all, so that limitation is the
+  // message the user must see.
+  assert.match(resumed.message, /--e2ee is only available with --provider venice/)
 
   // The reverse direction too.
   const resumed2 = await runOneShot(t, {

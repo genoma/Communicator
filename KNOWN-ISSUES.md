@@ -66,15 +66,15 @@ When an item is fixed: strike it in the same commit as the fix, and per
 12. `--web-results` on Venice flipped web search to `auto` — a search Venice bills — while
     dropping the count it cannot read → rejected by a provider gate
     (`Error: --web-results is only available with --provider openrouter.`,
-    `src/cli-validation.js:149-157`), matching the flag's documented "OpenRouter only" contract
+    `src/cli-validation.js:152-158`), matching the flag's documented "OpenRouter only" contract
     and the `--zdr` precedent. Two forms defer, because CLI validation only sees the flag's own
     `--provider`: a resumed session executes on the provider saved in its file, and a
     set-and-exit dispatch issues no request at all — the latter now shares
     `isConfigSetDispatch` (`src/cli-validation.js:73-84`) with `src/cli-main.js`, so the
     validator no longer re-derives the dispatch. Both forms are judged by
-    `assertOpenRouterOnlyFlags` against the resolved provider (`src/session-setup.js:40-48`,
-    called at `:64` and `:110`), which also made `--zdr` defer on `--resume`
-    (`src/cli-validation.js:145`) and thereby closed the same hole for a resumed Venice session.
+    `assertResolvedProviderFlags` against the resolved provider (`src/session-setup.js:41-52`,
+    called at `:68` and `:122`), which also made `--zdr` defer on `--resume`
+    (`src/cli-validation.js:147`) and thereby closed the same hole for a resumed Venice session.
     `/web-results` still stores a count Venice never reads (it does not change the mode, so it
     cannot bill); `docs/web-search.md` and `MEMORY.md` updated. Two review rounds folded in: the
     first cut keyed on `opts.provider` alone, leaving `--resume <venice-session> --web-results 5`
@@ -88,6 +88,21 @@ When an item is fixed: strike it in the same commit as the fix, and per
     where the provider is known instead of being asked of `-p`; a resumed Venice session without
     `VENICE_API_KEY` still fails loudly, now naming the provider the run actually uses. Verified
     A/B on the real CLI, plus both directions in `test/cli-main-success.test.js`.
+14. `--e2ee` and `--scrape` were still keyed on the flag's own `--provider`, so a resumed run
+    executing on a different provider was misjudged: `-p openrouter -r <venice-session> --e2ee`
+    was refused, and `-p venice -r <openrouter-session> --e2ee` passed the flag gate and started
+    the chat instead of being refused. Both gates now defer on `--resume`
+    (`src/cli-validation.js:141`, `:201`); `--e2ee` is judged by `assertResolvedProviderFlags`
+    against the resolved provider (`src/session-setup.js:41-52`, called at `:68` and `:122`,
+    message unchanged), and `--scrape` needs no new guard — the plain `--resume` form still trips
+    the session-flag exclusion and the chapter form reaches `scrapeForSession`
+    (`src/cli-main.js:26-27`), which rejects a provider without `scrapePage`. Two review findings
+    folded in: the chapter resume was fetching and billing the page without ever injecting it
+    (`src/commands/chat-start.js:105-109`, now injected and counted like the fresh path), and an
+    OpenRouter resume reported the encryption mismatch instead of the provider limitation
+    (`assertResumeFlags`, `src/session-setup.js:109-115`, orders the provider check first; the
+    three tests pinning the old order were re-pinned, with the mismatch rule kept covered on a
+    Venice fixture).
 
 ## Open — piped-output purity
 
@@ -260,9 +275,17 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
     (`src/cli-main.js:156-161`) before saving and exiting 0, and `communicator -m <id> --zdr`
     drops the flag the same way. *Fenced:* this is the bare "set a preference and exit" dispatch
     the approved cleanup removes, so the surface goes away rather than getting a rule.
-32. **Two provider gates still ignore a resumed session's provider.** `-p openrouter -r
+32. ~~**Two provider gates still ignore a resumed session's provider.** `-p openrouter -r
     <venice-session> --e2ee` and `--scrape <url>` are refused by their provider gates
     (`src/cli-validation.js:139-141`, `:195-196`) although the run would execute on a provider
     that allows them — the mirror of the `--zdr`/`--web-results` deferral, which now follows the
     session (`:145`, `:154-156` plus `src/session-setup.js:40-48`). The key half of this item is
-    fixed (entry 13 above), so what remains is the same deferral for `--e2ee` and `--scrape`.
+    fixed (entry 13 above), so what remains is the same deferral for `--e2ee` and `--scrape`.~~
+    **Fixed** — see the matching entry in "Fixed on `fix/one-shot-bugs`" above.
+33. **A rejected `--e2ee` resume still prints the at-rest warning first.** `src/cli-main.js:160`
+    prints `Warning: --e2ee encrypts messages sent to the API, but the session file stores them
+    unencrypted.` before the session loads, so `-p venice -r <openrouter-session> --e2ee` — now
+    correctly refused by the resolved-provider guard (`src/session-setup.js:41-52`) — warns and
+    then exits 1: the same "notice before a rejected dispatch" shape items 8/11/30 closed.
+    Cosmetic (one stderr line on an error path); fixing it means moving the notice after the
+    provider is known, i.e. into the session-start paths.

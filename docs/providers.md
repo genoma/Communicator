@@ -34,7 +34,7 @@ communicator --provider venice --e2ee
 communicator --provider venice --e2ee -m "e2ee-qwen3-5-122b-a10b" "What is 2+2?"
 ```
 
-`--e2ee` requires `--provider venice` and filters model selection to E2EE-capable models (those advertising `capabilities.supportsE2EE`). The model picker, `-m`, and the `/model` command all refuse non-E2EE models, so a session never leaves encrypted mode. The session banner shows an `[e2ee]` badge.
+`--e2ee` requires a Venice run — `--provider venice` on a fresh run, the session's provider on `--resume` — and filters model selection to E2EE-capable models (those advertising `capabilities.supportsE2EE`). The model picker, `-m`, and the `/model` command all refuse non-E2EE models, so a session never leaves encrypted mode. The session banner shows an `[e2ee]` badge.
 
 ### How it works
 

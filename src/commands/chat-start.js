@@ -7,7 +7,7 @@ import { createNewSession } from '../sessions.js'
 import { ensureRpgSessionsDir } from '../rpg.js'
 import { resumeCmd } from './resume.js'
 import { getApiKey } from '../config.js'
-import { resolveSessionFlags, persistSession, buildSessionContext, resumeSessionContext, assertResumeE2eeMatch } from '../session-setup.js'
+import { resolveSessionFlags, persistSession, buildSessionContext, resumeSessionContext, assertResumeFlags } from '../session-setup.js'
 import { findImageModel } from '../model-selection.js'
 import { startImageSession } from './image-session.js'
 
@@ -30,10 +30,9 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
         }
     if (!result) process.exit(0)
 
-    assertResumeE2eeMatch(result, e2ee)
-
     const provider = getProvider(result.providerType || providerType)
     const apiKey = getApiKey(result.providerType || providerType)
+    assertResumeFlags({ result, providerName: provider.meta.name, zdr, e2ee, forcedWebResults })
     // New sessions carry an isImageModel marker, so the resume path only
     // consults the image-model catalog for legacy sessions written before
     // the marker existed.
@@ -103,7 +102,11 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
       visionSupported: selection.visionSupported,
       fileSupported: selection.fileSupported,
       imageOutputSupported: selection.imageOutputSupported,
-      initialMessages: result.initialMessages,
+      // A launch-time --scrape on a chapter resume injects its page after the
+      // stored turns, exactly like the fresh-session branch.
+      initialMessages: scraped
+        ? [...result.initialMessages, { role: 'user', content: scrapeMessage(scraped.url, scraped.content) }]
+        : result.initialMessages,
       sessionId: result.sessionId,
       sessionCreatedAt: result.sessionCreatedAt,
       sessionUpdatedAt: result.sessionUpdatedAt,
@@ -113,7 +116,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
       // Seed the tracker's flat scrape cost for resumed sessions exactly like
       // the new-session branch does; without this the counter is reset to 0
       // and the session file permanently loses the scrape history.
-      scrapes: result.scrapes ?? 0,
+      scrapes: (result.scrapes ?? 0) + (scraped ? 1 : 0),
       resumeCostSummary: result.costSummary,
       // RPG chapter identity: the story directory and speaker/opening
       // snapshot so markers, saves and /new survive every resume path. The

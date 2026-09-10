@@ -346,8 +346,12 @@ test('chatStart exits 0 when the resumed session does not resolve', async (t) =>
 })
 
 test('chatStart rejects --e2ee resume of an unencrypted session', async (t) => {
-  resumeResult = resumeSession({ e2ee: false })
-  withApiKey(t)
+  // Venice is the only provider that can run --e2ee: on any other one the
+  // provider guard answers first (see the CLI-level coverage in
+  // test/cli-main-success.test.js), so the mismatch rule needs a Venice
+  // session to be the one that fires.
+  resumeResult = resumeSession({ e2ee: false, providerType: 'venice', providerName: 'Venice' })
+  withVeniceApiKey(t)
   t.mock.method(console, 'log', () => {})
 
   await assert.rejects(
@@ -518,7 +522,9 @@ test('chatStart refuses an e2ee mismatch when resuming an RPG chapter', async (t
         rpgDir: dir,
       },
     }),
-    (err) => err instanceof CliError && /not created with --e2ee/.test(err.message)
+    // The chapter's provider cannot run --e2ee at all, so that limitation is
+    // the message the user must see.
+    (err) => err instanceof CliError && /--e2ee is only available with --provider venice/.test(err.message)
   )
   // The reverse direction must be refused too.
   await assert.rejects(

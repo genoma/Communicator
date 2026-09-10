@@ -52,6 +52,10 @@ test('--e2ee requires --provider venice', () => {
     ['Error: --e2ee is only available with --provider venice.']
   )
   assert.deepEqual(validateCliFlags(opts({ e2ee: true, provider: 'venice' }), TTY), [])
+  // A resumed run executes on the provider saved in its session, so the check
+  // moves to src/session-setup.js — in both directions.
+  assert.deepEqual(validateCliFlags(opts({ e2ee: true, provider: 'openrouter', resume: 'id' }), TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ e2ee: true, resume: 'id' }), TTY), [])
 })
 
 test('--zdr requires --provider openrouter', () => {
@@ -175,6 +179,14 @@ test('--scrape requires the Venice provider', () => {
     validateCliFlags(opts({ scrape: 'https://example.com', provider: 'venice' }), { ...TTY, ...PROMPT() }),
     []
   )
+  // A resumed run executes on the provider saved in its session, so the gate
+  // defers; the plain resume form still trips the session-flag exclusion,
+  // while the chapter (--rpg) resume form reaches the scraping path itself.
+  assert.deepEqual(
+    validateCliFlags(opts({ scrape: 'https://example.com', resume: 'x' }), TTY),
+    ['Error: --model, --output-dir, --attach and --scrape cannot be combined with --resume (resumed sessions keep their own model; --output-dir only applies to --export).']
+  )
+  assert.deepEqual(validateCliFlags(opts({ scrape: 'https://example.com', rpg: '/tmp/rpg', resume: true }), TTY), [])
 })
 
 test('--e2ee rejects --scrape', () => {

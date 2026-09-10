@@ -136,7 +136,9 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --web-search expects "auto", "always", "on", or "off" (bare flag = auto).')
   }
 
-  if (opts.e2ee === true && opts.provider !== 'venice') {
+  // A resumed run executes on the provider saved in its session, so only the
+  // resolved provider can decide this (src/session-setup.js).
+  if (opts.e2ee === true && opts.provider !== 'venice' && opts.resume === undefined) {
     errors.push('Error: --e2ee is only available with --provider venice.')
   }
 
@@ -192,7 +194,11 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push("Error: --rpg --resume does not take a session id (the story resumes from the RPG directory's chapter sessions, or its history.json for stories saved before that layout).")
   }
 
-  if (opts.scrape !== undefined && opts.provider !== 'venice') {
+  // A resumed run executes on the provider saved in its session, so only the
+  // resolved provider can decide this: the chapter resume path reaches
+  // scrapeForSession in src/cli-main.js, which rejects a provider without
+  // scrapePage.
+  if (opts.scrape !== undefined && opts.provider !== 'venice' && opts.resume === undefined) {
     errors.push('Error: --scrape is only available with --provider venice.')
   }
 

@@ -12,7 +12,7 @@ communicator -p venice --scrape "https://example.com/article" "Summarize this ar
 
 With a prompt argument or piped stdin the scraped page is prepended to the conversation and the prompt is answered immediately (one-shot). Bare `--scrape <url>` on a TTY opens an interactive chat session with the page already in context. The URL must be `http(s)`; anything else errors before any API call.
 
-`--scrape` is a chat session flag: it conflicts with `--list-*`, `--export`, `--delete`, `--delete-all-sessions`, `--resume`, `--image`, and bare `--config`, and cannot be combined with `--e2ee` (the host would see the scraped content) or a non-Venice provider.
+`--scrape` is a chat session flag: it conflicts with `--list-*`, `--export`, `--delete`, `--delete-all-sessions`, `--image`, and bare `--config`, and cannot be combined with `--e2ee` (the host would see the scraped content) or a non-Venice provider. `--resume` conflicts too, with one exception: an RPG chapter resume (`--rpg <dir> --resume`, no session id) accepts `--scrape` and is judged by the chapter session's provider — the page is injected after the stored turns and counted in the session's scrape cost, and a chapter saved on a provider without scraping support fails with `Error: --scrape is not supported by provider <name>.`
 
 ## `/scrape <url>` (interactive)
 

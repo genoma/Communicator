@@ -124,6 +124,23 @@ test('a Venetian provider rejects --zdr and --web-results against the resolved p
   )
 })
 
+test('the resolved-provider guard rejects --e2ee on a non-Venice provider', async () => {
+  const { buildSessionContext, resumeSessionContext } = await import('../src/session-setup.js')
+  const openrouter = { provider: { meta: { name: 'openrouter' } }, apiKey: 'k', opts: {}, prefs: {} }
+  await assert.rejects(
+    buildSessionContext({ ...openrouter, e2ee: true }),
+    /--e2ee is only available with --provider venice/
+  )
+  await assert.rejects(
+    resumeSessionContext({ ...openrouter, result: { modelId: 'org/model' }, e2ee: true }),
+    /--e2ee is only available with --provider venice/
+  )
+  // Venice accepts --e2ee in both directions.
+  const venice = { provider: { meta: { name: 'venice' } }, apiKey: 'k', opts: {}, prefs: {} }
+  assert.equal((await buildSessionContext({ ...venice, e2ee: true })).webSearch, 'off')
+  assert.equal((await resumeSessionContext({ ...venice, result: { modelId: 'org/model' }, e2ee: true })).webSearch, 'off')
+})
+
 test('the resolved-provider guard leaves OpenRouter and unflagged runs alone', async () => {
   const { buildSessionContext, resumeSessionContext } = await import('../src/session-setup.js')
   const openrouter = { provider: { meta: { name: 'openrouter' } }, apiKey: 'k', opts: {}, prefs: {} }

@@ -740,3 +740,143 @@ test('--no-safe-mode with --resume persists the pref before the chat resumes', a
   const saved = JSON.parse(await readFile(configFile, 'utf-8'))
   assert.equal(saved.safeMode, false)
 })
+
+// Item 32: a --resume run executes on the provider saved in the session, so
+// the --e2ee provider gate must follow the resolved provider, not -p. Pre-fix
+// the gate read opts.provider, falsely refusing a Venice session resumed with
+// -p openrouter and silently accepting an OpenRouter session under -p venice.
+test('--resume -p openrouter of a Venice --e2ee session runs on the Venice provider', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  // The stored e2ee marker is what assertResumeE2eeMatch checks on resume; the
+  // gate under test is the provider check that runs after it.
+  await seedSession('2026-04-01T00-00-00', {
+    providerType: 'venice',
+    providerName: 'Venice',
+    model: 'venice/model',
+    isImageModel: false,
+    e2ee: true,
+  })
+  const configFile = await tempConfig(t)
+  const callsBefore = startChatCalls.length
+
+  await runCliNoExit(t, {
+    config: configFile,
+    resume: '2026-04-01',
+    provider: 'openrouter',
+    e2ee: true,
+  }, undefined)
+
+  assert.equal(startChatCalls.length, callsBefore + 1)
+  const call = startChatCalls[startChatCalls.length - 1]
+  assert.equal(call.model, 'venice/model')
+  assert.equal(call.endpointProviderName, 'Venice')
+  assert.equal(call.provider.meta.name, 'venice')
+  assert.equal(call.apiKey, 'venice-test-key')
+})
+
+test('--e2ee resuming an OpenRouter session is refused without -p', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  await seedSession('2026-04-02T00-00-00', { isImageModel: false, e2ee: true })
+
+  const { err } = await runAndExit(t, { resume: '2026-04-02', e2ee: true }, undefined, 1)
+  assert.match(err.join('\n'), /Error: --e2ee is only available with --provider venice\./)
+})
+
+test('--e2ee resuming an OpenRouter session is refused even with -p venice', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  await seedSession('2026-04-03T00-00-00', { isImageModel: false, e2ee: true })
+  const configFile = await tempConfig(t)
+
+  // -p venice satisfies the flag-level gate, so pre-fix this was accepted even
+  // though the run resolves to the session's OpenRouter provider.
+  const { err } = await runAndExit(t, {
+    config: configFile,
+    resume: '2026-04-03',
+    provider: 'venice',
+    e2ee: true,
+  }, undefined, 1)
+  assert.match(err.join('\n'), /Error: --e2ee is only available with --provider venice\./)
+})
+
+test('--e2ee resuming an OpenRouter session reports the provider, not the encryption mismatch', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  // No stored e2ee marker: the mismatch guard would also fire, so this pins
+  // that the provider limitation is the message the user actually sees.
+  await seedSession('2026-04-04T00-00-00', { isImageModel: false })
+
+  const { err } = await runAndExit(t, { resume: '2026-04-04', e2ee: true }, undefined, 1)
+  assert.match(err.join('\n'), /Error: --e2ee is only available with --provider venice\./)
+  assert.ok(!err.some((l) => /not created with --e2ee/.test(l)))
+})
+
+// --scrape needs no resolved-provider guard: its deferred path reaches
+// scrapeForSession (src/cli-main.js), which already rejects a provider that
+// has no scrapePage. These two tests pin that claim through the RPG chapter
+// resume route, the only route that reaches --scrape with --resume.
+async function seedRpgChapter(t, { providerType = 'venice', providerName = 'Venice', model = 'venice/model' } = {}) {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  await writeFile(join(dir, 'char.md'), '# Zara\n\n## Personality\nSharp and warm.\n')
+  await writeFile(join(dir, 'user.md'), '# Alex\n\n## Description\nThe operator.\n')
+  await writeFile(join(dir, 'prompt.md'), '## Tone\nNoir.\n')
+  await writeFile(join(dir, 'scenario.md'), '## Current scene\nA rainy street.\n')
+  await writeFile(join(dir, 'first-message.md'), 'The rain had stopped by the time she arrived.\n')
+  const { ensureRpgSessionsDir, rpgSessionsDir } = await import('../src/rpg.js')
+  const { saveSession } = await import('../src/sessions.js')
+  await ensureRpgSessionsDir(dir)
+  await saveSession(rpgSessionsDir(dir), '2026-05-01T00-00-00', sessionData({
+    providerType,
+    providerName,
+    model,
+    isImageModel: false,
+  }))
+  return dir
+}
+
+test('--rpg --resume --scrape without -p scrapes via the chapter Venice provider', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  const dir = await seedRpgChapter(t)
+  const configFile = await tempConfig(t)
+  const calls = mockVeniceScrapeFetch(t)
+  const callsBefore = startChatCalls.length
+
+  await runCliNoExit(t, {
+    config: configFile,
+    rpg: dir,
+    resume: true,
+    scrape: 'https://example.com/article',
+  }, undefined)
+
+  assert.ok(calls.some((u) => u.includes('/augment/scrape')))
+  assert.equal(startChatCalls.length, callsBefore + 1)
+  const call = startChatCalls[startChatCalls.length - 1]
+  assert.equal(call.provider.meta.name, 'venice')
+  assert.equal(call.apiKey, 'venice-test-key')
+  // The page is billed, so it must reach the run: injected after the stored
+  // turns and counted in the flat scrape cost, like the fresh-session path.
+  assert.match(call.opts.initialMessages.at(-1).content, /Scraped from https:\/\/example\.com\/article/)
+  assert.equal(call.opts.scrapes, 1)
+})
+
+test('--rpg --resume --scrape of an OpenRouter chapter fails loudly, never silently', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  const dir = await seedRpgChapter(t, { providerType: 'openrouter', providerName: 'ProviderX', model: 'test/model' })
+  const configFile = await tempConfig(t)
+
+  // -p venice passes the flag gate; the chapter's OpenRouter provider has no
+  // scrapePage, so scrapeForSession rejects it instead of dropping the flag.
+  const { err } = await runAndExit(t, {
+    config: configFile,
+    rpg: dir,
+    resume: true,
+    provider: 'venice',
+    scrape: 'https://example.com/article',
+  }, undefined, 1)
+  assert.match(err.join('\n'), /Error: --scrape is not supported by provider openrouter\./)
+})
