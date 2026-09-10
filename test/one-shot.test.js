@@ -87,6 +87,26 @@ function mockOpenRouterStream(t, fetchCalls = [], bodies = []) {
   })
 }
 
+// Notices route to stdout on a terminal and to stderr when stdout is piped
+// (the piped one-shot emits only answer text there); every notice assertion
+// pins the stream it expects instead of inheriting the runner's own TTY state.
+function withStdoutTTY(t, value) {
+  const original = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
+  Object.defineProperty(process.stdout, 'isTTY', { value, configurable: true })
+  t.after(() => {
+    if (original) Object.defineProperty(process.stdout, 'isTTY', original)
+    else delete process.stdout.isTTY
+  })
+}
+
+function captureConsole(t) {
+  const logs = []
+  const errors = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+  return { logs, errors }
+}
+
 function withApiKey(t, value = 'test-key') {
   const previous = process.env.OPENROUTER_API_KEY
   process.env.OPENROUTER_API_KEY = value
@@ -974,9 +994,7 @@ test('Ctrl+C at the picker in one-shot (TTY, no -m) propagates ExitPromptError',
 })
 
 
-test('one-shot never sends a disable reasoning body for mandatory-reasoning models', async (t) => {
-  resetOpenRouterModelCaches()
-  const bodies = []
+function mockMandatoryReasoningFetch(t, bodies = []) {
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
     if (String(url).includes('/chat/completions')) {
       if (opts?.body) bodies.push(JSON.parse(opts.body))
@@ -987,14 +1005,36 @@ test('one-shot never sends a disable reasoning body for mandatory-reasoning mode
     }
     return jsonResponse({ data: [{ id: 'test/model-mandatory', name: 'Mandatory', context_length: 1000, description: 'd', reasoning: { supported: true, supported_efforts: ['high'], default_effort: 'high', mandatory: true } }] })
   })
+}
+
+test('one-shot never sends a disable reasoning body for mandatory-reasoning models', async (t) => {
+  resetOpenRouterModelCaches()
+  const bodies = []
+  mockMandatoryReasoningFetch(t, bodies)
   withApiKey(t)
-  const logs = []
-  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  withStdoutTTY(t, false)
+  const { logs, errors } = captureConsole(t)
   t.mock.method(process.stdout, 'write', () => {})
 
   const { exited } = await runOneShot(t, { overrides: { model: 'test/model-mandatory', reasoningEffort: 'none' }, prompt: 'Hello' })
 
   assert.equal(exited, false)
   assert.ok(!('reasoning' in bodies[0]))
+  assert.ok(!logs.some((l) => l.includes('reasoning is mandatory for test/model-mandatory')), 'the note must stay off piped stdout')
+  assert.ok(errors.some((l) => l.includes('reasoning is mandatory for test/model-mandatory')))
+})
+
+test('the mandatory-reasoning note prints on stdout on a terminal', async (t) => {
+  resetOpenRouterModelCaches()
+  mockMandatoryReasoningFetch(t)
+  withApiKey(t)
+  withStdoutTTY(t, true)
+  const { logs, errors } = captureConsole(t)
+  t.mock.method(process.stdout, 'write', () => {})
+
+  const { exited } = await runOneShot(t, { overrides: { model: 'test/model-mandatory', reasoningEffort: 'none' }, prompt: 'Hello' })
+
+  assert.equal(exited, false)
   assert.ok(logs.some((l) => l.includes('reasoning is mandatory for test/model-mandatory')))
+  assert.ok(!errors.some((l) => l.includes('reasoning is mandatory for test/model-mandatory')), 'the note belongs on stdout on a terminal')
 })

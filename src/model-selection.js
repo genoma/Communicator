@@ -186,7 +186,10 @@ export async function selectModelAndEndpoint({ provider, apiKey, prefs, reasonin
       }
     }
     if (effort === null && modelData?.reasoning?.mandatory === true) {
-      console.log(`Note: reasoning is mandatory for ${sanitizeSingleLine(modelId)}; it cannot be disabled.`)
+      // Piped stdout carries the answer alone (same gate as the RPG notices).
+      const notice = `Note: reasoning is mandatory for ${sanitizeSingleLine(modelId)}; it cannot be disabled.`
+      if (process.stdout.isTTY === true) console.log(notice)
+      else console.error(notice)
     }
 
     // Endpoint capabilities differ per provider: OpenRouter reports a raw
@@ -263,7 +266,10 @@ export async function selectModelNonInteractive({ provider, apiKey, prefs, model
   const effort = resolveEffortDefault({ reasoning, forcedEffort, prefs, modelId: prefModelId })
 
   if (effort === null && reasoning?.mandatory === true) {
-    console.log(`Note: reasoning is mandatory for ${sanitizeSingleLine(modelId)}; it cannot be disabled.`)
+    // Piped stdout carries the answer alone (same gate as the RPG notices).
+    const notice = `Note: reasoning is mandatory for ${sanitizeSingleLine(modelId)}; it cannot be disabled.`
+    if (process.stdout.isTTY === true) console.log(notice)
+    else console.error(notice)
   }
 
   const endpoints = await provider.fetchEndpoints(apiKey, prefModelId, models)
