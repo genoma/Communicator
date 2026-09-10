@@ -819,6 +819,13 @@ test('one-shot TTY output prints the banner, sources and the skipped-chunk warni
     assert.equal(saved.contextLength, 1000)
   }
   assert.ok(!logs.some((l) => l.includes('CTX')))
+
+  // A run without --config persists its prefs to the default path under the
+  // mocked home. If the node:os mock ever stops applying, these land in the
+  // real ~/.communicator.json instead and the assertion fails.
+  const prefs = JSON.parse(await readFile(join(tempHome, '.communicator.json'), 'utf-8'))
+  assert.equal(prefs.temperature['test/model-a'], 1.1)
+  assert.equal(prefs.topP['test/model-a'], 0.7)
 })
 
 const IMAGE_BYTES = Buffer.from('one-shot image')
