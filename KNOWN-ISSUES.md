@@ -63,6 +63,12 @@ When an item is fixed: strike it in the same commit as the fix, and per
     three exclusion rules (`src/cli-validation.js:246-258`), so no previously surfaced
     `errors[0]` changes — the provider gate still wins for `-p venice --export --zdr` and the
     session-flags message still wins when a real session flag is also present.
+12. `--web-results` on Venice flipped web search to `auto` — a search Venice bills — while
+    dropping the count it cannot read → a provider gate now rejects the flag
+    (`Error: --web-results is only available with --provider openrouter.`,
+    `src/cli-validation.js:134-138`), matching the flag's documented "OpenRouter only" contract
+    and the `--zdr` precedent. `/web-results` still stores a count that Venice never reads (it
+    does not change the mode, so it cannot bill); `docs/web-search.md` and `MEMORY.md` updated.
 
 ## Open — piped-output purity
 
@@ -107,7 +113,7 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
    (`src/providers/openrouter.js:262` has no `safeMode`/`hideWatermark` parameter) while the
    global pref is still written and the Venice-specific notice is still printed.
    `docs/commands.md:49` omits the Venice-only caveat that `docs/images.md:48` carries.
-10. **`--web-results` on Venice can turn billed search ON.** `src/flags.js:68` returns `'auto'`
+10. ~~**`--web-results` on Venice can turn billed search ON.** `src/flags.js:68` returns `'auto'`
     whenever `webResults != null` (the function takes no provider argument and nothing upstream
     filters by one), while Venice never reads the count (`src/providers/venice.js:263` has no
     `webResults` parameter; OpenRouter does consume it, `src/providers/openrouter.js:394-404`).
@@ -120,7 +126,8 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
     billing needs a model with `capabilities.supportsWebSearch`, else `src/session-setup.js:62-63`
     exits. A bare `communicator --web-results 5` no longer bites — it is the config setter
     (`src/cli-main.js:233-247`), which only persists the count. Billing path when it does:
-    `src/providers/venice.js:289-296` (`enable_web_search: 'auto'`).
+    `src/providers/venice.js:289-296` (`enable_web_search: 'auto'`).~~ **Fixed** — see the
+    matching entry in "Fixed on `fix/one-shot-bugs`" above.
 11. **`--list-endpoints` needs an API key on OpenRouter** (unconditional
     `Authorization: Bearer` at `src/providers/openrouter.js:327`) while `--list-models` and
     `--list-image-models` are keyless by design — a keyless script 401s on the endpoint listing

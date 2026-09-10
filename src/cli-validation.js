@@ -131,6 +131,12 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --zdr is only available with --provider openrouter.')
   }
 
+  // Venice has no result-count knob: the flag would only flip its web search
+  // to `auto`, turning billed search on while the count itself is dropped.
+  if (opts.webResults !== undefined && opts.provider !== 'openrouter') {
+    errors.push('Error: --web-results is only available with --provider openrouter.')
+  }
+
   if (opts.e2ee === true && opts.zdr === true) {
     errors.push('Error: --e2ee cannot be combined with --zdr.')
   }

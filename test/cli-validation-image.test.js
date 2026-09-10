@@ -85,10 +85,13 @@ test('--image rejects every chat session flag', () => {
     ['smoothStreaming', false],
     ['zdr', true],
   ]) {
-    // The zdr case also violates the provider gate on this file's default
-    // (venice), so it carries both errors.
-    const expected = name === 'zdr'
-      ? ['Error: --zdr is only available with --provider openrouter.', SESSION_FLAGS_ERROR]
+    // The zdr and webResults cases also violate the provider gates on this
+    // file's default (venice), so they carry both errors.
+    const providerGate = name === 'zdr'
+      ? 'Error: --zdr is only available with --provider openrouter.'
+      : 'Error: --web-results is only available with --provider openrouter.'
+    const expected = name === 'zdr' || name === 'webResults'
+      ? [providerGate, SESSION_FLAGS_ERROR]
       : [SESSION_FLAGS_ERROR]
     assert.deepEqual(
       validateCliFlags(opts({ image: true, [name]: value }), { ...TTY, ...PROMPT() }),

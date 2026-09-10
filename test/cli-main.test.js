@@ -247,6 +247,16 @@ test('--e2ee cannot be combined with --export', async (t) => {
   assert.deepEqual(out, [])
 })
 
+test('--web-results is rejected on Venice before any dispatch', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  mockVeniceApi(t)
+  const { exitCode, out, err } = await runAndExit(t, { provider: 'venice', webResults: 5 }, 'hi', 1)
+  assert.equal(exitCode, 1)
+  assert.match(err[0], /--web-results is only available with --provider openrouter/)
+  assert.deepEqual(out, [])
+})
+
 test('session flags cannot be combined with --export', async (t) => {
   withTTY(t, true)
   const { err } = await runAndExit(t, { export: true, budget: '1' }, undefined, 1)
