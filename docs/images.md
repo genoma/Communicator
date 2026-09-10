@@ -41,7 +41,7 @@ The description is the positional prompt; piped stdin works too (`echo "a red ca
 | `--image-format`     | Output format: `png`, `jpeg`, `webp` (default: `webp` on Venice, `png` on OpenRouter; only sent when the model supports it) |
 | `--variants <n>`     | Number of images to generate, 1–4 (default 1; values above the model's advertised `maxN` are rejected — OpenRouter accepts more upstream but the CLI contract stays 1–4) |
 | `--aspect-ratio <x:y>` | Aspect ratio (model-dependent, e.g. `16:9`, `1:1`, `auto`; decimal ratios like `9:19.5` are accepted) |
-| `--resolution <tier>` | Resolution tier (model-dependent): `1K`, `2K`, `4K` (the same values are sent to OpenRouter; support is model-dependent) |
+| `--resolution <tier>` | Resolution tier (model-dependent): `1K`, `2K`, `4K` (only values the model advertises are accepted, OpenRouter included) |
 | `--quality <level>`  | Quality tier (model-dependent): `low`, `medium`, `high`                    |
 | `--width <px>` / `--height <px>` | Exact pixel dimensions, 1–1280, multiples of the model's divisor (pixel-based models; cannot be combined with `--aspect-ratio` or `--resolution`) |
 | `--seed <int>`       | Random seed for reproducible generations (between -999999999 and 999999999) |
@@ -49,7 +49,7 @@ The description is the positional prompt; piped stdin works too (`echo "a red ca
 | `--no-watermark`     | Hide the Venice watermark on the generated images (persisted as the global `hideWatermark` pref) |
 | `--output-dir <path>`| Also copy the generated images to this directory (saved as the default for later runs) |
 
-Explicit flags are validated against the chosen model's supported options (aspect ratios, formats, resolution tiers, quality levels, width/height divisor) when the model is known; an unsupported value errors with the supported list. An unknown `--image-model` id is rejected at selection (`image model <id> not found. Use --list-image-models to see available models.`) — the API is never reached.
+Explicit flags are validated against the chosen model's supported options (aspect ratios, formats, resolution tiers, quality levels, width/height divisor) when the model is known; an unsupported value errors with the supported list, and a model that advertises no list at all for a parameter rejects the flag outright (`Error: --resolution 2K is not supported by flux-1-1.`). An unknown `--image-model` id is rejected at selection (`image model <id> not found. Use --list-image-models to see available models.`) — the API is never reached.
 
 On a TTY, `--image` (and `-m <image-model>`) without the sizing flags asks for the aspect ratio and output format with compact pickers — the saved default is preselected, so pressing Enter accepts it. Pixel-based models get the same ratio picker over their hardcoded preset list, with each ratio labeled with its computed pixel size (`2:3 · 848x1272`) and the saved ratio preselected (falling back to 1:1). Flags skip the pickers. Piped input uses the saved defaults directly.
 

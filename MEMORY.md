@@ -40,6 +40,7 @@
 
 - Text chat owns text/vision commands: `/attach`, `/reasoning`, `/web-search`, etc. No image-specific commands.
 - Image REPL owns `/resolution`, `/quality`, `/format`, `/aspect`, `/variants`, `/seed`, `/watermark` (Venice only), each gated by `model.constraints`; `/help`, `/status`, `/model`, `/quit` always available.
+- The CLI flags mirror that gate: `--resolution`/`--quality` hard-error (`Error: --resolution 2K is not supported by <id>.`) when `model.constraints.resolutions`/`qualities` is `null`, exactly like `--image-format` on a null `formats` list, so flag and REPL agree on what the model cannot take; values the advertised list contains are passed through to the provider, as is every value when `model.constraints` itself is missing (the REPL's guards are `constraints && …` too).
 - `/model` can hand off between image and text sessions; image command visibility disappears accordingly.
 
 ## Temperature semantics
@@ -85,7 +86,7 @@
 - `budgetStatus(cost, budget)` → `{ pct, remaining }`; warning at ≥80% once; refusal pre-turn when `cost >= budget`.
 - Per-session, stored/restored, cleared by `/new`.
 - `/budget <usd>` sets/resets warning; bare shows status.
-- One-shot does not pre-check budget.
+- One-shot does not pre-check budget; it still prints the 80% `budgetLine` bar on a TTY (the interactive 80% bar is once per session, the one-shot one once per run).
 
 ## Zero data retention (ZDR)
 
