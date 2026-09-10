@@ -98,9 +98,20 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
    (`src/providers/openrouter.js:262` has no `safeMode`/`hideWatermark` parameter) while the
    global pref is still written and the Venice-specific notice is still printed.
    `docs/commands.md:49` omits the Venice-only caveat that `docs/images.md:48` carries.
-10. **`--web-results` on Venice can turn billed search ON.** `src/flags.js:67` returns `'auto'`
-    whenever `webResults != null`, regardless of provider, while Venice never reads the count
-    (`src/providers/venice.js:263`). `docs/web-search.md:24` says it has "no effect there".
+10. **`--web-results` on Venice can turn billed search ON.** `src/flags.js:68` returns `'auto'`
+    whenever `webResults != null` (the function takes no provider argument and nothing upstream
+    filters by one), while Venice never reads the count (`src/providers/venice.js:263` has no
+    `webResults` parameter; OpenRouter does consume it, `src/providers/openrouter.js:394-404`).
+    Verified by calling the pure resolvers: `resolveWebSearchFlag({ webResults: 5 }) === 'auto'`.
+    `docs/web-search.md:24` says the flag has "no effect there" — wrong for the CLI flag; only
+    the `/web-results` slash command is inert (`src/commands/chat/index.js:426-433`). A persisted
+    `prefs.webSearch[model] = 'off'` does not defend either (`:68` short-circuits before `:69`
+    consults `prefValue`); only an explicit `--web-search off` wins (`:67` precedes `:68`). Two
+    limits: `--e2ee` is rejected alongside `--web-results` (`src/cli-validation.js:138-139`), and
+    billing needs a model with `capabilities.supportsWebSearch`, else `src/session-setup.js:62-63`
+    exits. A bare `communicator --web-results 5` no longer bites — it is the config setter
+    (`src/cli-main.js:233-247`), which only persists the count. Billing path when it does:
+    `src/providers/venice.js:289-296` (`enable_web_search: 'auto'`).
 11. **`--list-endpoints` needs an API key on OpenRouter** (unconditional
     `Authorization: Bearer` at `src/providers/openrouter.js:327`) while `--list-models` and
     `--list-image-models` are keyless by design — a keyless script 401s on the endpoint listing
@@ -183,13 +194,26 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
 ## Open — flag combinations (found while fixing item 5)
 
 30. **The gap item 5 fixed has the same shape next to the other exit paths.** `--zdr`/`--e2ee`
-    are absent from `isSessionOnly`, so the exclusions built on it — `--delete-all-sessions`
-    (`src/cli-validation.js:203`), `--export` (`:239`) and `--delete` (`:243`) — never see them.
-    On their own provider each combination validates clean and changes nothing:
-    `--export --zdr`, `--delete --zdr` and `--delete-all-sessions y --zdr` all return `[]` on
-    OpenRouter, and `--export --e2ee -p venice` on Venice, while the analogous session flags are
-    refused (`--export --temperature 0.5` errors). `-p venice --export --zdr` is refused only by
-    the pre-existing provider gate (`:129-131`), not by the exclusion. The fix must respect the
-    trap the item 5 fix documented: `--resume --zdr` and `--resume --e2ee` are intended behavior
-    (`:245-247` feeds the resume exclusion, `docs/providers.md:24,54`), so "add both flags to
-    `isSessionOnly`" is not a valid fix.
+    are absent from `isSessionOnly` (`src/cli-validation.js:21-37`, read only at `:119`), so the
+    exclusions built on it — `--delete-all-sessions` (`:202`), `--export` (`:238`) and
+    `--delete` (`:242`) — never see them. Verified by calling `validateCliFlags` directly:
+    `--export --zdr`, `--delete --zdr`, `--delete-all-sessions y --zdr` and
+    `--export --zdr --output-dir out` all return `[]` on OpenRouter, as do
+    `--export --e2ee -p venice`, `--delete --e2ee -p venice` and
+    `--delete-all-sessions y --e2ee -p venice` on Venice, while `--export --temperature 0.5`
+    errors. `-p venice --export --zdr` is refused only by the provider gate (`:130-132` for zdr,
+    `:126-128` for e2ee), not by the exclusion.
+    The `--e2ee` variants are not fully inert: `src/cli-main.js:156-161` still prints
+    `Warning: --e2ee encrypts messages sent to the API, but the session file stores them
+    unencrypted.` to stderr before the export/delete/delete-all dispatch (`:200`/`:217`/`:224`) —
+    the same shape item 5 closed for `--list-*`.
+    The intended exception is real: `--resume <id> --zdr` / `--resume <id> --e2ee` return `[]`
+    because the resume rule (`:246-248`) never reads `sessionOnlyFlags` (`--resume id
+    --temperature 0.5` also returns `[]`, and `docs/providers.md:24,54` documents the intent).
+    **But the reason this entry gives is wrong:** adding both flags to `isSessionOnly` would not
+    touch `--resume` at all. It would instead (a) change the surfaced `--list-*` error from the
+    purpose-built `Error: --zdr cannot be combined with --list-* flags.` to the generic
+    session-flags wording, since `src/cli-main.js:80` throws `errors[0]` and `:226-228` precedes
+    `:233-236`, and (b) land the intended new rejections with that generic wording. The fix needs
+    a rule that names only the flags actually passed, next to the item 8 rule, with the resume
+    exception kept explicit.
