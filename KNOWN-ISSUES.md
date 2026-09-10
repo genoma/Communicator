@@ -80,6 +80,14 @@ When an item is fixed: strike it in the same commit as the fix, and per
     first cut keyed on `opts.provider` alone, leaving `--resume <venice-session> --web-results 5`
     still billing and rejecting `-p venice -r <openrouter-session>`; the second added the
     `--zdr` mirror case and the piped pure-setter form.
+13. A plain `--resume` demanded the *flag* provider's API key before the session loaded:
+    `-p venice -r <openrouter-session>` died with `Error: VENICE_API_KEY environment variable is
+    not set.` even though the run executes on the session's provider and key
+    (`src/commands/chat-start.js:35-36`). `src/cli-main.js:296-298` now resolves that key only
+    when the run does not resume (an RPG chapter already carried its own), so the lookup happens
+    where the provider is known instead of being asked of `-p`; a resumed Venice session without
+    `VENICE_API_KEY` still fails loudly, now naming the provider the run actually uses. Verified
+    A/B on the real CLI, plus both directions in `test/cli-main-success.test.js`.
 
 ## Open — piped-output purity
 
@@ -252,19 +260,9 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
     (`src/cli-main.js:156-161`) before saving and exiting 0, and `communicator -m <id> --zdr`
     drops the flag the same way. *Fenced:* this is the bare "set a preference and exit" dispatch
     the approved cleanup removes, so the surface goes away rather than getting a rule.
-32. **The flag provider and a resumed session's provider can disagree, and only two flags handle
-    it.** A plain `--resume` run executes on the provider saved in the session, but
-    `src/cli-main.js:291` resolves the API key from the *flag* provider before dispatch (`:263`
-    is only the unrelated `--image` lookup; the RPG chapter branch of `:291` already follows the
-    session), so `-p venice -r <openrouter-session>` demands
-    `VENICE_API_KEY` and dies with `Error: VENICE_API_KEY environment variable is not set.` even
-    though the run then uses the session's own provider and key
-    (`src/commands/chat-start.js:35-36`). Scope: both keys are exported in the dev shell
-    (`~/.zshrc`), so this only bites where the flag provider's key is absent — CI/headless with a
-    partial key set. A/B verified: with `VENICE_API_KEY` removed the run dies with that error;
-    with it set the same command reaches the REPL.
-    The mirror rejections are unconditional: `-p openrouter -r <venice-session> --e2ee` and
-    `--scrape <url>` are refused by their provider gates (`src/cli-validation.js:139-141`,
-    `:195-196`) even though the resolved provider would allow them. Only `--zdr` (`:145`) and
-    `--web-results` (`:154-156`) defer to the resolved provider (`src/session-setup.js:40-48`);
-    giving `--e2ee` and `--scrape` the same treatment is the candidate fix.
+32. **Two provider gates still ignore a resumed session's provider.** `-p openrouter -r
+    <venice-session> --e2ee` and `--scrape <url>` are refused by their provider gates
+    (`src/cli-validation.js:139-141`, `:195-196`) although the run would execute on a provider
+    that allows them — the mirror of the `--zdr`/`--web-results` deferral, which now follows the
+    session (`:145`, `:154-156` plus `src/session-setup.js:40-48`). The key half of this item is
+    fixed (entry 13 above), so what remains is the same deferral for `--e2ee` and `--scrape`.

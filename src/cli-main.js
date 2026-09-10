@@ -286,9 +286,16 @@ async function main(opts, promptArg) {
     throw new CliError('Interactive selection needs a TTY. Use -m <model-id> when piping input.')
   }
 
-  // A resumed RPG chapter brings its own provider, so the key must follow it
-  // (the run's default provider is only for fresh runs).
-  const apiKey = rpgResume ? getApiKey(rpgResume.providerType ?? providerType) : getApiKey(providerType)
+  // A resumed session brings its own provider, so the key must follow it (the
+  // run's default provider is only for fresh runs): an RPG chapter carries it
+  // in rpgResume, and a plain --resume resolves it in chat-start once the
+  // session loads — demanding the flag's provider key here would fail a run
+  // that never uses it. Only --rpg --resume with nothing saved to resume still
+  // takes the fresh-run branch, which does need the flag's key.
+  const resumesSession = opts.resume !== undefined && (opts.rpg === undefined || rpgResume)
+  const apiKey = rpgResume
+    ? getApiKey(rpgResume.providerType ?? providerType)
+    : resumesSession ? '' : getApiKey(providerType)
   const prefs = await loadPreferences(opts.config)
   const systemPrompt = rpgContext?.systemPrompt ?? await loadSystemPrompt(opts.systemPrompt)
   const rpgFirstMessage = rpgContext?.firstMessage ?? null

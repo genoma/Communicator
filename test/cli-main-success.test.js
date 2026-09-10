@@ -24,7 +24,7 @@ const startChatCalls = []
 mock.module(new URL('../src/chat.js', import.meta.url).href, {
   namedExports: {
     startChat: async (apiKey, model, endpointProviderName, reasoningEffort, temperature, pricing, provider, opts) => {
-      startChatCalls.push({ apiKey, model, endpointProviderName, reasoningEffort, temperature, pricing, opts })
+      startChatCalls.push({ apiKey, model, endpointProviderName, reasoningEffort, temperature, pricing, provider, opts })
       return {
         sessionId: opts.sessionId,
         createdAt: opts.createdAt,
@@ -170,6 +170,14 @@ function withVeniceApiKey(t, value = 'venice-test-key') {
   t.after(() => {
     if (previous === undefined) delete process.env.VENICE_API_KEY
     else process.env.VENICE_API_KEY = previous
+  })
+}
+
+function withoutVeniceApiKey(t) {
+  const previous = process.env.VENICE_API_KEY
+  delete process.env.VENICE_API_KEY
+  t.after(() => {
+    if (previous !== undefined) process.env.VENICE_API_KEY = previous
   })
 }
 
@@ -414,6 +422,45 @@ test('--resume with a unique partial id rebuilds the context from the session', 
   // The resumed session never explicitly set web search, so its default/restored
   // 'off' must not pollute the per-model pref.
   assert.equal(saved.webSearch, undefined)
+})
+
+test('--resume runs on the session provider, not the flag provider', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  withoutVeniceApiKey(t)
+  await seedSession('2026-01-07T00-00-00', { isImageModel: false })
+  const configFile = await tempConfig(t)
+
+  await runCliNoExit(t, { config: configFile, resume: '2026-01-07', provider: 'venice' }, undefined)
+
+  const call = startChatCalls[startChatCalls.length - 1]
+  assert.equal(call.model, 'test/model')
+  // The session's own provider and key win over -p venice, so no Venice key is
+  // demanded for a run that never sends one to Venice.
+  assert.equal(call.provider.meta.name, 'openrouter')
+  assert.equal(call.apiKey, 'test-key')
+})
+
+test('--resume still demands the key of the provider the session actually uses', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  withoutVeniceApiKey(t)
+  await seedSession('2026-01-08T00-00-00', {
+    providerType: 'venice',
+    providerName: 'Venice',
+    model: 'venice/model',
+    isImageModel: false,
+  })
+  const configFile = await tempConfig(t)
+
+  const { err } = await runAndExit(t, { config: configFile, resume: '2026-01-08' }, undefined, 1)
+  assert.match(err.join('\n'), /VENICE_API_KEY environment variable is not set/)
+
+  withVeniceApiKey(t)
+  await runCliNoExit(t, { config: configFile, resume: '2026-01-08' }, undefined)
+  const call = startChatCalls[startChatCalls.length - 1]
+  assert.equal(call.provider.meta.name, 'venice')
+  assert.equal(call.apiKey, 'venice-test-key')
 })
 
 test('--resume --reasoning-effort overrides the stored session effort', async (t) => {
