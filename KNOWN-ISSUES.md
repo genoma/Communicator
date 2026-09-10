@@ -254,8 +254,9 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
     the approved cleanup removes, so the surface goes away rather than getting a rule.
 32. **The flag provider and a resumed session's provider can disagree, and only two flags handle
     it.** A plain `--resume` run executes on the provider saved in the session, but
-    `src/cli-main.js:263` resolves the API key from the *flag* provider before dispatch (only the
-    RPG chapter path, `:291`, uses the session's), so `-p venice -r <openrouter-session>` demands
+    `src/cli-main.js:291` resolves the API key from the *flag* provider before dispatch (`:263`
+    is only the unrelated `--image` lookup; the RPG chapter branch of `:291` already follows the
+    session), so `-p venice -r <openrouter-session>` demands
     `VENICE_API_KEY` and dies with `Error: VENICE_API_KEY environment variable is not set.` even
     though the run then uses the session's own provider and key
     (`src/commands/chat-start.js:35-36`). Scope: both keys are exported in the dev shell
