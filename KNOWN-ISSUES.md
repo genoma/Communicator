@@ -34,6 +34,19 @@ When an item is fixed: strike it in the same commit as the fix, and per
    entire run, and `test/test-runner-wrapper.test.js` pins that the runner resolves it.
    Note: this guarantee holds only for runs through the wrapper — a bare `node --test`
    invocation still resolves the real home, which is why `AGENTS.md` mandates `npm test`.
+8. `--zdr` / `--e2ee` were silently accepted next to a `--list-*` exit mode and changed
+   nothing (the exit-mode exclusion tested only `isSessionOnly`, which carried neither flag),
+   and `-p venice --e2ee --list-models` even printed the E2EE session-file warning to stderr
+   before listing → both are now rejected by a dedicated exit-mode rule that names only the
+   flags actually passed (`Error: --zdr cannot be combined with --list-* flags.` /
+   `Error: --e2ee cannot be combined with --list-* flags.`, `src/cli-validation.js:230-236`);
+   validation throws (`src/cli-main.js:78-81`) before the warning site (`:156-161`), so the
+   listing no longer starts.
+9. Bare `--config` silently dropped `--zdr`: `hasBareConfigOtherFlags`
+   (`src/cli-validation.js:76-111`) listed `opts.e2ee` (`:106`) but not `opts.zdr`, so
+   `communicator --config --zdr` printed the config and exited 0 → `opts.zdr` is now in the
+   guard (`:107`) and the bare config view rejects it exactly as it already rejected `--e2ee`
+   (`Error: bare --config (config view) cannot be combined with other flags.`, exit 1).
 
 ## Open — piped-output purity
 
@@ -60,13 +73,14 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
    prints `m.zdr`, but `:5` calls `fetchModels(apiKey)` with no options and
    `src/providers/openrouter.js:140-142` only attaches `zdr` when called with `{ zdr: true }`.
    `docs/providers.md:21` documents the tag as a working feature.
-5. **`--zdr` and `--e2ee` are silently accepted next to `--list-*`** and change nothing
+5. ~~**`--zdr` and `--e2ee` are silently accepted next to `--list-*`** and change nothing
    (`src/cli-validation.js` exit-mode exclusion list omits them). Worse,
    `-p venice --e2ee --list-models` prints the E2EE session-file warning to stderr before
-   listing.
-6. **Bare `--config` silently drops `--zdr`.** `hasBareConfigOtherFlags`
+   listing.~~ **Fixed** — see the matching entry in "Fixed on `fix/one-shot-bugs`" above.
+6. ~~**Bare `--config` silently drops `--zdr`.** `hasBareConfigOtherFlags`
    (`src/cli-validation.js:96-115`) lists `opts.e2ee` but not `opts.zdr`, so
-   `communicator --config --zdr` prints the config and exits.
+   `communicator --config --zdr` prints the config and exits.~~ **Fixed** — see the matching
+   entry in "Fixed on `fix/one-shot-bugs`" above.
 7. **`-m <id> --system-prompt <unreadable path>` exits 0.** The config-set branch
    (`src/cli-main.js:230-235`) returns before `loadSystemPrompt` (`:291`), so the documented
    "typos fail loudly" behaviour does not hold for that combination.

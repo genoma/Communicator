@@ -184,6 +184,13 @@ test('bare --config rejects --e2ee', () => {
   )
 })
 
+test('bare --config rejects --zdr', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ config: true, zdr: true }), TTY),
+    ['Error: bare --config (config view) cannot be combined with other flags.']
+  )
+})
+
 test('rejects --resume combined with --export', () => {
   assert.deepEqual(
     validateCliFlags(opts({ resume: 'x', export: 'y' }), TTY),
@@ -276,6 +283,46 @@ test('rejects exit-mode flags combined with session flags', () => {
     validateCliFlags(opts({ listModels: true, model: 'm' }), TTY),
     ['Error: --model, --output-dir and the session flags (--temperature, --top-p, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --compact-thinking, --system-prompt, --rpg, --attach, --scrape) cannot be combined with --list-* flags.']
   )
+})
+
+test('rejects exit-mode flags combined with --zdr or --e2ee', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ zdr: true, listModels: true }), TTY),
+    ['Error: --zdr cannot be combined with --list-* flags.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ e2ee: true, provider: 'venice', listModels: true }), TTY),
+    ['Error: --e2ee cannot be combined with --list-* flags.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ listSessions: true, zdr: true }), TTY),
+    ['Error: --zdr cannot be combined with --list-* flags.']
+  )
+  // Both flags share one error, named in the order the flags are declared.
+  // The provider and mutual-exclusion gates still come first.
+  assert.deepEqual(
+    validateCliFlags(opts({ e2ee: true, zdr: true, provider: 'venice', listModels: true }), TTY),
+    [
+      'Error: --zdr is only available with --provider openrouter.',
+      'Error: --e2ee cannot be combined with --zdr.',
+      'Error: --zdr and --e2ee cannot be combined with --list-* flags.',
+    ]
+  )
+})
+
+test('the --zdr provider gate still precedes the exit-mode error', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ zdr: true, provider: 'venice', listSessions: true }), TTY),
+    [
+      'Error: --zdr is only available with --provider openrouter.',
+      'Error: --zdr cannot be combined with --list-* flags.',
+    ]
+  )
+})
+
+test('--e2ee on Venice without a list flag stays legal', () => {
+  assert.deepEqual(validateCliFlags(opts({ e2ee: true, provider: 'venice', model: 'venice/model-x' }), TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ e2ee: true, provider: 'venice', model: 'venice/model-x' }), { ...TTY, ...PROMPT() }), [])
 })
 
 test('rejects interactive flags combined with exit-mode flags', () => {

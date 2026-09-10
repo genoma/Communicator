@@ -104,6 +104,7 @@ function hasBareConfigOtherFlags(opts, promptArg) {
     opts.deleteAllSessions !== undefined ||
     opts.image === true ||
     opts.e2ee === true ||
+    opts.zdr === true ||
     hasAttachments(opts) ||
     opts.scrape !== undefined
   )
@@ -224,6 +225,14 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
 
   if (exitModeFlags && (sessionOnlyFlags || opts.model !== undefined || opts.outputDir !== undefined)) {
     errors.push(exclusionError('--model, --output-dir', '--list-* flags'))
+  }
+
+  // --zdr and --e2ee only shape a chat session's routing and encryption, so
+  // next to an exit mode they are just as meaningless as the session flags
+  // above. Only the flags actually passed are named.
+  const exitModeChatFlags = ['zdr', 'e2ee'].filter((flag) => opts[flag] === true).map((flag) => `--${flag}`)
+  if (exitModeFlags && exitModeChatFlags.length > 0) {
+    errors.push(`Error: ${exitModeChatFlags.join(' and ')} cannot be combined with --list-* flags.`)
   }
 
   if (opts.export !== undefined && (sessionOnlyFlags || opts.model !== undefined)) {

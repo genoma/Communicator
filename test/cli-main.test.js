@@ -225,6 +225,17 @@ test('--output-dir cannot be combined with --list-* flags', async (t) => {
   assert.match(err[0], /cannot be combined with --list-\* flags/)
 })
 
+test('--e2ee cannot be combined with --list-* flags', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  mockVeniceApi(t)
+  const { exitCode, out, err } = await runAndExit(t, { e2ee: true, provider: 'venice', listModels: true }, undefined, 1)
+  assert.equal(exitCode, 1)
+  assert.match(err[0], /--e2ee cannot be combined with --list-\* flags/)
+  assert.ok(!err.some((l) => /encrypts messages sent to the API/.test(l)))
+  assert.deepEqual(out, [])
+})
+
 test('session flags cannot be combined with --export', async (t) => {
   withTTY(t, true)
   const { err } = await runAndExit(t, { export: true, budget: '1' }, undefined, 1)
@@ -287,6 +298,20 @@ test('bare --config cannot be combined with other flags', async (t) => {
 test('bare --config with --list-models is rejected', async (t) => {
   const { err } = await runAndExit(t, { config: true, listModels: true }, undefined, 1)
   assert.match(err[0], /bare --config \(config view\) cannot be combined/)
+})
+
+test('bare --config cannot be combined with --zdr', async (t) => {
+  withTTY(t, true)
+  const { exitCode, err } = await runAndExit(t, { config: true, zdr: true }, undefined, 1)
+  assert.equal(exitCode, 1)
+  assert.match(err[0], /bare --config \(config view\) cannot be combined/)
+})
+
+test('piped bare --config with --zdr is rejected without printing the config', async (t) => {
+  const { exitCode, out, err } = await runAndExit(t, { config: true, zdr: true }, undefined, 1)
+  assert.equal(exitCode, 1)
+  assert.match(err[0], /bare --config \(config view\) cannot be combined/)
+  assert.deepEqual(out, [])
 })
 
 test('bare --config prints the config file header and exits 0', async (t) => {
