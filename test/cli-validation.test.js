@@ -70,30 +70,46 @@ test('--e2ee rejects --zdr', () => {
 })
 
 test('--e2ee rejects web search flags', () => {
-  for (const other of [{ webSearch: 'auto' }, { webSearch: true }, { webSearch: 'off' }]) {
+  for (const other of [{ webSearch: 'auto' }, { webSearch: true }, { webSearch: 'off' }, { webResults: 5 }]) {
     assert.deepEqual(
       validateCliFlags(opts({ e2ee: true, provider: 'venice', ...other }), TTY),
       ['Error: --e2ee cannot be combined with --web-search or --web-results (E2EE does not support web search).']
     )
   }
-  // --web-results also trips the provider gate on Venice, and that gate is
-  // declared before the mutual-exclusion rule.
+})
+
+test('--web-results requires --provider openrouter', () => {
   assert.deepEqual(
-    validateCliFlags(opts({ e2ee: true, provider: 'venice', webResults: 5 }), TTY),
+    validateCliFlags(opts({ webResults: 5, provider: 'venice' }), { ...TTY, ...PROMPT() }),
+    ['Error: --web-results is only available with --provider openrouter.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ webResults: 5, provider: 'venice' }), NO_TTY),
+    ['Error: --web-results is only available with --provider openrouter.']
+  )
+  assert.deepEqual(validateCliFlags(opts({ webResults: 5 }), TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ webResults: 5 }), { ...TTY, ...PROMPT() }), [])
+  // Deferred: the standalone set-and-exit form issues no request, and a
+  // resumed run executes on the provider saved in its session — both are
+  // checked against the resolved provider in src/session-setup.js.
+  assert.deepEqual(validateCliFlags(opts({ webResults: 5, provider: 'venice' }), TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ webResults: 5, provider: 'venice', resume: 'id' }), TTY), [])
+  // --rpg is a session route (the set-and-exit branch excludes it), so the
+  // gate fires; --rpg --resume defers to the chapter's resolved provider.
+  assert.deepEqual(
+    validateCliFlags(opts({ webResults: 5, provider: 'venice', rpg: '/tmp/rpg' }), TTY),
+    ['Error: --web-results is only available with --provider openrouter.']
+  )
+  assert.deepEqual(validateCliFlags(opts({ webResults: 5, provider: 'venice', rpg: '/tmp/rpg', resume: true }), TTY), [])
+  // With a prompt the run reaches a session, so the gate fires and the e2ee
+  // mutual-exclusion rule follows it.
+  assert.deepEqual(
+    validateCliFlags(opts({ webResults: 5, provider: 'venice', e2ee: true }), { ...TTY, ...PROMPT() }),
     [
       'Error: --web-results is only available with --provider openrouter.',
       'Error: --e2ee cannot be combined with --web-search or --web-results (E2EE does not support web search).',
     ]
   )
-})
-
-test('--web-results requires --provider openrouter', () => {
-  assert.deepEqual(
-    validateCliFlags(opts({ webResults: 5, provider: 'venice' }), TTY),
-    ['Error: --web-results is only available with --provider openrouter.']
-  )
-  assert.deepEqual(validateCliFlags(opts({ webResults: 5 }), TTY), [])
-  assert.deepEqual(validateCliFlags(opts({ webResults: 5 }), { ...TTY, ...PROMPT() }), [])
 })
 
 test('--rpg rejects --system-prompt and a session-id --resume', () => {

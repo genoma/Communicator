@@ -133,7 +133,12 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
 
   // Venice has no result-count knob: the flag would only flip its web search
   // to `auto`, turning billed search on while the count itself is dropped.
-  if (opts.webResults !== undefined && opts.provider !== 'openrouter') {
+  // A resumed run executes on the provider saved in its session and the bare
+  // set-and-exit form issues no request at all, so neither is decided here —
+  // the resolved provider is checked in resolveSessionFlags' callers.
+  const setAndExit = isTTY && !promptArg && opts.rpg === undefined && opts.image !== true
+  const webResultsDeferred = opts.resume !== undefined || setAndExit
+  if (opts.webResults !== undefined && opts.provider !== 'openrouter' && !webResultsDeferred) {
     errors.push('Error: --web-results is only available with --provider openrouter.')
   }
 

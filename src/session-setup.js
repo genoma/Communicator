@@ -34,6 +34,19 @@ export function attachGateOptions(selection, providerMeta) {
   }
 }
 
+// --zdr and a --web-results count only shape an OpenRouter run. Validation
+// only sees the flag's own --provider, and a resumed session executes on the
+// provider saved in its file, so the resolved provider is checked here too.
+function assertOpenRouterOnlyFlags({ providerName, zdr, forcedWebResults }) {
+  if (providerName === 'openrouter') return
+  if (zdr === true) {
+    throw new CliError('Error: --zdr is only available with --provider openrouter.')
+  }
+  if (forcedWebResults != null) {
+    throw new CliError('Error: --web-results is only available with --provider openrouter.')
+  }
+}
+
 // Resolves a sampling param (temperature/top-p): an explicit flag wins over
 // the persisted per-model pref; a null forced value (the "default" keyword)
 // clears the persisted pref and falls back to the provider default.
@@ -48,6 +61,7 @@ function samplingPrefValue(forced, persisted, prefs, section, modelId) {
 }
 
 export async function buildSessionContext({ provider, apiKey, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedWebResults, zdr, e2ee = false, allowInteractive = true, modelsPromise = null }) {
+  assertOpenRouterOnlyFlags({ providerName: provider.meta.name, zdr, forcedWebResults })
   let selection
   if (opts.model) {
     selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort, zdr, e2ee, modelsPromise })
@@ -93,6 +107,7 @@ export function assertResumeE2eeMatch(result, e2ee = false) {
 // win unless the run forces them, mirroring buildSessionContext's precedence
 // for a fresh run. An explicit --model always overrides the payload.
 export async function resumeSessionContext({ result, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedBudget, forcedWebResults, provider, apiKey, zdr, e2ee = false, modelsPromise = null }) {
+  assertOpenRouterOnlyFlags({ providerName: provider.meta.name, zdr, forcedWebResults })
   let selection
   if (opts.model) {
     selection = await selectModelNonInteractive({ provider, apiKey, prefs, modelId: opts.model, forcedEffort, zdr, e2ee, modelsPromise })

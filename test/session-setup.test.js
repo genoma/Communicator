@@ -85,7 +85,7 @@ test('persistSession does not write webSearch when the session never set it expl
 test('buildSessionContext treats a --web-results run as an explicit web-search choice', async () => {
   const { buildSessionContext } = await import('../src/session-setup.js')
   const ctx = await buildSessionContext({
-    provider: {},
+    provider: { meta: { name: 'openrouter' } },
     apiKey: 'k',
     opts: { model: 'org/model' },
     prefs: {},
@@ -99,6 +99,46 @@ test('buildSessionContext treats a --web-results run as an explicit web-search c
 
   assert.equal(ctx.webSearch, 'auto')
   assert.equal(ctx.webSearchExplicit, true)
+})
+
+test('a Venetian provider rejects --zdr and --web-results against the resolved provider', async () => {
+  const { buildSessionContext, resumeSessionContext } = await import('../src/session-setup.js')
+  const base = { provider: { meta: { name: 'venice' } }, apiKey: 'k', opts: {}, prefs: {} }
+  await assert.rejects(
+    buildSessionContext({ ...base, forcedWebResults: 5 }),
+    /--web-results is only available with --provider openrouter/
+  )
+  await assert.rejects(
+    buildSessionContext({ ...base, zdr: true }),
+    /--zdr is only available with --provider openrouter/
+  )
+  // A resumed session executes on the provider saved in its file, so the
+  // unresolved --provider cannot decide this.
+  await assert.rejects(
+    resumeSessionContext({ ...base, result: { modelId: 'org/model' }, forcedWebResults: 5 }),
+    /--web-results is only available with --provider openrouter/
+  )
+  await assert.rejects(
+    resumeSessionContext({ ...base, result: { modelId: 'org/model' }, zdr: true }),
+    /--zdr is only available with --provider openrouter/
+  )
+})
+
+test('the resolved-provider guard leaves OpenRouter and unflagged runs alone', async () => {
+  const { buildSessionContext, resumeSessionContext } = await import('../src/session-setup.js')
+  const openrouter = { provider: { meta: { name: 'openrouter' } }, apiKey: 'k', opts: {}, prefs: {} }
+  assert.equal((await buildSessionContext({ ...openrouter, forcedWebResults: 5 })).webResults, 5)
+  assert.equal((await buildSessionContext({ ...openrouter, zdr: true })).webSearch, 'off')
+  const resumed = await resumeSessionContext({
+    ...openrouter,
+    result: { modelId: 'org/model', webSearchSupported: true },
+    forcedWebResults: 5,
+  })
+  assert.equal(resumed.webSearch, 'auto')
+  assert.equal(resumed.webResults, 5)
+  const venice = await buildSessionContext({ provider: { meta: { name: 'venice' } }, apiKey: 'k', opts: {}, prefs: {} })
+  assert.equal(venice.webSearch, 'off')
+  assert.equal(venice.webResults, null)
 })
 
 test('persistSession skips the session file for empty sessions but still saves prefs', async (t) => {

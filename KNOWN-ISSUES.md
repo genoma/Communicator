@@ -41,7 +41,7 @@ When an item is fixed: strike it in the same commit as the fix, and per
    flags actually passed (`Error: --zdr cannot be combined with --list-* flags.` /
    `Error: --e2ee cannot be combined with --list-* flags.` — the single-flag form each case
    actually surfaces: `--zdr` on OpenRouter; with both flags the mutual/provider gates push
-   first and the rule is not the surfaced error, `src/cli-validation.js:233-236`); validation
+   first and the rule is not the surfaced error, `src/cli-validation.js:245-247`); validation
    throws (`src/cli-main.js:78-81`) before the warning site (`:160`), so the listing no longer
    starts.
 9. Bare `--config` silently dropped `--zdr`: `hasBareConfigOtherFlags`
@@ -60,15 +60,21 @@ When an item is fixed: strike it in the same commit as the fix, and per
     introduced now covers those three paths too, still naming only the flags actually passed
     (`Error: --zdr cannot be combined with --delete-all-sessions.` etc.), while `--resume` stays
     exempt (`--resume --zdr` / `--resume --e2ee` are intended behavior). The rule sits after the
-    three exclusion rules (`src/cli-validation.js:246-258`), so no previously surfaced
+    three exclusion rules (`src/cli-validation.js:261-269`), so no previously surfaced
     `errors[0]` changes — the provider gate still wins for `-p venice --export --zdr` and the
     session-flags message still wins when a real session flag is also present.
 12. `--web-results` on Venice flipped web search to `auto` — a search Venice bills — while
-    dropping the count it cannot read → a provider gate now rejects the flag
+    dropping the count it cannot read → rejected by a provider gate
     (`Error: --web-results is only available with --provider openrouter.`,
-    `src/cli-validation.js:134-138`), matching the flag's documented "OpenRouter only" contract
-    and the `--zdr` precedent. `/web-results` still stores a count that Venice never reads (it
-    does not change the mode, so it cannot bill); `docs/web-search.md` and `MEMORY.md` updated.
+    `src/cli-validation.js:139-143`), matching the flag's documented "OpenRouter only" contract
+    and the `--zdr` precedent. Two forms defer, because CLI validation only sees the flag's own
+    `--provider`: a resumed session executes on the provider saved in its file, and the bare
+    set-and-exit form issues no request at all. Both are judged by `assertOpenRouterOnlyFlags`
+    against the resolved provider (`src/session-setup.js:40-48`, called at `:64` and `:110`),
+    which closes the same hole for `--zdr` on a resumed Venice session. `/web-results` still
+    stores a count Venice never reads (it does not change the mode, so it cannot bill);
+    `docs/web-search.md` and `MEMORY.md` updated. Review finding folded in: the first cut keyed
+    only on `opts.provider`, leaving `--resume <venice-session> --web-results 5` still billing.
 
 ## Open — piped-output purity
 
@@ -122,8 +128,8 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
     the `/web-results` slash command is inert (`src/commands/chat/index.js:426-433`). A persisted
     `prefs.webSearch[model] = 'off'` does not defend either (`:68` short-circuits before `:69`
     consults `prefValue`); only an explicit `--web-search off` wins (`:67` precedes `:68`). Two
-    limits: `--e2ee` is rejected alongside `--web-results` (`src/cli-validation.js:138-139`), and
-    billing needs a model with `capabilities.supportsWebSearch`, else `src/session-setup.js:62-63`
+    limits: `--e2ee` is rejected alongside `--web-results` (`src/cli-validation.js:149-150`), and
+    billing needs a model with `capabilities.supportsWebSearch`, else `src/session-setup.js:76-77`
     exits. A bare `communicator --web-results 5` no longer bites — it is the config setter
     (`src/cli-main.js:233-247`), which only persists the count. Billing path when it does:
     `src/providers/venice.js:289-296` (`enable_web_search: 'auto'`).~~ **Fixed** — see the
@@ -234,3 +240,10 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
     a rule that names only the flags actually passed, next to the item 8 rule, with the resume
     exception kept explicit.~~ **Fixed** — see the matching entry in "Fixed on
     `fix/one-shot-bugs`" above.
+31. **The config-set exit path still accepts `--zdr`/`--e2ee` with any setter flag.** The item 11
+    rule covers the list/export/delete exits but not the bare set-and-exit branch
+    (`src/cli-main.js:234-247`), so `communicator -p venice -m <model> --e2ee` (or
+    `-p venice --e2ee --no-watermark`) still prints the E2EE session-file warning
+    (`src/cli-main.js:156-161`) before saving and exiting 0, and `communicator -m <id> --zdr`
+    drops the flag the same way. *Fenced:* this is the bare "set a preference and exit" dispatch
+    the approved cleanup removes, so the surface goes away rather than getting a rule.
