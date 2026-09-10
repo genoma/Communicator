@@ -243,6 +243,20 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push(exclusionError('--model, --output-dir', '--delete'))
   }
 
+  // --export, --delete and --delete-all-sessions read them even less than an
+  // exit mode does, and --e2ee would otherwise still print the session-file
+  // warning before those paths dispatch. --resume stays exempt: a resumed
+  // session re-passes --zdr/--e2ee to keep its routing (docs/providers.md).
+  if (exitModeChatFlags.length > 0) {
+    const exitPath = opts.export !== undefined ? '--export'
+      : opts.delete !== undefined ? '--delete'
+        : opts.deleteAllSessions !== undefined ? '--delete-all-sessions'
+          : undefined
+    if (exitPath !== undefined) {
+      errors.push(`Error: ${exitModeChatFlags.join(' and ')} cannot be combined with ${exitPath}.`)
+    }
+  }
+
   if (opts.resume !== undefined && opts.rpg === undefined && (opts.model !== undefined || opts.outputDir !== undefined || attachments || opts.scrape !== undefined)) {
     errors.push('Error: --model, --output-dir, --attach and --scrape cannot be combined with --resume (resumed sessions keep their own model; --output-dir only applies to --export).')
   }

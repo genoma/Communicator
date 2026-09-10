@@ -236,6 +236,17 @@ test('--e2ee cannot be combined with --list-* flags', async (t) => {
   assert.deepEqual(out, [])
 })
 
+test('--e2ee cannot be combined with --export', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  mockVeniceApi(t)
+  const { exitCode, out, err } = await runAndExit(t, { e2ee: true, provider: 'venice', export: true }, undefined, 1)
+  assert.equal(exitCode, 1)
+  assert.match(err[0], /--e2ee cannot be combined with --export/)
+  assert.ok(!err.some((l) => /encrypts messages sent to the API/.test(l)))
+  assert.deepEqual(out, [])
+})
+
 test('session flags cannot be combined with --export', async (t) => {
   withTTY(t, true)
   const { err } = await runAndExit(t, { export: true, budget: '1' }, undefined, 1)

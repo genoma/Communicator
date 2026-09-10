@@ -54,6 +54,15 @@ When an item is fixed: strike it in the same commit as the fix, and per
     `console.log` unconditionally and was reachable with a TTY stdin and a piped stdout
     (`communicator | cat`, then `/scrape`) → TTY-gated (stdout on a terminal, stderr when stdout
     is piped), and the two tests that pinned the old stdout routing were re-pinned.
+11. `--zdr` / `--e2ee` were silently accepted next to `--export`, `--delete` and
+    `--delete-all-sessions` and changed nothing, and `-p venice --export --e2ee` even printed the
+    E2EE session-file warning to stderr before dispatch → the dedicated rule the item 8 fix
+    introduced now covers those three paths too, still naming only the flags actually passed
+    (`Error: --zdr cannot be combined with --delete-all-sessions.` etc.), while `--resume` stays
+    exempt (`--resume --zdr` / `--resume --e2ee` are intended behavior). The rule sits after the
+    three exclusion rules (`src/cli-validation.js:246-258`), so no previously surfaced
+    `errors[0]` changes — the provider gate still wins for `-p venice --export --zdr` and the
+    session-flags message still wins when a real session flag is also present.
 
 ## Open — piped-output purity
 
@@ -193,7 +202,7 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
 
 ## Open — flag combinations (found while fixing item 5)
 
-30. **The gap item 5 fixed has the same shape next to the other exit paths.** `--zdr`/`--e2ee`
+30. ~~**The gap item 5 fixed has the same shape next to the other exit paths.** `--zdr`/`--e2ee`
     are absent from `isSessionOnly` (`src/cli-validation.js:21-37`, read only at `:119`), so the
     exclusions built on it — `--delete-all-sessions` (`:202`), `--export` (`:238`) and
     `--delete` (`:242`) — never see them. Verified by calling `validateCliFlags` directly:
@@ -216,4 +225,5 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
     session-flags wording, since `src/cli-main.js:80` throws `errors[0]` and `:226-228` precedes
     `:233-236`, and (b) land the intended new rejections with that generic wording. The fix needs
     a rule that names only the flags actually passed, next to the item 8 rule, with the resume
-    exception kept explicit.
+    exception kept explicit.~~ **Fixed** — see the matching entry in "Fixed on
+    `fix/one-shot-bugs`" above.

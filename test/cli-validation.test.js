@@ -320,6 +320,53 @@ test('the --zdr provider gate still precedes the exit-mode error', () => {
   )
 })
 
+test('rejects --export, --delete and --delete-all-sessions combined with --zdr or --e2ee', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ export: 'x', zdr: true }), TTY),
+    ['Error: --zdr cannot be combined with --export.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ delete: 'x', zdr: true }), TTY),
+    ['Error: --zdr cannot be combined with --delete.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ deleteAllSessions: 'y', zdr: true }), TTY),
+    ['Error: --zdr cannot be combined with --delete-all-sessions.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ export: 'x', e2ee: true, provider: 'venice' }), TTY),
+    ['Error: --e2ee cannot be combined with --export.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ delete: 'x', e2ee: true, provider: 'venice' }), TTY),
+    ['Error: --e2ee cannot be combined with --delete.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ deleteAllSessions: 'y', e2ee: true, provider: 'venice' }), TTY),
+    ['Error: --e2ee cannot be combined with --delete-all-sessions.']
+  )
+})
+
+test('the exit-path rule leaves --resume alone and keeps the provider gate first', () => {
+  assert.deepEqual(validateCliFlags(opts({ resume: 'id', zdr: true }), TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ resume: 'id', e2ee: true, provider: 'venice' }), TTY), [])
+  assert.deepEqual(
+    validateCliFlags(opts({ export: 'x', zdr: true, provider: 'venice' }), TTY),
+    [
+      'Error: --zdr is only available with --provider openrouter.',
+      'Error: --zdr cannot be combined with --export.',
+    ]
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ export: 'x', e2ee: true, zdr: true, provider: 'venice' }), TTY),
+    [
+      'Error: --zdr is only available with --provider openrouter.',
+      'Error: --e2ee cannot be combined with --zdr.',
+      'Error: --zdr and --e2ee cannot be combined with --export.',
+    ]
+  )
+})
+
 test('--e2ee on Venice without a list flag stays legal', () => {
   assert.deepEqual(validateCliFlags(opts({ e2ee: true, provider: 'venice', model: 'venice/model-x' }), TTY), [])
   assert.deepEqual(validateCliFlags(opts({ e2ee: true, provider: 'venice', model: 'venice/model-x' }), { ...TTY, ...PROMPT() }), [])
