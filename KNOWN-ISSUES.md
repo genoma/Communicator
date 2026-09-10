@@ -41,13 +41,13 @@ When an item is fixed: strike it in the same commit as the fix, and per
    flags actually passed (`Error: --zdr cannot be combined with --list-* flags.` /
    `Error: --e2ee cannot be combined with --list-* flags.` — the single-flag form each case
    actually surfaces: `--zdr` on OpenRouter; with both flags the mutual/provider gates push
-   first and the rule is not the surfaced error, `src/cli-validation.js:245-247`); validation
+   first and the rule is not the surfaced error, `src/cli-validation.js:259-261`); validation
    throws (`src/cli-main.js:78-81`) before the warning site (`:160`), so the listing no longer
    starts.
 9. Bare `--config` silently dropped `--zdr`: `hasBareConfigOtherFlags`
-   (`src/cli-validation.js:76-111`) listed `opts.e2ee` (`:106`) but not `opts.zdr`, so
+   (`src/cli-validation.js:89-123`) listed `opts.e2ee` (`:119`) but not `opts.zdr`, so
    `communicator --config --zdr` printed the config and exited 0 → `opts.zdr` is now in the
-   guard (`:106-107`, next to the pre-existing e2ee line) and the bare config view rejects it
+   guard (`:119-120`, next to the pre-existing e2ee line) and the bare config view rejects it
    exactly as it already rejected `--e2ee`
    (`Error: bare --config (config view) cannot be combined with other flags.`, exit 1).
 10. The interactive `/scrape` notice (`src/commands/chat/index.js:466`) was printed with
@@ -60,7 +60,7 @@ When an item is fixed: strike it in the same commit as the fix, and per
     introduced now covers those three paths too, still naming only the flags actually passed
     (`Error: --zdr cannot be combined with --delete-all-sessions.` etc.), while `--resume` stays
     exempt (`--resume --zdr` / `--resume --e2ee` are intended behavior). The rule sits after the
-    three exclusion rules (`src/cli-validation.js:261-269`), so no previously surfaced
+    three exclusion rules (`src/cli-validation.js:275-283`), so no previously surfaced
     `errors[0]` changes — the provider gate still wins for `-p venice --export --zdr` and the
     session-flags message still wins when a real session flag is also present.
 12. `--web-results` on Venice flipped web search to `auto` — a search Venice bills — while
@@ -133,7 +133,7 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
     the `/web-results` slash command is inert (`src/commands/chat/index.js:426-433`). A persisted
     `prefs.webSearch[model] = 'off'` does not defend either (`:68` short-circuits before `:69`
     consults `prefValue`); only an explicit `--web-search off` wins (`:67` precedes `:68`). Two
-    limits: `--e2ee` is rejected alongside `--web-results` (`src/cli-validation.js:149-150`), and
+    limits: `--e2ee` is rejected alongside `--web-results` (`src/cli-validation.js:163-164`), and
     billing needs a model with `capabilities.supportsWebSearch`, else `src/session-setup.js:76-77`
     exits. A bare `communicator --web-results 5` no longer bites — it is the config setter
     (`src/cli-main.js:233-257`), which only persists the count. Billing path when it does:
@@ -194,7 +194,7 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
 ## Open — non-interactive reachability
 
 24. **`-x/--export`, `--delete` and any `-r/--resume` with an id are rejected without a TTY in
-    every form**, including picker-free single-id paths (`src/cli-validation.js:220-222`), so
+    every form**, including picker-free single-id paths (`src/cli-validation.js:247-248`), so
     "keep it for scripts/CI/agents" is aspirational for those three. Only `--list-sessions` and
     `--delete-all-sessions y` genuinely work headless today. Either open the gate on the
     picker-free paths or stop citing automation as their rationale.
@@ -203,7 +203,7 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
     prompt; a non-interactive mode should prefer an ambiguity error.
 26. **`-m <image-model> "prompt"` and `--image` validate the same flags differently** — the
     `-m` path hard-rejects `--variants`/`--resolution`/`--quality`/`--seed`/`--width`/`--height`
-    (`src/cli-validation.js:252-260`) while both route into the identical
+    (`src/cli-validation.js:304-308`) while both route into the identical
     `runImageCommand`. Consolidation candidate.
 
 ## Open — test-suite hygiene
@@ -253,13 +253,17 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
     drops the flag the same way. *Fenced:* this is the bare "set a preference and exit" dispatch
     the approved cleanup removes, so the surface goes away rather than getting a rule.
 32. **The flag provider and a resumed session's provider can disagree, and only two flags handle
-    it.** A `--resume` run executes on the provider saved in the session, but `src/cli-main.js`
-    resolves the API key from the *flag* provider before dispatch: `-p venice -r
-    <openrouter-session>` demands `VENICE_API_KEY` and dies with `Error: VENICE_API_KEY
-    environment variable is not set.` although the run then uses the session's OpenRouter key.
-    The mirror rejections survive for the two flags that do not defer: `-p openrouter -r
-    <venice-session> --e2ee` and `--scrape <url>` are refused by their provider gates
-    (`src/cli-validation.js:139-141`, `:182`) even though the resolved provider would allow them.
-    Only `--zdr` (`:145`) and `--web-results` (`:154`) defer to the resolved provider
-    (`src/session-setup.js:40-48`); giving `--e2ee` and `--scrape` the same treatment is the
-    candidate fix.
+    it.** A plain `--resume` run executes on the provider saved in the session, but
+    `src/cli-main.js:263` resolves the API key from the *flag* provider before dispatch (only the
+    RPG chapter path, `:291`, uses the session's), so `-p venice -r <openrouter-session>` demands
+    `VENICE_API_KEY` and dies with `Error: VENICE_API_KEY environment variable is not set.` even
+    though the run then uses the session's own provider and key
+    (`src/commands/chat-start.js:35-36`). Scope: both keys are exported in the dev shell
+    (`~/.zshrc`), so this only bites where the flag provider's key is absent — CI/headless with a
+    partial key set. A/B verified: with `VENICE_API_KEY` removed the run dies with that error;
+    with it set the same command reaches the REPL.
+    The mirror rejections are unconditional: `-p openrouter -r <venice-session> --e2ee` and
+    `--scrape <url>` are refused by their provider gates (`src/cli-validation.js:139-141`,
+    `:195-196`) even though the resolved provider would allow them. Only `--zdr` (`:145`) and
+    `--web-results` (`:154-156`) defer to the resolved provider (`src/session-setup.js:40-48`);
+    giving `--e2ee` and `--scrape` the same treatment is the candidate fix.
