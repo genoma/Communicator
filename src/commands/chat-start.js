@@ -1,6 +1,7 @@
 import { getProvider } from '../providers/index.js'
 import { DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { scrapeMessage } from '../scrape.js'
+import { CliError } from '../errors.js'
 import { startChat } from '../chat.js'
 import { createNewSession } from '../sessions.js'
 import { ensureRpgSessionsDir } from '../rpg.js'
@@ -41,6 +42,12 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
       isImageSession = !!(await findImageModel(provider, apiKey, result.modelId))
     }
     if (isImageSession) {
+      // --rpg is text-only: an RPG chapter that resolved to an image model
+      // must never degrade into an image session (its chapter would be
+      // silently dropped), exactly like resumeSessionContext refuses.
+      if (opts.rpg !== undefined) {
+        throw new CliError('Error: --rpg is for text chat models only; the selected model is an image model.')
+      }
       return imageSessionContext({
         provider,
         apiKey,

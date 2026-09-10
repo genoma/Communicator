@@ -45,6 +45,8 @@ function chapterPayload(id, { text, updatedAt } = {}) {
     e2ee: false,
     scrapes: 0,
     costSummary: null,
+    // A stale stored story dir: resolution must always report the live one.
+    rpgDir: '/tmp/stale-story',
     createdAt: `${id}T08:00:00.000Z`,
     updatedAt: updatedAt ?? `${id}T09:00:00.000Z`,
     messages: [
@@ -67,6 +69,8 @@ test('resolveRpgResume auto-resumes the only chapter and strips the system messa
 
   const resumed = await resolveRpgResume(dir)
   assert.equal(resumed.sessionId, '2026-01-01T00-00-00')
+  // A stale payload rpgDir never redirects saves: the live dir wins.
+  assert.equal(resumed.rpgDir, dir)
   assert.equal(resumed.sessionCreatedAt, '2026-01-01T08:00:00.000Z')
   assert.equal(resumed.sessionUpdatedAt, '2026-01-01T09:00:00.000Z')
   assert.equal(resumed.modelId, 'org/model')

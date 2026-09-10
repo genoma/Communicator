@@ -270,7 +270,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
     content: result.images.map((img) => ({ type: 'image_url', image_url: { url: img.dataUrl } })),
   }
   const [externalized] = await externalizeAttachments([message], dir)
-  const savedPaths = (externalized.content || []).map((part) => savedAttachmentPath(part.image_url.url, sessionId)).filter(Boolean)
+  const savedPaths = (externalized.content || []).map((part) => savedAttachmentPath(part.image_url.url, sessionId, SESSIONS_DIR)).filter(Boolean)
 
   if (opts.outputDir) {
     try {

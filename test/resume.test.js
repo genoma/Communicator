@@ -135,6 +135,33 @@ test('resumeCmd carries the stored updatedAt for unchanged saves', async () => {
   assert.equal(result.sessionUpdatedAt, '2025-06-01T00:00:00.000Z')
 })
 
+test('resumeCmd maps the stored RPG chapter identity', async () => {
+  sessionData = session({
+    rpgDir: '/story',
+    rpgCharName: 'Kael',
+    rpgUserName: 'Riv',
+    rpgFirstMessage: 'The gate creaks open.',
+  })
+  const result = await resumeCmd('2026')
+
+  // Markers and the story dir must survive a resume that did not go through
+  // --rpg: these fields drive the RPG rendering and the chapter save dir.
+  assert.equal(result.rpgDir, '/story')
+  assert.equal(result.rpgCharName, 'Kael')
+  assert.equal(result.rpgUserName, 'Riv')
+  assert.equal(result.rpgFirstMessage, 'The gate creaks open.')
+})
+
+test('resumeCmd keeps the RPG identity fields null for plain sessions', async () => {
+  sessionData = session()
+  const result = await resumeCmd('2026')
+
+  assert.equal(result.rpgDir, null)
+  assert.equal(result.rpgCharName, null)
+  assert.equal(result.rpgUserName, null)
+  assert.equal(result.rpgFirstMessage, null)
+})
+
 test('resumeCmd returns null when the picker resolves nothing', async () => {
   matchedId = null
   const result = await resumeCmd('2026')

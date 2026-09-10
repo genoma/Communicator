@@ -381,6 +381,30 @@ test('chatStart resumes an e2ee session with --e2ee and keeps the marker', async
   assert.equal(call.opts.webResults, null)
 })
 
+test('chatStart plain -r resume of a chapter session keeps its RPG identity', async (t) => {
+  resumeResult = resumeSession({
+    isImageModel: false,
+    rpgDir: '/story',
+    rpgCharName: 'Kael',
+    rpgUserName: 'Riv',
+    rpgFirstMessage: 'The gate creaks open.',
+  })
+  findImageModelResult = null
+  withApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(console, 'log', () => {})
+
+  await chatStart({ apiKey: 'ignored', opts: baseOpts({ resume: '2026-01-01', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'openrouter' })
+
+  const call = startChatCalls[startChatCalls.length - 1]
+  // The stored snapshot reaches the runner, so markers, /new and saves keep
+  // the story even though this resume did not go through --rpg.
+  assert.equal(call.opts.rpgDir, '/story')
+  assert.equal(call.opts.rpgCharName, 'Kael')
+  assert.equal(call.opts.rpgUserName, 'Riv')
+  assert.equal(call.opts.rpgFirstMessage, 'The gate creaks open.')
+})
+
 test('chatStart rpg resume continues the resolved chapter session', async (t) => {
   resumeResult = null
   nonInteractiveSelection = {
