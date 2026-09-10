@@ -31,6 +31,13 @@ export function sessionToResumeResult(sessionData, matchedId) {
     e2ee: sessionData.e2ee === true,
     scrapes: sessionData.scrapes ?? 0,
     costSummary: sessionData.costSummary || null,
+    // RPG chapter identity (null for plain sessions): the story directory
+    // and speaker/opening snapshot survive a resume that did not go through
+    // --rpg, so markers and saves can be restored.
+    rpgDir: sessionData.rpgDir ?? null,
+    rpgCharName: sessionData.rpgCharName ?? null,
+    rpgUserName: sessionData.rpgUserName ?? null,
+    rpgFirstMessage: sessionData.rpgFirstMessage ?? null,
     initialMessages: sessionData.messages,
     sessionId: matchedId,
     sessionCreatedAt: sessionData.createdAt,

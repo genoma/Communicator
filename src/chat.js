@@ -375,6 +375,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
     exit,
     sessionState,
     onRequest,
+    // Produced attachments belong beside the session that owns them: the
+    // chapter dir for RPG runs, the global sessions dir otherwise.
+    sessionsDir: rpgSessionDir ?? SESSIONS_DIR,
     postHistoryInstruction: rpgPostHistoryInstruction,
     rebuildAfterTurn,
     input,

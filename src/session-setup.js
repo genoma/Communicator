@@ -76,6 +76,18 @@ export async function buildSessionContext({ provider, apiKey, opts, prefs, force
   }
 }
 
+// E2EE sessions never silently degrade: an encrypted session may only be
+// resumed with --e2ee, and --e2ee refuses to resume an unencrypted one.
+// Shared by the normal resume and RPG chapter resume paths (chat + one-shot).
+export function assertResumeE2eeMatch(result, e2ee = false) {
+  if (e2ee && result.e2ee !== true) {
+    throw new CliError('Error: this session was not created with --e2ee; refusing to resume it unencrypted.')
+  }
+  if (result.e2ee === true && !e2ee) {
+    throw new CliError('Error: this session was created with --e2ee; resume it with --e2ee to keep it encrypted.')
+  }
+}
+
 // Builds the run settings for a resumed session (normal --resume and RPG
 // chapter resume share this): the payload's model/sampling/provider values
 // win unless the run forces them, mirroring buildSessionContext's precedence
@@ -97,7 +109,11 @@ export async function resumeSessionContext({ result, opts, prefs, forcedEffort, 
       visionSupported: result.visionSupported,
       fileSupported: result.fileSupported,
       imageOutputSupported: result.imageOutputSupported,
+      isImageModel: result.isImageModel === true,
     }
+  }
+  if (opts.rpg !== undefined && selection.isImageModel === true) {
+    throw new CliError('Error: --rpg is for text chat models only; the selected model is an image model.')
   }
   // persisted 'auto' or a missing field (legacy files) means "model
   // default"; a stored null means an explicit "off" and stays null.

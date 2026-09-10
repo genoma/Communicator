@@ -1,6 +1,7 @@
 import { test, mock, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
+import { Readable } from 'node:stream'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -148,6 +149,45 @@ test('rpg session attachments are stored under <rpgdir>/sessions/attachments/', 
 
   const loaded = await loadSession(dir, sessionId)
   assert.equal(loaded.messages[1].content[1].image_url.url, imageUrl)
+})
+
+test('rpg produced attachments are stored under <rpgdir>/sessions/attachments/', async (t) => {
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'warn', () => {})
+  t.mock.method(console, 'error', () => {})
+
+  const { produceParts } = await import('../src/artifacts.js')
+  const story = await mkdtemp(join(rpgTmp, 'story-'))
+  const dir = await ensureRpgSessionsDir(story)
+  const sessionId = '2026-01-02T12-00-00'
+  const globalBefore = await globalSnapshot()
+  const bytes = Buffer.from('downloaded-png')
+  const requestFn = () => ({
+    on(event, listener) {
+      if (event === 'response') {
+        const stream = Readable.from([bytes])
+        stream.statusCode = 200
+        stream.headers = { 'content-type': 'image/png' }
+        queueMicrotask(() => listener(stream))
+      }
+      return this
+    },
+    end() {},
+  })
+
+  const { results } = await produceParts([{ type: 'image_url', image_url: { url: 'https://example.com/photo.png' } }], {
+    sessionId,
+    requestFn,
+    sessionsDir: dir,
+  })
+
+  // The blob and the reported path belong to the chapter dir, not the
+  // global sessions dir.
+  assert.ok(results[0].savedTo.startsWith(join(dir, 'attachments', sessionId)))
+  const blobFiles = await readdir(join(dir, 'attachments', sessionId))
+  assert.equal(blobFiles.length, 1)
+  assert.deepEqual(await readFile(join(dir, 'attachments', sessionId, blobFiles[0])), bytes)
+  assert.deepEqual(await globalSnapshot(), globalBefore)
 })
 
 test('/new in rpg mode claims and cleans up its session id inside <rpgdir>/sessions/', async (t) => {

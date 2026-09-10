@@ -308,7 +308,7 @@ export async function chatCompletion({ apiKey, model, messages, onToken, onSourc
 
   // The debug hook always sees the plaintext messages: under E2EE the body
   // carries ciphertext, but the prompt log is a local artifact (same trust
-  // level as history.json) and must stay readable.
+  // level as the RPG chapter sessions) and must stay readable.
   onRequest?.(e2ee ? { ...body, messages } : body)
 
   // Anchor the thinking clock at the moment the request is dispatched, so

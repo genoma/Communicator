@@ -28,11 +28,11 @@ function refName(ref) {
   return { file: name, ext: name.slice(dot + 1) }
 }
 
-export function savedAttachmentPath(ref, sessionId) {
+export function savedAttachmentPath(ref, sessionId, sessionsDir = null) {
   if (typeof ref !== 'string' || !ref.startsWith(REF_PREFIX)) return null
   const parsed = refName(ref)
   if (!parsed) return null
-  const base = resolve(attachmentDirFor(SESSIONS_DIR, sessionId))
+  const base = resolve(attachmentDirFor(sessionsDir || SESSIONS_DIR, sessionId))
   const target = resolve(join(base, parsed.file))
   if (target !== base && !target.startsWith(base + sep)) return null
   return target
@@ -161,7 +161,7 @@ export async function hydrateAttachments(messages, dir) {
 // success. Inline data URLs pass through untouched. Returns
 // { part, dataUrl?, savedTo? } on success and { part, error } on failure —
 // the original URL stays in the part when download fails.
-export async function downloadRemotePart(part, sessionId, { requestFn } = {}) {
+export async function downloadRemotePart(part, sessionId, { requestFn, sessionsDir = null } = {}) {
   const url = partUrl(part)
   if (!url || typeof url !== 'string') return { part, error: 'no URL' }
   if (url.startsWith('data:')) return { part }
@@ -209,7 +209,7 @@ export async function downloadRemotePart(part, sessionId, { requestFn } = {}) {
   let savedTo = null
   if (sessionId) {
     const hash = createHash('sha256').update(bytes).digest('hex')
-    const { path, error: storeError } = await storeBlob(attachmentDirFor(SESSIONS_DIR, sessionId), `${hash}.${ext}`, bytes)
+    const { path, error: storeError } = await storeBlob(attachmentDirFor(sessionsDir || SESSIONS_DIR, sessionId), `${hash}.${ext}`, bytes)
     if (path) savedTo = path
     else console.warn(`Warning: could not store produced attachment blob: ${storeError}`)
   }

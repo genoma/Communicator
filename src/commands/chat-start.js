@@ -1,13 +1,12 @@
 import { getProvider } from '../providers/index.js'
 import { DEFAULT_SYSTEM_PROMPT } from '../constants.js'
 import { scrapeMessage } from '../scrape.js'
-import { CliError } from '../errors.js'
 import { startChat } from '../chat.js'
 import { createNewSession } from '../sessions.js'
 import { ensureRpgSessionsDir } from '../rpg.js'
 import { resumeCmd } from './resume.js'
 import { getApiKey } from '../config.js'
-import { resolveSessionFlags, persistSession, buildSessionContext, resumeSessionContext } from '../session-setup.js'
+import { resolveSessionFlags, persistSession, buildSessionContext, resumeSessionContext, assertResumeE2eeMatch } from '../session-setup.js'
 import { findImageModel } from '../model-selection.js'
 import { startImageSession } from './image-session.js'
 
@@ -30,14 +29,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
         }
     if (!result) process.exit(0)
 
-    // E2EE sessions never silently degrade: an encrypted session may only be
-    // resumed with --e2ee, and --e2ee refuses to resume an unencrypted one.
-    if (e2ee && result.e2ee !== true) {
-      throw new CliError('Error: this session was not created with --e2ee; refusing to resume it unencrypted.')
-    }
-    if (result.e2ee === true && !e2ee) {
-      throw new CliError('Error: this session was created with --e2ee; resume it with --e2ee to keep it encrypted.')
-    }
+    assertResumeE2eeMatch(result, e2ee)
 
     const provider = getProvider(result.providerType || providerType)
     const apiKey = getApiKey(result.providerType || providerType)

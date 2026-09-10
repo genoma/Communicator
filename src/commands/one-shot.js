@@ -9,7 +9,7 @@ import { CliError, formatError, isExitPromptError } from '../errors.js'
 import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { loadAttachments, buildContent } from '../attachments.js'
 import { resolveArtifacts, printArtifactsSummary } from '../artifacts.js'
-import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext, resumeSessionContext } from '../session-setup.js'
+import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext, resumeSessionContext, assertResumeE2eeMatch } from '../session-setup.js'
 import { logRpgPrompt, ensureRpgSessionsDir, rpgSessionsDir } from '../rpg.js'
 import { getApiKey } from '../config.js'
 import { createE2eeSession } from '../e2ee.js'
@@ -33,14 +33,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
 
   // E2EE chapters never silently degrade, exactly like the chat resume path;
   // the guard runs before any provider/key lookup.
-  if (rpgResume) {
-    if (e2ee && rpgResume.e2ee !== true) {
-      throw new CliError('Error: this session was not created with --e2ee; refusing to resume it unencrypted.')
-    }
-    if (rpgResume.e2ee === true && !e2ee) {
-      throw new CliError('Error: this session was created with --e2ee; resume it with --e2ee to keep it encrypted.')
-    }
-  }
+  if (rpgResume) assertResumeE2eeMatch(rpgResume, e2ee)
 
   // A resumed RPG chapter brings its own provider and key; the run's default
   // provider only applies to fresh runs.
@@ -95,7 +88,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   // updatedAt is deliberately not carried: the one-shot always adds a turn,
   // so the payload stamps the save time (never an untouched-resume value).
   const { dir, sessionId, createdAt } = rpgResume
-    ? { dir: rpgSessionsDir(opts.rpg), sessionId: rpgResume.sessionId, createdAt: rpgResume.sessionCreatedAt ?? new Date().toISOString() }
+    ? { dir: rpgSessionsDir(rpgResume.rpgDir ?? opts.rpg), sessionId: rpgResume.sessionId, createdAt: rpgResume.sessionCreatedAt ?? new Date().toISOString() }
     : await createNewSession(opts.rpg !== undefined ? await ensureRpgSessionsDir(opts.rpg) : null)
   const messages = [
     { role: 'system', content: systemPrompt || DEFAULT_SYSTEM_PROMPT },
@@ -243,6 +236,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   const producedResults = await resolveArtifacts(result, {
     sessionId,
     imageOutputSupported: selection.imageOutputSupported,
+    sessionsDir: dir,
   })
 
   // Artifact lines go to stderr when piped so stdout stays pure content;

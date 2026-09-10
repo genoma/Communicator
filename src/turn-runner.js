@@ -26,7 +26,7 @@ export function createSessionState() {
   }
 }
 
-export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState, requestFn, onRequest = null, postHistoryInstruction = null, rebuildAfterTurn = null, input = process.stdin, createStreamKeyMonitor = defaultStreamKeyMonitor }) {
+export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState, requestFn, sessionsDir = null, onRequest = null, postHistoryInstruction = null, rebuildAfterTurn = null, input = process.stdin, createStreamKeyMonitor = defaultStreamKeyMonitor }) {
   const apiResultMessage = (apiResult) => {
     const msg = { role: 'assistant', content: apiResult.content }
     if (apiResult.reasoning) {
@@ -274,6 +274,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         imageOutputSupported: state.imageOutputSupported,
         stdout,
         requestFn,
+        sessionsDir,
       })
 
       if (sessionState.interrupted) {

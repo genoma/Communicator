@@ -342,6 +342,34 @@ test('one-shot refuses an e2ee mismatch when resuming an RPG chapter', async (t)
   assert.match(resumed2.message, /created with --e2ee/)
 })
 
+test('one-shot refuses an --rpg chapter resumed with an image model selection', async (t) => {
+  const file = await tempConfig(t)
+  const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(rpgDir, { recursive: true, force: true }))
+
+  // A chapter payload marked as an image session must be refused before any
+  // provider call (a global image session would silently drop the chapter).
+  const resumed = await runOneShot(t, {
+    overrides: { config: file, rpg: rpgDir, resume: true, model: undefined },
+    systemPrompt: 'RPG system prompt',
+    rpgHistory: [{ role: 'user', content: 'Hello' }],
+    rpgResume: {
+      modelId: 'org/model',
+      providerName: null,
+      providerType: 'openrouter',
+      e2ee: false,
+      isImageModel: true,
+      sessionId: '2026-01-01T00-00-00',
+      sessionCreatedAt: '2026-01-01T00:00:00.000Z',
+      sessionUpdatedAt: null,
+      turns: [{ role: 'user', content: 'Hello' }],
+      rpgDir,
+    },
+  })
+  assert.equal(resumed.exited, true)
+  assert.match(resumed.message, /--rpg is for text chat models only/)
+})
+
 test('one-shot with --rpg --resume continues the resolved chapter session', async (t) => {
   const bodies = []
   mockOpenRouterStream(t, [], bodies)

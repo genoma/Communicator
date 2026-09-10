@@ -212,6 +212,7 @@ test('importLegacyRpgHistory turns a legacy history.json into chapter #1', async
     historyUpdatedAt: '2026-01-01T00:00:00.000Z',
     model: 'test/model',
     providerType: 'openrouter',
+    e2ee: true,
     charName: 'Zara',
     userName: 'Alex',
     firstMessage: 'The rain had stopped.',
@@ -222,6 +223,11 @@ test('importLegacyRpgHistory turns a legacy history.json into chapter #1', async
   const saved = JSON.parse(await readFile(file, 'utf-8'))
   assert.equal(saved.model, 'test/model')
   assert.equal(saved.createdAt, '2026-01-01T00:00:00.000Z')
+  // The legacy story has no known endpoint: the name must stay null so the
+  // resumed turns are not pinned to a nonexistent provider.
+  assert.equal(saved.providerName, null)
+  assert.equal(saved.providerType, 'openrouter')
+  assert.equal(saved.e2ee, true)
   assert.equal(saved.rpgDir, dir)
   assert.equal(saved.rpgCharName, 'Zara')
   assert.equal(saved.rpgUserName, 'Alex')
@@ -833,6 +839,83 @@ test('--rpg without --resume counts a legacy history-only dir as one earlier ses
   // earlier session; no migration notice appears.
   assert.ok(errors.some((line) => line.includes(`Starting a new story in ${dir} (1 earlier session available; use --rpg ${dir} --resume to continue one).`)), `errors: ${JSON.stringify(errors)}`)
   assert.ok(errors.every((line) => !line.includes('Migrated')))
+})
+
+test('--rpg fresh notice goes to stdout when stdout is a TTY', async (t) => {
+  const dir = await tempDir(t)
+  await writeFilled(dir)
+  await saveSession(await ensureRpgSessionsDir(dir), '2026-01-01T00-00-00', {
+    model: 'test/model',
+    providerName: 'openrouter',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-02T00:00:00.000Z',
+    messages: [
+      { role: 'system', content: 'You are Kael.' },
+      { role: 'user', content: 'Hello' },
+      { role: 'assistant', content: 'The gate creaks open.' },
+    ],
+  })
+
+  const logs = []
+  const errors = []
+  const previousKey = process.env.OPENROUTER_API_KEY
+  delete process.env.OPENROUTER_API_KEY
+  t.after(() => {
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY
+    else process.env.OPENROUTER_API_KEY = previousKey
+  })
+  t.mock.method(console, 'log', (msg) => logs.push(String(msg)))
+  t.mock.method(console, 'error', (msg) => errors.push(String(msg)))
+  let exitCode = null
+  t.mock.method(process, 'exit', (code) => {
+    exitCode = code
+    throw new ExitSignal(code)
+  })
+  // A TTY stdout (with piped stdin) must receive the notice on stdout: the
+  // answer stream stays clean and the notice is not mixed into it.
+  const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
+  Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
+  t.after(() => {
+    if (originalIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalIsTTY)
+    else delete process.stdout.isTTY
+  })
+
+  const { runCli } = await import(`../src/cli-main.js?t=${Date.now()}`)
+  const opts = {
+    model: 'test/model',
+    provider: 'openrouter',
+    listModels: undefined,
+    listImageModels: undefined,
+    listEndpoints: undefined,
+    resume: undefined,
+    export: undefined,
+    outputDir: undefined,
+    listSessions: undefined,
+    config: undefined,
+    systemPrompt: undefined,
+    rpg: dir,
+    reasoningEffort: undefined,
+    temperature: undefined,
+    budget: undefined,
+    webSearch: undefined,
+    webResults: undefined,
+    smoothStreaming: true,
+    smoothSpeed: undefined,
+    zdr: undefined,
+    e2ee: undefined,
+    image: undefined,
+    imageModel: undefined,
+    safeMode: true,
+    watermark: true,
+    delete: undefined,
+    deleteAllSessions: undefined,
+    attach: [],
+  }
+
+  await assert.rejects(runCli(opts, undefined), (err) => err instanceof ExitSignal)
+  assert.equal(exitCode, 1)
+  assert.ok(logs.some((line) => line.includes(`Starting a new story in ${dir} (1 earlier session available`)), `logs: ${JSON.stringify(logs)}`)
+  assert.ok(errors.every((line) => !line.includes('Starting a new story')))
 })
 
 test('--rpg without --resume stays silent when nothing was saved yet', async (t) => {

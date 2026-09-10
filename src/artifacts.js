@@ -39,7 +39,7 @@ export function extractMarkdownImageUrls(text) {
 // are downloaded to the session's attachment dir and replaced by data URLs in
 // the parts; failures keep the original URL. `requestFn` is a test seam for
 // the download transport.
-export async function produceParts(streamedParts, { sessionId, imageOutputSupported, fullText, requestFn }) {
+export async function produceParts(streamedParts, { sessionId, imageOutputSupported, fullText, requestFn, sessionsDir = null }) {
   const parts = [...streamedParts]
   if (parts.length === 0 && imageOutputSupported === true) {
     // Model-authored text controls both how many URLs appear here and where
@@ -62,7 +62,7 @@ export async function produceParts(streamedParts, { sessionId, imageOutputSuppor
     // The label is captured before download so the original filename (e.g.
     // photo.png) survives replacement with a generic data-URL-derived one.
     const label = partLabel(part)
-    const res = await downloadRemotePart(part, sessionId, { requestFn })
+    const res = await downloadRemotePart(part, sessionId, { requestFn, sessionsDir })
     return { ...res, label }
   })
   return { parts, results }
@@ -71,13 +71,14 @@ export async function produceParts(streamedParts, { sessionId, imageOutputSuppor
 // Shared post-stream step for chat (turn-runner) and one-shot: turns a
 // provider result into a message with a parts-array content when the model
 // produced artifacts, and returns the download results for printing.
-export async function resolveArtifacts(apiResult, { sessionId, imageOutputSupported, requestFn }) {
+export async function resolveArtifacts(apiResult, { sessionId, imageOutputSupported, requestFn, sessionsDir = null }) {
   if (!apiResult.content && !apiResult.parts?.length) return []
   const { parts, results } = await produceParts(apiResult.parts ?? [], {
     sessionId,
     imageOutputSupported,
     fullText: apiResult.content,
     requestFn,
+    sessionsDir,
   })
   if (parts.length > 0) {
     apiResult.content = buildPartsContent(apiResult.content, parts)
@@ -133,7 +134,7 @@ export function printArtifactsSummary(results, apiResult, stdout = process.stdou
   return wrote
 }
 
-export async function printPostStreamMetrics(apiResult, { sessionId, imageOutputSupported, stdout = process.stdout, requestFn, withSources = true, withSkipped = true }) {
-  const results = await resolveArtifacts(apiResult, { sessionId, imageOutputSupported, requestFn })
+export async function printPostStreamMetrics(apiResult, { sessionId, imageOutputSupported, stdout = process.stdout, requestFn, sessionsDir = null, withSources = true, withSkipped = true }) {
+  const results = await resolveArtifacts(apiResult, { sessionId, imageOutputSupported, requestFn, sessionsDir })
   return printArtifactsSummary(results, apiResult, stdout, { withSources, withSkipped })
 }

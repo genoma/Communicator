@@ -99,13 +99,14 @@ async function main(opts, promptArg) {
       historyUpdatedAt: rpgContext.historyUpdatedAt,
       model: opts.model,
       providerType,
+      e2ee: opts.e2ee === true,
       charName: rpgContext.charName,
       userName: rpgContext.userName,
       firstMessage: rpgContext.firstMessage,
     })
     if (migrated) {
       const notice = `Migrated the saved story (${migrated.messages} messages) into ${rpgContext.dir}/sessions/${migrated.sessionId}.json; history.json is no longer written.`
-      if (process.stdin.isTTY) console.log(notice)
+      if (process.stdout.isTTY === true) console.log(notice)
       else console.error(notice)
     }
     // A bare --resume (no session id) is the only way to continue a story;
@@ -122,14 +123,14 @@ async function main(opts, promptArg) {
         // stderr there, like the artifact lines do.
         const saved = rpgResume.sessionUpdatedAt ? `, saved ${new Date(rpgResume.sessionUpdatedAt).toISOString().slice(0, 10)}` : ''
         const notice = `Resumed RPG conversation from ${rpgContext.dir}/sessions/${rpgResume.sessionId}.json (${rpgResume.turns.length} messages${saved}).`
-        if (process.stdin.isTTY) console.log(notice)
+        if (process.stdout.isTTY === true) console.log(notice)
         else console.error(notice)
       } else if (rpgContext.history?.length > 0) {
         // Piped stdout must stay pure content (one-shot): send the notice to
         // stderr there, like the artifact lines do.
         const saved = rpgContext.historyUpdatedAt ? `, saved ${new Date(rpgContext.historyUpdatedAt).toISOString().slice(0, 10)}` : ''
         const notice = `Resumed RPG conversation from ${rpgContext.dir}/history.json (${rpgContext.history.length} messages${saved}).`
-        if (process.stdin.isTTY) console.log(notice)
+        if (process.stdout.isTTY === true) console.log(notice)
         else console.error(notice)
       }
     } else {
@@ -144,7 +145,7 @@ async function main(opts, promptArg) {
       const available = chapters.length > 0 ? chapters.length : (rpgContext.history?.length > 0 ? 1 : 0)
       if (available > 0) {
         const notice = `Starting a new story in ${rpgContext.dir} (${available} earlier session${available === 1 ? '' : 's'} available; use --rpg ${rpgContext.dir} --resume to continue one).`
-        if (process.stdin.isTTY) console.log(notice)
+        if (process.stdout.isTTY === true) console.log(notice)
         else console.error(notice)
       }
     }
@@ -295,7 +296,7 @@ async function main(opts, promptArg) {
   const rpgPostHistoryInstruction = rpgContext?.postHistoryInstruction ?? null
 
   const scraped = opts.scrape !== undefined
-    ? await scrapeForSession({ provider, apiKey, url: opts.scrape })
+    ? await scrapeForSession({ provider: rpgResume ? getProvider(rpgResume.providerType ?? providerType) : provider, apiKey, url: opts.scrape })
     : null
 
   // --no-safe-mode persists as a global Venice setting in every launch path

@@ -1,7 +1,6 @@
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { CliError } from './errors.js'
-import { listSessions, generateSessionId, saveSession, buildSessionPayload } from './sessions.js'
 
 const RPG_FILES = ['char.md', 'user.md', 'prompt.md', 'scenario.md', 'first-message.md']
 const RPG_POST_HISTORY_FILE = 'post-history-instruction.md'
@@ -267,12 +266,15 @@ export async function loadRpgContext(dir) {
 // legacy fallback stays — prefs carry a provider NAME but never its type,
 // so nothing but the run's explicit choice can be stamped faithfully) and
 // default sampling values; the original file is left in place untouched.
-export async function importLegacyRpgHistory({ rpgDir, history, historyUpdatedAt = null, model = null, providerType = 'openrouter', charName = null, userName = null, firstMessage = null }) {
+export async function importLegacyRpgHistory({ rpgDir, history, historyUpdatedAt = null, model = null, providerType = 'openrouter', e2ee = false, charName = null, userName = null, firstMessage = null }) {
   // Sessions are at least two messages by the session-machinery contract, so
   // a 1-message story stays on the legacy fallback instead of an invisible
   // chapter that neither the picker nor resume could ever see.
   if (!history || history.length < 2) return null
   const dir = rpgSessionsDir(rpgDir)
+  // Loaded lazily: sessions.js pulls the picker/inquirer graph, and rpg.js is
+  // part of cli-main's static import graph (exit-mode cold start).
+  const { listSessions, generateSessionId, saveSession, buildSessionPayload } = await import('./sessions.js')
   const existing = await listSessions(dir)
   if (existing.length > 0) return null
   if (!model) return null
@@ -283,7 +285,9 @@ export async function importLegacyRpgHistory({ rpgDir, history, historyUpdatedAt
   await saveSession(dir, sessionId, buildSessionPayload({
     messages: history,
     modelId: model,
-    endpointProviderName: providerType,
+    // The endpoint is unknown for a legacy story: pinning the provider TYPE
+    // here would pin every resumed turn to a nonexistent endpoint (404).
+    endpointProviderName: null,
     providerType,
     reasoningEffort: 'auto',
     temperature: null,
@@ -300,7 +304,7 @@ export async function importLegacyRpgHistory({ rpgDir, history, historyUpdatedAt
     fileSupported: null,
     imageOutputSupported: null,
     isImageModel: false,
-    e2ee: false,
+    e2ee,
     scrapes: 0,
     costSummary: null,
     createdAt,
@@ -314,7 +318,7 @@ export async function importLegacyRpgHistory({ rpgDir, history, historyUpdatedAt
 // deliberate — a single writer per run, and the file is meant to be tailed.
 // A module-level promise chain serializes the appends so fast consecutive
 // turns can never land out of order. Failures warn without throwing, like
-// saveRpgHistory.
+// the removed legacy writer.
 let logChain = Promise.resolve()
 export function logRpgPrompt(dir, entry) {
   const line = JSON.stringify(entry) + '\n'

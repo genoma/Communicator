@@ -24,6 +24,8 @@ export async function resolveRpgResume(rpgDir, { pick = selectSession, interacti
     // Turns only: the system prompt is rebuilt from the current story files
     // on every launch, exactly like the history.json resume path.
     turns: session.messages.filter((m) => m.role !== 'system'),
-    rpgDir: session.rpgDir ?? rpgDir,
+    // Saving always targets the dir the chapter was actually loaded from
+    // (the live --rpg <dir>), never a stale path stored in the payload.
+    rpgDir,
   }
 }
