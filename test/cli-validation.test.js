@@ -60,6 +60,9 @@ test('--zdr requires --provider openrouter', () => {
     ['Error: --zdr is only available with --provider openrouter.']
   )
   assert.deepEqual(validateCliFlags(opts({ zdr: true }), TTY), [])
+  // A resumed run executes on the session's provider, so the check moves to
+  // src/session-setup.js — in both directions.
+  assert.deepEqual(validateCliFlags(opts({ zdr: true, provider: 'venice', resume: 'id' }), TTY), [])
 })
 
 test('--e2ee rejects --zdr', () => {
@@ -94,6 +97,8 @@ test('--web-results requires --provider openrouter', () => {
   // checked against the resolved provider in src/session-setup.js.
   assert.deepEqual(validateCliFlags(opts({ webResults: 5, provider: 'venice' }), TTY), [])
   assert.deepEqual(validateCliFlags(opts({ webResults: 5, provider: 'venice', resume: 'id' }), TTY), [])
+  // The piped pure-setter dispatch (no TTY, no -m) also issues no request.
+  assert.deepEqual(validateCliFlags(opts({ webResults: 5, provider: 'venice', aspectRatio: '1:1' }), NO_TTY), [])
   // --rpg is a session route (the set-and-exit branch excludes it), so the
   // gate fires; --rpg --resume defers to the chapter's resolved provider.
   assert.deepEqual(

@@ -21,7 +21,7 @@ Set the mode with `--web-search <mode>` at launch or `/web-search <mode>` mid-ch
 
 ## Venice
 
-Venice.ai maps the mode to `venice_parameters.enable_web_search`: `auto` → `"auto"`, `always` → `"on"`, `off` → `"off"`. There is no result-count knob, so `--web-results` is rejected with a Venice provider (`Error: --web-results is only available with --provider openrouter.`) and `/web-results` only stores a count Venice never reads — enable Venice search with `--web-search auto`. Venice gates on the model's `supportsWebSearch` capability: enabling `auto`/`always` for a model that doesn't support web search refuses with a message (interactive) or exits with an error (CLI flags). Venice web search is billed per usage.
+Venice.ai maps the mode to `venice_parameters.enable_web_search`: `auto` → `"auto"`, `always` → `"on"`, `off` → `"off"`. There is no result-count knob, so a Venice *run* is refused — `--web-results` errors with `Error: --web-results is only available with --provider openrouter.`, and the check follows the resolved provider, so `--resume` of a Venice session is refused too; enable Venice search with `--web-search auto`. The standalone set-and-exit form still stores the count (`communicator --web-results 5`, as does `/web-results`), which Venice never reads. Venice gates on the model's `supportsWebSearch` capability: enabling `auto`/`always` for a model that doesn't support web search refuses with a message (interactive) or exits with an error (CLI flags). Venice web search is billed per usage.
 
 ## Sources & persistence
 

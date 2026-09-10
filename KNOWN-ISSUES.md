@@ -66,15 +66,20 @@ When an item is fixed: strike it in the same commit as the fix, and per
 12. `--web-results` on Venice flipped web search to `auto` — a search Venice bills — while
     dropping the count it cannot read → rejected by a provider gate
     (`Error: --web-results is only available with --provider openrouter.`,
-    `src/cli-validation.js:139-143`), matching the flag's documented "OpenRouter only" contract
+    `src/cli-validation.js:149-157`), matching the flag's documented "OpenRouter only" contract
     and the `--zdr` precedent. Two forms defer, because CLI validation only sees the flag's own
-    `--provider`: a resumed session executes on the provider saved in its file, and the bare
-    set-and-exit form issues no request at all. Both are judged by `assertOpenRouterOnlyFlags`
-    against the resolved provider (`src/session-setup.js:40-48`, called at `:64` and `:110`),
-    which closes the same hole for `--zdr` on a resumed Venice session. `/web-results` still
-    stores a count Venice never reads (it does not change the mode, so it cannot bill);
-    `docs/web-search.md` and `MEMORY.md` updated. Review finding folded in: the first cut keyed
-    only on `opts.provider`, leaving `--resume <venice-session> --web-results 5` still billing.
+    `--provider`: a resumed session executes on the provider saved in its file, and a
+    set-and-exit dispatch issues no request at all — the latter now shares
+    `isConfigSetDispatch` (`src/cli-validation.js:73-84`) with `src/cli-main.js`, so the
+    validator no longer re-derives the dispatch. Both forms are judged by
+    `assertOpenRouterOnlyFlags` against the resolved provider (`src/session-setup.js:40-48`,
+    called at `:64` and `:110`), which also made `--zdr` defer on `--resume`
+    (`src/cli-validation.js:145`) and thereby closed the same hole for a resumed Venice session.
+    `/web-results` still stores a count Venice never reads (it does not change the mode, so it
+    cannot bill); `docs/web-search.md` and `MEMORY.md` updated. Two review rounds folded in: the
+    first cut keyed on `opts.provider` alone, leaving `--resume <venice-session> --web-results 5`
+    still billing and rejecting `-p venice -r <openrouter-session>`; the second added the
+    `--zdr` mirror case and the piped pure-setter form.
 
 ## Open — piped-output purity
 
@@ -131,7 +136,7 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
     limits: `--e2ee` is rejected alongside `--web-results` (`src/cli-validation.js:149-150`), and
     billing needs a model with `capabilities.supportsWebSearch`, else `src/session-setup.js:76-77`
     exits. A bare `communicator --web-results 5` no longer bites — it is the config setter
-    (`src/cli-main.js:233-247`), which only persists the count. Billing path when it does:
+    (`src/cli-main.js:233-257`), which only persists the count. Billing path when it does:
     `src/providers/venice.js:289-296` (`enable_web_search: 'auto'`).~~ **Fixed** — see the
     matching entry in "Fixed on `fix/one-shot-bugs`" above.
 11. **`--list-endpoints` needs an API key on OpenRouter** (unconditional
@@ -141,8 +146,8 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
 12. **`--list-endpoints <id>` resolves against the text catalog only**, so image models cannot
     be inspected and `--image` cannot be combined with it (`src/cli-validation.js`).
 13. **`--temperature default` / `--top-p default` inside a one-shot clears the persisted
-    per-model preference** (`src/session-setup.js:73-80`). A flag that reads as per-run has a
-    permanent side effect.
+    per-model preference** (`src/session-setup.js:53-61`, called at `:86-87` and `:141-144`). A
+    flag that reads as per-run has a permanent side effect.
 14. **`--budget` is inert on a piped one-shot** (no pre-check, no metrics, not persisted), yet
     `docs/commands.md:93` shows it used with piped stdin and `README.md:20` still describes the
     cap unscoped. `docs/commands.md`'s flag row is now precise; these two examples are not.
@@ -179,7 +184,7 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
     leaks; these stale keys remain and are harmless but should be purged deliberately, not
     silently.
 22. **Every one-shot run rewrites global state**: it claims a session file and rewrites
-    `~/.communicator.json` (`src/commands/one-shot.js`, `src/session-setup.js:147-176`). Writes
+    `~/.communicator.json` (`src/commands/one-shot.js`, `src/session-setup.js:162-181`). Writes
     are atomic but unsynchronised, so concurrent agent/CI invocations are read-modify-write on
     the same prefs file and can lose updates. An opt-in no-save switch for headless runs is the
     candidate fix.
@@ -241,9 +246,20 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
     exception kept explicit.~~ **Fixed** — see the matching entry in "Fixed on
     `fix/one-shot-bugs`" above.
 31. **The config-set exit path still accepts `--zdr`/`--e2ee` with any setter flag.** The item 11
-    rule covers the list/export/delete exits but not the bare set-and-exit branch
-    (`src/cli-main.js:234-247`), so `communicator -p venice -m <model> --e2ee` (or
+    rule covers the list/export/delete exits but not the set-and-exit dispatches
+    (`src/cli-main.js:233-257`), so `communicator -p venice -m <model> --e2ee` (or
     `-p venice --e2ee --no-watermark`) still prints the E2EE session-file warning
     (`src/cli-main.js:156-161`) before saving and exiting 0, and `communicator -m <id> --zdr`
     drops the flag the same way. *Fenced:* this is the bare "set a preference and exit" dispatch
     the approved cleanup removes, so the surface goes away rather than getting a rule.
+32. **The flag provider and a resumed session's provider can disagree, and only two flags handle
+    it.** A `--resume` run executes on the provider saved in the session, but `src/cli-main.js`
+    resolves the API key from the *flag* provider before dispatch: `-p venice -r
+    <openrouter-session>` demands `VENICE_API_KEY` and dies with `Error: VENICE_API_KEY
+    environment variable is not set.` although the run then uses the session's OpenRouter key.
+    The mirror rejections survive for the two flags that do not defer: `-p openrouter -r
+    <venice-session> --e2ee` and `--scrape <url>` are refused by their provider gates
+    (`src/cli-validation.js:139-141`, `:182`) even though the resolved provider would allow them.
+    Only `--zdr` (`:145`) and `--web-results` (`:154`) defer to the resolved provider
+    (`src/session-setup.js:40-48`); giving `--e2ee` and `--scrape` the same treatment is the
+    candidate fix.

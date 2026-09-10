@@ -70,6 +70,19 @@ export function isConfigSetter(opts) {
   return hasConfigSetterFlags(opts) || opts.safeMode === false
 }
 
+// The two set-and-exit dispatches in src/cli-main.js only persist a
+// preference: no session, no request. Validation shares this predicate so it
+// never gates a flag on a run that cannot use it.
+export function isConfigSetDispatch(opts, { promptArg, isTTY }) {
+  if (isTTY) {
+    const onlySafeModeSetter = opts.safeMode === false && !hasConfigSetterFlags(opts)
+    return isConfigSetter(opts) && !onlySafeModeSetter && opts.rpg === undefined && !promptArg && opts.resume === undefined && opts.image !== true
+  }
+  // Pure config-setter flags have no session meaning, so piped stdin can never
+  // be a prompt for them; -m is excluded because piped stdin means one-shot.
+  return !promptArg && opts.model === undefined && opts.resume === undefined && opts.image !== true && opts.rpg === undefined && isPureConfigSetter(opts)
+}
+
 const exclusionError = (prefix, forbidden) =>
   `Error: ${prefix} and the session flags (${SESSION_FLAGS_LIST}) cannot be combined with ${forbidden}.`
 
@@ -127,17 +140,18 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --e2ee is only available with --provider venice.')
   }
 
-  if (opts.zdr === true && opts.provider !== 'openrouter') {
+  // A resumed run executes on the provider saved in its session, so only the
+  // resolved provider can decide this (src/session-setup.js).
+  if (opts.zdr === true && opts.provider !== 'openrouter' && opts.resume === undefined) {
     errors.push('Error: --zdr is only available with --provider openrouter.')
   }
 
   // Venice has no result-count knob: the flag would only flip its web search
   // to `auto`, turning billed search on while the count itself is dropped.
-  // A resumed run executes on the provider saved in its session and the bare
-  // set-and-exit form issues no request at all, so neither is decided here —
-  // the resolved provider is checked in resolveSessionFlags' callers.
-  const setAndExit = isTTY && !promptArg && opts.rpg === undefined && opts.image !== true
-  const webResultsDeferred = opts.resume !== undefined || setAndExit
+  // Neither a resumed run (the provider comes from the session) nor a
+  // set-and-exit dispatch (no request at all) is decided by the flag's own
+  // --provider; the resolved provider is checked in src/session-setup.js.
+  const webResultsDeferred = opts.resume !== undefined || isConfigSetDispatch(opts, { promptArg, isTTY })
   if (opts.webResults !== undefined && opts.provider !== 'openrouter' && !webResultsDeferred) {
     errors.push('Error: --web-results is only available with --provider openrouter.')
   }

@@ -5,7 +5,7 @@ import { sanitizeAnsi } from './ui/hyperlink.js'
 import { err, debug } from './ui/io.js'
 import { resolveSmoothSpeed, resolveTemperatureFlag, resolveTopPFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
-import { isConfigSetter, isPureConfigSetter, hasConfigSetterFlags, validateCliFlags } from './cli-validation.js'
+import { isConfigSetDispatch, validateCliFlags } from './cli-validation.js'
 import { parseScrapeUrl, scrapeContext } from './scrape.js'
 import { seedModelFetch } from './model-selection.js'
 import { loadRpgContext, rpgSessionsDir } from './rpg.js'
@@ -230,8 +230,8 @@ async function main(opts, promptArg) {
   // --no-safe-mode alone is a chat-launch flag: it flows into the chat path,
   // which persists the pref; combined with other config-setter flags it keeps
   // the save-and-exit config-set behavior.
-  const onlySafeModeSetter = opts.safeMode === false && !hasConfigSetterFlags(opts)
-  if (isConfigSetter(opts) && !onlySafeModeSetter && opts.rpg === undefined && !promptArg && process.stdin.isTTY && opts.resume === undefined && opts.image !== true) {
+  const configSetRun = isConfigSetDispatch(opts, { promptArg, isTTY: process.stdin.isTTY })
+  if (configSetRun && process.stdin.isTTY) {
     const prefs = await loadPreferences(opts.config)
     const apiKey = opts.model !== undefined ? getApiKey(providerType) : ''
     try {
@@ -244,10 +244,7 @@ async function main(opts, promptArg) {
     process.exit(0)
   }
 
-  // Pure config-setter flags have no session meaning, so piped stdin can
-  // never be a prompt for them: run the config-set path without a TTY.
-  // Excluded with -m, where piped stdin means one-shot.
-  if (!promptArg && !process.stdin.isTTY && opts.model === undefined && opts.resume === undefined && opts.image !== true && opts.rpg === undefined && isPureConfigSetter(opts)) {
+  if (configSetRun && !process.stdin.isTTY) {
     const prefs = await loadPreferences(opts.config)
     try {
       const { configSetCmd } = await import('./commands/config-set.js')
