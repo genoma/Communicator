@@ -463,7 +463,10 @@ const handlers = {
     ctx.state.appendUser(scrapeMessage(url, text))
     ctx.state.scrapes += 1
     ctx.tracker.addScrapeCost(SCRAPE_COST_USD)
-    console.log(`Scraped ${url} (${sizeLabel}, $${SCRAPE_COST_USD.toFixed(2)}) into context — session cost ${formatCost(ctx.tracker.cost)}.\n`)
+    // Piped stdout must carry no notice (same gate as the one-shot sites).
+    const notice = `Scraped ${url} (${sizeLabel}, $${SCRAPE_COST_USD.toFixed(2)}) into context — session cost ${formatCost(ctx.tracker.cost)}.\n`
+    if (process.stdout.isTTY === true) console.log(notice)
+    else console.error(notice)
   },
 
   '/retry': async (ctx) => {

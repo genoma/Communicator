@@ -50,6 +50,10 @@ When an item is fixed: strike it in the same commit as the fix, and per
    guard (`:106-107`, next to the pre-existing e2ee line) and the bare config view rejects it
    exactly as it already rejected `--e2ee`
    (`Error: bare --config (config view) cannot be combined with other flags.`, exit 1).
+10. The interactive `/scrape` notice (`src/commands/chat/index.js:466`) was printed with
+    `console.log` unconditionally and was reachable with a TTY stdin and a piped stdout
+    (`communicator | cat`, then `/scrape`) → TTY-gated (stdout on a terminal, stderr when stdout
+    is piped), and the two tests that pinned the old stdout routing were re-pinned.
 
 ## Open — piped-output purity
 
@@ -61,10 +65,11 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
    go to stdout regardless of TTY. Reachable as `echo hi | communicator --no-safe-mode`.
    *Fenced:* this file is the bare set-and-exit dispatch scheduled for removal, so it is fixed
    by that cleanup rather than here.
-2. **`src/commands/chat/index.js:466`** — the interactive `/scrape` notice uses `console.log`
-   with no TTY gate. Reachable only with a TTY stdin and a piped stdout (e.g.
-   `communicator "hi" | cat` then `/scrape`), so lower impact than the fixed sites.
-   *Not fenced; unowned.*
+2. ~~**`src/commands/chat/index.js:466`** — the interactive `/scrape` notice uses `console.log`
+   with no TTY gate. Reachable only with a TTY stdin and a piped stdout (e.g. `communicator | cat`
+   then `/scrape`; a positional prompt takes the one-shot branch at `src/cli-main.js:320`, so
+   `communicator "hi" | cat` never reaches the REPL), so lower impact than the fixed sites.
+   *Not fenced; unowned.*~~ **Fixed** — see the matching entry in "Fixed on `fix/one-shot-bugs`" above.
 3. **`src/commands/image-gen.js:317-323`** (`printImageOutcome`) writes `saved to …`, sizing and
    cost lines to stdout when piped. Classified as the image run's own output rather than a
    notice (there is no text answer to keep pure). Changing it would break scripts that parse

@@ -95,6 +95,18 @@ function mockConsole(t) {
   }
 }
 
+// Notices route to stdout on a terminal and to stderr when stdout is piped;
+// every notice assertion pins the stream it expects instead of inheriting the
+// runner's own TTY state.
+function withStdoutTTY(t, value) {
+  const original = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
+  Object.defineProperty(process.stdout, 'isTTY', { value, configurable: true })
+  t.after(() => {
+    if (original) Object.defineProperty(process.stdout, 'isTTY', original)
+    else delete process.stdout.isTTY
+  })
+}
+
 test('/quit returns the exit signal', async (t) => {
   mockConsole(t)
   const { ctx } = makeCtx()
@@ -1753,6 +1765,7 @@ test('/scrape rejects a non-http(s) URL without calling the provider', async (t)
 
 test('/scrape injects the page as a context turn and tracks its flat cost', async (t) => {
   const consoleSpy = mockConsole(t)
+  withStdoutTTY(t, true)
   const { ctx } = veniceCtx(t)
   ctx.state.messages.push({ role: 'user', content: 'hello' })
 
@@ -1765,10 +1778,12 @@ test('/scrape injects the page as a context turn and tracks its flat cost', asyn
   assert.equal(ctx.tracker.cost, 0.01)
   assert.equal(ctx.tracker.scrapes, 1)
   assert.match(consoleSpy.log(0), /^Scraped https:\/\/example\.com\/article \(\d+ chars, \$0\.01\) into context — session cost \$0\.010000\.\n$/)
+  assert.equal(consoleSpy.error(0), undefined)
 })
 
 test('/scrape truncates oversized pages with a notice', async (t) => {
   const consoleSpy = mockConsole(t)
+  withStdoutTTY(t, true)
   const big = 'x'.repeat(300_000)
   const { ctx } = veniceCtx(t, {
     provider: fakeProvider({
@@ -1783,6 +1798,20 @@ test('/scrape truncates oversized pages with a notice', async (t) => {
 
   assert.equal(ctx.state.messages[1].content.length, 'Scraped from https://example.com/big:\n\n'.length + 200_000)
   assert.match(consoleSpy.log(0), /full page truncated/)
+  assert.equal(consoleSpy.error(0), undefined)
+})
+
+test('/scrape routes its notice to stderr when stdout is piped', async (t) => {
+  const consoleSpy = mockConsole(t)
+  withStdoutTTY(t, false)
+  const { ctx } = veniceCtx(t)
+
+  await chatCommands['/scrape']({ ...ctx, args: 'https://example.com/article' })
+
+  assert.equal(consoleSpy.log(0), undefined)
+  assert.match(consoleSpy.error(0), /^Scraped https:\/\/example\.com\/article \(\d+ chars, \$0\.01\) into context — session cost \$0\.010000\.\n$/)
+  assert.equal(ctx.state.scrapes, 1)
+  assert.equal(ctx.tracker.cost, 0.01)
 })
 
 test('/scrape surfaces provider errors and keeps state unchanged', async (t) => {

@@ -76,4 +76,5 @@
 - MEMORY.md (repo root, committed) — the single detailed source of truth for implementation facts and contracts (English). Every behavior change must update it.
 - OPENROUTER.md (repo root, committed) — provider-behavior reference for OpenRouter specifics: the search "burst mode" delivery quirk (what it is, when it hits, what it breaks, how the client handles it) and its regression checklist. Consult it before investigating web-search streaming anomalies — it exists precisely because that behavior is easy to mistake for a recent bug.
 - Memory rules: (1) one detailed home per fact — MEMORY.md; (2) on any behavior change, update MEMORY.md in the same session (same discipline as updating tests); (3) new long-form facts land in MEMORY.md.
+- KNOWN-ISSUES.md: when an item is fixed, strike it there and add its numbered provenance entry in the same commit as the fix — never a follow-up.
 - `MEMORY.md`, `AGENTS.md` and `OPENROUTER.md` are committed project files; keep them updated in the same commits as the changes they describe.
