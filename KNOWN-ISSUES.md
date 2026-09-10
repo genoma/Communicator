@@ -39,13 +39,16 @@ When an item is fixed: strike it in the same commit as the fix, and per
    and `-p venice --e2ee --list-models` even printed the E2EE session-file warning to stderr
    before listing → both are now rejected by a dedicated exit-mode rule that names only the
    flags actually passed (`Error: --zdr cannot be combined with --list-* flags.` /
-   `Error: --e2ee cannot be combined with --list-* flags.`, `src/cli-validation.js:230-236`);
-   validation throws (`src/cli-main.js:78-81`) before the warning site (`:156-161`), so the
-   listing no longer starts.
+   `Error: --e2ee cannot be combined with --list-* flags.` — the single-flag form each case
+   actually surfaces: `--zdr` on OpenRouter; with both flags the mutual/provider gates push
+   first and the rule is not the surfaced error, `src/cli-validation.js:233-236`); validation
+   throws (`src/cli-main.js:78-81`) before the warning site (`:160`), so the listing no longer
+   starts.
 9. Bare `--config` silently dropped `--zdr`: `hasBareConfigOtherFlags`
    (`src/cli-validation.js:76-111`) listed `opts.e2ee` (`:106`) but not `opts.zdr`, so
    `communicator --config --zdr` printed the config and exited 0 → `opts.zdr` is now in the
-   guard (`:107`) and the bare config view rejects it exactly as it already rejected `--e2ee`
+   guard (`:106-107`, next to the pre-existing e2ee line) and the bare config view rejects it
+   exactly as it already rejected `--e2ee`
    (`Error: bare --config (config view) cannot be combined with other flags.`, exit 1).
 
 ## Open — piped-output purity
@@ -171,3 +174,17 @@ to stdout; artifacts and notices go to stderr. Violations are any notice written
     non-TTY is unverifiable while the blanket gate fires first.
 29. **`--delete-all-sessions` and the multi-select confirmation have no test pinning that the
     printed session list matches the confirmed set** (`src/commands/delete-cmd.js:18-22`).
+
+## Open — flag combinations (found while fixing item 5)
+
+30. **The gap item 5 fixed has the same shape next to the other exit paths.** `--zdr`/`--e2ee`
+    are absent from `isSessionOnly`, so the exclusions built on it — `--delete-all-sessions`
+    (`src/cli-validation.js:203`), `--export` (`:239`) and `--delete` (`:243`) — never see them.
+    On their own provider each combination validates clean and changes nothing:
+    `--export --zdr`, `--delete --zdr` and `--delete-all-sessions y --zdr` all return `[]` on
+    OpenRouter, and `--export --e2ee -p venice` on Venice, while the analogous session flags are
+    refused (`--export --temperature 0.5` errors). `-p venice --export --zdr` is refused only by
+    the pre-existing provider gate (`:129-131`), not by the exclusion. The fix must respect the
+    trap the item 5 fix documented: `--resume --zdr` and `--resume --e2ee` are intended behavior
+    (`:245-247` feeds the resume exclusion, `docs/providers.md:24,54`), so "add both flags to
+    `isSessionOnly`" is not a valid fix.
