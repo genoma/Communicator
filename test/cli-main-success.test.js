@@ -143,6 +143,18 @@ function withTTY(t, value) {
   })
 }
 
+// Notices route to stdout on a terminal and to stderr when stdout is piped
+// (the piped one-shot emits only answer text there); every notice assertion
+// pins the stream it expects instead of inheriting the runner's own TTY state.
+function withStdoutTTY(t, value) {
+  const original = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
+  Object.defineProperty(process.stdout, 'isTTY', { value, configurable: true })
+  t.after(() => {
+    if (original) Object.defineProperty(process.stdout, 'isTTY', original)
+    else delete process.stdout.isTTY
+  })
+}
+
 function withApiKey(t, value = 'test-key') {
   const previous = process.env.OPENROUTER_API_KEY
   process.env.OPENROUTER_API_KEY = value
@@ -525,11 +537,12 @@ test('--scrape with an invalid URL exits 1 before any API call', async (t) => {
 
 test('--scrape with a prompt scrapes the page, injects it, and answers', async (t) => {
   withTTY(t, true)
+  withStdoutTTY(t, false)
   withVeniceApiKey(t)
   const configFile = await tempConfig(t)
   const calls = mockVeniceScrapeFetch(t)
 
-  const { out } = await runAndExit(t, {
+  const { out, err } = await runAndExit(t, {
     provider: 'venice',
     model: 'venice-model',
     config: configFile,
@@ -537,7 +550,8 @@ test('--scrape with a prompt scrapes the page, injects it, and answers', async (
   }, 'Summarize', 0)
 
   assert.ok(calls.some((u) => u.includes('/augment/scrape')))
-  assert.match(out.join('\n'), /Scraped https:\/\/example\.com\/article \(\d+ chars\) into context\./)
+  assert.ok(!out.join('\n').includes('Scraped '), 'the scrape notice must stay off piped stdout')
+  assert.match(err.join('\n'), /Scraped https:\/\/example\.com\/article \(\d+ chars\) into context\./)
 
   const sessionsDir = join(tempHome, '.communicator', 'sessions')
   const files = (await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.'))
@@ -549,6 +563,7 @@ test('--scrape with a prompt scrapes the page, injects it, and answers', async (
 
 test('bare --scrape opens a chat with the page already in context', async (t) => {
   withTTY(t, true)
+  withStdoutTTY(t, true)
   withVeniceApiKey(t)
   const configFile = await tempConfig(t)
   const calls = mockVeniceScrapeFetch(t)
@@ -574,6 +589,7 @@ test('bare --scrape opens a chat with the page already in context', async (t) =>
 
 test('--no-safe-mode alone opens the chat and persists the pref', async (t) => {
   withTTY(t, true)
+  withStdoutTTY(t, true)
   withVeniceApiKey(t)
   const configFile = await tempConfig(t)
   const modelCalls = []
@@ -592,6 +608,46 @@ test('--no-safe-mode alone opens the chat and persists the pref', async (t) => {
   // The seeded listing must be the one and only /models request: the
   // selection path awaits it instead of fetching a second copy.
   assert.equal(modelCalls.length, 1, `expected exactly one /models request, saw ${modelCalls.length}`)
+})
+
+test('--no-safe-mode notice goes to stderr when stdout is piped', async (t) => {
+  withTTY(t, true)
+  withStdoutTTY(t, false)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  // The Venice text catalog is process-cached: an empty listing would leak
+  // into the later scrape test's model lookup.
+  const { resetModelCaches } = await import('../src/providers/venice.js')
+  resetModelCaches()
+  t.after(resetModelCaches)
+  // An empty listing fails the run right after the notice, so the assertion
+  // covers the notice routing alone and leaves no session artifact behind.
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  )
+
+  const { out, err } = await runAndExit(t, { provider: 'venice', model: 'venice-model', config: configFile, safeMode: false }, 'Hi', 1)
+
+  assert.ok(!out.join('\n').includes('Venice safe mode disabled'), 'the safe mode notice must stay off piped stdout')
+  assert.match(err.join('\n'), /^Venice safe mode disabled$/m)
+})
+
+test('--image --no-safe-mode notice goes to stderr when stdout is piped', async (t) => {
+  withTTY(t, false)
+  withStdoutTTY(t, false)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  )
+
+  const { out, err } = await runAndExit(t, { provider: 'venice', config: configFile, image: true, imageModel: 'flux-1-1', safeMode: false }, 'a red cat', 1)
+
+  assert.ok(!out.join('\n').includes('Venice safe mode disabled'), 'the image path safe mode notice must stay off piped stdout')
+  assert.match(err.join('\n'), /^Venice safe mode disabled$/m)
+  // The image branch exits before the shared notice site: the model lookup
+  // failing is what proves the notice came from the --image path.
+  assert.match(err.join('\n'), /image model flux-1-1 not found/)
 })
 
 test('Ctrl+C at the picker in one-shot (prompt arg) aborts cleanly with Aborted.', async (t) => {

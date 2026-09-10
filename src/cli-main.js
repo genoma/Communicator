@@ -28,7 +28,11 @@ async function scrapeForSession({ provider, apiKey, url }) {
   }
   const result = await provider.scrapePage({ apiKey, url })
   const { text, sizeLabel } = scrapeContext(result.content)
-  console.log(`Scraped ${url} (${sizeLabel}) into context.`)
+  // Piped stdout carries the answer alone: a notice there would pollute the
+  // stream for `communicator -m <model> "..." > file`.
+  const notice = `Scraped ${url} (${sizeLabel}) into context.`
+  if (process.stdout.isTTY === true) console.log(notice)
+  else console.error(notice)
   return { url, content: text }
 }
 
@@ -271,7 +275,8 @@ async function main(opts, promptArg) {
       } catch (err) {
         fail(`Error: could not save the safe mode preference: ${err.message}`)
       }
-      console.log('Venice safe mode disabled')
+      if (process.stdout.isTTY === true) console.log('Venice safe mode disabled')
+      else console.error('Venice safe mode disabled')
     }
     const { imageGenCmd } = await import('./commands/image-gen.js')
     await imageGenCmd({ apiKey, opts, prefs, providerType, prompt: promptArg })
@@ -308,7 +313,8 @@ async function main(opts, promptArg) {
     } catch (err) {
       fail(`Error: could not save the safe mode preference: ${err.message}`)
     }
-    console.log('Venice safe mode disabled')
+    if (process.stdout.isTTY === true) console.log('Venice safe mode disabled')
+    else console.error('Venice safe mode disabled')
   }
 
   if (promptArg || !process.stdin.isTTY) {
