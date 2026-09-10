@@ -639,6 +639,34 @@ test('runImageGeneration validates an explicit format against the model list', a
   )
 })
 
+test('runImageGeneration rejects an explicit resolution the model cannot take', async (t) => {
+  mockConsole(t)
+  const provider = fakeSizingProvider({
+    async fetchImageModels() {
+      return [{ id: 'flux-1-1', name: 'Flux 1.1', pricing: null, constraints: { aspectRatios: ['1:1'], formats: ['png'], resolutions: null, qualities: ['low', 'high'], widthHeightDivisor: null } }]
+    },
+  })
+
+  await assert.rejects(
+    runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'flux-1-1', resolution: '2K' }, prefs: {}, sessionId: '2026-01-01T00-00-00', stdout: plainStdout }),
+    (err) => err instanceof CliError && err.message === 'Error: --resolution 2K is not supported by flux-1-1.'
+  )
+})
+
+test('runImageGeneration rejects an explicit quality the model cannot take', async (t) => {
+  mockConsole(t)
+  const provider = fakeSizingProvider({
+    async fetchImageModels() {
+      return [{ id: 'flux-1-1', name: 'Flux 1.1', pricing: null, constraints: { aspectRatios: ['1:1'], formats: ['png'], resolutions: ['1K', '2K'], qualities: null, widthHeightDivisor: null } }]
+    },
+  })
+
+  await assert.rejects(
+    runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'flux-1-1', quality: 'high' }, prefs: {}, sessionId: '2026-01-01T00-00-00', stdout: plainStdout }),
+    (err) => err instanceof CliError && err.message === 'Error: --quality high is not supported by flux-1-1.'
+  )
+})
+
 test('runImageGeneration drops unsupported saved defaults with a note on OpenRouter', async (t) => {
   const warns = []
   t.mock.method(console, 'warn', (m) => { warns.push(String(m)) })

@@ -41,8 +41,14 @@ function validateSizingConstraints(model, { aspectRatio, format, resolution, qua
   if (resolution && Array.isArray(constraints.resolutions) && !constraints.resolutions.includes(resolution)) {
     throw new CliError(`Error: --resolution ${resolution} is not supported by ${model.id}. Supported: ${constraints.resolutions.join(', ')}.`)
   }
+  if (resolution && constraints.resolutions === null) {
+    throw new CliError(`Error: --resolution ${resolution} is not supported by ${model.id}.`)
+  }
   if (quality && Array.isArray(constraints.qualities) && !constraints.qualities.includes(quality)) {
     throw new CliError(`Error: --quality ${quality} is not supported by ${model.id}. Supported: ${constraints.qualities.join(', ')}.`)
+  }
+  if (quality && constraints.qualities === null) {
+    throw new CliError(`Error: --quality ${quality} is not supported by ${model.id}.`)
   }
   if (variants != null && constraints.maxN != null && variants > constraints.maxN) {
     throw new CliError(`Error: --variants ${variants} is not supported by ${model.id}. Supported: 1-${constraints.maxN}.`)
