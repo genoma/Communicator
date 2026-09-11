@@ -293,10 +293,25 @@ async function main(opts, promptArg) {
   // that never uses it. Only --rpg --resume with nothing saved to resume still
   // takes the fresh-run branch, which does need the flag's key.
   const resumesSession = opts.resume !== undefined && (opts.rpg === undefined || rpgResume)
+  const prefs = await loadPreferences(opts.config)
+
+  // An RPG resume executes on the chapter's saved provider, or on the flag's
+  // when there is no chapter to resume (a legacy history.json story is a fresh
+  // run). Validation defers the provider-only gates to that resolved provider,
+  // so they are answered here — before the key lookup, the billed scrape and
+  // the --no-safe-mode persist, none of which a refused run should reach.
+  if (opts.rpg !== undefined && opts.resume !== undefined) {
+    const { assertResolvedProviderFlags, assertResumeFlags, resolveSessionFlags } = await import('./session-setup.js')
+    const { zdr, e2ee, forcedWebResults } = resolveSessionFlags(opts, prefs)
+    const providerName = (rpgResume ? getProvider(rpgResume.providerType ?? providerType) : provider).meta.name
+    // A chapter is also matched against the run's --e2ee.
+    if (rpgResume) assertResumeFlags({ result: rpgResume, providerName, zdr, e2ee, forcedWebResults })
+    else assertResolvedProviderFlags({ providerName, zdr, e2ee, forcedWebResults })
+  }
+
   const apiKey = rpgResume
     ? getApiKey(rpgResume.providerType ?? providerType)
     : resumesSession ? '' : getApiKey(providerType)
-  const prefs = await loadPreferences(opts.config)
   const systemPrompt = rpgContext?.systemPrompt ?? await loadSystemPrompt(opts.systemPrompt)
   const rpgFirstMessage = rpgContext?.firstMessage ?? null
   const rpgCharName = rpgContext?.charName ?? null
@@ -304,27 +319,9 @@ async function main(opts, promptArg) {
   const rpgHistory = opts.rpg !== undefined && opts.resume === true ? (rpgResume?.turns ?? rpgContext?.history ?? null) : null
   const rpgPostHistoryInstruction = rpgContext?.postHistoryInstruction ?? null
 
-  // The scraped page is billed, so a resumed run's provider-only flags are
-  // answered against the provider that will serve it (the chapter's saved one)
-  // before the fetch: the command dispatch only rejects them afterwards.
-  let scraped = null
-  if (opts.scrape !== undefined) {
-    const scrapeProvider = rpgResume ? getProvider(rpgResume.providerType ?? providerType) : provider
-    if (opts.resume !== undefined) {
-      const { assertResolvedProviderFlags, assertResumeFlags, resolveSessionFlags } = await import('./session-setup.js')
-      const flags = {
-        zdr: opts.zdr === true,
-        e2ee: opts.e2ee === true,
-        forcedWebResults: resolveSessionFlags(opts, prefs).forcedWebResults,
-      }
-      // A chapter is also matched against the run's --e2ee; a legacy
-      // history.json resume has no session payload to match, and executes on
-      // the flag's provider like a fresh run.
-      if (rpgResume) assertResumeFlags({ result: rpgResume, providerName: scrapeProvider.meta.name, ...flags })
-      else assertResolvedProviderFlags({ providerName: scrapeProvider.meta.name, ...flags })
-    }
-    scraped = await scrapeForSession({ provider: scrapeProvider, apiKey, url: opts.scrape })
-  }
+  const scraped = opts.scrape !== undefined
+    ? await scrapeForSession({ provider: rpgResume ? getProvider(rpgResume.providerType ?? providerType) : provider, apiKey, url: opts.scrape })
+    : null
 
   // --no-safe-mode persists as a global Venice setting in every launch path
   // (interactive chat, one-shot, piped stdin), per its documented behavior.

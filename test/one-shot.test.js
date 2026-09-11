@@ -116,6 +116,14 @@ function withApiKey(t, value = 'test-key') {
   })
 }
 
+function withoutApiKey(t) {
+  const previous = process.env.OPENROUTER_API_KEY
+  delete process.env.OPENROUTER_API_KEY
+  t.after(() => {
+    if (previous !== undefined) process.env.OPENROUTER_API_KEY = previous
+  })
+}
+
 async function tempConfig(t) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-config-'))
   const file = join(dir, 'config.json')
@@ -326,6 +334,10 @@ test('one-shot with a seeded RPG story saves the whole exchange as a chapter ses
 })
 
 test('one-shot refuses an e2ee mismatch when resuming an RPG chapter', async (t) => {
+  // The key must be absent: the chapter's provider is OpenRouter, so with a key
+  // in the environment the pre-guard code order would still surface the e2ee
+  // refusal and the test would pass without pinning the ordering it is about.
+  withoutApiKey(t)
   const file = await tempConfig(t)
   const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
   t.after(() => rm(rpgDir, { recursive: true, force: true }))

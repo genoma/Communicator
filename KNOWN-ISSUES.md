@@ -9,7 +9,7 @@ surface cleanup (removing `--export-format`, `--variants`, `--resolution`, `--qu
 `--width`/`--height`, and the bare "set a preference and exit" dispatch) is tracked in
 `MEMORY.md` §Pending surface cleanup and is not listed here.
 
-Reference convention: the fixed entries are `F1`–`F14` and the open items `O1`–`O33`. Every
+Reference convention: the fixed entries are `F1`–`F18` and the open items `O1`–`O34`. Every
 reference carries its prefix, so the two lists cannot be confused — do not renumber an
 existing entry, and do not cite a bare number.
 
@@ -77,7 +77,7 @@ F12. `--web-results` on Venice flipped web search to `auto` — a search Venice 
     `isConfigSetDispatch` (`src/cli-validation.js:73-84`) with `src/cli-main.js`, so the
     validator no longer re-derives the dispatch. Both forms are judged by
     `assertResolvedProviderFlags` against the resolved provider (`src/session-setup.js:43-55`,
-    called at `:68` and `:122`), which also made `--zdr` defer on `--resume`
+    called at `:70` and `:124`), which also made `--zdr` defer on `--resume`
     (`src/cli-validation.js:147`) and thereby closed the same hole for a resumed Venice session.
     `/web-results` still stores a count Venice never reads (it does not change the mode, so it
     cannot bill); `docs/web-search.md` and `MEMORY.md` updated. Two review rounds folded in: the
@@ -97,7 +97,7 @@ F14. `--e2ee` and `--scrape` were still keyed on the flag's own `--provider`, so
     was refused, and `-p venice -r <openrouter-session> --e2ee` passed the flag gate and started
     the chat instead of being refused. Both gates now defer on `--resume`
     (`src/cli-validation.js:141`, `:201`); `--e2ee` is judged by `assertResolvedProviderFlags`
-    against the resolved provider (`src/session-setup.js:43-55`, called at `:68` and `:122`,
+    against the resolved provider (`src/session-setup.js:43-55`, called at `:70` and `:124`,
     message unchanged), and `--scrape` needs no new guard — the plain `--resume` form still trips
     the session-flag exclusion and the chapter form reaches `scrapeForSession`
     (`src/cli-main.js:26-27`), which rejects a provider without `scrapePage`. Two review findings
@@ -121,20 +121,23 @@ F16. A deferred provider gate could be answered only after a **billed** Venice s
     `:156-157`), but `-p venice --rpg <dir> --resume --scrape <url> --zdr` fetched and billed the
     page before `chat-start`/`one-shot` rejected the run against the chapter's provider — a
     regression for the `-p venice` form, which the parent commit refused at validation for free.
-    The provider-only flags are now answered against the provider that will serve the run before
-    the fetch (`src/cli-main.js:311-325`, scrape at `:326`), via the exported
-    `assertResolvedProviderFlags` (`src/session-setup.js:43-55`) for a legacy `history.json`
-    resume and `assertResumeFlags` for a chapter (which also answers the `--e2ee`-vs-session
-    match before the page is bought). Pinned by a test asserting the refused run performs no
-    `/augment/scrape` fetch.
+    The provider-only flags are now answered against the provider that will serve the run
+    *before* the key lookup, the fetch and the `--no-safe-mode` persist (`src/cli-main.js:298-310`,
+    scrape at `:323`), via the exported `assertResolvedProviderFlags`
+    (`src/session-setup.js:43-55`) when there is no chapter to resume (a legacy `history.json`
+    story runs on the flag's provider like a fresh run) and `assertResumeFlags` for a chapter,
+    which also answers the `--e2ee`-vs-session match before the page is bought. Both routes are
+    pinned by a test asserting the refused run performs no `/augment/scrape` fetch; a refused run
+    no longer persists `--no-safe-mode` either.
 F17. The resolved-provider guard ran *after* the API-key lookup, so
     `-p venice -r <openrouter-session> --e2ee` with `OPENROUTER_API_KEY` unset reported the
-    missing key instead of the provider limitation the F14 reorder exists to surface
-    (`src/commands/chat-start.js:36-37`, `src/commands/one-shot.js:41-42`). Both lookups now run
-    after `assertResumeFlags`, and `test/cli-main-success.test.js` pins the provider message with
-    the key absent and the E2EE mismatch also in play.
+    missing key instead of the provider limitation the F14 reorder exists to surface. Both
+    lookups now follow the guard: the plain resume's in `chat-start`
+    (`src/commands/chat-start.js:36-37`), a chapter's via the pre-fetch guard above
+    (`src/cli-main.js:298-310`, ahead of the chapter key at `:312-314`). Pinned with the key
+    absent on both routes (the one-shot half needed the same key deletion to discriminate).
 F18. A one-shot RPG chapter resume reset the chapter's persisted scrape count to this run's own
-    while rewriting that same session file, contradicting `docs/web-scrape.md:30` and losing the
+    while rewriting that same session file, contradicting `docs/web-scrape.md:30-31` and losing the
     flat $0.01s on the next resume — the unfixed half of the class F14 fixed for the chat path
     (`src/commands/chat-start.js:121`). The count now carries over
     (`src/commands/one-shot.js:302`), pinned by the chapter-resume test.
@@ -216,7 +219,7 @@ O14. **`--budget` is inert on a piped one-shot** (no pre-check, no metrics, not 
 O15. **`--width` / `--height` precedence trap.** A saved `imageDefaults.<provider>.aspectRatio`
     is applied whenever `opts.aspectRatio === undefined`, with no width/height guard
     (`src/commands/image-gen.js:191-198`); on aspect-list models the explicit pixels are then
-    dropped with no note, and the code comment at `:230-233` claims the opposite. On pixel
+    dropped with no note, and the code comment at `:235-238` claims the opposite. On pixel
     models the explicit pair does win. Moot if those flags are removed by the surface cleanup.
 
 ## Open — docs and comment drift
@@ -285,12 +288,12 @@ O29. **The multi-select `--delete` confirmation has no test pinning that the pri
     (`src/commands/delete-all-cmd.js:18`) and reports a count (`:28`) — so only the multi-select
     path is at issue.
 
-## Open — flag combinations (found while fixing F5)
+## Open — flag combinations (found while fixing F8)
 
-O30. ~~**The gap F5 fixed has the same shape next to the other exit paths.** `--zdr`/`--e2ee`
-    are absent from `isSessionOnly` (`src/cli-validation.js:21-37`, read only at `:119`), so the
-    exclusions built on it — `--delete-all-sessions` (`:202`), `--export` (`:238`) and
-    `--delete` (`:242`) — never see them. Verified by calling `validateCliFlags` directly:
+O30. ~~**The gap F8 fixed has the same shape next to the other exit paths.** `--zdr`/`--e2ee`
+    are absent from `isSessionOnly` (`src/cli-validation.js:21-37`, read only at `:132` and
+    `:320`), so the exclusions built on it — `--delete-all-sessions` (`:233`), `--export` (`:269`)
+    and `--delete` (`:273`) — never see them. Verified by calling `validateCliFlags` directly:
     `--export --zdr`, `--delete --zdr`, `--delete-all-sessions y --zdr` and
     `--export --zdr --output-dir out` all return `[]` on OpenRouter, as do
     `--export --e2ee -p venice`, `--delete --e2ee -p venice` and
@@ -300,7 +303,7 @@ O30. ~~**The gap F5 fixed has the same shape next to the other exit paths.** `--
     The `--e2ee` variants are not fully inert: `src/cli-main.js:156-161` still prints
     `Warning: --e2ee encrypts messages sent to the API, but the session file stores them
     unencrypted.` to stderr before the export/delete/delete-all dispatch (`:200`/`:217`/`:224`) —
-    the same shape F5 closed for `--list-*`.
+    the same shape F8 closed for `--list-*`.
     The intended exception is real: `--resume <id> --zdr` / `--resume <id> --e2ee` return `[]`
     because the resume rule (`:246-248`) never reads `sessionOnlyFlags` (`--resume id
     --temperature 0.5` also returns `[]`, and `docs/providers.md:24,54` documents the intent).

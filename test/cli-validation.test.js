@@ -95,9 +95,15 @@ test('--web-results requires --provider openrouter', () => {
     ['Error: --web-results is only available with --provider openrouter.']
   )
   assert.deepEqual(validateCliFlags(opts({ webResults: 5 }), TTY), [])
-  // The same run with a prompt and piped stdin reaches a session, so the
-  // provider check itself — not the set-and-exit deferral — is what accepts it.
+  // A model and piped stdin make it a real run, not a set-and-exit dispatch, so
+  // the provider check alone decides it: accepted on OpenRouter, and still
+  // refused on Venice — a deferral that wrongly covered this shape would
+  // return [] for both.
   assert.deepEqual(validateCliFlags(opts({ webResults: 5, model: 'org/model' }), NO_TTY), [])
+  assert.deepEqual(
+    validateCliFlags(opts({ webResults: 5, provider: 'venice', model: 'org/model' }), NO_TTY),
+    ['Error: --web-results is only available with --provider openrouter.']
+  )
   assert.deepEqual(validateCliFlags(opts({ webResults: 5 }), { ...TTY, ...PROMPT() }), [])
   // Deferred: the standalone set-and-exit form issues no request, and a
   // resumed run executes on the provider saved in its session — both are

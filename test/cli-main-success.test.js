@@ -834,10 +834,12 @@ test('--e2ee resuming an OpenRouter session reports the provider before the miss
   assert.ok(!err.some((l) => /not created with --e2ee/.test(l)))
 })
 
-// --scrape needs no resolved-provider guard: its deferred path reaches
-// scrapeForSession (src/cli-main.js), which already rejects a provider that
-// has no scrapePage. These two tests pin that claim through the RPG chapter
-// resume route, the only route that reaches --scrape with --resume.
+// --scrape's deferred path reaches scrapeForSession (src/cli-main.js), which
+// rejects a provider with no scrapePage; the resolved-provider guard runs
+// earlier still, so a refused run never bills the page. Both RPG resume routes
+// are covered below: a chapter (judged by its saved provider) and a legacy
+// story directory with no chapters (judged by the flag's provider, like a
+// fresh run).
 async function seedRpgChapter(t, { providerType = 'venice', providerName = 'Venice', model = 'venice/model' } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
@@ -909,6 +911,55 @@ test('--rpg --resume --scrape does not pay for the page when the run is refused'
 
   assert.match(err.join('\n'), /Error: --zdr is only available with --provider openrouter\./)
   assert.ok(!calls.some((u) => u.includes('/augment/scrape')), 'a refused run must not bill a scrape')
+})
+
+test('--rpg --resume --scrape without a chapter does not pay for the page when the run is refused', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  await writeFile(join(dir, 'char.md'), '# Zara\n\n## Personality\nSharp and warm.\n')
+  await writeFile(join(dir, 'user.md'), '# Alex\n\n## Description\nThe operator.\n')
+  await writeFile(join(dir, 'prompt.md'), '## Tone\nNoir.\n')
+  await writeFile(join(dir, 'scenario.md'), '## Current scene\nA rainy street.\n')
+  await writeFile(join(dir, 'first-message.md'), 'The rain had stopped by the time she arrived.\n')
+  const configFile = await tempConfig(t)
+  const calls = mockVeniceScrapeFetch(t)
+
+  // No chapter sessions and no history.json: rpgResume resolves to null, so the
+  // run is a fresh one on the flag's provider and only the provider gates apply.
+  const { err } = await runAndExit(t, {
+    config: configFile,
+    rpg: dir,
+    resume: true,
+    provider: 'venice',
+    model: 'venice-model',
+    scrape: 'https://example.com/article',
+    zdr: true,
+  }, undefined, 1)
+
+  assert.match(err.join('\n'), /Error: --zdr is only available with --provider openrouter\./)
+  assert.ok(!calls.some((u) => u.includes('/augment/scrape')), 'a refused run must not bill a scrape')
+})
+
+test('--rpg --resume --e2ee reports the chapter provider before the missing key', async (t) => {
+  withTTY(t, true)
+  withoutApiKey(t)
+  // The chapter's provider is OpenRouter, and its key is the one that is
+  // missing: the actionable limitation must win over the key error.
+  const dir = await seedRpgChapter(t, { providerType: 'openrouter', providerName: 'ProviderX', model: 'test/model' })
+  const configFile = await tempConfig(t)
+
+  const { err } = await runAndExit(t, {
+    config: configFile,
+    rpg: dir,
+    resume: true,
+    provider: 'venice',
+    e2ee: true,
+  }, undefined, 1)
+
+  assert.match(err.join('\n'), /Error: --e2ee is only available with --provider venice\./)
+  assert.ok(!err.some((l) => /OPENROUTER_API_KEY environment variable is not set/.test(l)))
 })
 
 test('--rpg --resume --scrape of an OpenRouter chapter fails loudly, never silently', async (t) => {
