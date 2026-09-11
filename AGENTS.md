@@ -17,10 +17,10 @@
 
 ## Verification
 
-- Run `npm test` (via `scripts/run-tests.js`, which wraps `node --test --experimental-test-module-mocks` with `NO_COLOR` set and `FORCE_COLOR` cleared — the raw `node --test` invocation is not color-deterministic and fails ~55 ANSI-contract tests on a TTY) after any change.
+- Run `npm test` (via `scripts/run-tests.js`, which wraps `node --test --experimental-test-module-mocks` with `NO_COLOR` set, `FORCE_COLOR` cleared — the raw `node --test` invocation is not color-deterministic and fails ~55 ANSI-contract tests on a TTY — and `HOME`/`USERPROFILE` pointed at a throwaway directory, so an unhomed test file cannot read or write the developer's real `~/.communicator.json`; that guarantee holds only for `npm test`, not for a bare `node --test`) after any change.
 - Run `npm run lint` (`eslint .`) and keep it passing.
 - Run `npx --yes knip` (via `npx`, deliberately not a dependency) after any change and keep it clean — it flags unused files, dependencies, and unnecessary exports, which accumulate silently one task at a time.
-- Baseline: full test suite (1617 tests on tag `3.48.2`; 1656 as of `3.48.6`), lint and `npx knip` pass; keep all three green.
+- Baseline: full test suite (1617 tests on tag `3.48.2`; 1656 as of `3.48.6`; 1796 on `fix/one-shot-bugs`), lint and `npx knip` pass; keep all three green.
 
 ## Git workflow
 

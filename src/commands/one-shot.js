@@ -34,12 +34,12 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   // A resumed RPG chapter brings its own provider and key; the run's default
   // provider only applies to fresh runs.
   const provider = getProvider(rpgResume?.providerType ?? providerType)
-  const runApiKey = rpgResume ? getApiKey(rpgResume.providerType ?? providerType) : apiKey
 
   // E2EE chapters never silently degrade, exactly like the chat resume path;
   // the provider-only flags answer first so a chapter whose provider cannot
-  // run --e2ee reports that, not the encryption mismatch.
+  // run --e2ee reports that, not the encryption mismatch or a missing key.
   if (rpgResume) assertResumeFlags({ result: rpgResume, providerName: provider.meta.name, zdr, e2ee, forcedWebResults })
+  const runApiKey = rpgResume ? getApiKey(rpgResume.providerType ?? providerType) : apiKey
 
   const tracker = new UsageTracker()
 
@@ -297,7 +297,9 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     createdAt,
     messages,
     reasoningMandatory: selection.modelReasoning?.mandatory === true,
-    scrapes: scraped ? 1 : 0,
+    // A chapter resume rewrites its own session file, so the persisted count
+    // must survive exactly like the interactive resume path.
+    scrapes: (rpgResume?.scrapes ?? 0) + (scraped ? 1 : 0),
   })
   // Persist the authoritative cost summary with the session file.
   state.costSummary = trackerCostSummary(tracker)

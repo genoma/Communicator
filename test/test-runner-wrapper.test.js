@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
-import { homedir, tmpdir } from 'node:os'
+import { basename, dirname, join } from 'node:path'
+import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -21,14 +21,12 @@ test('the wrapper forces plain styleText output before spawning the runner', asy
   assert.match(source, /--experimental-test-module-mocks/)
 })
 
-test('the wrapper runs every test file against a throwaway home', async () => {
-  const source = await readFile(join(ROOT, 'scripts', 'run-tests.js'), 'utf8')
-  assert.match(source, /process\.env\.HOME = /)
-  assert.match(source, /process\.env\.USERPROFILE = /)
-
+test('the wrapper runs every test file against a throwaway home', () => {
   // This file runs inside the spawned runner, so its home IS the throwaway
-  // one: constants.js can no longer resolve the developer's real
-  // ~/.communicator.json (run the suite through `npm test`, not bare node).
+  // directory the wrapper created: constants.js can no longer resolve the
+  // developer's real ~/.communicator.json (run the suite through `npm test`,
+  // not bare node). Both home sources must point at that same directory.
+  assert.match(basename(homedir()), /^communicator-test-home-/)
   assert.equal(homedir(), process.env.HOME)
-  assert.ok(homedir().startsWith(tmpdir()), `tests must resolve the throwaway home, saw ${homedir()}`)
+  assert.equal(homedir(), process.env.USERPROFILE)
 })

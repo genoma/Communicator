@@ -31,8 +31,10 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     if (!result) process.exit(0)
 
     const provider = getProvider(result.providerType || providerType)
-    const apiKey = getApiKey(result.providerType || providerType)
+    // The provider-only flags answer before the key lookup: a session whose
+    // provider cannot run the run's flags must say so, not die on a missing key.
     assertResumeFlags({ result, providerName: provider.meta.name, zdr, e2ee, forcedWebResults })
+    const apiKey = getApiKey(result.providerType || providerType)
     // New sessions carry an isImageModel marker, so the resume path only
     // consults the image-model catalog for legacy sessions written before
     // the marker existed.
@@ -281,7 +283,7 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMes
     const { selection, messages, sessionId, createdAt, updatedAt } = imageResult.switchToChat
     const { budget, smoothSpeed, zdr, e2ee } = resolveSessionFlags(opts, prefs)
     await runChatToEnd({
-      apiKey,
+      apiKey: ctx.apiKey,
       provider: ctx.provider,
       modelId: selection.modelId,
       endpointProviderName: selection.endpointProviderName,

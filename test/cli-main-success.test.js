@@ -181,6 +181,14 @@ function withoutVeniceApiKey(t) {
   })
 }
 
+function withoutApiKey(t) {
+  const previous = process.env.OPENROUTER_API_KEY
+  delete process.env.OPENROUTER_API_KEY
+  t.after(() => {
+    if (previous !== undefined) process.env.OPENROUTER_API_KEY = previous
+  })
+}
+
 async function tempConfig(t) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-config-'))
   const file = join(dir, 'config.json')
@@ -813,6 +821,19 @@ test('--e2ee resuming an OpenRouter session reports the provider, not the encryp
   assert.ok(!err.some((l) => /not created with --e2ee/.test(l)))
 })
 
+test('--e2ee resuming an OpenRouter session reports the provider before the missing key', async (t) => {
+  withTTY(t, true)
+  withoutApiKey(t)
+  // No stored e2ee marker either, so all three guards would fire: the
+  // actionable provider limitation must be the one the user sees.
+  await seedSession('2026-04-05T00-00-00', { isImageModel: false })
+
+  const { err } = await runAndExit(t, { resume: '2026-04-05', provider: 'venice', e2ee: true }, undefined, 1)
+  assert.match(err.join('\n'), /Error: --e2ee is only available with --provider venice\./)
+  assert.ok(!err.some((l) => /OPENROUTER_API_KEY environment variable is not set/.test(l)))
+  assert.ok(!err.some((l) => /not created with --e2ee/.test(l)))
+})
+
 // --scrape needs no resolved-provider guard: its deferred path reaches
 // scrapeForSession (src/cli-main.js), which already rejects a provider that
 // has no scrapePage. These two tests pin that claim through the RPG chapter
@@ -858,9 +879,36 @@ test('--rpg --resume --scrape without -p scrapes via the chapter Venice provider
   assert.equal(call.provider.meta.name, 'venice')
   assert.equal(call.apiKey, 'venice-test-key')
   // The page is billed, so it must reach the run: injected after the stored
-  // turns and counted in the flat scrape cost, like the fresh-session path.
+  // turns — which must survive — and counted in the flat scrape cost, like the
+  // fresh-session path.
+  assert.equal(call.opts.initialMessages.length, 4)
+  assert.equal(call.opts.initialMessages[0].role, 'system')
+  assert.equal(call.opts.initialMessages[1].content, 'First question')
+  assert.equal(call.opts.initialMessages[2].content, 'First answer')
   assert.match(call.opts.initialMessages.at(-1).content, /Scraped from https:\/\/example\.com\/article/)
   assert.equal(call.opts.scrapes, 1)
+})
+
+test('--rpg --resume --scrape does not pay for the page when the run is refused', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  const dir = await seedRpgChapter(t)
+  const configFile = await tempConfig(t)
+  const calls = mockVeniceScrapeFetch(t)
+
+  // --zdr defers to the chapter's resolved provider, which cannot run it. The
+  // page is billed before dispatch, so the refusal must land before the fetch.
+  const { err } = await runAndExit(t, {
+    config: configFile,
+    rpg: dir,
+    resume: true,
+    provider: 'venice',
+    scrape: 'https://example.com/article',
+    zdr: true,
+  }, undefined, 1)
+
+  assert.match(err.join('\n'), /Error: --zdr is only available with --provider openrouter\./)
+  assert.ok(!calls.some((u) => u.includes('/augment/scrape')), 'a refused run must not bill a scrape')
 })
 
 test('--rpg --resume --scrape of an OpenRouter chapter fails loudly, never silently', async (t) => {

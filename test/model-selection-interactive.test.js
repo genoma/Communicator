@@ -568,3 +568,34 @@ test('interactive selection skips the image merge when zdr is active', async (t)
   assert.equal(sel.isImageModel, undefined)
   assert.deepEqual(searchChoices[0].map((c) => c.value.id), ['venice/llama'])
 })
+
+// The interactive half of the mandatory-reasoning note: the one-shot path
+// resolves models through selectModelNonInteractive, so this is the only
+// cover for the gate in selectModelAndEndpoint.
+test('interactive selection routes the mandatory-reasoning note to stderr when stdout is piped', async (t) => {
+  const model = { id: 'org/mandatory', name: 'Mandatory', contextLength: 1000, reasoning: { supported: true, mandatory: true, supported_efforts: ['high'], default_effort: 'high' }, architecture: { input_modalities: [] }, supportedParameters: [] }
+  searchQueue = [model, chosen]
+  searchMessages = []
+  const logs = []
+  const errors = []
+  t.mock.method(console, 'log', (line) => { logs.push(line) })
+  t.mock.method(console, 'error', (line) => { errors.push(line) })
+  const original = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
+  Object.defineProperty(process.stdout, 'isTTY', { value: false, configurable: true })
+  t.after(() => {
+    if (original) Object.defineProperty(process.stdout, 'isTTY', original)
+    else delete process.stdout.isTTY
+  })
+
+  const provider = {
+    meta: { name: 'openrouter', hasEndpoints: true, supportsWebSearchOnAll: true },
+    async fetchModels() { return [model] },
+    async fetchEndpoints() { return [chosen] },
+  }
+
+  const sel = await selectModelAndEndpoint({ provider, apiKey: 'k', prefs: {}, reasoningEffort: null })
+
+  assert.equal(sel.reasoningEffort, null)
+  assert.ok(errors.some((l) => l.includes('reasoning is mandatory for org/mandatory')), 'the note belongs on stderr when stdout is piped')
+  assert.ok(!logs.some((l) => l.includes('reasoning is mandatory for org/mandatory')), 'the note must stay off piped stdout')
+})

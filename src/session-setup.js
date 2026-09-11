@@ -37,8 +37,10 @@ export function attachGateOptions(selection, providerMeta) {
 // --zdr and a --web-results count only shape an OpenRouter run, while --e2ee
 // requires Venice. Validation only sees the flag's own --provider, and a
 // resumed session executes on the provider saved in its file, so the resolved
-// provider is checked here too.
-function assertResolvedProviderFlags({ providerName, zdr, forcedWebResults, e2ee }) {
+// provider is checked here too — and before the billed scrape in
+// src/cli-main.js, whose command dispatch would otherwise reject the run only
+// after the page had been paid for.
+export function assertResolvedProviderFlags({ providerName, zdr, forcedWebResults, e2ee }) {
   if (e2ee === true && providerName !== 'venice') {
     throw new CliError('Error: --e2ee is only available with --provider venice.')
   }

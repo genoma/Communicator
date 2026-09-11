@@ -811,10 +811,14 @@ test('chatStart hands an image session /model text pick into startChat with the 
   const configFile = await tempConfig(t)
   t.mock.method(console, 'log', () => {})
 
-  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: '2026-01-01', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'venice' })
+  // cli-main passes '' for a resumed run: the key is resolved from the
+  // session's provider inside the resume branch, so the handoff must carry
+  // that resolved key rather than the parameter.
+  await chatStart({ apiKey: '', opts: baseOpts({ resume: '2026-01-01', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'venice' })
 
   assert.equal(startChatCalls.length, 1)
   const call = startChatCalls[0]
+  assert.equal(call.apiKey, 'venice-key')
   assert.equal(call.model, 'openrouter/auto')
   assert.equal(call.endpointProviderName, 'OpenAI')
   assert.equal(call.reasoningEffort, null)

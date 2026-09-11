@@ -455,7 +455,7 @@ test('one-shot with --rpg --resume continues the resolved chapter session', asyn
       imageOutputSupported: false,
       isImageModel: false,
       e2ee: false,
-      scrapes: 0,
+      scrapes: 3,
       costSummary: null,
       sessionId: '2026-01-01T00-00-00',
       sessionCreatedAt: '2026-01-01T00:00:00.000Z',
@@ -487,6 +487,9 @@ test('one-shot with --rpg --resume continues the resolved chapter session', asyn
   assert.notEqual(saved.updatedAt, '2026-01-02T00:00:00.000Z')
   assert.ok(Date.parse(saved.updatedAt) > Date.parse('2026-01-02T00:00:00.000Z'))
   assert.deepEqual(saved.messages.map((m) => m.role), ['system', 'user', 'assistant', 'user', 'assistant'])
+  // A chapter resume rewrites its own file, so the persisted flat scrape
+  // count must survive instead of being reset to this run's own count.
+  assert.equal(saved.scrapes, 3)
 })
 
 test('one-shot appends the RPG post-history instruction after the user message without persisting it', async (t) => {
