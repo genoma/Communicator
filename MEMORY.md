@@ -301,8 +301,10 @@ fences `O1` and `O31` behind it (their surface disappears rather than getting a 
 **Scope — removed outright.** Image sizing knobs that duplicate a REPL command or a surviving
 default: `--variants`, `--resolution`, `--quality`, `--width`, `--height`. The image REPL's
 `/variants`, `/resolution` and `/quality` keep persisting per-provider defaults; `--width` and
-`--height` have no REPL equivalent today, which is decision D4. `--export-format` stays (D3):
-removing it would delete the JSONL export format, a feature rather than a setter form.
+`--height` have no REPL equivalent today, which is decision D4. `--export-format` stays and gains
+a persisted default (D3): the flag only ever existed with `--export` (validation requires it), so
+an export run writes `prefs.exportFormat` and later exports read it, plus `/export-format
+markdown|jsonl` in text chat sets it in-app.
 
 **Scope — the bare "set a preference and exit" dispatch.** `src/commands/config-set.js` (whole
 file), its two call sites in `src/cli-main.js` (TTY and piped setter branches), and
@@ -332,8 +334,9 @@ Coverage today:
 | `safeMode` | `--no-safe-mode` | run flag persists; no command today | ok |
 | `imageDefaults[].aspectRatio` | `--aspect-ratio` | image REPL `/aspect`; run flag persists | ok |
 | `imageDefaults[].format` | `--image-format` | image REPL `/format`; run flag persists | ok |
-| **`budget`** | `--budget` | `/budget` (session-only, O16) | ok — per-session only by decision (D1); the standing default goes with the flag (D5) |
+| **`budget`** | `--budget` | `/budget` (session-only, O16) | flag and standing pref both removed (D5); `/budget` is the only cap path |
 | `outputDir` | `--output-dir` | `--export --output-dir` persists (`src/cli-main.js:213`, `:218-224`) | ok (D2) |
+| `exportFormat` (new) | — (`--export-format` already requires `--export`) | `/export-format markdown\|jsonl` (D3); an `--export --export-format` run persists | ok (D3) |
 
 Image prefs keep living in the image REPL per the command-separation contract; no image command
 moves into text chat.
@@ -345,9 +348,11 @@ moves into text chat.
   `prefs.outputDir` (`src/cli-main.js:213` reads it, `:218-224` writes it back), so the export
   one-shot the owner uses is the setter; the bare `--output-dir` form goes and the validation rule
   becomes "--output-dir requires --export or --image".
-- D3 — resolved: `--export-format` is out of scope and stays (the JSONL format is a feature).
-  Making it a settable default later is a separate change: `/export-format markdown|jsonl` plus
-  `prefs.exportFormat` consumed by the export dispatch.
+- D3 — resolved: `--export-format` stays AND becomes a persisted preference. It never had a bare
+  setter (validation requires `--export`), so the write happens on an export run, mirroring
+  `--output-dir`: `--export --export-format jsonl` persists `prefs.exportFormat = 'jsonl'`, later
+  `--export` runs default to it, and `/export-format markdown|jsonl` in text chat sets it without
+  running an export (parity rule: every pref needs an in-app setter).
 - D4 — resolved: drop explicit pixel sizing with the flags; no `/size` command. Sizing stays
   capability-driven — aspect models validate against their advertised `aspect_ratio` list (live:
   Venice lists e.g. `1:1, 3:2, 16:9, 21:9, 9:16, 2:3, 3:4, 4:5`), pixel models derive the pixels
@@ -358,13 +363,15 @@ moves into text chat.
   (several also resolutions/qualities) and 7 are pixel models (divisors 8 or 16); the derived
   presets verify — 2:3 → 848x1272 at div 8 and 848x1264 at div 16, every preset within the 1280
   cap. `--width`/`--height` only added arbitrary in-range pixels, which no other interface offers.
-- D5 — agreed to remove `--budget` entirely (one-shot runs never enforced the cap and only printed
-  the TTY bar; `/budget <usd>` covers the interactive case), on one condition: also drop the
-  `prefs.budget` fallback in `resolveSessionFlags` (`src/session-setup.js:17`) so a legacy standing
-  cap cannot keep applying invisibly with no way to set or clear it — resume still restores the
-  session's own cap from its payload (`:168`). Confirm the condition.
+- D5 — resolved by the owner ("budget goes and stays in chat"): `--budget` is removed entirely
+  and the `prefs.budget` fallback in `resolveSessionFlags` (`src/session-setup.js:17`) is dropped
+  with it — a legacy standing cap must not keep applying invisibly with no way to set or clear it,
+  so the key becomes inert. A resume still restores the session's own cap from its payload
+  (`:168`); one-shot runs lose only the never-enforced cap and the TTY-only 80% bar; `/budget
+  <usd>` is the single cap path.
 - D6 — approved: add `/safe-mode on|off` to the image REPL (Venice-only, mirroring `/watermark`),
-  persisting `prefs.safeMode`.
+  persisting `prefs.safeMode` on every change (`on` writes `true`, `off` writes `false`) through
+  the shared prefs saver.
 - D7 — resolved: keep the `--config` view. It is a family-1 inspector (bare flag prints the
   default config; `--config <path>` selects a preferences file for the run), not part of the
   setter dispatch, and the cleanup does not remove it; O18 closes by decision rather than by
@@ -375,12 +382,14 @@ moves into text chat.
 both `configSetRun` branches and the `--output-dir`/no-prompt rules become ordinary run
 validation; `src/cli-validation.js` loses the four predicates, keeps the `--export-format` rules
 (the flag survives) and now requires `--export`/`--image` for `--output-dir`;
-`src/session-setup.js` drops the `prefs.budget` fallback (D5); `src/commands/config-set.js` and
+`src/session-setup.js` drops the `prefs.budget` fallback (D5) and `applyPreferenceUpdates` gains
+`exportFormat`; `src/commands/config-set.js` and
 `test/config-set.test.js`, `test/config-set-command.test.js` are deleted, and
 `test/cli-validation.test.js`, `test/cli-validation-image.test.js`, `test/cli-main.test.js`,
-`test/cli-main-success.test.js`, `test/docs-consistency.test.js` are updated; D6 (and D4 if
-approved) add commands with `COMMAND_DESCRIPTIONS`/`COMMAND_USAGE` rows, `ctx.savePrefs`
-persistence and help/count tests; docs `docs/commands.md` (flag rows, examples, the "Bare use
+`test/cli-main-success.test.js`, `test/docs-consistency.test.js` are updated; `/export-format`
+(D3) and `/safe-mode` (D6) are added to text chat / the image REPL with
+`COMMAND_DESCRIPTIONS`/`COMMAND_USAGE` rows, `ctx.savePrefs` persistence and help/count tests,
+plus the `cli-main` export dispatch reading `prefs.exportFormat`; docs `docs/commands.md` (flag rows, examples, the "Bare use
 saves the default" phrases), `docs/images.md`, `docs/chat.md`, `README.md` and the MEMORY sections
 that name the dispatch (`src/cli-main.js`, `src/cli-validation.js`, Budget semantics, Web search
 semantics, Text vs Image) are updated; `KNOWN-ISSUES.md` closes O1/O31/O15/O26 and O18 by decision (the `--config` view stays). Gate:
@@ -390,7 +399,8 @@ semantics, Text vs Image) are updated; `KNOWN-ISSUES.md` closes O1/O31/O15/O26 a
 changelog commit enumerating every removal). No prefs migration: every key a reader survives on
 stays live (`outputDir`, `imageDefaults`, `temperature`, `topP`, `webSearch`, `webResults`,
 `reasoningEffort`, `smoothSpeed`, `smoothStreaming`, `compactThinking`, `hideWatermark`,
-`safeMode`), so values written by a bare setter keep working; `prefs.budget` becomes inert
+`safeMode`, `exportFormat`), so values written by a bare setter keep working; `prefs.budget`
+becomes inert
 (ignored, left in the file); the removed forms simply error, and the docs point at the
 replacements.
 
