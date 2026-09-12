@@ -364,8 +364,10 @@ O16. ~~**`src/config.js:116-117`** claims a mid-session `/budget` change is "pre
     `--budget` setter as its only writer. Adding a `savePrefs` call to `/budget` would make
     the two agree and let the CLI setter be dropped.~~ **Fixed** — the comment no longer lists
     `/budget` among the `syncPreferenceUpdates` callers and now says where the cap lives (session
-    payload; the global `prefs.budget` stays the bare setter's); see F29. The optional follow-up
-    (a `/budget` prefs write) is user-visible and stays unapproved.
+    payload; the global `prefs.budget` stays the bare setter's); see F29. The tier-2 alternative
+    (a `/budget` prefs write, which would let the bare setter be dropped) is dropped by decision:
+    the cap is session state, restored from the session file on resume, so it does not belong in
+    the end-of-session prefs save.
 O17. ~~**`docs/chat.md:11`** says a bare `-m <id>` "goes straight to chat"; the code makes it a
     validate-and-exit config setter (`docs/commands.md` documents it correctly).~~ **Fixed** — the
     paragraph now scopes picker-skipping to `-m <id>` with a prompt and states the bare form
