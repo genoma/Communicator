@@ -31,8 +31,18 @@ async function resolveSession(dir, partialId) {
   return sessions.filter((s) => s.id.startsWith(partialId))
 }
 
+// A partial id matching more than one session cannot be resolved without the
+// picker: a scripted caller (piped stdin) has nobody to answer the prompt, so
+// it must fail fast instead of blocking on it. Names up to five candidates so
+// the caller knows which prefix to extend.
+function ambiguousSessionError(partialId, matches) {
+  const ids = matches.slice(0, 5).map((s) => s.id)
+  const more = matches.length > ids.length ? ', ...' : ''
+  return new CliError(`Error: "${partialId}" matches ${matches.length} sessions: ${ids.join(', ')}${more}. Use a longer id to select one.`)
+}
+
 export async function resolveSessionInteractive(dir, partialId, opts = {}) {
-  const { message } = opts
+  const { message, interactive = process.stdin.isTTY, pick = selectSession } = opts
   if (partialId && typeof partialId === 'string') {
     const matches = await resolveSession(dir, partialId)
     if (matches.length === 0) {
@@ -41,18 +51,19 @@ export async function resolveSessionInteractive(dir, partialId, opts = {}) {
     if (matches.length === 1) {
       return matches[0].id
     }
-    return selectSession(matches, { message })
+    if (!interactive) throw ambiguousSessionError(partialId, matches)
+    return pick(matches, { message })
   }
 
   const sessions = await listSessions(dir)
   if (!sessions.length) {
     throw new CliError('Error: No saved sessions found.')
   }
-  return selectSession(sessions, { message })
+  return pick(sessions, { message })
 }
 
 export async function resolveSessionsInteractive(dir, partialId, opts = {}) {
-  const { message } = opts
+  const { message, interactive = process.stdin.isTTY, pick = selectSession, pickMany = selectSessions } = opts
   if (partialId && typeof partialId === 'string') {
     const matches = await resolveSession(dir, partialId)
     if (matches.length === 0) {
@@ -61,14 +72,15 @@ export async function resolveSessionsInteractive(dir, partialId, opts = {}) {
     if (matches.length === 1) {
       return [matches[0].id]
     }
-    return [await selectSession(matches, { message })]
+    if (!interactive) throw ambiguousSessionError(partialId, matches)
+    return [await pick(matches, { message })]
   }
 
   const sessions = await listSessions(dir)
   if (!sessions.length) {
     throw new CliError('Error: No saved sessions found.')
   }
-  return selectSessions(sessions, { message })
+  return pickMany(sessions, { message })
 }
 
 function firstUserText(messages) {

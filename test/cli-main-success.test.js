@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm, readFile, readdir, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Readable } from 'node:stream'
 import { ExitPromptError } from '@inquirer/core'
 
 const tempHome = await mkdtemp(join(tmpdir(), 'communicator-home-'))
@@ -10,12 +11,13 @@ after(() => rm(tempHome, { recursive: true, force: true }))
 
 let searchImpl = async () => { throw new ExitPromptError() }
 let checkboxImpl = null
+let confirmImpl = async () => true
 mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 mock.module('@inquirer/prompts', {
   namedExports: {
     search: async (opts) => searchImpl(opts),
     select: async () => { throw new ExitPromptError() },
-    confirm: async () => true,
+    confirm: async (opts) => confirmImpl(opts),
     checkbox: async (opts) => checkboxImpl(opts),
   },
 })
@@ -163,6 +165,19 @@ function withApiKey(t, value = 'test-key') {
   })
 }
 
+// A headless run reads its prompt from the pipe: a Readable stands in for the
+// shell's stdin (and reports no TTY, so the headless gates apply).
+function withPipedStdin(t, text = 'Explain this') {
+  const stdin = Readable.from([Buffer.from(text)])
+  stdin.isTTY = false
+  const original = Object.getOwnPropertyDescriptor(process, 'stdin')
+  Object.defineProperty(process, 'stdin', { value: stdin, configurable: true })
+  t.after(() => {
+    if (original) Object.defineProperty(process, 'stdin', original)
+    else delete process.stdin
+  })
+}
+
 function withVeniceApiKey(t, value = 'venice-test-key') {
   const previous = process.env.VENICE_API_KEY
   process.env.VENICE_API_KEY = value
@@ -202,6 +217,28 @@ async function seedSession(id, data = {}) {
   return dir
 }
 
+// A resumed one-shot resolves its model from the session file, so the only
+// request it makes is the completion itself.
+function mockOpenRouterCompletion(t, bodies = []) {
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    const u = String(url)
+    if (!u.includes('/chat/completions')) throw new Error(`unexpected fetch: ${u}`)
+    if (opts?.body) bodies.push(JSON.parse(opts.body))
+    const stream = new ReadableStream({
+      start(controller) {
+        for (const chunk of [
+          'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
+          'data: {"choices":[{"delta":{"content":" world"}}]}\n\n',
+          'data: {"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}\n\n',
+          'data: [DONE]\n\n',
+        ]) controller.enqueue(new TextEncoder().encode(chunk))
+        controller.close()
+      },
+    })
+    return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+  })
+}
+
 // The mocked chat path persists its session in the shared temp home; a test
 // that opens a chat but wants no artifact must remove what it wrote, because
 // later scrape tests read the newest session file in that shared dir.
@@ -234,6 +271,20 @@ test('--export with a unique partial id writes the markdown file and exits 0', a
 
   const md = await readFile(join(outDir, 'session-2026-01-02T00-00-00', 'session-2026-01-02T00-00-00.md'), 'utf-8')
   assert.match(md, /# Chat Session — 2026-01-01 00:00:00 UTC/)
+  assert.match(md, /First question/)
+})
+
+test('--export with a unique partial id works with piped stdin (no picker involved)', async (t) => {
+  withTTY(t, false)
+  withStdoutTTY(t, false)
+  await seedSession('2026-01-02T00-00-00')
+  const outDir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(outDir, { recursive: true, force: true }))
+
+  const { out } = await runAndExit(t, { export: '2026-01-02', outputDir: outDir }, undefined, 0)
+  assert.match(out.join('\n'), /Exported to/)
+
+  const md = await readFile(join(outDir, 'session-2026-01-02T00-00-00', 'session-2026-01-02T00-00-00.md'), 'utf-8')
   assert.match(md, /First question/)
 })
 
@@ -273,6 +324,39 @@ test('--delete with a unique partial id removes the session and exits 0', async 
   const { listSessions } = await import('../src/sessions.js')
   const sessions = await listSessions(dir)
   assert.ok(!sessions.some((s) => s.id === '2026-01-03T00-00-00'))
+})
+
+test('--delete with a unique partial id deletes without a prompt when stdin is piped', async (t) => {
+  withTTY(t, false)
+  const dir = await seedSession('2026-01-03T00-00-00')
+  // The confirm prompt cannot render without a TTY; the resolved id is the
+  // whole confirmation, so reaching it is the failure this test guards.
+  confirmImpl = async () => { throw new Error('unexpected confirm prompt') }
+  t.after(() => { confirmImpl = async () => true })
+
+  const { out } = await runAndExit(t, { delete: '2026-01-03' }, undefined, 0)
+  assert.match(out.join('\n'), /2026-01-01 00:00:01 {2}test\/model/)
+  assert.match(out.join('\n'), /Deleted session 2026-01-03T00-00-00/)
+
+  const { listSessions } = await import('../src/sessions.js')
+  const sessions = await listSessions(dir)
+  assert.ok(!sessions.some((s) => s.id === '2026-01-03T00-00-00'))
+})
+
+test('--delete with an ambiguous prefix and piped stdin fails fast and removes nothing', async (t) => {
+  withTTY(t, false)
+  // A prefix shared by nothing else seeded in the shared temp home, so the
+  // ambiguity count is exact.
+  const dir = await seedSession('2026-09-01T00-00-00')
+  await seedSession('2026-09-02T00-00-00')
+
+  const { err } = await runAndExit(t, { delete: '2026-09-0' }, undefined, 1)
+  assert.ok(err.join('\n').includes('Error: "2026-09-0" matches 2 sessions: 2026-09-02T00-00-00, 2026-09-01T00-00-00. Use a longer id to select one.'))
+
+  const { listSessions } = await import('../src/sessions.js')
+  const ids = (await listSessions(dir)).map((s) => s.id)
+  assert.ok(ids.includes('2026-09-01T00-00-00'))
+  assert.ok(ids.includes('2026-09-02T00-00-00'))
 })
 
 test('--delete bare lists exactly the chosen sessions and deletes only those', async (t) => {
@@ -486,6 +570,68 @@ test('--resume with a unique partial id rebuilds the context from the session', 
   assert.equal(saved.webSearch, undefined)
 })
 
+test('--resume with a unique partial id runs headless and extends the same session file', async (t) => {
+  withPipedStdin(t, 'Explain this')
+  withStdoutTTY(t, false)
+  withApiKey(t)
+  const configFile = await tempConfig(t)
+  const pricing = { prompt: 1e-6, completion: 2e-6 }
+  const sessionsDir = await seedSession('2026-01-20T00-00-00', {
+    isImageModel: false,
+    pricing,
+    scrapes: 2,
+    messages: [
+      { role: 'system', content: 'You are a terse assistant.' },
+      { role: 'user', content: 'First question' },
+      { role: 'assistant', content: 'First answer', usage: { prompt_tokens: 1000, completion_tokens: 500, total_tokens: 1500 } },
+    ],
+  })
+  const bodies = []
+  mockOpenRouterCompletion(t, bodies)
+  const writes = []
+  t.mock.method(process.stdout, 'write', (chunk) => { writes.push(String(chunk)); return true })
+  const before = (await readdir(sessionsDir)).sort()
+
+  // No -m: the session carries its own model, so a headless resume must not
+  // demand one.
+  await runAndExit(t, { config: configFile, resume: '2026-01-20' }, undefined, 0)
+
+  assert.ok(writes.join('').includes('Hello world'), 'the piped answer still streams to stdout')
+  assert.equal(bodies[0].model, 'test/model')
+  // The stored system message is what gets sent, never a fresh prompt.
+  assert.deepEqual(bodies[0].messages[0], { role: 'system', content: 'You are a terse assistant.' })
+  assert.equal(bodies[0].messages[1].content, 'First question')
+  assert.equal(bodies[0].messages[3].content, 'Explain this')
+
+  // The run rewrites its own file in place: no new session file, no 0-byte claim.
+  assert.deepEqual((await readdir(sessionsDir)).sort(), before)
+  const saved = JSON.parse(await readFile(join(sessionsDir, '2026-01-20T00-00-00.json'), 'utf-8'))
+  assert.equal(saved.createdAt, '2026-01-01T00:00:00.000Z')
+  assert.deepEqual(saved.messages.map((m) => m.role), ['system', 'user', 'assistant', 'user', 'assistant'])
+  assert.equal(saved.messages[4].content, 'Hello world')
+  assert.equal(saved.scrapes, 2)
+  // Cumulative like the interactive resume: the stored turn's usage stays in
+  // the totals and this run is added on top.
+  assert.equal(saved.costSummary.requests, 2)
+  assert.equal(saved.costSummary.promptTokens, 1010)
+  assert.equal(saved.costSummary.completionTokens, 505)
+  assert.equal(saved.costSummary.totalTokens, 1515)
+  assert.equal(saved.costSummary.promptTokens, 1010)
+  assert.equal(saved.costSummary.completionTokens, 505)
+  assert.equal(saved.costSummary.totalTokens, 1515)
+})
+
+test('--resume of an image session fails loudly when stdin is piped', async (t) => {
+  withPipedStdin(t, 'Make it blue')
+  withApiKey(t)
+  await seedSession('2026-01-21T00-00-00', { model: 'openai/gpt-image-2', isImageModel: true })
+  t.mock.method(globalThis, 'fetch', async (url) => { throw new Error(`unexpected fetch: ${url}`) })
+
+  const { err } = await runAndExit(t, { resume: '2026-01-21' }, undefined, 1)
+  // An image session is a REPL of its own: it must never degrade into a text chat.
+  assert.ok(err.join('\n').includes('Error: resuming an image session needs a TTY (image sessions are interactive).'))
+})
+
 test('--resume runs on the session provider, not the flag provider', async (t) => {
   withTTY(t, true)
   withApiKey(t)
@@ -666,7 +812,7 @@ function mockVeniceScrapeFetch(t) {
         start(controller) {
           for (const chunk of [
             'data: {"choices":[{"delta":{"content":"Summary"}}]}\n\n',
-            'data: {"choices":[{"delta":{},"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}]}\n\n',
+            'data: {"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}\n\n',
             'data: [DONE]\n\n',
           ]) controller.enqueue(new TextEncoder().encode(chunk))
           controller.close()

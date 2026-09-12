@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readdir, readFile, stat, utimes, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { deleteSession, deleteAllSessions, deleteSessions, generateTitle, listSessions, saveSession, loadSession, generateSessionId, removeEmptySessionClaim, buildSessionPayload } from '../src/sessions.js'
+import { deleteSession, deleteAllSessions, deleteSessions, generateTitle, listSessions, saveSession, loadSession, generateSessionId, removeEmptySessionClaim, buildSessionPayload, resolveSessionInteractive, resolveSessionsInteractive } from '../src/sessions.js'
 import { formatSessionItem } from '../src/ui/format.js'
 import { attachmentDirFor } from '../src/attachment-store.js'
 import { CliError } from '../src/errors.js'
@@ -1062,4 +1062,79 @@ test('deleteAllSessions removes conflict backups from the wipe', async (t) => {
   assert.equal(removed, 2)
   const remaining = await readdir(dir)
   assert.deepEqual(remaining, [])
+})
+
+test('resolveSessionInteractive fails fast on an ambiguous prefix without a picker', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  await saveSession(dir, '2026-01-02T00-00-00', sessionData())
+
+  await assert.rejects(
+    resolveSessionInteractive(dir, '2026-01-0', { interactive: false }),
+    (err) => err instanceof CliError
+      && err.message === 'Error: "2026-01-0" matches 2 sessions: 2026-01-02T00-00-00, 2026-01-01T00-00-00. Use a longer id to select one.'
+  )
+})
+
+test('the ambiguity error names at most five candidate ids', async (t) => {
+  const dir = await tempDir(t)
+  for (const day of ['01', '02', '03', '04', '05', '06']) {
+    await saveSession(dir, `2026-01-${day}T00-00-00`, sessionData())
+  }
+
+  await assert.rejects(
+    resolveSessionsInteractive(dir, '2026', { interactive: false }),
+    (err) => err instanceof CliError
+      && err.message === 'Error: "2026" matches 6 sessions: 2026-01-06T00-00-00, 2026-01-05T00-00-00, 2026-01-04T00-00-00, 2026-01-03T00-00-00, 2026-01-02T00-00-00, .... Use a longer id to select one.'
+  )
+})
+
+test('resolveSessionInteractive keeps the unique-match and no-match paths without a picker', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  await saveSession(dir, '2026-01-02T00-00-00', sessionData())
+
+  assert.equal(await resolveSessionInteractive(dir, '2026-01-01', { interactive: false }), '2026-01-01T00-00-00')
+  assert.deepEqual(await resolveSessionsInteractive(dir, '2026-01-02', { interactive: false }), ['2026-01-02T00-00-00'])
+  await assert.rejects(
+    resolveSessionInteractive(dir, 'nope', { interactive: false }),
+    (err) => err instanceof CliError && err.message === 'Error: No session found matching "nope"'
+  )
+  await assert.rejects(
+    resolveSessionsInteractive(dir, 'nope', { interactive: false }),
+    (err) => err instanceof CliError && err.message === 'Error: No session found matching "nope"'
+  )
+})
+
+test('an interactive ambiguous prefix still goes to the pickers', async (t) => {
+  const dir = await tempDir(t)
+  await saveSession(dir, '2026-01-01T00-00-00', sessionData())
+  await saveSession(dir, '2026-01-02T00-00-00', sessionData())
+
+  const picked = []
+  const pick = async (sessions, opts) => {
+    picked.push({ ids: sessions.map((s) => s.id), message: opts.message })
+    return '2026-01-01T00-00-00'
+  }
+  const pickMany = async (sessions, opts) => {
+    picked.push({ ids: sessions.map((s) => s.id), message: opts.message })
+    return ['2026-01-02T00-00-00']
+  }
+
+  assert.equal(
+    await resolveSessionInteractive(dir, '2026-01-0', { interactive: true, pick, message: 'Select a session to resume' }),
+    '2026-01-01T00-00-00'
+  )
+  assert.deepEqual(
+    await resolveSessionsInteractive(dir, '2026-01-0', { interactive: true, pick, message: 'Select a session to delete' }),
+    ['2026-01-01T00-00-00']
+  )
+  // The bare form keeps its own multi-select picker.
+  assert.deepEqual(await resolveSessionsInteractive(dir, undefined, { interactive: true, pickMany }), ['2026-01-02T00-00-00'])
+
+  assert.deepEqual(picked, [
+    { ids: ['2026-01-02T00-00-00', '2026-01-01T00-00-00'], message: 'Select a session to resume' },
+    { ids: ['2026-01-02T00-00-00', '2026-01-01T00-00-00'], message: 'Select a session to delete' },
+    { ids: ['2026-01-02T00-00-00', '2026-01-01T00-00-00'], message: undefined },
+  ])
 })

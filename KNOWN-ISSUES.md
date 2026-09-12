@@ -17,7 +17,7 @@ This file tracks **defects**, not planned feature or flag-surface work. The surf
 removed those flags and the dispatch (and kept `--export-format` with a persisted default) is
 recorded in `SURFACE-CLEANUP.md`; it was never a defect item.
 
-Reference convention: the fixed entries are `F1`–`F37` and the open-list items `O1`–`O41`
+Reference convention: the fixed entries are `F1`–`F39` and the open-list items `O1`–`O41`
 (struck items stay in place, so both ranges keep growing). Every
 reference carries its prefix, so the two lists cannot be confused — do not renumber an
 existing entry, and do not cite a bare number.
@@ -326,6 +326,39 @@ F34. O27's four unreported tests are a Node 26.8.2 test-runner bug, not a test-f
     `ensureSessionsDir()`; the other three pass in isolation. Documented in `MEMORY.md` §Tests, CI
     and platform notes.
 
+## Fixed on `feat/headless-runs` (kept for provenance)
+
+F38. O24: `-r/--resume`, `-x/--export` and `--delete` are no longer gated on a TTY in every form.
+   `src/cli-validation.js` replaced the blanket `!isTTY && interactiveFlags` rule with per-flag
+   BARE-form rules at the same position (mirroring the bare `--delete-all-sessions` rule above
+   them): bare `--resume` (exempt next to `--rpg`, whose piped form continues the most recent
+   chapter from `src/commands/rpg-resume.js`), bare `--export` and bare `--delete` each error with
+   `Error: bare --export needs a TTY (pass a session id to select non-interactively).`, while the
+   id/partial-id form is legal with piped stdin. The one-shot path
+   (`src/commands/one-shot.js`) gained the plain-session resume it was missing: it loads the session
+   with `resumeCmd`, resolves provider and key FROM the session, answers `assertResumeFlags` before
+   the key lookup and any request (the at-rest warning prints only once that guard passes), takes
+   its settings from `resumeSessionContext`, sends the stored history verbatim (its own system
+   message, never a fresh one) with the new user turn appended, extends the same session file
+   (`result.sessionId`/`result.sessionCreatedAt`) and keeps the cost summary cumulative
+   (`seedTracker`); an image session (`result.isImageModel === true`) is refused with
+   `Error: resuming an image session needs a TTY (image sessions are interactive).` instead of
+   silently degrading into a text chat. `src/cli-main.js` hoists `resumesSession` above the
+   piped-no-model check so a headless resume does not demand `-m`. Pinned by
+   `test/cli-validation.test.js`, `test/cli-main.test.js`, `test/cli-main-success.test.js` and
+   `test/sessions.test.js`.
+
+F39. O25: an ambiguous partial id fails fast instead of opening a picker without a TTY.
+   `resolveSessionInteractive`/`resolveSessionsInteractive` (`src/sessions.js`) take an
+   `{ interactive = process.stdin.isTTY }` option (same shape as `resolveRpgResume`) and throw
+   `Error: "<partialId>" matches <N> sessions: <ids>. Use a longer id to select one.` — at most the
+   first five matched ids, `, ...` appended past that — when a partial id matches more than one
+   session and no picker can run; the TTY path, the unique-match path and the no-match path are
+   unchanged. `deleteCmd` (`src/commands/delete-cmd.js`) takes `{ interactive = process.stdin.isTTY
+   }` as well: its inquirer confirm runs on a TTY only, so a piped `--delete <id>` deletes the
+   resolved (necessarily unique) session without a prompt while still printing the matched session
+   line and the success line. `--export` needed no confirm change, only the resolver.
+
 ## Open — piped-output purity
 
 The contract (`MEMORY.md` §Display consistency): a piped one-shot writes **only** the answer
@@ -556,14 +589,16 @@ O23. ~~**Piped prompts are `.trim()`ed** (`src/cli-utils.js:19`), so a piped dif
 
 ## Open — non-interactive reachability
 
-O24. **`-x/--export`, `--delete` and any `-r/--resume` with an id are rejected without a TTY in
+O24. ~~**`-x/--export`, `--delete` and any `-r/--resume` with an id are rejected without a TTY in
     every form**, including picker-free single-id paths (`src/cli-validation.js:270-271`), so
     "keep it for scripts/CI/agents" is aspirational for those three. Only `--list-sessions` and
     `--delete-all-sessions y` genuinely work headless today. Either open the gate on the
-    picker-free paths or stop citing automation as their rationale.
-O25. **Partial-id ambiguity silently opens an interactive picker** instead of failing fast
+    picker-free paths or stop citing automation as their rationale.~~ **Fixed** — the gate now
+    covers only the bare picker form and a plain `-r <id>` actually resumes headless; see F38.
+O25. ~~**Partial-id ambiguity silently opens an interactive picker** instead of failing fast
     (`src/sessions.js:54-67`). For `--delete` that means a scripted caller could block on a
-    prompt; a non-interactive mode should prefer an ambiguity error.
+    prompt; a non-interactive mode should prefer an ambiguity error.~~ **Fixed** — an ambiguous
+    prefix without a TTY throws an ambiguity error naming the candidates; see F39.
 O26. ~~**`-m <image-model> "prompt"` and `--image` validate the same flags differently** — the
     `-m` path hard-rejects `--variants`/`--resolution`/`--quality`/`--seed`/`--width`/`--height`
     (`src/cli-validation.js:326-331`) while both route into the identical

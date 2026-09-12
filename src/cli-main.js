@@ -328,18 +328,18 @@ async function main(opts, promptArg) {
   }
 
   // A piped run without -m normally needs a TTY for model selection; a
-  // resumed RPG chapter carries its own model, so it is exempt.
-  if (!process.stdin.isTTY && !opts.model && !rpgResume) {
+  // resumed session carries its own model, so it is exempt.
+  const resumesSession = opts.resume !== undefined && (opts.rpg === undefined || rpgResume)
+  if (!process.stdin.isTTY && !opts.model && !resumesSession) {
     throw new CliError('Interactive selection needs a TTY. Use -m <model-id> when piping input.')
   }
 
   // A resumed session brings its own provider, so the key must follow it (the
   // run's default provider is only for fresh runs): an RPG chapter carries it
-  // in rpgResume, and a plain --resume resolves it in chat-start once the
-  // session loads — demanding the flag's provider key here would fail a run
-  // that never uses it. Only --rpg --resume with nothing saved to resume still
-  // takes the fresh-run branch, which does need the flag's key.
-  const resumesSession = opts.resume !== undefined && (opts.rpg === undefined || rpgResume)
+  // in rpgResume, a plain --resume resolves it where the session loads (the
+  // one-shot command or chat-start) — demanding the flag's provider key here
+  // would fail a run that never uses it. Only --rpg --resume with nothing saved
+  // to resume still takes the fresh-run branch, which does need the flag's key.
   const prefs = await loadPreferences(opts.config)
 
   // An RPG resume executes on the chapter's saved provider, or on the flag's

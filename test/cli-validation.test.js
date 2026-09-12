@@ -346,11 +346,28 @@ test('rejects a prompt argument combined with interactive or exit-mode flags', (
   )
 })
 
-test('rejects interactive flags with piped stdin', () => {
-  assert.deepEqual(
-    validateCliFlags(opts({ export: undefined, resume: 'x' }), NO_TTY),
-    ['Cannot use --resume, --export, or --delete with piped stdin (interactive pickers need a TTY).']
-  )
+test('bare --resume, --export and --delete need a TTY; a session id does not', () => {
+  const gates = [
+    ['resume', 'Error: bare --resume needs a TTY (pass a session id to select non-interactively).'],
+    ['export', 'Error: bare --export needs a TTY (pass a session id to select non-interactively).'],
+    ['delete', 'Error: bare --delete needs a TTY (pass a session id to select non-interactively).'],
+  ]
+  for (const [flag, message] of gates) {
+    assert.deepEqual(validateCliFlags(opts({ [flag]: true }), NO_TTY), [message])
+    assert.deepEqual(validateCliFlags(opts({ [flag]: true }), TTY), [])
+    // Only the picker form needs a TTY: an id selects without one, so a
+    // scripted/CI caller can drive all three flags headless.
+    assert.deepEqual(validateCliFlags(opts({ [flag]: '2026-01-01T00-00-00' }), NO_TTY), [])
+  }
+})
+
+test('bare --rpg --resume stays exempt from the TTY gate', () => {
+  // A piped chapter resume falls back to the most recent chapter instead of
+  // opening the picker (src/commands/rpg-resume.js).
+  assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg', resume: true }), NO_TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg', resume: 'x' }), NO_TTY), [
+    "Error: --rpg --resume does not take a session id (the story resumes from the RPG directory's chapter sessions, or its history.json for stories saved before that layout).",
+  ])
 })
 
 test('rejects exit-mode flags combined with session flags', () => {
@@ -463,7 +480,6 @@ test('rejects interactive flags combined with exit-mode flags', () => {
   assert.deepEqual(
     validateCliFlags(opts({ export: 'x', listEndpoints: 'm' }), NO_TTY),
     [
-      'Cannot use --resume, --export, or --delete with piped stdin (interactive pickers need a TTY).',
       'Error: --resume, --export and --delete cannot be combined with --list-* flags.',
     ]
   )

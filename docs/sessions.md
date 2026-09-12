@@ -52,7 +52,15 @@ override the stored values on resume (`--temperature`, `--top-p`,
 `--web-search`, `--web-results`, `--reasoning-effort`), while `-p` is silently
 ignored and `-m`, `--output-dir`, `--attach`, and `--scrape` are rejected with
 an error. An ambiguous prefix (matching more than one session) opens an
-interactive picker.
+interactive picker on a terminal; with piped stdin it fails with `Error:
+"<prefix>" matches <N> sessions: <ids>. Use a longer id to select one.`
+(the first five matches, then `, ...`) — so a script can pick a session by id
+without a TTY. Resuming without a prompt is an interactive chat; piped stdin
+(or a prompt argument) makes it a one-shot that extends the same session file
+in place (same id and creation time, cumulative cost and scrape summary) and
+prints its answer to stdout. The bare `--resume` picker needs a TTY; the
+`--rpg` chapter fallback (`--rpg <dir> --resume`) does not, because a piped run
+continues the most recent chapter.
 
 Older sessions saved without a `providerType` field default to OpenRouter for
 backward compatibility.
@@ -72,11 +80,16 @@ communicator --delete 2026-07-30T19-11-45
 
 `--delete` always asks for confirmation before removing the session file (and
 its sidecar entry, plus any attachment blobs under
-`~/.communicator/sessions/attachments/<sessionId>/`). Selecting multiple
+`~/.communicator/sessions/attachments/<sessionId>/`) — on a terminal. With
+piped stdin there is no prompt to answer, so naming the session by id (a
+unique prefix or a full id) is the confirmation: the matched session line is
+printed and the session is deleted. That is why the bare flag (the
+multi-select checkbox) needs a TTY, and why an ambiguous prefix with piped
+stdin fails instead of asking: `Error: "<prefix>" matches <N> sessions: <ids>.
+Use a longer id to select one.` Selecting multiple
 sessions shows a single `Delete N sessions?` confirmation and removes them all;
 selecting none prints `Deletion cancelled.` and exits without changes. It
-cannot be combined with `--resume`, `--export`, or a prompt argument, and needs
-a TTY for the confirmation prompt. Removal is best-effort per session: an entry
+cannot be combined with `--resume`, `--export`, or a prompt argument. Removal is best-effort per session: an entry
 that cannot be removed (a locked file, a stray directory named like a session)
 is skipped and reported, the rest are deleted, and the command exits 1 naming
 what it could not remove.
@@ -125,7 +138,11 @@ Selecting multiple sessions exports each one into its own folder, printing one
 `Exported to ...` line per session; selecting none prints `Export cancelled.`
 and exits without changes. Export is best-effort per session: a session whose
 file is corrupt or missing is skipped (the others still export) and the
-command exits 1 naming the sessions it could not export.
+command exits 1 naming the sessions it could not export. The bare flag opens
+the multi-select checkbox and needs a TTY; an id (a full id or a unique
+prefix) exports directly with piped stdin — an ambiguous prefix fails with
+`Error: "<prefix>" matches <N> sessions: <ids>. Use a longer id to select
+one.`
 
 Each session is exported into its own folder: `session-{id}/` in the current
 working directory by default, containing the conversation as `session-{id}.md`

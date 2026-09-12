@@ -3,7 +3,7 @@ import { ensureSessionsDir, resolveSessionsInteractive, deleteSessions, listSess
 import { formatSessionItem } from '../ui/format.js'
 import { CliError } from '../errors.js'
 
-export async function deleteCmd(partialId) {
+export async function deleteCmd(partialId, { interactive = process.stdin.isTTY } = {}) {
   const dir = await ensureSessionsDir()
   const matchedIds = await resolveSessionsInteractive(dir, partialId, { message: 'Select a session to delete' })
   if (!matchedIds.length) {
@@ -19,11 +19,16 @@ export async function deleteCmd(partialId) {
     console.log(`  ${time}  ${model}${previewText}`)
   }
 
-  const message = matchedIds.length === 1 ? 'Delete this session?' : `Delete these ${matchedIds.length} sessions?`
-  const confirmed = await confirm({ message, default: false })
-  if (!confirmed) {
-    console.log('Deletion cancelled.')
-    return
+  // Piped stdin cannot answer the confirm prompt; a non-interactive run
+  // resolved exactly one id (an ambiguous prefix fails in the resolver), so
+  // naming it was the whole confirmation there.
+  if (interactive) {
+    const message = matchedIds.length === 1 ? 'Delete this session?' : `Delete these ${matchedIds.length} sessions?`
+    const confirmed = await confirm({ message, default: false })
+    if (!confirmed) {
+      console.log('Deletion cancelled.')
+      return
+    }
   }
 
   const { removed, failures } = await deleteSessions(dir, matchedIds)

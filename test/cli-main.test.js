@@ -257,9 +257,9 @@ test('a prompt argument cannot be combined with --list-models', async (t) => {
   assert.match(err[0], /Cannot combine a prompt argument/)
 })
 
-test('interactive flags require a TTY', async (t) => {
+test('bare interactive flags require a TTY', async (t) => {
   const { err } = await runAndExit(t, { export: true }, undefined, 1)
-  assert.match(err[0], /interactive pickers need a TTY/)
+  assert.match(err[0], /bare --export needs a TTY/)
 })
 
 test('session flags cannot be combined with --list-* flags', async (t) => {

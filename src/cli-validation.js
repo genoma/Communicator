@@ -215,8 +215,21 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Cannot combine a prompt argument with --resume, --export, --delete, or --list-* flags.')
   }
 
-  if (!isTTY && interactiveFlags) {
-    errors.push('Cannot use --resume, --export, or --delete with piped stdin (interactive pickers need a TTY).')
+  // Only the BARE flag opens a picker: a session id selects without one, so a
+  // piped run needs a TTY for the picker form alone, exactly like bare
+  // --delete-all-sessions above. Bare --rpg --resume stays exempt: a piped
+  // chapter resume falls back to the most recent chapter
+  // (src/commands/rpg-resume.js).
+  if (opts.resume === true && opts.rpg === undefined && !isTTY) {
+    errors.push('Error: bare --resume needs a TTY (pass a session id to select non-interactively).')
+  }
+
+  if (opts.export === true && !isTTY) {
+    errors.push('Error: bare --export needs a TTY (pass a session id to select non-interactively).')
+  }
+
+  if (opts.delete === true && !isTTY) {
+    errors.push('Error: bare --delete needs a TTY (pass a session id to select non-interactively).')
   }
 
   if (exitModeFlags && (sessionOnlyFlags || opts.model !== undefined || opts.outputDir !== undefined)) {

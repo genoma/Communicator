@@ -1,7 +1,7 @@
 import { getProvider } from '../providers/index.js'
-import { cpsToCharsPerTick, SCRAPE_COST_USD, DEFAULT_SYSTEM_PROMPT } from '../constants.js'
+import { cpsToCharsPerTick, SCRAPE_COST_USD, DEFAULT_SYSTEM_PROMPT, E2EE_AT_REST_WARNING } from '../constants.js'
 import { scrapeMessage } from '../scrape.js'
-import { createNewSession, removeEmptySessionClaim } from '../sessions.js'
+import { createNewSession, ensureSessionsDir, removeEmptySessionClaim } from '../sessions.js'
 import { createStreamRenderer } from '../ui/stream.js'
 import { UsageTracker, seedTracker, budgetLine, trackerCostSummary } from '../tracker.js'
 import { ChatState } from '../chat-state.js'
@@ -13,6 +13,8 @@ import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionCon
 import { logRpgPrompt, ensureRpgSessionsDir, rpgSessionsDir } from '../rpg.js'
 import { getApiKey } from '../config.js'
 import { createE2eeSession } from '../e2ee.js'
+import { resumeCmd } from './resume.js'
+import { findImageModel } from '../model-selection.js'
 import { runImageCommand } from './image-gen.js'
 import { connectedBanner, buildStatusLine } from '../status-line.js'
 import { sanitizeAnsi } from '../ui/hyperlink.js'
@@ -31,22 +33,47 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
 
   const { forcedEffort, forcedTemperature, forcedTopP, budget, forcedWebResults, smoothSpeed, compactThinking, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
-  // A resumed RPG chapter brings its own provider and key; the run's default
-  // provider only applies to fresh runs.
-  const provider = getProvider(rpgResume?.providerType ?? providerType)
+  // A plain -r replays the stored session (settings, identity and its own
+  // system message) instead of picking a fresh model, exactly like the
+  // interactive resume branch (src/commands/chat-start.js).
+  let plainResume = null
+  if (opts.resume !== undefined && opts.rpg === undefined && !rpgResume) {
+    plainResume = await resumeCmd(opts.resume)
+    if (!plainResume) return
+  }
 
-  // E2EE chapters never silently degrade, exactly like the chat resume path;
-  // the provider-only flags answer first so a chapter whose provider cannot
+  // A resumed session (plain or chapter) brings its own provider and key; the
+  // run's default provider only applies to fresh runs.
+  const resumed = rpgResume ?? plainResume
+  const provider = getProvider(resumed?.providerType ?? providerType)
+
+  // E2EE sessions never silently degrade, exactly like the chat resume path;
+  // the provider-only flags answer first so a session whose provider cannot
   // run --e2ee reports that, not the encryption mismatch or a missing key.
-  if (rpgResume) assertResumeFlags({ result: rpgResume, providerName: provider.meta.name, zdr, e2ee, forcedWebResults })
-  const runApiKey = rpgResume ? getApiKey(rpgResume.providerType ?? providerType) : apiKey
+  if (resumed) assertResumeFlags({ result: resumed, providerName: provider.meta.name, zdr, e2ee, forcedWebResults })
+  // The at-rest warning belongs to a run that proceeds: the guard above may
+  // refuse this resume. Chapters take the RPG-worded notice from
+  // src/cli-main.js after the same guard.
+  if (plainResume && e2ee) console.warn(E2EE_AT_REST_WARNING)
+  const runApiKey = resumed ? getApiKey(resumed.providerType ?? providerType) : apiKey
+
+  // An image session is a REPL of its own, so a headless resume must refuse it
+  // instead of silently running it as a text chat. Only legacy payloads without
+  // the marker need the catalog lookup (same as src/commands/chat-start.js).
+  if (plainResume) {
+    const isImageSession = plainResume.isImageModel === true
+      || (plainResume.isImageModel === undefined && !!(await findImageModel(provider, runApiKey, plainResume.modelId)))
+    if (isImageSession) {
+      throw new CliError('Error: resuming an image session needs a TTY (image sessions are interactive).')
+    }
+  }
 
   const tracker = new UsageTracker()
 
   let context
   try {
-    context = rpgResume
-      ? await resumeSessionContext({ result: rpgResume, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedWebResults, provider, apiKey: runApiKey, zdr, e2ee })
+    context = resumed
+      ? await resumeSessionContext({ result: resumed, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedWebResults, provider, apiKey: runApiKey, zdr, e2ee })
       : await buildSessionContext({
           provider,
           apiKey: runApiKey,
@@ -65,14 +92,14 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     fail(`Error: ${formatError(err)}`)
   }
   const { selection, temperature, topP, webSearch, webSearchExplicit, webResults, budget: resumeBudget } = context
-  // A resumed chapter restores its own budget (null stays null); a fresh run is
+  // A resumed session restores its own budget (null stays null); a fresh run is
   // uncapped (4.0.0: the standing prefs.budget default is gone).
-  const runBudget = rpgResume ? resumeBudget : budget
-  // A chapter resume extends its own session file, so its persisted cost summary
-  // must stay cumulative: replay the stored turns' usage and flat scrape cost
-  // exactly like the interactive resume path seeds its tracker
+  const runBudget = resumed ? resumeBudget : budget
+  // A resumed session extends its own session file, so its persisted cost
+  // summary must stay cumulative: replay the stored turns' usage and flat scrape
+  // cost exactly like the interactive resume path seeds its tracker
   // (src/chat.js, from the same messages). The new scrape below is added on top.
-  seedTracker(tracker, rpgHistory, selection.pricing, rpgResume?.scrapes ?? 0)
+  seedTracker(tracker, plainResume ? plainResume.initialMessages : rpgHistory, selection.pricing, resumed?.scrapes ?? 0)
 
   if (selection.isImageModel === true) {
     if (opts.attach?.length) {
@@ -89,17 +116,28 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     attachments.push(...loaded.attachments)
   }
 
-  // A resumed RPG chapter continues its own session file so it stays one
-  // chapter; a fresh or legacy history.json run claims a new session id.
-  // updatedAt is deliberately not carried: the one-shot always adds a turn,
-  // so the payload stamps the save time (never an untouched-resume value).
+  // A resumed session (plain or chapter) continues its own session file so the
+  // transcript stays one session; a fresh or legacy history.json run claims a
+  // new session id. updatedAt is deliberately not carried: the one-shot always
+  // adds a turn, so the payload stamps the save time (never an
+  // untouched-resume value).
   const { dir, sessionId, createdAt } = rpgResume
     ? { dir: rpgSessionsDir(rpgResume.rpgDir ?? opts.rpg), sessionId: rpgResume.sessionId, createdAt: rpgResume.sessionCreatedAt ?? new Date().toISOString() }
-    : await createNewSession(opts.rpg !== undefined ? await ensureRpgSessionsDir(opts.rpg) : null)
+    : plainResume
+      ? { dir: await ensureSessionsDir(), sessionId: plainResume.sessionId, createdAt: plainResume.sessionCreatedAt ?? new Date().toISOString() }
+      : await createNewSession(opts.rpg !== undefined ? await ensureRpgSessionsDir(opts.rpg) : null)
+  // A plain resume sends its stored history verbatim — the persisted system
+  // message is the session's own prompt, never rewritten from --system-prompt —
+  // and appends the new user turn; --attach and --scrape cannot be combined
+  // with it (validation).
   const messages = [
-    { role: 'system', content: systemPrompt || DEFAULT_SYSTEM_PROMPT },
-    ...(rpgHistory ? rpgHistory : rpgFirstMessage ? [{ role: 'assistant', content: rpgFirstMessage }] : []),
-    ...(scraped ? [{ role: 'user', content: scrapeMessage(scraped.url, scraped.content) }] : []),
+    ...(plainResume
+      ? plainResume.initialMessages
+      : [
+          { role: 'system', content: systemPrompt || DEFAULT_SYSTEM_PROMPT },
+          ...(rpgHistory ? rpgHistory : rpgFirstMessage ? [{ role: 'assistant', content: rpgFirstMessage }] : []),
+          ...(scraped ? [{ role: 'user', content: scrapeMessage(scraped.url, scraped.content) }] : []),
+        ]),
     { role: 'user', content: buildContent(text, attachments) },
   ]
   // The post-history instruction is a request-only message: it is sent after
@@ -302,9 +340,9 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     createdAt,
     messages,
     reasoningMandatory: selection.modelReasoning?.mandatory === true,
-    // A chapter resume rewrites its own session file, so the persisted count
-    // must survive exactly like the interactive resume path.
-    scrapes: (rpgResume?.scrapes ?? 0) + (scraped ? 1 : 0),
+    // A resumed session rewrites its own file, so the persisted count must
+    // survive exactly like the interactive resume path.
+    scrapes: (resumed?.scrapes ?? 0) + (scraped ? 1 : 0),
   })
   // Persist the authoritative cost summary with the session file.
   state.costSummary = trackerCostSummary(tracker)
