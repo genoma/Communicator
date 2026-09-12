@@ -13,7 +13,7 @@ import { attachGateOptions } from '../../session-setup.js'
 import { fetchModelPubKey } from '../../e2ee.js'
 import { buildStatusLine, wrapStatusLine } from '../../status-line.js'
 import { parseScrapeUrl, scrapeContext, scrapeMessage } from '../../scrape.js'
-const ARG_COMMANDS = new Set(['/temp', '/top-p', '/budget', '/web-search', '/web-results', '/smooth', '/compact-thinking', '/attach', '/attachments', '/scrape'])
+const ARG_COMMANDS = new Set(['/temp', '/top-p', '/budget', '/web-search', '/web-results', '/smooth', '/compact-thinking', '/attach', '/attachments', '/scrape', '/export-format'])
 
 // Recompute the live usage tracker from the surviving messages exactly like a
 // resumed session, so /cost and the persisted cost summary (stamped by

@@ -4,7 +4,7 @@ import { getProvider } from './providers/index.js'
 import { ApiError, CliError, formatError, isExitPromptError } from './errors.js'
 import { sanitizeAnsi } from './ui/hyperlink.js'
 import { err, debug } from './ui/io.js'
-import { resolveSmoothSpeed, resolveTemperatureFlag, resolveTopPFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag, resolveAspectRatio, resolveImageFormat } from './flags.js'
+import { resolveSmoothSpeed, resolveTemperatureFlag, resolveTopPFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag, resolveAspectRatio, resolveImageFormat, resolveExportFormat } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
 import { isConfigSetDispatch, validateCliFlags } from './cli-validation.js'
 import { parseScrapeUrl, scrapeContext } from './scrape.js'
@@ -247,7 +247,15 @@ async function main(opts, promptArg) {
     const prefs = await loadPreferences(opts.config)
     const outputDir = opts.outputDir || prefs.outputDir || null
     const partialId = typeof opts.export === 'string' ? opts.export : null
-    const exportFormat = opts.exportFormat || prefs.exportFormat || 'markdown'
+    // A hand-edited prefs file must not break a plain --export: only a valid
+    // stored format is used (the flag itself is validated before this block).
+    let storedExportFormat
+    try {
+      storedExportFormat = resolveExportFormat(prefs.exportFormat)
+    } catch {
+      storedExportFormat = undefined
+    }
+    const exportFormat = opts.exportFormat || storedExportFormat || 'markdown'
     const { exportCmd } = await import('./commands/export-cmd.js')
     await exportCmd(partialId, outputDir, exportFormat)
     const exportPrefs = {}

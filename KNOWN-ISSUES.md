@@ -5,9 +5,9 @@ exit-mode flag plus two independent review passes over the fix branch. Every ent
 `file:line` evidence as of the audit; re-check the line before acting on it.
 
 This file tracks **defects**, not planned feature or flag-surface work. The one-shot
-surface cleanup (removing `--export-format`, `--variants`, `--resolution`, `--quality`,
-`--width`/`--height`, and the bare "set a preference and exit" dispatch) is tracked in
-`SURFACE-CLEANUP.md` and is not listed here.
+surface cleanup (removing `--variants`, `--resolution`, `--quality`, `--width`/`--height`,
+`--budget` and the bare "set a preference and exit" dispatch; `--export-format` stays and gains a
+persisted default) is tracked in `SURFACE-CLEANUP.md` and is not listed here.
 
 Reference convention: the fixed entries are `F1`–`F36` and the open-list items `O1`–`O41`
 (struck items stay in place, so both ranges keep growing). Every

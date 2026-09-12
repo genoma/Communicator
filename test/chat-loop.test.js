@@ -1066,6 +1066,20 @@ test('status line updates after a config command and persists the pref', async (
   assert.ok(saved.some((u) => u.modelId === 'org/model' && u.temperature === 0.5))
 })
 
+test('/export-format sets the persisted export format through the chat loop', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['/export-format jsonl', '/quit']) })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  // The argument form must be routed as an argument command: without it in
+  // ARG_COMMANDS the loop rejects the input as unknown and never saves.
+  assert.ok(!consoleSpy.allLogs().some((l) => l.startsWith('Unknown command')), 'the argument form must reach the handler')
+  const saved = harness.prefsCalls.flat()
+  assert.ok(saved.some((u) => u.exportFormat === 'jsonl'), JSON.stringify(saved))
+})
+
 test('/status prints the current settings in the live session', async (t) => {
   const consoleSpy = mockConsole(t)
   const { provider } = fakeProvider()
