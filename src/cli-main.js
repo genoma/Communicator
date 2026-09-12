@@ -1,9 +1,10 @@
-import { getApiKey, loadPreferences, loadSystemPrompt, savePreferences } from './config.js'
+import { getApiKey, loadPreferences, mergeImageDefaults, loadSystemPrompt, savePreferences } from './config.js'
+import { E2EE_AT_REST_WARNING } from './constants.js'
 import { getProvider } from './providers/index.js'
 import { ApiError, CliError, formatError, isExitPromptError } from './errors.js'
 import { sanitizeAnsi } from './ui/hyperlink.js'
 import { err, debug } from './ui/io.js'
-import { resolveSmoothSpeed, resolveTemperatureFlag, resolveTopPFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag } from './flags.js'
+import { resolveSmoothSpeed, resolveTemperatureFlag, resolveTopPFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag, resolveAspectRatio, resolveImageFormat } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
 import { isConfigSetDispatch, validateCliFlags } from './cli-validation.js'
 import { parseScrapeUrl, scrapeContext } from './scrape.js'
@@ -82,11 +83,26 @@ async function main(opts, promptArg) {
 
   let rpgContext = null
   let rpgResume = null
+  // Notices and warnings about the run that is about to start are held back
+  // until the resolved-provider guard below has accepted it: a refused run
+  // must not announce a resume (or warn about session storage) that never
+  // happens — the F8/F11 "notice before a rejected dispatch" shape.
+  const rpgNotices = []
+  const rpgWarnings = []
+  // Warnings go to stderr; notices follow the stdout-is-TTY gate so a piped
+  // one-shot's stdout stays pure content.
+  const printRpgOutput = () => {
+    for (const line of rpgWarnings) console.warn(line)
+    for (const line of rpgNotices) {
+      if (process.stdout.isTTY === true) console.log(line)
+      else console.error(line)
+    }
+  }
   if (opts.rpg !== undefined) {
     rpgContext = await loadRpgContext(opts.rpg)
     if (opts.e2ee === true) {
       const localFiles = opts.debug === true ? 'the chapter session, prompt-log.jsonl and any legacy history.json' : 'the chapter session and any legacy history.json'
-      console.warn(`Warning: --e2ee encrypts messages sent to the API, but RPG ${localFiles} store them unencrypted.`)
+      rpgWarnings.push(`Warning: --e2ee encrypts messages sent to the API, but RPG ${localFiles} store them unencrypted.`)
     }
     if (rpgContext.created) {
       console.log(`RPG mode setup: created ${rpgContext.createdFiles.join(', ')} in ${rpgContext.dir}`)
@@ -123,19 +139,11 @@ async function main(opts, promptArg) {
       const { resolveRpgResume } = await import('./commands/rpg-resume.js')
       rpgResume = await resolveRpgResume(rpgContext.dir)
       if (rpgResume) {
-        // Piped stdout must stay pure content (one-shot): send the notice to
-        // stderr there, like the artifact lines do.
         const saved = rpgResume.sessionUpdatedAt ? `, saved ${new Date(rpgResume.sessionUpdatedAt).toISOString().slice(0, 10)}` : ''
-        const notice = `Resumed RPG conversation from ${rpgContext.dir}/sessions/${rpgResume.sessionId}.json (${rpgResume.turns.length} messages${saved}).`
-        if (process.stdout.isTTY === true) console.log(notice)
-        else console.error(notice)
+        rpgNotices.push(`Resumed RPG conversation from ${rpgContext.dir}/sessions/${rpgResume.sessionId}.json (${rpgResume.turns.length} messages${saved}).`)
       } else if (rpgContext.history?.length > 0) {
-        // Piped stdout must stay pure content (one-shot): send the notice to
-        // stderr there, like the artifact lines do.
         const saved = rpgContext.historyUpdatedAt ? `, saved ${new Date(rpgContext.historyUpdatedAt).toISOString().slice(0, 10)}` : ''
-        const notice = `Resumed RPG conversation from ${rpgContext.dir}/history.json (${rpgContext.history.length} messages${saved}).`
-        if (process.stdout.isTTY === true) console.log(notice)
-        else console.error(notice)
+        rpgNotices.push(`Resumed RPG conversation from ${rpgContext.dir}/history.json (${rpgContext.history.length} messages${saved}).`)
       }
     } else {
       // Every run saves its own chapter session under <dir>/sessions/, so a
@@ -148,16 +156,18 @@ async function main(opts, promptArg) {
       const chapters = await listSessions(rpgSessionsDir(rpgContext.dir))
       const available = chapters.length > 0 ? chapters.length : (rpgContext.history?.length > 0 ? 1 : 0)
       if (available > 0) {
-        const notice = `Starting a new story in ${rpgContext.dir} (${available} earlier session${available === 1 ? '' : 's'} available; use --rpg ${rpgContext.dir} --resume to continue one).`
-        if (process.stdout.isTTY === true) console.log(notice)
-        else console.error(notice)
+        rpgNotices.push(`Starting a new story in ${rpgContext.dir} (${available} earlier session${available === 1 ? '' : 's'} available; use --rpg ${rpgContext.dir} --resume to continue one).`)
       }
+      // A fresh RPG run has no provider guard to wait for.
+      printRpgOutput()
     }
-  } else if (opts.e2ee === true) {
+  } else if (opts.e2ee === true && opts.resume === undefined) {
     // Plain --e2ee chats persist their transcript to the sessions dir just
     // like any other session; encryption only covers the messages sent to
-    // the API, so the on-disk copy must not surprise the user.
-    console.warn('Warning: --e2ee encrypts messages sent to the API, but the session file stores them unencrypted.')
+    // the API, so the on-disk copy must not surprise the user. A resume waits
+    // for the resolved provider (src/commands/chat-start.js), which may
+    // refuse the run outright.
+    console.warn(E2EE_AT_REST_WARNING)
   }
 
   if (opts.config === true) {
@@ -275,6 +285,19 @@ async function main(opts, promptArg) {
       if (process.stdout.isTTY === true) console.log('Venice safe mode disabled')
       else console.error('Venice safe mode disabled')
     }
+    // --no-watermark is the same global-preference shape as --no-safe-mode:
+    // its image-run writer persists only after a successful generation, so
+    // save it (and announce it) before the run like safe mode does.
+    if (opts.watermark === false) {
+      prefs.hideWatermark = true
+      try {
+        await savePreferences(prefs, opts.config)
+      } catch (err) {
+        fail(`Error: could not save the watermark preference: ${err.message}`)
+      }
+      if (process.stdout.isTTY === true) console.log('Venice watermark disabled')
+      else console.error('Venice watermark disabled')
+    }
     const { imageGenCmd } = await import('./commands/image-gen.js')
     await imageGenCmd({ apiKey, opts, prefs, providerType, prompt: promptArg })
     process.exit(0)
@@ -309,6 +332,10 @@ async function main(opts, promptArg) {
     else assertResolvedProviderFlags({ providerName, zdr, e2ee, forcedWebResults })
   }
 
+  // Accepted: a resumed RPG run announces itself only now (its notes were held
+  // back so a refused resume stays silent). Fresh runs already printed theirs.
+  if (opts.rpg !== undefined && opts.resume === true) printRpgOutput()
+
   const apiKey = rpgResume
     ? getApiKey(rpgResume.providerType ?? providerType)
     : resumesSession ? '' : getApiKey(providerType)
@@ -334,6 +361,46 @@ async function main(opts, promptArg) {
     }
     if (process.stdout.isTTY === true) console.log('Venice safe mode disabled')
     else console.error('Venice safe mode disabled')
+  }
+
+  // --no-watermark is the same global-preference shape and follows the same
+  // rule on every other launch path; the image branch saves and announces it
+  // itself and has already exited above.
+  if (opts.watermark === false) {
+    prefs.hideWatermark = true
+    try {
+      await savePreferences(prefs, opts.config)
+    } catch (err) {
+      fail(`Error: could not save the watermark preference: ${err.message}`)
+    }
+    if (process.stdout.isTTY === true) console.log('Venice watermark disabled')
+    else console.error('Venice watermark disabled')
+  }
+
+  // --aspect-ratio/--image-format keep their documented setter meaning next to
+  // a chat run: the set-and-exit dispatch (their other writer) is not reached,
+  // so persist them here instead of dropping the flags.
+  if (opts.aspectRatio !== undefined || opts.imageFormat !== undefined) {
+    const merged = mergeImageDefaults(prefs, providerType, {
+      aspectRatio: resolveFlagOrExit(resolveAspectRatio, opts.aspectRatio),
+      format: resolveFlagOrExit(resolveImageFormat, opts.imageFormat),
+    })
+    prefs.imageDefaults = merged.imageDefaults
+    try {
+      await savePreferences(prefs, opts.config)
+    } catch (err) {
+      fail(`Error: could not save the image defaults preference: ${err.message}`)
+    }
+    if (opts.aspectRatio !== undefined) {
+      const notice = `Aspect ratio set to ${prefs.imageDefaults[providerType].aspectRatio} (${providerType} image defaults)`
+      if (process.stdout.isTTY === true) console.log(notice)
+      else console.error(notice)
+    }
+    if (opts.imageFormat !== undefined) {
+      const notice = `Image format set to ${prefs.imageDefaults[providerType].format} (${providerType} image defaults)`
+      if (process.stdout.isTTY === true) console.log(notice)
+      else console.error(notice)
+    }
   }
 
   if (promptArg || !process.stdin.isTTY) {

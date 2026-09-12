@@ -140,6 +140,43 @@ test('--web-search on is accepted and persisted as auto', async (t) => {
   assert.equal(saved.webSearch['test/model-a'], 'auto')
 })
 
+test('a config-setter run with -m still persists instead of opening a chat', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  mockOpenRouterApi(t)
+  const file = await tempConfig(t)
+  const { out } = await runAndExit(t, { config: file, model: 'test/model-a', temperature: '0.5' }, undefined, 0)
+  assert.match(out.join('\n'), /Temperature set to 0.5/)
+  const saved = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(saved.temperature['test/model-a'], 0.5)
+})
+
+test('a piped run with a session flag and a pure setter is not a config-set dispatch', async (t) => {
+  withTTY(t, false)
+  withVeniceApiKey(t)
+  mockVeniceApi(t)
+  const file = await tempConfig(t)
+  const { err } = await runAndExit(t, { provider: 'venice', config: file, watermark: false, systemPrompt: '/nonexistent.md' }, undefined, 1)
+  assert.match(err.join('\n'), /Interactive selection needs a TTY/)
+  assert.ok(!err.join('\n').includes('Saved to'))
+  await assert.rejects(readFile(file, 'utf-8'), /ENOENT/)
+})
+
+test('a piped run with --scrape and a pure setter never reaches the billed fetch', async (t) => {
+  withTTY(t, false)
+  withVeniceApiKey(t)
+  const file = await tempConfig(t)
+  const calls = []
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    calls.push(String(url))
+    return jsonResponse({ data: [] })
+  })
+  const { err } = await runAndExit(t, { provider: 'venice', config: file, watermark: false, scrape: 'https://example.com/article' }, undefined, 1)
+  assert.match(err.join('\n'), /Interactive selection needs a TTY/)
+  assert.ok(!calls.some((u) => u.includes('/augment/scrape')), 'a refused run must not bill a scrape')
+  await assert.rejects(readFile(file, 'utf-8'), /ENOENT/)
+})
+
 test('invalid --smooth-speed is rejected before any dispatch', async (t) => {
   const { err } = await runAndExit(t, { smoothSpeed: 'bogus' }, undefined, 1)
   assert.match(err[0], /Smooth speed must be/)

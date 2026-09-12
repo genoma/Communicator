@@ -1,7 +1,7 @@
 import { formatModelPrice, padDisplayWidth } from '../ui/format.js'
 import { sanitizeSingleLine } from '../ui/hyperlink.js'
 import { selectModel } from '../prompts.js'
-import { CliError } from '../errors.js'
+import { CliError, formatError } from '../errors.js'
 
 export function matchModelId(models, partial) {
   const exact = models.find((m) => m.id === partial)
@@ -43,6 +43,25 @@ async function printEndpoints(provider, apiKey, modelId) {
   }
 }
 
+// Image-only models live in a separate catalog, so an explicit id is resolved
+// against both: a listing must not fail because the image catalog is
+// unavailable, and the text entries stay authoritative on an id collision.
+async function resolutionCatalog(provider, apiKey) {
+  const models = await provider.fetchModels(apiKey)
+  if (typeof provider.fetchImageModels !== 'function') return models
+  let imageModels = []
+  try {
+    imageModels = await provider.fetchImageModels(apiKey)
+  } catch (err) {
+    // Mirrors the picker's warning: the catalog covers image models, so a
+    // silent failure would turn an image id into a misleading "not found".
+    console.error(`Warning: could not load image models; showing text models only. (${formatError(err)})`)
+  }
+  if (imageModels.length === 0) return models
+  const seen = new Set(models.map((m) => m.id))
+  return [...models, ...imageModels.filter((m) => !seen.has(m.id))]
+}
+
 export async function listEndpointsCmd(provider, apiKey, modelArg, prefs) {
   let modelId
   if (modelArg === true) {
@@ -53,11 +72,11 @@ export async function listEndpointsCmd(provider, apiKey, modelArg, prefs) {
     const selected = await selectModel(models, prefs?.lastModel)
     modelId = selected.id
   } else if (typeof modelArg === 'string' && modelArg.trim()) {
-    const models = await provider.fetchModels(apiKey)
+    const models = await resolutionCatalog(provider, apiKey)
     const { model, candidates } = matchModelId(models, modelArg.trim())
     if (!model) {
       if (!candidates.length) {
-        throw new CliError(`Error: Model "${modelArg}" not found. Use --list-models to list available models.`)
+        throw new CliError(`Error: Model "${modelArg}" not found. Use --list-models for text models or --list-image-models for image models.`)
       }
       const shown = candidates.slice(0, 10).map((m) => `  ${m.id}`).join('\n')
       const more = candidates.length > 10 ? `\n  ... and ${candidates.length - 10} more` : ''

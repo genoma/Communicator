@@ -2,7 +2,9 @@ import { formatModelPrice, formatImagePrice, padDisplayWidth } from '../ui/forma
 import { sanitizeAnsi, sanitizeSingleLine } from '../ui/hyperlink.js'
 
 export async function listModelsCmd(provider, apiKey) {
-  const models = await provider.fetchModels(apiKey)
+  // The ZDR index is consulted only when the provider has one; the extra
+  // keyless request is what makes the [zdr] tag in this listing real.
+  const models = await provider.fetchModels(apiKey, { zdr: provider.meta?.supportsZdr === true })
   for (const m of models) {
     const pricingCol = m.pricing?.prompt != null || m.pricing?.completion != null
       ? `  ${sanitizeSingleLine(formatModelPrice(m.pricing?.prompt, m.pricing?.completion))}`

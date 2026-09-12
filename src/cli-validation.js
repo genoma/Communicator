@@ -74,6 +74,10 @@ export function isConfigSetter(opts) {
 // preference: no session, no request. Validation shares this predicate so it
 // never gates a flag on a run that cannot use it.
 export function isConfigSetDispatch(opts, { promptArg, isTTY }) {
+  // --system-prompt and --scrape shape a chat session, not a preference:
+  // with either present this is a chat launch on every input mode, otherwise
+  // the set-and-exit dispatch would drop the flag unread.
+  if (opts.systemPrompt !== undefined || opts.scrape !== undefined) return false
   if (isTTY) {
     const onlySafeModeSetter = opts.safeMode === false && !hasConfigSetterFlags(opts)
     return isConfigSetter(opts) && !onlySafeModeSetter && opts.rpg === undefined && !promptArg && opts.resume === undefined && opts.image !== true
@@ -85,6 +89,19 @@ export function isConfigSetDispatch(opts, { promptArg, isTTY }) {
 
 const exclusionError = (prefix, forbidden) =>
   `Error: ${prefix} and the session flags (${SESSION_FLAGS_LIST}) cannot be combined with ${forbidden}.`
+
+// Flags an exit path (--list-*, --export, --delete, --delete-all-sessions)
+// exits before honoring: --zdr/--e2ee shape a chat session, and the pure prefs
+// are only written by the set-and-exit dispatch. Only flags actually passed
+// are named.
+function exitIgnoredFlags(opts) {
+  const flags = ['zdr', 'e2ee'].filter((flag) => opts[flag] === true).map((flag) => `--${flag}`)
+  if (opts.watermark === false) flags.push('--no-watermark')
+  if (opts.safeMode === false) flags.push('--no-safe-mode')
+  if (opts.aspectRatio !== undefined) flags.push('--aspect-ratio')
+  if (opts.imageFormat !== undefined) flags.push('--image-format')
+  return flags
+}
 
 function hasBareConfigOtherFlags(opts, promptArg) {
   return (
@@ -258,12 +275,12 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push(exclusionError('--model, --output-dir', '--list-* flags'))
   }
 
-  // --zdr and --e2ee only shape a chat session's routing and encryption, so
-  // next to an exit mode they are just as meaningless as the session flags
-  // above. Only the flags actually passed are named.
-  const exitModeChatFlags = ['zdr', 'e2ee'].filter((flag) => opts[flag] === true).map((flag) => `--${flag}`)
-  if (exitModeFlags && exitModeChatFlags.length > 0) {
-    errors.push(`Error: ${exitModeChatFlags.join(' and ')} cannot be combined with --list-* flags.`)
+  // --zdr/--e2ee and the pure prefs only shape a chat session or a persisted
+  // preference, so next to an exit mode they are just as meaningless as the
+  // session flags above. Only the flags actually passed are named.
+  const exitIgnored = exitIgnoredFlags(opts)
+  if (exitModeFlags && exitIgnored.length > 0) {
+    errors.push(`Error: ${exitIgnored.join(' and ')} cannot be combined with --list-* flags.`)
   }
 
   if (opts.export !== undefined && (sessionOnlyFlags || opts.model !== undefined)) {
@@ -278,13 +295,13 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
   // exit mode does, and --e2ee would otherwise still print the session-file
   // warning before those paths dispatch. --resume stays exempt: a resumed
   // session re-passes --zdr/--e2ee to keep its routing (docs/providers.md).
-  if (exitModeChatFlags.length > 0) {
+  if (exitIgnored.length > 0) {
     const exitPath = opts.export !== undefined ? '--export'
       : opts.delete !== undefined ? '--delete'
         : opts.deleteAllSessions !== undefined ? '--delete-all-sessions'
           : undefined
     if (exitPath !== undefined) {
-      errors.push(`Error: ${exitModeChatFlags.join(' and ')} cannot be combined with ${exitPath}.`)
+      errors.push(`Error: ${exitIgnored.join(' and ')} cannot be combined with ${exitPath}.`)
     }
   }
 

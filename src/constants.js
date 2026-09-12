@@ -109,6 +109,11 @@ export const IMAGE_GEN_TIMEOUT_MS = 600_000
 
 export const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.'
 
+// Printed once an --e2ee run is known to proceed (fresh runs from cli-main,
+// resumes from chat-start after the resolved-provider guard); RPG runs use
+// the RPG-worded variant.
+export const E2EE_AT_REST_WARNING = 'Warning: --e2ee encrypts messages sent to the API, but the session file stores them unencrypted.'
+
 export const VENICE_BASE = 'https://api.venice.ai/api/v1'
 
 export const EFFORT_LABELS = {

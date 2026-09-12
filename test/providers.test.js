@@ -142,6 +142,19 @@ test('venice fetchModels works without an api key', async (t) => {
   assert.equal(calledWith.headers.Authorization, undefined)
 })
 
+test('openrouter fetchEndpoints omits the Authorization header without a key', async (t) => {
+  resetModels()
+  let calledWith = null
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    calledWith = opts
+    return jsonResponse({ data: { endpoints: [] } })
+  })
+
+  await openrouter.fetchEndpoints('', 'org/model')
+
+  assert.equal(calledWith.headers.Authorization, undefined)
+})
+
 test('venice fetchEndpoints returns an empty list for an unknown model', async (t) => {
   resetModels()
   t.mock.method(globalThis, 'fetch', async () => jsonResponse({

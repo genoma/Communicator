@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { hasAttachments, hasConfigSetterFlags, isConfigSetter, isExitMode, isInteractiveFlag, isPureConfigSetter, isSessionOnly, validateCliFlags } from '../src/cli-validation.js'
+import { hasAttachments, hasConfigSetterFlags, isConfigSetDispatch, isConfigSetter, isExitMode, isInteractiveFlag, isPureConfigSetter, isSessionOnly, validateCliFlags } from '../src/cli-validation.js'
 
 const BASE_OPTS = {
   model: undefined,
@@ -587,4 +587,52 @@ test('predicates classify flags', () => {
   assert.equal(hasAttachments(opts()), false)
   assert.equal(hasAttachments(opts({ attach: [] })), false)
   assert.equal(hasAttachments(opts({ attach: ['a.txt'] })), true)
+})
+
+test('isConfigSetDispatch leaves session-shaping flags to the chat paths', () => {
+  const tty = { promptArg: undefined, isTTY: true }
+  assert.equal(isConfigSetDispatch(opts({ model: 'm' }), tty), true)
+  assert.equal(isConfigSetDispatch(opts({ model: 'm', temperature: '0.5' }), tty), true)
+  assert.equal(isConfigSetDispatch(opts({ watermark: false }), tty), true)
+  assert.equal(isConfigSetDispatch(opts({ model: 'm', systemPrompt: '/p' }), tty), false)
+  assert.equal(isConfigSetDispatch(opts({ model: 'm', scrape: 'https://example.com' }), tty), false)
+  assert.equal(isConfigSetDispatch(opts({ model: 'm' }), { promptArg: 'hi', isTTY: true }), false)
+  assert.equal(isConfigSetDispatch(opts({ model: 'm' }), { promptArg: undefined, isTTY: false }), false)
+  assert.equal(isConfigSetDispatch(opts({ watermark: false }), { promptArg: undefined, isTTY: false }), true)
+  assert.equal(isConfigSetDispatch(opts({ watermark: false, systemPrompt: '/p' }), { promptArg: undefined, isTTY: false }), false)
+  assert.equal(isConfigSetDispatch(opts({ watermark: false, scrape: 'https://example.com' }), { promptArg: undefined, isTTY: false }), false)
+})
+
+test('a session-shaping flag next to --web-results surfaces the provider gate', () => {
+  const venice = { provider: 'venice', webResults: 3, systemPrompt: '/p' }
+  assert.deepEqual(validateCliFlags(opts(venice), { promptArg: undefined, isTTY: true }), [
+    'Error: --web-results is only available with --provider openrouter.',
+  ])
+  assert.deepEqual(validateCliFlags(opts(venice), { promptArg: undefined, isTTY: false }), [
+    'Error: --web-results is only available with --provider openrouter.',
+  ])
+})
+
+test('pure setters are rejected next to an exit path instead of being ignored', () => {
+  assert.deepEqual(validateCliFlags(opts({ listModels: true, watermark: false }), TTY), [
+    'Error: --no-watermark cannot be combined with --list-* flags.',
+  ])
+  assert.deepEqual(validateCliFlags(opts({ listModels: true, safeMode: false, aspectRatio: '16:9' }), TTY), [
+    'Error: --no-safe-mode and --aspect-ratio cannot be combined with --list-* flags.',
+  ])
+  assert.deepEqual(validateCliFlags(opts({ listSessions: true, imageFormat: 'png' }), TTY), [
+    'Error: --image-format cannot be combined with --list-* flags.',
+  ])
+  assert.deepEqual(validateCliFlags(opts({ export: 'id', watermark: false }), TTY), [
+    'Error: --no-watermark cannot be combined with --export.',
+  ])
+  assert.deepEqual(validateCliFlags(opts({ delete: 'id', aspectRatio: '16:9' }), TTY), [
+    'Error: --aspect-ratio cannot be combined with --delete.',
+  ])
+})
+
+test('the session-flags exclusion still precedes the pure-setter rule', () => {
+  const errors = validateCliFlags(opts({ listModels: true, watermark: false, temperature: '0.5' }), TTY)
+  assert.match(errors[0], /session flags/)
+  assert.equal(errors[1], 'Error: --no-watermark cannot be combined with --list-* flags.')
 })

@@ -9,7 +9,7 @@ surface cleanup (removing `--export-format`, `--variants`, `--resolution`, `--qu
 `--width`/`--height`, and the bare "set a preference and exit" dispatch) is tracked in
 `MEMORY.md` §Pending surface cleanup and is not listed here.
 
-Reference convention: the fixed entries are `F1`–`F19` and the open-list items `O1`–`O34`
+Reference convention: the fixed entries are `F1`–`F28` and the open-list items `O1`–`O38`
 (struck items stay in place, so both ranges keep growing). Every
 reference carries its prefix, so the two lists cannot be confused — do not renumber an
 existing entry, and do not cite a bare number.
@@ -153,6 +153,90 @@ F19. A one-shot RPG chapter resume overwrote the chapter's cumulative cost summa
     (`src/commands/one-shot.js:113`). Pinned by a test asserting the persisted summary carries
     the chapter's usage, scrape count and cost.
 
+F20. `--list-models` never printed the documented `[zdr]` tag: `listModelsCmd` called
+    `provider.fetchModels(apiKey)` with no options while the OpenRouter mapper only attaches `zdr`
+    for `{ zdr: true }` (`src/providers/openrouter.js:140-142`), so the column (then
+    `src/commands/list-models.js:12`) was unreachable (`docs/providers.md:21` documented it as
+    working). The listing now asks for the ZDR index when the provider advertises one
+    (`provider.meta?.supportsZdr === true`); verified live at 445 rows — 0 tagged before, 262
+    after — and the index fetch is keyless and cached. An unavailable/degraded index stays silent
+    (no tags), matching the listing's non-fatal style; the picker's `zdrGate` warning is unchanged.
+F21. A session-shaping flag sitting next to a config setter was silently dropped by the
+    set-and-exit dispatch: `isConfigSetDispatch` (`src/cli-validation.js:76-87`) treated any
+    config-setter run as set-and-exit on a TTY, so `-m <id> --system-prompt <unreadable>` fetched
+    the catalog, rewrote `~/.communicator.json` and exited 0 without reading the path (verified on
+    the real CLI: `Model: … / Saved to …`, exit 0), and `-p venice -m <model> --scrape <url>`
+    dropped the page the same way. The dispatch now returns false before either input branch when
+    `--system-prompt` or `--scrape` is present (the first cut guarded only the TTY branch; the
+    review pass caught that piped stdin with a pure setter still swallowed them, so the guard sits
+    above the `isTTY` split), so those runs take the chat/one-shot path: the missing prompt file
+    fails loudly (exit 1, no fetch, no config write), a valid one reaches `startChat`, and
+    `--scrape` bills and injects the page into the chat. `--zdr`/`--e2ee` keep the old behavior until the
+    surface cleanup (O31). Pinned by an `isConfigSetDispatch` unit test plus CLI tests for the
+    missing prompt, the valid prompt, the scrape, and a `-m <id> --temperature 0.5` setter run
+    that must still persist.
+F22. `--no-watermark` was documented as a persisted global pref (`index.js` help,
+    `docs/commands.md`, `docs/images.md`) but only the config-set and image paths wrote it: a text
+    chat or piped one-shot dropped it silently (verified A/B — the pre-fix text run persisted no
+    `hideWatermark` key while `--no-safe-mode` persisted `safeMode: false`). `src/cli-main.js` now mirrors
+    the `--no-safe-mode` block — persists `hideWatermark: true` and prints the TTY-gated
+    `Venice watermark disabled` notice (stdout on a terminal, stderr when stdout is piped) — on
+    every text launch path; the image paths keep their own writer. Per the O9 decision the pref is
+    persisted on OpenRouter runs too, exactly like safe mode. Pinned by stdout-routing,
+    stderr-routing and persistence tests.
+F23. `--list-endpoints <id>` resolved only against the text catalog, so the 43 OpenRouter image
+    models that live solely in `/images/models` reported `Model "…" not found` even though
+    `/models/<id>/endpoints` answers 200 for them (verified live; `--image` is rejected alongside
+    `--list-*`, so no route existed). The explicit-id path now resolves against the text catalog
+    plus the image catalog (deduped, text-first, a failed image fetch falls back to text-only); a
+    Venice image id prints the existing `… is directly available on Venice (no multi-provider
+    routing)` line, which this makes reachable. The interactive picker stays text-only and
+    `--image --list-endpoints` stays rejected. Same commit: `fetchEndpoints` sends `Authorization`
+    only when a key is present, like its sibling fetchers (O11's evidence line is updated; the
+    O11's evidence line is updated; the
+    item itself stays open for its disposition). Pinned by seven new `listEndpointsCmd` tests;
+    the review pass also proved the Venice-direct branch reachable, which closes O19.
+F24. `--aspect-ratio`/`--image-format` — documented as persisted per-provider defaults — were
+    dropped by the F21 routing change whenever the same run carried `--system-prompt`/`--scrape`:
+    the set-and-exit dispatch was their only text-path writer and the run no longer reaches it, so
+    `communicator --system-prompt p.md --aspect-ratio 16:9` persisted (and validated) nothing. The
+    shared chat/one-shot path now persists them like the other prefs — value validated through
+    `resolveAspectRatio`/`resolveImageFormat`, merged with `mergeImageDefaults`, TTY-gated
+    `Aspect ratio set to … (<provider> image defaults)` / `Image format set to …` notices — so the
+    flags keep their documented setter meaning next to a chat run. Pinned by persist/notice and
+    bad-value tests.
+F25. `--image --no-watermark` was the one persisting path without the notice its safe-mode twin
+    prints (`Venice safe mode disabled`), and its writer (`finalizeImageSession`) ran only after a
+    successful generation, so a failed image run kept silent and saved nothing. The image branch
+    now mirrors the safe-mode block: persist `hideWatermark: true` and print the TTY-gated
+    `Venice watermark disabled` notice before the run. Pinned by an image-path stdout/stderr test
+    whose run fails after the write.
+F26. The pure prefs (`--no-watermark`, `--no-safe-mode`, `--aspect-ratio`, `--image-format`) were
+    silently accepted next to `--list-*`, `--export`, `--delete` and `--delete-all-sessions` and
+    changed nothing (every exit path returns before the persist blocks) — the O5/O6 shape. The
+    dedicated rule introduced for `--zdr`/`--e2ee` now names them too, keeping the
+    name-only-the-flags-passed form and its position after the session-flags exclusion so no
+    previously surfaced `errors[0]` changes (`Error: --no-watermark cannot be combined with
+    --list-* flags.` etc.). Pinned by validation tests including the ordering case.
+F27. The `--list-endpoints` not-found hint pointed only at `--list-models`, which cannot list the
+    image models F23 made resolvable, and a failed image-catalog fetch was swallowed, so an image
+    id reported a plain "not found" with no sign the catalog had failed. The hint now names both
+    catalog commands (`Use --list-models for text models or --list-image-models for image models.`)
+    and the fetch failure warns like the picker (`Warning: could not load image models; showing
+    text models only. (<error>)`). The config-set twin (`src/commands/config-set.js:46`) keeps the
+    text-only hint on purpose: that path cannot accept an image model at all. Pinned by hint and
+    warning tests.
+F28. A rejected `--e2ee` resume still printed the at-rest warning first — and for an RPG chapter
+    also the `Resumed RPG conversation from …` notice — before the resolved-provider guard refused
+    the run (`-p venice -r <openrouter-session> --e2ee` warned, then exited 1). `src/cli-main.js`
+    now holds a resumed RPG run's `--e2ee` warning and its resume notices until after that guard
+    (fresh runs print theirs inline as before, and the RPG setup exit no longer warns at all,
+    since it never starts a session); a plain resume's warning moved out of `main()` into
+    `src/commands/chat-start.js` right after `assertResumeFlags`, sharing the literal
+    `E2EE_AT_REST_WARNING` (`src/constants.js`). Verified live: both refused forms print only the
+    error; an accepted Venice e2ee resume still warns, and an accepted RPG resume still prints its
+    notice (both pinned in tests).
+
 ## Open — piped-output purity
 
 The contract (`MEMORY.md` §Display consistency): a piped one-shot writes **only** the answer
@@ -175,10 +259,11 @@ O3. **`src/commands/image-gen.js:317-323`** (`printImageOutcome`) writes `saved 
 
 ## Open — silent no-ops and ignored flags
 
-O4. **`[zdr]` column in `--list-models` is unreachable dead code.** `src/commands/list-models.js:12`
+O4. ~~**`[zdr]` column in `--list-models` is unreachable dead code.** `src/commands/list-models.js:12`
    prints `m.zdr`, but `:5` calls `fetchModels(apiKey)` with no options and
    `src/providers/openrouter.js:140-142` only attaches `zdr` when called with `{ zdr: true }`.
-   `docs/providers.md:21` documents the tag as a working feature.
+   `docs/providers.md:21` documents the tag as a working feature.~~ **Fixed** — see the matching
+   entry in "Fixed on `fix/one-shot-bugs`" above.
 O5. ~~**`--zdr` and `--e2ee` are silently accepted next to `--list-*`** and change nothing
    (`src/cli-validation.js` exit-mode exclusion list omits them). Worse,
    `-p venice --e2ee --list-models` prints the E2EE session-file warning to stderr before
@@ -187,11 +272,13 @@ O6. ~~**Bare `--config` silently drops `--zdr`.** `hasBareConfigOtherFlags`
    (`src/cli-validation.js:96-115`) lists `opts.e2ee` but not `opts.zdr`, so
    `communicator --config --zdr` prints the config and exits.~~ **Fixed** — see the matching
    entry in "Fixed on `fix/one-shot-bugs`" above.
-O7. **`-m <id> --system-prompt <unreadable path>` exits 0.** The config-set branch
+O7. ~~**`-m <id> --system-prompt <unreadable path>` exits 0.** The config-set branch
    (`src/cli-main.js:234-258`) returns before `loadSystemPrompt` (`:300`), so the documented
-   "typos fail loudly" behaviour does not hold for that combination.
-O8. **`-m <model> --no-watermark "hi"` is a silent no-op.** The setter path requires `!promptArg`
-   and the chat path persists only safe mode, so nothing applies it and nothing warns.
+   "typos fail loudly" behaviour does not hold for that combination.~~ **Fixed** — see the matching
+   entry in "Fixed on `fix/one-shot-bugs`" above.
+O8. ~~**`-m <model> --no-watermark "hi"` is a silent no-op.** The setter path requires `!promptArg`
+   and the chat path persists only safe mode, so nothing applies it and nothing warns.~~ **Fixed**
+   — see the matching entry in "Fixed on `fix/one-shot-bugs`" above.
 O9. **`--no-safe-mode` / `--no-watermark` are accepted on OpenRouter with zero request effect**
    (`src/providers/openrouter.js:262` has no `safeMode`/`hideWatermark` parameter) while the
    global pref is still written and the Venice-specific notice is still printed.
@@ -211,12 +298,16 @@ O10. ~~**`--web-results` on Venice can turn billed search ON.** `src/flags.js:68
     (`src/cli-main.js:233-257`), which only persists the count. Billing path when it does:
     `src/providers/venice.js:289-296` (`enable_web_search: 'auto'`).~~ **Fixed** — see the
     matching entry in "Fixed on `fix/one-shot-bugs`" above.
-O11. **`--list-endpoints` needs an API key on OpenRouter** (unconditional
-    `Authorization: Bearer` at `src/providers/openrouter.js:327`) while `--list-models` and
-    `--list-image-models` are keyless by design — a keyless script 401s on the endpoint listing
-    for the same model.
-O12. **`--list-endpoints <id>` resolves against the text catalog only**, so image models cannot
-    be inspected and `--image` cannot be combined with it (`src/cli-validation.js`).
+O11. **`--list-endpoints` needed an API key on OpenRouter** (`fetchEndpoints` sent
+    `Authorization: Bearer` unconditionally at `src/providers/openrouter.js:327`) while `--list-models` and
+    `--list-image-models` were keyless by design — the audit claimed a keyless script 401s on the
+    endpoint listing for the same model. *Re-verified in the O12 commit: that 401 does not
+    reproduce — a keyless `--list-endpoints` lists three providers and an empty `Bearer` returns
+    200 — and `fetchEndpoints` now sends the header only when a key is present, like its sibling
+    fetchers. The entry stays open only for its disposition decision (strike vs. hardening note).*
+O12. ~~**`--list-endpoints <id>` resolves against the text catalog only**, so image models cannot
+    be inspected and `--image` cannot be combined with it (`src/cli-validation.js`).~~ **Fixed** —
+    see the matching entry in "Fixed on `fix/one-shot-bugs`" above.
 O13. **[docs-clarity, not a defect] `--temperature default` / `--top-p default` also resets the
     persisted per-model value** (`src/session-setup.js:59-67`, plus the resume branch at
     `:154-158`). This is the documented, tested contract — `docs/commands.md:12-13` defines
@@ -247,8 +338,10 @@ O18. **Bare `--config` ignores the path it could be given** (`src/commands/confi
     coexist with `--config <path>`, and it always prints `DEFAULT_CONFIG_FILE`. The flag's two
     forms therefore disagree about what `--config` means. The surface cleanup makes the path
     required.
-O19. **Dead branch at `src/commands/list-endpoints.js:27-28`** — the Venice-specific message is
-    unreachable because the model id always comes from the same cached catalog.
+O19. ~~**Dead branch at `src/commands/list-endpoints.js:27-28`** — the Venice-specific message is
+    unreachable because the model id always comes from the same cached catalog.~~ **Fixed** by F23:
+    an explicit image id now resolves from the image catalog and `venice.fetchEndpoints` re-resolves
+    against the text catalog, so the Venice-direct line prints (pinned by a test).
 O20. **`docs/commands.md`'s Venice web-search example fails as written.** With
     `--web-search [mode]` the optional value swallows the following prompt, which then fails
     validation. Same trap applies to `--config [path]`, `--resume [session-id]`,
@@ -341,13 +434,13 @@ O32. ~~**Two provider gates still ignore a resumed session's provider.** `-p ope
     session (`:145`, `:154-156` plus `src/session-setup.js:43-55`). The key half of this item is
     fixed (F13 above), so what remains is the same deferral for `--e2ee` and `--scrape`.~~
     **Fixed** — see the matching entry in "Fixed on `fix/one-shot-bugs`" above.
-O33. **A rejected `--e2ee` resume still prints the at-rest warning first.** `src/cli-main.js:160`
+O33. ~~**A rejected `--e2ee` resume still prints the at-rest warning first.** `src/cli-main.js:160`
     prints `Warning: --e2ee encrypts messages sent to the API, but the session file stores them
     unencrypted.` before the session loads, so `-p venice -r <openrouter-session> --e2ee` — now
     correctly refused by the resolved-provider guard (`src/session-setup.js:43-55`) — warns and
     then exits 1: the same "notice before a rejected dispatch" shape F8/F11/O30 closed.
     Cosmetic (one stderr line on an error path); fixing it means moving the notice after the
-    provider is known, i.e. into the session-start paths.
+    provider is known, i.e. into the session-start paths.~~ **Fixed** — see F28 above.
 O34. ~~**A one-shot chapter resume overwrites the chapter's cumulative cost summary.**
     `src/commands/one-shot.js:305` sets `state.costSummary = trackerCostSummary(tracker)` from a
     tracker that was never seeded from the chapter, and the file it writes is the chapter's own
@@ -358,3 +451,39 @@ O34. ~~**A one-shot chapter resume overwrites the chapter's cumulative cost summ
     means seeding the tracker from the chapter like the chat path does — which changes displayed
     cost, i.e. a user-visible change that needs its own approval.~~ **Fixed** — the tracker is now
     seeded from the chapter and the displayed cost change was approved; see F19 above.
+
+## Open — found in the post-fix review pass (O4/O7/O8/O12 changes)
+
+O35. ~~**A session flag next to an image-default setter now drops the setter.** `--aspect-ratio` and
+    `--image-format` are read only by the set-and-exit dispatch (`src/commands/config-set.js:21-22`)
+    and image runs (`src/commands/image-gen.js:151-153`); nothing on the chat/one-shot path reads
+    them. F21's routing change therefore turns `communicator --system-prompt p.md --aspect-ratio
+    16:9` (or `--scrape <url> --image-format png`) into a silent no-op — no `imageDefaults` write,
+    no `Aspect ratio set to …` line, exit 0 — where it previously persisted the default (and
+    validated it). Validation cannot catch it: both flags are deliberately excluded from
+    `imageOnlyFlags` (`src/cli-validation.js:319-326`). Fixing it either persists `imageDefaults` on
+    the text paths (a new notice, so UX approval) or rejects the pairing loudly; both belong to the
+    surface-cleanup decision, since the dispatch this rides on is fenced for removal.~~ **Fixed** —
+    the text paths now persist and announce them; see F24 above.
+O36. ~~**Pure setters are silently ignored next to `--list-*`.** `--no-watermark`, `--no-safe-mode`,
+    `--aspect-ratio` and `--image-format` are neither session flags nor `--model`/`--output-dir`, so
+    the exit-mode exclusion (`src/cli-validation.js:238-240`) never sees them and the listing exits
+    before the persist blocks: `--list-models --no-watermark` prints the listing and exits 0 having
+    stored nothing. Pre-existing (the O5/O6 shape, for the pure setters); either extend the
+    exit-mode rule with a message naming only the flags passed, or leave it to the surface cleanup.~~
+    **Fixed** — the rule now names them for every exit path; see F26 above.
+O37. ~~**`--image --no-watermark` persists silently and only after a successful generation.** The
+    image branch finishes at `src/cli-main.js:279-280`, before the shared watermark block, so
+    `--image --no-watermark` gets neither the `Venice watermark disabled` notice its safe-mode twin
+    prints there (`:275-276`) nor persistence when the generation fails; its writer is
+    `src/commands/image-gen.js:350`, reached only on success. Restoring parity means mirroring the
+    safe-mode block in the image branch — a new visible notice, so it needs approval until then
+    `docs/commands.md` documents the actual behavior.~~ **Fixed** — the image branch mirrors the
+    safe-mode block; see F25 above.
+O38. ~~**`--list-endpoints`' not-found hint names only `--list-models`.** Now that explicit ids may be
+    image models (F23), `Error: Model "…" not found. Use --list-models to list available models.`
+    (`src/commands/list-endpoints.js:77`) points at the text catalog only; the image catalog is
+    `--list-image-models`. The image-fetch failure is also swallowed silently (`:54-57`), unlike the
+    picker's `Warning: could not load image models; showing text models only.`. Any wording change
+    is user-visible, so it needs approval.~~ **Fixed** — the hint names both catalogs and the fetch
+    failure warns; see F27 above.

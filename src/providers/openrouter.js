@@ -324,7 +324,7 @@ export async function fetchEndpoints(apiKey, modelId, allModels) {
   let queryId = model?.aliasTarget || modelId
 
   const request = () => fetchWithRetry(`${OPENROUTER_BASE}/models/${modelPathId(queryId)}/endpoints`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
+    headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
   }, { errorResponse: handleHttpError })
 
   let res = await request()

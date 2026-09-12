@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { listModelsCmd, listImageModelsCmd } from '../src/commands/list-models.js'
+import * as openrouter from '../src/providers/openrouter.js'
+import { resetMetadataCaches } from '../src/providers/openrouter-meta.js'
 
 function mockConsole(t) {
   t.mock.method(console, 'log', () => {})
@@ -197,4 +199,67 @@ test('listImageModelsCmd requests pricing for OpenRouter and prints from-price r
   assert.ok(lines[0].includes('$0.009 per image'))
   assert.ok(lines[0].includes('[aspect: 1:1, 3:2, 2:3, auto]'))
   assert.ok(lines[0].includes('[resolution: 1024x1024]'))
+})
+
+test('listModelsCmd asks for ZDR tags on a ZDR-capable provider and prints them', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const calls = []
+  const provider = {
+    meta: { supportsZdr: true },
+    async fetchModels(apiKey, options) {
+      calls.push(options)
+      return [
+        { id: 'zdr/model', name: 'Zdr', contextLength: 1000, zdr: true, pricing: null },
+        { id: 'plain/model', name: 'Plain', contextLength: 1000, pricing: null },
+      ]
+    },
+  }
+
+  await listModelsCmd(provider, 'key')
+
+  assert.deepEqual(calls, [{ zdr: true }])
+  const lines = consoleSpy.allLogs()
+  assert.ok(lines[0].includes('[zdr]'))
+  assert.ok(!lines[1].includes('[zdr]'))
+})
+
+test('listModelsCmd leaves the listing untagged on a provider without a ZDR index', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const calls = []
+  const provider = {
+    meta: { hasEndpoints: false },
+    async fetchModels(apiKey, options) {
+      calls.push(options)
+      return [{ id: 'plain/model', name: 'Plain', contextLength: 1000, pricing: null }]
+    },
+  }
+
+  await listModelsCmd(provider, 'key')
+
+  assert.deepEqual(calls, [{ zdr: false }])
+  assert.ok(!consoleSpy.allLogs()[0].includes('[zdr]'))
+})
+
+test('listModelsCmd leaves the listing untagged when the ZDR index is unavailable', async (t) => {
+  const consoleSpy = mockConsole(t)
+  openrouter.resetModelCaches()
+  resetMetadataCaches()
+  t.after(() => {
+    openrouter.resetModelCaches()
+    resetMetadataCaches()
+  })
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (String(url).includes('/endpoints/zdr')) return new Response('nope', { status: 500 })
+    return new Response(JSON.stringify({ data: [{ id: 'org/model', name: 'Model', context_length: 1000 }] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  })
+
+  await listModelsCmd(openrouter, 'key')
+
+  const lines = consoleSpy.allLogs()
+  assert.equal(lines.length, 1)
+  assert.ok(lines[0].includes('org/model'))
+  assert.ok(!lines[0].includes('[zdr]'))
 })

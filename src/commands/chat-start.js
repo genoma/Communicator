@@ -1,5 +1,5 @@
 import { getProvider } from '../providers/index.js'
-import { DEFAULT_SYSTEM_PROMPT } from '../constants.js'
+import { DEFAULT_SYSTEM_PROMPT, E2EE_AT_REST_WARNING } from '../constants.js'
 import { scrapeMessage } from '../scrape.js'
 import { CliError } from '../errors.js'
 import { startChat } from '../chat.js'
@@ -34,6 +34,10 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     // The provider-only flags answer before the key lookup: a session whose
     // provider cannot run the run's flags must say so, not die on a missing key.
     assertResumeFlags({ result, providerName: provider.meta.name, zdr, e2ee, forcedWebResults })
+    // The at-rest notice belongs to a run that proceeds: the guard above may
+    // refuse this resume. RPG chapters take the RPG-worded notice from
+    // src/cli-main.js after the same guard.
+    if (e2ee && opts.rpg === undefined) console.warn(E2EE_AT_REST_WARNING)
     const apiKey = getApiKey(result.providerType || providerType)
     // New sessions carry an isImageModel marker, so the resume path only
     // consults the image-model catalog for legacy sessions written before

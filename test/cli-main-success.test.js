@@ -203,6 +203,20 @@ async function seedSession(id, data = {}) {
   return dir
 }
 
+// The mocked chat path persists its session in the shared temp home; a test
+// that opens a chat but wants no artifact must remove what it wrote, because
+// later scrape tests read the newest session file in that shared dir.
+async function trackNewSessions(t) {
+  const dir = join(tempHome, '.communicator', 'sessions')
+  const before = new Set(await readdir(dir).catch(() => []))
+  t.after(async () => {
+    const after = await readdir(dir).catch(() => [])
+    for (const entry of after) {
+      if (!before.has(entry)) await rm(join(dir, entry), { recursive: true, force: true })
+    }
+  })
+}
+
 test('--list-sessions prints the seeded session and exits 0', async (t) => {
   await seedSession('2026-01-01T00-00-00', { title: 'My custom title' })
   const { out } = await runAndExit(t, { listSessions: true }, undefined, 0)
@@ -543,6 +557,42 @@ test('--system-prompt with a missing file exits 1 with a clear error', async (t)
   assert.ok(err.join('\n').includes(`system prompt file not found: ${missing}`))
 })
 
+test('--system-prompt with a missing file next to -m exits 1 instead of config-setting', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  const configFile = await tempConfig(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-system-prompt-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const missing = join(dir, 'prompt.md')
+  // The set-and-exit dispatch would fetch the catalog and exit 0 without ever
+  // reading the path; a fetch here is the regression this test guards.
+  t.mock.method(globalThis, 'fetch', async (url) => { throw new Error(`unexpected fetch: ${url}`) })
+
+  const { err } = await runAndExit(t, { model: 'test/model-a', systemPrompt: missing, config: configFile }, undefined, 1)
+
+  assert.ok(err.join('\n').includes(`system prompt file not found: ${missing}`))
+  assert.ok(!err.join('\n').includes('Saved to'))
+})
+
+test('--system-prompt with a valid file next to -m opens the chat with that prompt', async (t) => {
+  withTTY(t, true)
+  withStdoutTTY(t, true)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-system-prompt-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const promptFile = join(dir, 'prompt.md')
+  await writeFile(promptFile, 'Speak like a pirate.\n')
+  mockVeniceScrapeFetch(t)
+  await trackNewSessions(t)
+  const callsBefore = startChatCalls.length
+
+  await runCliNoExit(t, { provider: 'venice', model: 'venice-model', config: configFile, systemPrompt: promptFile }, undefined)
+
+  assert.equal(startChatCalls.length, callsBefore + 1, 'the run must reach the chat, not the set-and-exit dispatch')
+  assert.equal(startChatCalls[startChatCalls.length - 1].opts.systemPrompt, 'Speak like a pirate.')
+})
+
 function mockVeniceScrapeFetch(t) {
   const models = [{ id: 'venice-model', model_spec: { name: 'V', capabilities: {}, constraints: {} } }]
   const calls = []
@@ -642,6 +692,29 @@ test('bare --scrape opens a chat with the page already in context', async (t) =>
   assert.equal(call.opts.initialMessages[1].content, 'Scraped from https://example.com/article:\n\n# Article body')
 })
 
+test('--scrape next to -m opens the chat with the page in context instead of config-setting', async (t) => {
+  withTTY(t, true)
+  withStdoutTTY(t, true)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  const calls = mockVeniceScrapeFetch(t)
+  await trackNewSessions(t)
+  const callsBefore = startChatCalls.length
+
+  const { out } = await runCliNoExit(t, {
+    provider: 'venice',
+    model: 'venice-model',
+    config: configFile,
+    scrape: 'https://example.com/article',
+  }, undefined)
+
+  assert.ok(calls.some((u) => u.includes('/augment/scrape')))
+  assert.match(out.join('\n'), /Scraped https:\/\/example\.com\/article \(\d+ chars\) into context\./)
+  assert.equal(startChatCalls.length, callsBefore + 1, 'the run must reach the chat, not the set-and-exit dispatch')
+  assert.equal(startChatCalls[startChatCalls.length - 1].opts.scrapes, 1)
+  assert.ok(!out.join('\n').includes('Saved to'))
+})
+
 test('--no-safe-mode alone opens the chat and persists the pref', async (t) => {
   withTTY(t, true)
   withStdoutTTY(t, true)
@@ -703,6 +776,103 @@ test('--image --no-safe-mode notice goes to stderr when stdout is piped', async 
   // The image branch exits before the shared notice site: the model lookup
   // failing is what proves the notice came from the --image path.
   assert.match(err.join('\n'), /image model flux-1-1 not found/)
+})
+
+test('--image --no-watermark prints the notice and persists the pref before the run', async (t) => {
+  withTTY(t, false)
+  withStdoutTTY(t, false)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  )
+
+  const { out, err } = await runAndExit(t, { provider: 'venice', config: configFile, image: true, imageModel: 'flux-1-1', watermark: false }, 'a red cat', 1)
+
+  assert.ok(!out.join('\n').includes('Venice watermark disabled'), 'the image path watermark notice must stay off piped stdout')
+  assert.match(err.join('\n'), /^Venice watermark disabled$/m)
+  assert.match(err.join('\n'), /image model flux-1-1 not found/)
+  const saved = JSON.parse(await readFile(configFile, 'utf-8'))
+  assert.equal(saved.hideWatermark, true)
+})
+
+test('--no-watermark with a prompt persists the pref and prints the notice on stdout', async (t) => {
+  withTTY(t, true)
+  withStdoutTTY(t, true)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  // The Venice text catalog is process-cached: an empty listing would leak
+  // into the later scrape test's model lookup.
+  const { resetModelCaches } = await import('../src/providers/venice.js')
+  resetModelCaches()
+  t.after(resetModelCaches)
+  // An empty listing fails the run right after the notice, so the assertion
+  // covers the notice itself and the pref write that precedes it.
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  )
+
+  const { out } = await runAndExit(t, { provider: 'venice', model: 'venice-model', config: configFile, watermark: false }, 'Hi', 1)
+
+  assert.match(out.join('\n'), /Venice watermark disabled/)
+  const saved = JSON.parse(await readFile(configFile, 'utf-8'))
+  assert.equal(saved.hideWatermark, true)
+})
+
+test('--no-watermark notice goes to stderr when stdout is piped', async (t) => {
+  withTTY(t, true)
+  withStdoutTTY(t, false)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  const { resetModelCaches } = await import('../src/providers/venice.js')
+  resetModelCaches()
+  t.after(resetModelCaches)
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  )
+
+  const { out, err } = await runAndExit(t, { provider: 'venice', model: 'venice-model', config: configFile, watermark: false }, 'Hi', 1)
+
+  assert.ok(!out.join('\n').includes('Venice watermark disabled'), 'the watermark notice must stay off piped stdout')
+  assert.match(err.join('\n'), /^Venice watermark disabled$/m)
+  const saved = JSON.parse(await readFile(configFile, 'utf-8'))
+  assert.equal(saved.hideWatermark, true)
+})
+
+test('--aspect-ratio on a chat run persists the per-provider default instead of dropping it', async (t) => {
+  withTTY(t, true)
+  withStdoutTTY(t, false)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  const { resetModelCaches } = await import('../src/providers/venice.js')
+  resetModelCaches()
+  t.after(resetModelCaches)
+  // An empty listing fails the run right after the persist block, so the
+  // assertions cover the notices and the write that precedes them.
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  )
+
+  const { out, err } = await runAndExit(t, { provider: 'venice', model: 'venice-model', config: configFile, aspectRatio: '16:9', imageFormat: 'png' }, 'Hi', 1)
+
+  assert.ok(!out.join('\n').includes('Aspect ratio set to'), 'the image-defaults notices must stay off piped stdout')
+  assert.match(err.join('\n'), /^Aspect ratio set to 16:9 \(venice image defaults\)$/m)
+  assert.match(err.join('\n'), /^Image format set to png \(venice image defaults\)$/m)
+  const saved = JSON.parse(await readFile(configFile, 'utf-8'))
+  assert.equal(saved.imageDefaults.venice.aspectRatio, '16:9')
+  assert.equal(saved.imageDefaults.venice.format, 'png')
+})
+
+test('--aspect-ratio with a bad value fails loudly instead of being persisted', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(globalThis, 'fetch', async (url) => { throw new Error(`unexpected fetch: ${url}`) })
+
+  const { err } = await runAndExit(t, { provider: 'venice', model: 'venice-model', config: configFile, aspectRatio: 'bogus' }, 'Hi', 1)
+
+  assert.match(err.join('\n'), /--aspect-ratio must be in the form W:H/)
+  await assert.rejects(readFile(configFile, 'utf-8'), /ENOENT/)
 })
 
 test('Ctrl+C at the picker in one-shot (prompt arg) aborts cleanly with Aborted.', async (t) => {
@@ -767,6 +937,8 @@ test('--resume -p openrouter of a Venice --e2ee session runs on the Venice provi
   })
   const configFile = await tempConfig(t)
   const callsBefore = startChatCalls.length
+  const warnings = []
+  t.mock.method(console, 'warn', (msg) => warnings.push(String(msg)))
 
   await runCliNoExit(t, {
     config: configFile,
@@ -781,15 +953,19 @@ test('--resume -p openrouter of a Venice --e2ee session runs on the Venice provi
   assert.equal(call.endpointProviderName, 'Venice')
   assert.equal(call.provider.meta.name, 'venice')
   assert.equal(call.apiKey, 'venice-test-key')
+  assert.ok(warnings.some((l) => /encrypts messages sent to the API, but the session file stores them unencrypted/.test(l)), 'an accepted e2ee resume still warns')
 })
 
 test('--e2ee resuming an OpenRouter session is refused without -p', async (t) => {
   withTTY(t, true)
   withApiKey(t)
   await seedSession('2026-04-02T00-00-00', { isImageModel: false, e2ee: true })
+  const warnings = []
+  t.mock.method(console, 'warn', (msg) => warnings.push(String(msg)))
 
   const { err } = await runAndExit(t, { resume: '2026-04-02', e2ee: true }, undefined, 1)
   assert.match(err.join('\n'), /Error: --e2ee is only available with --provider venice\./)
+  assert.deepEqual(warnings, [])
 })
 
 test('--e2ee resuming an OpenRouter session is refused even with -p venice', async (t) => {
@@ -797,6 +973,8 @@ test('--e2ee resuming an OpenRouter session is refused even with -p venice', asy
   withApiKey(t)
   await seedSession('2026-04-03T00-00-00', { isImageModel: false, e2ee: true })
   const configFile = await tempConfig(t)
+  const warnings = []
+  t.mock.method(console, 'warn', (msg) => warnings.push(String(msg)))
 
   // -p venice satisfies the flag-level gate, so pre-fix this was accepted even
   // though the run resolves to the session's OpenRouter provider.
@@ -807,6 +985,7 @@ test('--e2ee resuming an OpenRouter session is refused even with -p venice', asy
     e2ee: true,
   }, undefined, 1)
   assert.match(err.join('\n'), /Error: --e2ee is only available with --provider venice\./)
+  assert.deepEqual(warnings, [])
 })
 
 test('--e2ee resuming an OpenRouter session reports the provider, not the encryption mismatch', async (t) => {
@@ -840,7 +1019,7 @@ test('--e2ee resuming an OpenRouter session reports the provider before the miss
 // are covered below: a chapter (judged by its saved provider) and a legacy
 // story directory with no chapters (judged by the flag's provider, like a
 // fresh run).
-async function seedRpgChapter(t, { providerType = 'venice', providerName = 'Venice', model = 'venice/model' } = {}) {
+async function seedRpgChapter(t, { providerType = 'venice', providerName = 'Venice', model = 'venice/model', e2ee = false } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   await writeFile(join(dir, 'char.md'), '# Zara\n\n## Personality\nSharp and warm.\n')
@@ -856,6 +1035,7 @@ async function seedRpgChapter(t, { providerType = 'venice', providerName = 'Veni
     providerName,
     model,
     isImageModel: false,
+    e2ee,
   }))
   return dir
 }
@@ -949,8 +1129,10 @@ test('--rpg --resume --e2ee reports the chapter provider before the missing key'
   // missing: the actionable limitation must win over the key error.
   const dir = await seedRpgChapter(t, { providerType: 'openrouter', providerName: 'ProviderX', model: 'test/model' })
   const configFile = await tempConfig(t)
+  const warnings = []
+  t.mock.method(console, 'warn', (msg) => warnings.push(String(msg)))
 
-  const { err } = await runAndExit(t, {
+  const { out, err } = await runAndExit(t, {
     config: configFile,
     rpg: dir,
     resume: true,
@@ -960,6 +1142,41 @@ test('--rpg --resume --e2ee reports the chapter provider before the missing key'
 
   assert.match(err.join('\n'), /Error: --e2ee is only available with --provider venice\./)
   assert.ok(!err.some((l) => /OPENROUTER_API_KEY environment variable is not set/.test(l)))
+  // F28: a refused resume announces nothing and warns about nothing.
+  assert.deepEqual(warnings, [])
+  assert.ok(!`${out.join('\n')}\n${err.join('\n')}`.includes('Resumed RPG conversation from'))
+})
+
+test('--rpg --resume --e2ee warns for the chapter files once the run is accepted', async (t) => {
+  withTTY(t, true)
+  withStdoutTTY(t, false)
+  withVeniceApiKey(t)
+  const dir = await seedRpgChapter(t, { e2ee: true })
+  const configFile = await tempConfig(t)
+  const warnings = []
+  t.mock.method(console, 'warn', (msg) => warnings.push(String(msg)))
+  const callsBefore = startChatCalls.length
+
+  const { out, err } = await runCliNoExit(t, { rpg: dir, resume: true, provider: 'venice', config: configFile, e2ee: true }, undefined)
+
+  assert.ok(warnings.some((l) => /RPG .*store them unencrypted/.test(l)), `RPG e2ee warning missing: ${JSON.stringify(warnings)}`)
+  assert.equal(startChatCalls.length, callsBefore + 1)
+  assert.match(err.join('\n'), /Resumed RPG conversation from/)
+  assert.ok(!out.join('\n').includes('Resumed RPG conversation'), 'the notice must stay off piped stdout')
+})
+
+test('--rpg setup exit does not warn about e2ee at rest', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const warnings = []
+  t.mock.method(console, 'warn', (msg) => warnings.push(String(msg)))
+
+  const { out } = await runAndExit(t, { rpg: dir, e2ee: true, provider: 'venice' }, undefined, 0)
+
+  assert.match(out.join('\n'), /RPG mode setup: created/)
+  assert.deepEqual(warnings, [])
 })
 
 test('--rpg --resume --scrape of an OpenRouter chapter fails loudly, never silently', async (t) => {

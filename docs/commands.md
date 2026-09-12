@@ -24,7 +24,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 | `-V`  | `--version`           | —        | Print the version and exit                                                           |
 | `-h`  | `--help`              | —        | Show the help menu and exit                                                          |
 |       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
-|       | `--list-endpoints`    | `[model]`| List providers for a model (pricing, uptime, ZDR support, privacy policy link). No arg = picker, partial ID = fuzzy match |
+|       | `--list-endpoints`    | `[model]`| List providers for a model (pricing, uptime, ZDR support, privacy policy link). No arg = picker, partial ID = fuzzy match. Explicit ids may be text or image models |
 |       | `--list-sessions`     | —        | List saved sessions (ID, last-activity timestamp, model, message count, title) and exit                |
 | `-r`  | `--resume`            | `[partial-id]` | Resume a saved session. No arg = picker, partial ID = prefix match. With `--rpg`, must be bare: continues a story chapter from `<dir>/sessions/` (chapter picker when more than one exists; most recent chapter when piping) |
 | `-x`  | `--export`            | `[partial-id]` | Export saved session(s). No arg = multi-select checkbox; partial ID = prefix match, unique prefix exports directly. Export is best-effort per session; any session it could not export is reported and it exits 1 |
@@ -38,16 +38,16 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--debug`            | —        | With `--rpg`: log the full prompt sent to the model to `prompt-log.jsonl` in the RPG directory (one JSON object per turn) |
 |       | `--image`             | —        | Generate an image with an image model and exit (both providers). See [docs/images.md](images.md) |
 |       | `--image-model`       | `<id>`   | Image model ID, skipping the interactive image model picker (required when piping input) |
-|       | `--image-format`      | `<fmt>`  | Image output format: `png`, `jpeg`, `webp` (default `webp` on Venice, `png` on OpenRouter; only sent when the model supports it). Bare use saves the per-provider default |
+|       | `--image-format`      | `<fmt>`  | Image output format: `png`, `jpeg`, `webp` (default `webp` on Venice, `png` on OpenRouter; only sent when the model supports it). Persisted as the per-provider default: bare use saves it and exits, and a chat run saves it too |
 |       | `--variants`          | `<n>`    | Number of images to generate, 1–4 (default 1; values above the model's advertised `maxN` are rejected) |
-|       | `--aspect-ratio`      | `<x:y>`  | Image aspect ratio, model-dependent (e.g. `16:9`, `auto`; decimal ratios like `9:19.5` accepted). Bare use saves the per-provider default. Conflicts with `--width`/`--height` |
+|       | `--aspect-ratio`      | `<x:y>`  | Image aspect ratio, model-dependent (e.g. `16:9`, `auto`; decimal ratios like `9:19.5` accepted). Persisted as the per-provider default: bare use saves it and exits, and a chat run saves it too. Conflicts with `--width`/`--height` |
 |       | `--resolution`        | `<tier>` | Image resolution tier, model-dependent: `1K`, `2K`, `4K`. Conflicts with `--width`/`--height` |
 |       | `--quality`           | `<level>`| Image quality tier, model-dependent: `low`, `medium`, `high` |
 |       | `--seed`              | `<int>`  | Random seed for image generation (between -999999999 and 999999999) |
 |       | `--width`             | `<px>`   | Image width in pixels, 1–1280, multiples of the model's divisor (pixel-based models). Must be given with `--height` |
 |       | `--height`            | `<px>`   | Image height in pixels, 1–1280, multiples of the model's divisor (pixel-based models). Must be given with `--width` |
 |       | `--no-safe-mode`      | —        | Disable safe mode for image generation (adult content returned unblurred). Bare use saves the default (global setting) and opens a chat session |
-|       | `--no-watermark`      | —        | Hide the Venice watermark on generated images. Bare use saves the default (global setting) |
+|       | `--no-watermark`      | —        | Hide the Venice watermark on generated images. Persisted as the global `hideWatermark` pref on every launch path, announced with `Venice watermark disabled` (bare use saves it and exits) |
 |       | `--list-image-models` | —        | List image models (name, id, per-image price, sizing options) and exit |
 
 ## Usage examples
