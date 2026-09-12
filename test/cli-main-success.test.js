@@ -1295,6 +1295,47 @@ test('Ctrl+C at the picker with a foreign ExitPromptError-named error still abor
   assert.ok(out.join('\n').includes('Aborted.'))
 })
 
+test('an empty OpenRouter catalog stub cannot leak into a later model lookup', async (t) => {
+  withTTY(t, true)
+  withApiKey(t)
+  const configFile = await tempConfig(t)
+  // Same cold start as the picker tests above: in file order this test may
+  // follow one that cached a good listing.
+  const { resetModelCaches, resetImageModelCaches } = await import('../src/providers/openrouter.js')
+  resetModelCaches()
+  resetImageModelCaches()
+  t.after(() => {
+    resetModelCaches()
+    resetImageModelCaches()
+  })
+  const reply = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+  let textListing = { data: [] }
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    const u = String(url)
+    if (u.endsWith('/images/models')) return reply({ data: [] })
+    if (u.endsWith('/models')) return reply(textListing)
+    if (u.endsWith('/endpoints')) return reply({ data: { endpoints: [] } })
+    throw new Error(`unexpected fetch: ${u}`)
+  })
+
+  const empty = await runAndExit(t, { provider: 'openrouter', model: 'openrouter-model', config: configFile }, 'Hi', 1)
+  assert.match(empty.err.join('\n'), /model openrouter-model not found/)
+
+  // The picker tests above dirty both caches the same way and hand the next
+  // test a cold one through their t.after(reset*ModelCaches); this call stands
+  // in for that hand-off, so the hazard is pinned here instead of by whichever
+  // test happens to follow.
+  resetModelCaches()
+  resetImageModelCaches()
+  textListing = { data: [{ id: 'openrouter-model', name: 'M', context_length: 1000, architecture: {} }] }
+  await trackNewSessions(t)
+  const callsBefore = startChatCalls.length
+
+  await runCliNoExit(t, { provider: 'openrouter', model: 'openrouter-model', config: configFile }, undefined)
+
+  assert.equal(startChatCalls.length, callsBefore + 1, 'the good catalog must resolve after the empty-listing run')
+})
+
 test('--no-safe-mode with --resume persists the pref before the chat resumes', async (t) => {
   withTTY(t, true)
   withApiKey(t)
