@@ -77,7 +77,7 @@
 
 - Venice-only `POST /api/v1/augment/scrape`, flat `$0.01`, page capped at 200k chars.
 - Entry points: `--scrape <url>` and `/scrape <url>`; both inject a user context turn `Scraped from <url>:\n\n<content>`.
-- Session-scoped counter `ChatState.scrapes` persists through resume and feeds the tracker exactly once at startup on the interactive path. The one-shot chapter resume extends the chapter's own session file and carries the stored count over in the file; it does not seed its tracker from the chapter, so its own `costSummary` still reflects the run alone (see `KNOWN-ISSUES.md` O34).
+- Session-scoped counter `ChatState.scrapes` persists through resume and feeds the tracker exactly once at startup. The one-shot chapter resume extends the chapter's own session file and seeds its tracker from the stored turns and flat scrape count exactly like the interactive path (`seedTracker`), so its persisted cost summary stays cumulative and its `scrapes` agrees with the flat count beside it.
 - Interactive `/scrape` also bumps `state.scrapes` and adds `SCRAPE_COST_USD`.
 - Conflicts: E2EE, list/export/delete/resume, image; not a config-setter flag. Exception: an RPG chapter resume (`--rpg <dir> --resume`) accepts `--scrape`, is judged by the chapter's provider, and injects the page after the stored turns.
 

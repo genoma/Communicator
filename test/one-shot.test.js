@@ -504,6 +504,73 @@ test('one-shot with --rpg --resume continues the resolved chapter session', asyn
   assert.equal(saved.scrapes, 3)
 })
 
+test('one-shot chapter resume keeps the chapter cumulative cost summary', async (t) => {
+  const bodies = []
+  mockOpenRouterStream(t, [], bodies)
+  withApiKey(t)
+  const file = await tempConfig(t)
+  const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(rpgDir, { recursive: true, force: true }))
+  t.mock.method(process.stdout, 'write', () => true)
+  mockExit(t)
+
+  const pricing = { prompt: 1e-6, completion: 2e-6 }
+  const storedUsage = { prompt_tokens: 1000, completion_tokens: 500, total_tokens: 1500 }
+  const storedTurn = { role: 'assistant', content: 'The gate creaks open.', usage: storedUsage }
+  const sessionsDir = await ensureRpgSessionsDir(rpgDir)
+  await saveSession(sessionsDir, '2026-02-01T00-00-00', {
+    model: 'org/model',
+    providerName: 'openrouter',
+    providerType: 'openrouter',
+    pricing,
+    contextLength: 64000,
+    scrapes: 2,
+    costSummary: null,
+    createdAt: '2026-02-01T00:00:00.000Z',
+    updatedAt: '2026-02-02T00:00:00.000Z',
+    messages: [
+      { role: 'system', content: 'You are Kael.' },
+      { role: 'user', content: 'Hello' },
+      storedTurn,
+    ],
+  })
+
+  const { exited } = await runOneShot(t, {
+    overrides: { config: file, rpg: rpgDir, resume: true, model: undefined },
+    systemPrompt: 'RPG system prompt',
+    rpgHistory: [{ role: 'user', content: 'Hello' }, storedTurn],
+    rpgResume: {
+      modelId: 'org/model',
+      providerName: 'openrouter',
+      providerType: 'openrouter',
+      pricing,
+      contextLength: 64000,
+      e2ee: false,
+      scrapes: 2,
+      costSummary: null,
+      sessionId: '2026-02-01T00-00-00',
+      sessionCreatedAt: '2026-02-01T00:00:00.000Z',
+      sessionUpdatedAt: '2026-02-02T00:00:00.000Z',
+      turns: [{ role: 'user', content: 'Hello' }, storedTurn],
+      rpgDir,
+    },
+  })
+
+  assert.equal(exited, false)
+  const saved = JSON.parse(await readFile(join(sessionsDir, '2026-02-01T00-00-00.json'), 'utf-8'))
+  // The chapter's own usage and flat scrape cost stay in the totals instead of
+  // being replaced by this run alone (the mocked stream reports 10/5/15).
+  assert.equal(saved.costSummary.requests, 2)
+  assert.equal(saved.costSummary.promptTokens, 1010)
+  assert.equal(saved.costSummary.completionTokens, 505)
+  assert.equal(saved.costSummary.totalTokens, 1515)
+  assert.equal(saved.costSummary.scrapes, 2)
+  // 0.002 stored + 0.00002 this turn + 0.02 for the two scrapes.
+  assert.ok(Math.abs(saved.costSummary.cost - 0.02202) < 1e-9, `saw ${saved.costSummary.cost}`)
+  // The flat count and its summary must agree: the divergence this fix removes.
+  assert.equal(saved.scrapes, saved.costSummary.scrapes)
+})
+
 test('one-shot appends the RPG post-history instruction after the user message without persisting it', async (t) => {
   const bodies = []
   mockOpenRouterStream(t, [], bodies)

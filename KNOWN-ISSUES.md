@@ -9,7 +9,8 @@ surface cleanup (removing `--export-format`, `--variants`, `--resolution`, `--qu
 `--width`/`--height`, and the bare "set a preference and exit" dispatch) is tracked in
 `MEMORY.md` §Pending surface cleanup and is not listed here.
 
-Reference convention: the fixed entries are `F1`–`F18` and the open items `O1`–`O34`. Every
+Reference convention: the fixed entries are `F1`–`F19` and the open-list items `O1`–`O34`
+(struck items stay in place, so both ranges keep growing). Every
 reference carries its prefix, so the two lists cannot be confused — do not renumber an
 existing entry, and do not cite a bare number.
 
@@ -141,6 +142,16 @@ F18. A one-shot RPG chapter resume reset the chapter's persisted scrape count to
     flat $0.01s on the next resume — the unfixed half of the class F14 fixed for the chat path
     (`src/commands/chat-start.js:121`). The count now carries over
     (`src/commands/one-shot.js:302`), pinned by the chapter-resume test.
+
+F19. A one-shot RPG chapter resume overwrote the chapter's cumulative cost summary:
+    `state.costSummary = trackerCostSummary(tracker)` ran off a tracker that was never seeded
+    from the chapter while the file written is the chapter's own, so the per-session totals a
+    later `/resume` reports shrank to this run alone, and `costSummary.scrapes` disagreed with
+    the `scrapes` count persisted beside it. The tracker is now seeded from the stored turns and
+    flat scrape count before the turn (`src/commands/one-shot.js:75`) exactly like the
+    interactive resume path (`src/chat.js:165`), with the new scrape added on top
+    (`src/commands/one-shot.js:113`). Pinned by a test asserting the persisted summary carries
+    the chapter's usage, scrape count and cost.
 
 ## Open — piped-output purity
 
@@ -276,9 +287,10 @@ O26. **`-m <image-model> "prompt"` and `--image` validate the same flags differe
 ## Open — test-suite hygiene
 
 O27. **Node 26.8.2 reporter quirk**: 4 tests in `test/one-shot.test.js` execute but their
-    pass-result lines are not listed or counted by the spec and TAP reporters (pre-existing;
-    23 declared vs 20 reported at the parent commit). Failures are still counted and named, so
-    a regression stays loud — but a silent pass count is a trap for future audits.
+    pass-result lines are not listed or counted by the spec and TAP reporters (pre-existing:
+    25 declared vs 21 reported at HEAD; re-count with `grep -c '^test(' test/one-shot.test.js`).
+    Failures are still counted and named, so a regression stays loud — but a silent pass count is
+    a trap for future audits.
 O28. **Untested paths**: the `--debug` → interactive-chat wiring has no CLI-level test (only the
     one-shot path and the unit-level ctx flag are covered), and `--export <unique-id>` on a
     non-TTY is unverifiable while the blanket gate fires first.
@@ -336,7 +348,7 @@ O33. **A rejected `--e2ee` resume still prints the at-rest warning first.** `src
     then exits 1: the same "notice before a rejected dispatch" shape F8/F11/O30 closed.
     Cosmetic (one stderr line on an error path); fixing it means moving the notice after the
     provider is known, i.e. into the session-start paths.
-O34. **A one-shot chapter resume overwrites the chapter's cumulative cost summary.**
+O34. ~~**A one-shot chapter resume overwrites the chapter's cumulative cost summary.**
     `src/commands/one-shot.js:305` sets `state.costSummary = trackerCostSummary(tracker)` from a
     tracker that was never seeded from the chapter, and the file it writes is the chapter's own
     (the payload keeps `rpgResume.sessionId`, and `:308` persists with `rpgDir: opts.rpg`). The
@@ -344,4 +356,5 @@ O34. **A one-shot chapter resume overwrites the chapter's cumulative cost summar
     the persisted `resumeCostSummary` for display (`src/chat.js:165`, `:222-227`), so a one-shot
     chapter resume silently shrinks the per-session totals a later `/resume` reports. Fixing it
     means seeding the tracker from the chapter like the chat path does — which changes displayed
-    cost, i.e. a user-visible change that needs its own approval.
+    cost, i.e. a user-visible change that needs its own approval.~~ **Fixed** — the tracker is now
+    seeded from the chapter and the displayed cost change was approved; see F19 above.

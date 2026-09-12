@@ -3,7 +3,7 @@ import { cpsToCharsPerTick, SCRAPE_COST_USD, DEFAULT_SYSTEM_PROMPT } from '../co
 import { scrapeMessage } from '../scrape.js'
 import { createNewSession, removeEmptySessionClaim } from '../sessions.js'
 import { createStreamRenderer } from '../ui/stream.js'
-import { UsageTracker, budgetLine, trackerCostSummary } from '../tracker.js'
+import { UsageTracker, seedTracker, budgetLine, trackerCostSummary } from '../tracker.js'
 import { ChatState } from '../chat-state.js'
 import { CliError, formatError, isExitPromptError } from '../errors.js'
 import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
@@ -68,6 +68,11 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   // A resumed chapter restores its own budget (null stays null); the prefs
   // default only applies to fresh runs.
   const runBudget = rpgResume ? resumeBudget : budget
+  // A chapter resume extends its own session file, so its persisted cost summary
+  // must stay cumulative: replay the stored turns' usage and flat scrape cost
+  // exactly like the interactive resume path seeds its tracker
+  // (src/chat.js, from the same messages). The new scrape below is added on top.
+  seedTracker(tracker, rpgHistory, selection.pricing, rpgResume?.scrapes ?? 0)
 
   if (selection.isImageModel === true) {
     if (opts.attach?.length) {
