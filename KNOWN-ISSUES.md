@@ -476,7 +476,11 @@ F42. O42: the file-level `not ok - test/chat-loop.test.js` with `failureType: 'u
     `test/one-shot.test.js` / `test/cli-main-success.test.js` still report the same test counts as before
     the capture change (26 and 76 on Node 22). Upstream:
     nodejs/node#62693 (the same parser, including its infinite-loop variant on a partial `FF 0F` plus a
-    large size; still open) and nodejs/node#48103. Pin (the guard, not the upstream bug — a
+    large size; still open) and nodejs/node#48103. The hang is the second symptom of the same exposure:
+    an unguarded high-output Node 22 run can also stop making progress in `#drainRawBuffer` and hang
+    (observed while probing this, and reproduced in-process by replaying the captured `chat-loop`
+    stream under the 22 parser), which the guard also avoids by keeping fd 1 protocol-only — no
+    upstream fix is claimed for it. Pin (the guard, not the upstream bug — a
     bug-triggering pin would not fail on 24+): `test/runner-console-guard.test.js` runs
     `scripts/fixtures/console-noise-child.js` as a real test child (`NODE_TEST_CONTEXT=child-v8`) with
     and without the guard and walks fd 1 with the census above — with the guard 110 frames and **0**
