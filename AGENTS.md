@@ -2,7 +2,7 @@
 
 ## Environment
 
-- Host machine: macOS 26.6.2 (Darwin 25.6.0, Apple Silicon M5), Homebrew at `/opt/homebrew` (brew 6.0.22, `make` 3.81), login shell zsh 5.9.2, git is Homebrew git 2.55.0 (Apple Git 2.54.0, Apple Git-157, at `/usr/bin/git`). Node/npm/npx come from Homebrew (`/opt/homebrew/bin`): node v26.8.2, npm 11.19.1.
+- Host machine: macOS 26.6.2 (Darwin 25.6.0, Apple Silicon M5), Homebrew at `/opt/homebrew` (brew 6.0.22, `make` 3.81), login shell zsh 5.9.2, git is Homebrew git 2.55.0 (`/usr/bin/git` reports `git version 2.54.0 (Apple Git-157)`). Node/npm/npx come from Homebrew (`/opt/homebrew/bin`): node v26.8.2, npm 11.19.1.
 - Homebrew toolchain is the default in new shells: `~/.zshrc` runs `brew shellenv`, so PATH starts with `/opt/homebrew/bin` — `bash` is Homebrew bash 5.3.15 and `python3` is Homebrew Python 3.14.7. macOS `/bin/bash` (GNU bash 3.2.57) and CLT 27.0.0's `python3` (3.9.6) still exist and win only where PATH is not fixed (e.g. the dsh server process started before this change — restart dsh after PATH/profile edits).
 - macOS caveats: `/bin/bash` 3.2.57 is what absolute `#!/bin/bash` shebangs get (unchanged by brew bash; do not symlink over `/bin/bash`); bash-4+ syntax is safe only when `bash` resolves to the Homebrew one.
 - Agent shells and scripts must invoke Homebrew bash explicitly as `/opt/homebrew/bin/bash` when they need bash 4+ features. Do not rely on `bash` or `#!/bin/bash`: outside a Homebrew-shell PATH, those resolve to macOS `/bin/bash` 3.2.57.

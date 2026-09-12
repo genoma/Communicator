@@ -43,7 +43,7 @@ macOS/Ubuntu/Windows for `3.49.2`.
   in chat (parity rule: every pref needs an in-app setter).
 - **D4 — explicit pixels: dropped.** `--width`/`--height` go with no `/size` replacement. Sizing
   is capability-driven (aspect list or pixel-model divisor; the 4.0.0-era snapshot read roughly
-  34 aspect-list + 8 pixel across the then-41 Venice image models, divisors 8/16 plus
+  33–34 aspect-list + 8 pixel across the then-41 Venice image models, divisors 8/16 plus
   `bria-bg-remover`'s 1 — live on 2026-09-12 the catalog was 41: 33 aspect-list, 7 pixel-divisor
   (8 or 16), 1 utility).
 - **D5 — budget flag: removed entirely.** "Budget goes and stays in chat": the `--budget` flag and

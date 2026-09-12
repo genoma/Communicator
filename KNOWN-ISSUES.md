@@ -402,9 +402,9 @@ F41. O39: a non-generative Venice utility model no longer enters the image surfa
    a text run, because `findImageModel` no longer resolves it (`src/commands/one-shot.js:64-65`,
    `src/commands/chat-start.js:45-48`) — unreachable today, since an image session always writes
    the marker (`src/commands/image-gen.js:331`) and the id fails before anything is persisted
-   (`src/commands/image-session.js:423-433`: the interactive session persists only after a
-   successful generation, the catch branch continues without one; `src/sessions.js:379-385`: a
-   payload with 1 message or fewer is dropped together with its claim). Live
+   (`src/commands/image-session.js:423-433`: the catch branch continues without persisting;
+   `src/sessions.js:379-385`: a payload with 1 message or fewer is dropped together with its
+   claim). Live
    shape on 2026-09-12: Venice `/models?type=image` returned 41 models — 33 advertising an
    aspect-ratio list, 7 advertising none but a real pixel divisor (8 or 16), and exactly one
    utility model, `bria-bg-remover` (`aspectRatios` null, `widthHeightDivisor` 1, "Background
