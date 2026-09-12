@@ -247,14 +247,20 @@ async function main(opts, promptArg) {
     const prefs = await loadPreferences(opts.config)
     const outputDir = opts.outputDir || prefs.outputDir || null
     const partialId = typeof opts.export === 'string' ? opts.export : null
-    const exportFormat = opts.exportFormat || 'markdown'
+    const exportFormat = opts.exportFormat || prefs.exportFormat || 'markdown'
     const { exportCmd } = await import('./commands/export-cmd.js')
     await exportCmd(partialId, outputDir, exportFormat)
-    if (opts.outputDir && opts.outputDir !== prefs.outputDir) {
+    const exportPrefs = {}
+    if (opts.outputDir && opts.outputDir !== prefs.outputDir) exportPrefs.outputDir = opts.outputDir
+    if (opts.exportFormat && opts.exportFormat !== prefs.exportFormat) exportPrefs.exportFormat = opts.exportFormat
+    if (Object.keys(exportPrefs).length > 0) {
       try {
-        await savePreferences({ ...prefs, outputDir: opts.outputDir }, opts.config)
+        await savePreferences({ ...prefs, ...exportPrefs }, opts.config)
       } catch (err) {
-        fail(`Error: could not save the output directory preference: ${err.message}`)
+        // The output-directory wording is the pre-existing message; the export
+        // format one names the newer pref.
+        const what = exportPrefs.outputDir !== undefined ? 'output directory' : 'export format'
+        fail(`Error: could not save the ${what} preference: ${err.message}`)
       }
     }
     process.exit(0)

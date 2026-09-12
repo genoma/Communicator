@@ -1,4 +1,4 @@
-import { WEB_SEARCH_MODES } from './flags.js'
+import { WEB_SEARCH_MODES, resolveExportFormat } from './flags.js'
 
 const SESSION_FLAGS_LIST = '--temperature, --top-p, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --compact-thinking, --system-prompt, --rpg, --attach, --scrape'
 
@@ -224,8 +224,10 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --export-format requires --export.')
   }
 
-  if (opts.exportFormat !== undefined && opts.exportFormat !== 'markdown' && opts.exportFormat !== 'jsonl') {
-    errors.push('Error: --export-format expects "markdown" or "jsonl".')
+  try {
+    resolveExportFormat(opts.exportFormat)
+  } catch (err) {
+    errors.push(`Error: ${err.message}`)
   }
 
   if (opts.resume !== undefined && opts.export !== undefined) {

@@ -244,6 +244,27 @@ test('--export with an unknown id fails gracefully', async (t) => {
   assert.match(err.join('\n'), /No session found matching "nope"/)
 })
 
+test('--export --export-format jsonl persists the format and a later export reuses it', async (t) => {
+  withTTY(t, true)
+  await seedSession('2026-04-01T00-00-00')
+  await seedSession('2026-04-02T00-00-00')
+  const outDir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(outDir, { recursive: true, force: true }))
+  const configFile = await tempConfig(t)
+
+  await runAndExit(t, { config: configFile, export: '2026-04-01', outputDir: outDir, exportFormat: 'jsonl' }, undefined, 0)
+
+  const prefs = JSON.parse(await readFile(configFile, 'utf-8'))
+  assert.equal(prefs.exportFormat, 'jsonl')
+  const first = await readFile(join(outDir, 'session-2026-04-01T00-00-00', 'session-2026-04-01T00-00-00.jsonl'), 'utf-8')
+  assert.ok(first.trim().length > 0)
+
+  // The saved default applies to a later export that does not pass the flag.
+  await runAndExit(t, { config: configFile, export: '2026-04-02', outputDir: outDir }, undefined, 0)
+  const second = await readFile(join(outDir, 'session-2026-04-02T00-00-00', 'session-2026-04-02T00-00-00.jsonl'), 'utf-8')
+  assert.ok(second.trim().length > 0)
+})
+
 test('--delete with a unique partial id removes the session and exits 0', async (t) => {
   withTTY(t, true)
   const dir = await seedSession('2026-01-03T00-00-00')

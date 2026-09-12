@@ -12,8 +12,8 @@ test('matchCommands filters commands by prefix', () => {
   assert.deepEqual(matchCommands('', CHAT_COMMANDS), CHAT_COMMANDS)
 })
 
-test('CHAT_COMMANDS has 24 commands', () => {
-  assert.equal(CHAT_COMMANDS.length, 24)
+test('CHAT_COMMANDS has 25 commands', () => {
+  assert.equal(CHAT_COMMANDS.length, 25)
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/status',
@@ -35,6 +35,7 @@ test('CHAT_COMMANDS has 24 commands', () => {
     '/markdown',
     '/smooth',
     '/compact-thinking',
+    '/export-format',
     '/cost',
     '/help',
     '/exit',
@@ -43,8 +44,8 @@ test('CHAT_COMMANDS has 24 commands', () => {
 })
 
 test('matchCommands exposes aliases in autocomplete', () => {
-  assert.deepEqual(matchCommands('/e', CHAT_COMMANDS), ['/edit', '/exit'])
-  assert.deepEqual(matchCommands('/ex', CHAT_COMMANDS), ['/exit'])
+  assert.deepEqual(matchCommands('/e', CHAT_COMMANDS), ['/edit', '/export-format', '/exit'])
+  assert.deepEqual(matchCommands('/ex', CHAT_COMMANDS), ['/export-format', '/exit'])
 })
 
 function sessionFor(value, previousSession) {

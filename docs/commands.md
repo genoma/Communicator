@@ -28,7 +28,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--list-sessions`     | —        | List saved sessions (ID, last-activity timestamp, model, message count, title) and exit                |
 | `-r`  | `--resume`            | `[partial-id]` | Resume a saved session. No arg = picker, partial ID = prefix match. With `--rpg`, must be bare: continues a story chapter from `<dir>/sessions/` (chapter picker when more than one exists; most recent chapter when piping) |
 | `-x`  | `--export`            | `[partial-id]` | Export saved session(s). No arg = multi-select checkbox; partial ID = prefix match, unique prefix exports directly. Export is best-effort per session; any session it could not export is reported and it exits 1 |
-|       | `--export-format`     | `<markdown\|jsonl>` | Export format: `markdown` (default) or `jsonl` |
+|       | `--export-format`     | `<markdown\|jsonl>` | Export format: `markdown` (default) or `jsonl`. Persisted as the default with `--export --export-format <fmt>` and `/export-format` |
 |       | `--delete`            | `[partial-id]` | Delete saved session(s) (asks for confirmation). No arg = multi-select checkbox; partial ID = prefix match, unique prefix deletes directly. Removal is best-effort per session; anything it could not remove is reported and it exits 1 |
 |       | `--delete-all-sessions` | `[y/N]` | Delete ALL saved sessions. Bare flag asks "Are you sure?" on a terminal; pass `y` (or `yes`) to confirm — and to skip the prompt with piped stdin. Anything else does nothing |
 |       | `--output-dir`        | `<path>` | Set export directory for exported files (saved in preferences). Bare use saves it as the default (requires a TTY and no prompt or session-shaping flag). With `--image`, generated images are also copied there |
@@ -103,7 +103,7 @@ communicator --list-sessions                                   # list saved sess
 communicator --resume                                   # resume a saved session
 communicator --export                                   # pick one or more sessions to export to cwd (multi-select)
 communicator --export --output-dir ~/Documents          # export to custom directory
-communicator --export --export-format jsonl             # export as JSONL (one JSON object per line) instead of markdown
+communicator --export --export-format jsonl             # export as JSONL (one JSON object per line) instead of markdown, and save the format as the default
 communicator --delete                                   # pick one or more sessions to delete (with confirmation)
 communicator --delete 2026-07-30T19-11-45               # delete a specific session
 communicator --delete-all-sessions                     # asks "Are you sure?" on a terminal
@@ -154,6 +154,7 @@ communicator --no-watermark                                            # hide th
 | `/budget`      | Show used/remaining budget, or set one with `/budget <usd>`                          |
 | `/web-search`  | Set the web search mode (`/web-search auto|always|off`; `on` = `auto`), show the current mode with no args |
 | `/web-results` | Set the web search result count (`/web-results <n>`, OpenRouter only), show it with no args |
+| `/export-format` | Set the export format (`/export-format <markdown\|jsonl>`, persisted), show it with no args |
 | `/scrape`      | Scrape a web page into the conversation as context (`/scrape <url>`, Venice only, $0.01 per page). Type the message on the next line after the command |
 | `/attach`      | Queue files for the next message (`/attach <path>...`). No args = same as `/attachments` |
 | `/attachments` | List the queued attachments, or clear them with `/attachments clear` |

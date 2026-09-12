@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolveTemperatureFlag, resolveTopPFlag, resolveWebResultsFlag, resolveWebSearchFlag, normalizeWebSearchMode, webSearchGate, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed, resolvePrefOrNull } from '../src/flags.js'
+import { resolveTemperatureFlag, resolveTopPFlag, resolveWebResultsFlag, resolveWebSearchFlag, normalizeWebSearchMode, webSearchGate, resolveBudget, resolveSmoothSpeed, normalizeSmoothSpeed, resolvePrefOrNull, resolveExportFormat } from '../src/flags.js'
 
 test('resolveTemperatureFlag parses string and number values', () => {
   assert.equal(resolveTemperatureFlag({ temperature: '0.5' }), 0.5)
@@ -194,4 +194,15 @@ test('resolvePrefOrNull returns valid values and null for invalid ones', () => {
   assert.equal(resolvePrefOrNull(resolveBudget, -1), null)
   assert.equal(resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), 0), null)
   assert.equal(resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), 5), 5)
+})
+
+test('resolveExportFormat accepts the two formats and rejects anything else', () => {
+  assert.equal(resolveExportFormat('markdown'), 'markdown')
+  assert.equal(resolveExportFormat('jsonl'), 'jsonl')
+  assert.equal(resolveExportFormat(undefined), undefined)
+  assert.equal(resolveExportFormat(''), undefined)
+  assert.throws(
+    () => resolveExportFormat('csv'),
+    (err) => err.message === '--export-format expects "markdown" or "jsonl".'
+  )
 })

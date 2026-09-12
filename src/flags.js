@@ -57,6 +57,14 @@ export function resolveWebResultsFlag({ webResults } = {}) {
   return num
 }
 
+export function resolveExportFormat(value) {
+  if (value === undefined || value === null || value === '') return undefined
+  if (value !== 'markdown' && value !== 'jsonl') {
+    throw new Error('--export-format expects "markdown" or "jsonl".')
+  }
+  return value
+}
+
 export function normalizeWebSearchMode(value) {
   if (value === true || value === 'on') return 'auto'
   if (WEB_SEARCH_MODES.has(value)) return value

@@ -646,3 +646,16 @@ test('the session-flags exclusion still precedes the pure-setter rule', () => {
   assert.match(errors[0], /session flags/)
   assert.equal(errors[1], 'Error: --no-watermark cannot be combined with --list-* flags.')
 })
+
+test('--export-format requires --export and accepts only the two formats', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ exportFormat: 'jsonl' }), TTY),
+    ['Error: --export-format requires --export.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ exportFormat: 'csv', export: true }), TTY),
+    ['Error: --export-format expects "markdown" or "jsonl".']
+  )
+  assert.deepEqual(validateCliFlags(opts({ exportFormat: 'jsonl', export: true }), TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ exportFormat: 'markdown', export: 'x' }), TTY), [])
+})

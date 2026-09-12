@@ -1641,7 +1641,7 @@ test('/model keeps compatible attachments on switch', async (t) => {
   assert.equal(consoleSpy.log(0), 'Switched to NewProvider / new/model\n')
 })
 
-test('CHAT_COMMANDS keeps the 24-command order', () => {
+test('CHAT_COMMANDS keeps the 25-command order', () => {
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/status',
@@ -1663,6 +1663,7 @@ test('CHAT_COMMANDS keeps the 24-command order', () => {
     '/markdown',
     '/smooth',
     '/compact-thinking',
+    '/export-format',
     '/cost',
     '/help',
     '/exit',
@@ -2113,4 +2114,35 @@ test('/model prints the updated status line with the new model values', async (t
 
   assert.equal(consoleSpy.log(0), 'Switched to NewProvider / new/model\n')
   assert.equal(consoleSpy.log(1), 'Current settings: NewProvider / new/model  [thinking: Low]  [temp: 0.3]  [top-p: default]  [web: auto]  [smooth: on (normal, ~2000 chars/s)]\n')
+})
+
+test('/export-format shows and persists the export format', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx({ prefs: { exportFormat: 'jsonl' } })
+
+  await chatCommands['/export-format']({ ...ctx, args: '' })
+  assert.equal(consoleSpy.log(0), 'Export format: jsonl (default: markdown).\n')
+
+  await chatCommands['/export-format']({ ...ctx, args: 'markdown' })
+  assert.deepEqual(prefsUpdates, [{ exportFormat: 'markdown' }])
+  assert.equal(consoleSpy.log(1), 'Export format set to markdown.\n')
+})
+
+test('/export-format with no stored pref shows the markdown default', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx()
+
+  await chatCommands['/export-format']({ ...ctx, args: '' })
+
+  assert.equal(consoleSpy.log(0), 'Export format: markdown (default: markdown).\n')
+})
+
+test('/export-format with an invalid value errors without saving', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx, prefsUpdates } = makeCtx()
+
+  await chatCommands['/export-format']({ ...ctx, args: 'csv' })
+
+  assert.match(String(consoleSpy.error(0)), /--export-format expects "markdown" or "jsonl"/)
+  assert.deepEqual(prefsUpdates, [])
 })

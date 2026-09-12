@@ -1,7 +1,7 @@
 import { formatError, commandErrorLine, isExitPromptError } from '../../errors.js'
 import { selectModelAndEndpoint } from '../../model-selection.js'
 import { getEffortLabel, selectReasoningEffort } from '../../prompts.js'
-import { resolveTemperatureFlag, resolveTopPFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, webSearchGate } from '../../flags.js'
+import { resolveTemperatureFlag, resolveTopPFlag, resolveWebResultsFlag, resolveSmoothSpeed, resolveBudget, resolveExportFormat, webSearchGate } from '../../flags.js'
 import { DEFAULT_WEB_SEARCH_RESULTS, formatCost, cpsToCharsPerTick, formatSmoothSpeed, formatSamplingValue, SCRAPE_COST_USD } from '../../constants.js'
 import { budgetStatusLine, budgetExhaustedMessage, UsageTracker, seedTracker } from '../../tracker.js'
 import { sessionLabel } from '../../ui/format.js'
@@ -49,6 +49,7 @@ const COMMAND_DESCRIPTIONS = {
   '/markdown': 'Toggle terminal markdown rendering',
   '/smooth': 'Show or set smooth streaming state and speed',
   '/compact-thinking': 'Show or set whether reasoning streams as a meter',
+  '/export-format': 'Show or set the export format for future exports',
   '/cost': 'Print the running session cost/token totals',
 }
 
@@ -60,6 +61,7 @@ const COMMAND_USAGE = {
   '/web-results': '/web-results <n>',
   '/smooth': '/smooth [on|off|<level>|<cps>]',
   '/compact-thinking': '/compact-thinking [on|off]',
+  '/export-format': '/export-format <markdown|jsonl>',
   '/attach': '/attach <path>...',
   '/attachments': '/attachments [clear]',
   '/scrape': '/scrape <url>',
@@ -672,6 +674,24 @@ const handlers = {
     ctx.render.compactThinking = next
     await ctx.savePrefs({ compactThinking: next })
     console.log(`Compact thinking ${next ? 'enabled' : 'disabled'}.\n`)
+    showStatus(ctx)
+  },
+
+  '/export-format': async (ctx) => {
+    const value = ctx.args
+    if (!value) {
+      console.log(`Export format: ${ctx.prefs?.exportFormat || 'markdown'} (default: markdown).\n`)
+      return
+    }
+    let parsed
+    try {
+      parsed = resolveExportFormat(value)
+    } catch (err) {
+      console.error(commandErrorLine(err))
+      return
+    }
+    await ctx.savePrefs({ exportFormat: parsed })
+    console.log(`Export format set to ${parsed}.\n`)
     showStatus(ctx)
   },
 
