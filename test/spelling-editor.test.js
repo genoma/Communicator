@@ -556,3 +556,234 @@ test('a provider-less editor is unaffected', async () => {
   assert.deepEqual(await pending, ['hello', null])
   assert.ok(!output.text().includes(UNDERLINE))
 })
+
+// The correction backend speaks the real op shape: only the word the system
+// checker would fix comes back corrected, so the editor path runs against the
+// real provider (mask, boundary shape and the feature gate all apply) with no
+// osascript involved.
+function autocorrectBackend() {
+  const backend = {
+    calls: [],
+    corrections: () => backend.calls.filter((c) => c.op === 'correction'),
+    async run(request) {
+      backend.calls.push(request)
+      if (request.op !== 'correction') return { ranges: [] }
+      const word = request.text.slice(request.location, request.location + request.length)
+      return { correction: word === 'wrold' ? 'world' : null }
+    },
+  }
+  return backend
+}
+
+// A correction that only lands when the test releases it, so the staleness
+// guards of the editor path can be exercised.
+function gatedCorrectionBackend() {
+  let release = null
+  const gate = new Promise((resolve) => { release = resolve })
+  const backend = {
+    calls: [],
+    corrections: () => backend.calls.filter((c) => c.op === 'correction'),
+    async run(request) {
+      backend.calls.push(request)
+      if (request.op !== 'correction') return { ranges: [] }
+      await gate
+      return { correction: 'world' }
+    },
+  }
+  return { backend, gate, release: () => release() }
+}
+
+test('a boundary character applies the correction as one undoable edit', async () => {
+  const backend = autocorrectBackend()
+  const spelling = createSpellingProvider({
+    backend,
+    features: { typoDetection: false, autocorrect: true },
+    debounceMs: 1,
+  })
+  const { input, output, pending } = openEditor({ spelling })
+
+  input.emit('data', 'wrold')
+  await delay(20)
+  assert.equal(backend.corrections().length, 0, 'a letter never completes a word')
+
+  input.emit('data', ' ')
+  await delay(20)
+  assert.deepEqual(backend.corrections(), [{ op: 'correction', text: 'wrold ', location: 0, length: 5 }])
+  assert.ok(output.text().includes('world '), 'the corrected word is painted')
+
+  input.emit('data', '\x1b[122;5u') // Ctrl+Z reverts the correction only
+  input.emit('data', '\r')
+
+  assert.deepEqual(await pending, ['wrold ', null], 'one undo restores the word the user typed')
+  spelling.dispose()
+})
+
+test('a correction that lands after further typing is dropped', async () => {
+  const { backend, release } = gatedCorrectionBackend()
+  const spelling = createSpellingProvider({
+    backend,
+    features: { typoDetection: false, autocorrect: true },
+    debounceMs: 1,
+  })
+  const { input, pending } = openEditor({ spelling })
+
+  input.emit('data', 'hello wrold')
+  input.emit('data', ' ')
+  await delay(20)
+  input.emit('data', 'x')
+  release()
+  await delay(20)
+  input.emit('data', '\r')
+
+  assert.deepEqual(await pending, ['hello wrold x', null], 'fast typing is never corrected mid-word')
+  spelling.dispose()
+})
+
+test('a correction that lands after the caret moved is dropped', async () => {
+  const { backend, release } = gatedCorrectionBackend()
+  const spelling = createSpellingProvider({
+    backend,
+    features: { typoDetection: false, autocorrect: true },
+    debounceMs: 1,
+  })
+  const { input, pending } = openEditor({ spelling })
+
+  input.emit('data', 'hello wrold')
+  input.emit('data', ' ')
+  await delay(20)
+  input.emit('data', '\x1b[D') // the line is unchanged, the caret moved
+  release()
+  await delay(20)
+  input.emit('data', '\r')
+
+  assert.deepEqual(await pending, ['hello wrold ', null], 'a moved caret drops the correction')
+  spelling.dispose()
+})
+
+test('autocorrect fires neither when the feature is off nor on a command line', async () => {
+  const off = autocorrectBackend()
+  const offSpelling = createSpellingProvider({
+    backend: off,
+    features: { typoDetection: false, autocorrect: false },
+    debounceMs: 1,
+  })
+  const offEditor = openEditor({ spelling: offSpelling })
+  offEditor.input.emit('data', 'hello wrold')
+  offEditor.input.emit('data', ' ')
+  await delay(20)
+  assert.equal(off.corrections().length, 0, 'a disabled feature never spawns')
+  offEditor.input.emit('data', '\r')
+  assert.deepEqual(await offEditor.pending, ['hello wrold ', null], 'the line keeps the typo')
+  offSpelling.dispose()
+
+  const command = autocorrectBackend()
+  const commandSpelling = createSpellingProvider({
+    backend: command,
+    features: { typoDetection: false, autocorrect: true },
+    debounceMs: 1,
+  })
+  const commandEditor = openEditor({ spelling: commandSpelling })
+  commandEditor.input.emit('data', '/wrold')
+  commandEditor.input.emit('data', ' ')
+  await delay(20)
+  assert.equal(command.calls.length, 0, 'a command line is never handed to the checker')
+  commandEditor.input.emit('data', '\r')
+  assert.deepEqual(await commandEditor.pending, ['/wrold ', null])
+  commandSpelling.dispose()
+})
+
+test('a correction that lands while a replacement list is open is dropped', async () => {
+  const { gate, release } = gatedCorrectionBackend()
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordCompletion: () => null,
+    getWordReplacements: async (lines, row) => ({ line: row, startCol: 6, endCol: 11, items: ['world'] }),
+    getAutocorrection: () => gate.then(() => ({ startCol: 6, endCol: 12, insert: 'world ' })),
+  }
+  const { input, output, pending } = openEditor({ spelling })
+
+  input.emit('data', 'hello wrold')
+  input.emit('data', ' ')
+  await delay(5)
+  input.emit('data', '\x1b[46;5u') // Ctrl+. opens the replacement list
+  await delay(10)
+  assert.ok(output.text().includes('world'), 'the list is open')
+
+  const before = output.text().length
+  release()
+  await delay(10)
+  assert.equal(output.text().length, before, 'the open list drops the correction without a repaint')
+
+  input.emit('data', '\x1b') // a lone Escape closes the list
+  await delay(80)
+  input.emit('data', '\r')
+
+  assert.deepEqual(await pending, ['hello wrold ', null], 'the line keeps what the user typed')
+})
+
+test('a multi-character input run (a paste) is never autocorrected', async () => {
+  const backend = autocorrectBackend()
+  const spelling = createSpellingProvider({
+    backend,
+    features: { typoDetection: false, autocorrect: true },
+    debounceMs: 1,
+  })
+  const { input, pending } = openEditor({ spelling })
+
+  // One run: the terminal delivered the whole chunk at once, so its last word
+  // is text the user did not just type (OMP guards its call the same way).
+  input.emit('data', 'hello wrold ')
+  await delay(20)
+  assert.equal(backend.corrections().length, 0, 'only a one-character insert can complete a word')
+
+  input.emit('data', '\r')
+  assert.deepEqual(await pending, ['hello wrold ', null], 'the chunk is untouched')
+  spelling.dispose()
+})
+
+test('a correction keeps the punctuation that completed the word', async () => {
+  const backend = autocorrectBackend()
+  const spelling = createSpellingProvider({
+    backend,
+    features: { typoDetection: false, autocorrect: true },
+    debounceMs: 1,
+  })
+  const { input, pending } = openEditor({ spelling })
+
+  input.emit('data', 'wrold')
+  input.emit('data', ',')
+  await delay(20)
+  assert.deepEqual(backend.corrections(), [{ op: 'correction', text: 'wrold,', location: 0, length: 5 }])
+
+  input.emit('data', '\r')
+  assert.deepEqual(await pending, ['world,', null], 'the comma survives the correction')
+  spelling.dispose()
+})
+
+test('a correction still in flight when the block closes is dropped', async () => {
+  const { gate, release } = gatedCorrectionBackend()
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordCompletion: () => null,
+    getWordReplacements: async () => null,
+    getAutocorrection: () => gate.then(() => ({ startCol: 0, endCol: 6, insert: 'world ' })),
+  }
+  const { input, output, pending } = openEditor({ spelling })
+
+  input.emit('data', 'wrold')
+  input.emit('data', ' ')
+  await delay(5)
+  input.emit('data', '\r')
+  assert.deepEqual(await pending, ['wrold ', null])
+
+  const before = output.text().length
+  release()
+  await delay(10)
+  assert.equal(output.text().length, before, 'nothing is written after the block closed')
+})

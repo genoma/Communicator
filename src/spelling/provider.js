@@ -11,12 +11,14 @@ const MAX_CACHE_ENTRIES = 256
 const MAX_CONSECUTIVE_FAILURES = 3
 const MAX_WORD_REPLACEMENTS = 10
 
-// Every word this provider renders (a replacement row, the ghost hint) has to
-// stay on one line: one carrying whitespace or a control character would break
-// the row and the grid arithmetic.
+// Every word this provider shows OR inserts (a replacement row, the ghost hint,
+// the corrected word) has to stay on one line: one carrying whitespace or a
+// control character would break the row and the grid arithmetic.
 const SINGLE_LINE_WORD = /^[^\s\p{Cc}]+$/u
 // The caret also counts as inside a flagged range one character past its end,
 // when that character ends a sentence ("wrold" with the caret after the space).
+// The same class is the boundary character that completes a word for
+// autocorrect, so the two paths share one spelling of "sentence boundary".
 const WORD_BOUNDARY = /[\s.,;:!?"\])}]/u
 // The partial word ending at the caret, and the test for a caret that sits
 // INSIDE a word, where the dictionary would complete something other than the
@@ -25,8 +27,9 @@ const PARTIAL_WORD = /[\p{L}\p{M}']+$/u
 const WORD_CONTINUATION = /^[\p{L}\p{M}']/u
 
 // Job kinds, most urgent first: a replacement list the user waits on, then the
-// caret-row completion, then the debounced typo check the grid repaints with.
-const JOB_ORDER = ['guesses', 'completions', 'check']
+// caret-row completion, then the correction of the word a boundary character
+// just completed, then the debounced typo check the grid repaints with.
+const JOB_ORDER = ['guesses', 'completions', 'correction', 'check']
 
 /** Keep only ranges that are inside the line and sit in prose */
 function proseRanges(line, reported) {
@@ -95,8 +98,9 @@ function completionSuffix(prefix, words) {
  * `getWordCompletion(lines, row, col)` answers with the cached completion
  * suffix for the word before the caret (or null while pending / when there is
  * nothing to complete) and `getWordReplacements(lines, row, col)` with the
- * replacement list of the flagged word at the caret. Both are word-scoped and
- * behind their own feature gate.
+ * replacement list of the flagged word at the caret; `getAutocorrection(lines,
+ * row, col)` is the one lookup that edits the buffer, so it is strictly
+ * opt-in. All three are word-scoped and behind their own feature gate.
  *
  * One child runs at a time for every kind, with one pending slot per kind
  * (a newer request of the same kind replaces the pending one) and every caller
@@ -233,9 +237,12 @@ export function createSpellingProvider({
       },
     })
 
-  /** Whether the line a word-scoped lookup was asked about is still the caller's line */
-  const stillCurrent = (lines, row, line) =>
-    !disposed && !disabled && features.typoDetection !== false && Array.isArray(lines) && lines[row] === line
+  /** Whether the line an async lookup was asked about is still the caller's line */
+  const lineUnchanged = (lines, row, line) =>
+    !disposed && !disabled && Array.isArray(lines) && lines[row] === line
+
+  /** The phase-1/2 dirty guard: the line is unchanged and typo detection is on */
+  const stillCurrent = (lines, row, line) => lineUnchanged(lines, row, line) && features.typoDetection !== false
 
   const provider = {
     onUpdate,
@@ -328,6 +335,55 @@ export function createSpellingProvider({
       return { line: row, startCol: range[0], endCol: range[1], items }
     },
 
+    /**
+     * The correction of the prose word the just-typed boundary character
+     * completed: `{ startCol, endCol, insert }`, where `insert` is the
+     * correction PLUS that boundary character and `endCol` covers both, so the
+     * caller replaces exactly the range it was handed and nothing else.
+     *
+     * Null when the feature is not explicitly on, the caret did not just
+     * complete a prose word (a letter, a code-ish token, a `/`-command line,
+     * an over-long line or buffer), the checker answered nothing usable, or the
+     * caller's line changed while waiting.
+     */
+    async getAutocorrection(lines, row, col) {
+      if (disposed || disabled || features.autocorrect !== true) return null
+      const line = checkableLine(lines, row)
+      if (line === null || col <= 0 || col > line.length) return null
+      const boundary = line[col - 1]
+      if (!WORD_BOUNDARY.test(boundary)) return null
+      const match = PARTIAL_WORD.exec(line.slice(0, col - 1))
+      if (match === null) return null
+      // The checker answers for WORD-ALIGNED ranges only, and the range must be
+      // the word itself: a leading/trailing apostrophe (`he said 'wrold `)
+      // belongs to the quoting, not to the word, and sweeping it into the
+      // replaced range would rewrite text the user typed. Trim to the word, so
+      // the request is answerable (an untrimmed quoted range gets no correction
+      // at all) and the quotes survive the edit.
+      const raw = match[0]
+      const leading = (raw.match(/^'+/) ?? [''])[0].length
+      const trailing = (raw.match(/'+$/) ?? [''])[0].length
+      const word = raw.slice(leading, raw.length - trailing)
+      if (word.length < 2) return null
+      const end = col - 1 - trailing
+      const start = end - word.length
+      if (!isProseRange(line, start, end)) return null
+      const quotes = raw.slice(raw.length - trailing)
+      const correction = await schedule('correction', `${start}:${end}:${line}`, 0, {
+        // A word-scoped op needs the word's own range and an explicit language
+        // (see jxa.js): a wrong range can hang the checker.
+        request: () => ({ op: 'correction', text: line, location: start, length: word.length }),
+        read: (reply) => {
+          const fixed = reply?.correction
+          if (typeof fixed !== 'string' || fixed === '' || fixed === word) return null
+          if (!SINGLE_LINE_WORD.test(fixed)) return null
+          return { startCol: start, endCol: col, insert: `${fixed}${quotes}${boundary}` }
+        },
+      })
+      if (!lineUnchanged(lines, row, line) || features.autocorrect !== true) return null
+      return correction
+    },
+
     setFeatures(next = {}) {
       // An explicit enable of ANY feature after the failure latch is also the
       // retry (the latch is provider-wide, not per feature), so no setting can
@@ -341,6 +397,7 @@ export function createSpellingProvider({
       if (next.autocorrect !== undefined) features.autocorrect = next.autocorrect === true
       if (features.typoDetection === false) dropQueued(['check', 'guesses'])
       if (features.autocomplete === false) dropQueued(['completions'])
+      if (features.autocorrect !== true) dropQueued(['correction'])
     },
 
     dispose() {

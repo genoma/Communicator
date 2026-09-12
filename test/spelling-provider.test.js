@@ -536,6 +536,226 @@ test('a feature toggle drops its queued jobs and resolves their callers', async 
   spelling.dispose()
 })
 
+test('a correction is asked for the completed word and covers word plus boundary', async () => {
+  const backend = createBackend(async () => ({ correction: 'world' }))
+  const spelling = createSpellingProvider({ backend, features: { autocorrect: true }, debounceMs: 1 })
+
+  const result = await spelling.getAutocorrection(['hello wrold '], 0, 12)
+  assert.deepEqual(backend.calls.map((c) => c.request), [
+    { op: 'correction', text: 'hello wrold ', location: 6, length: 5 },
+  ])
+  assert.deepEqual(result, { startCol: 6, endCol: 12, insert: 'world ' }, 'the boundary the user typed is part of the edit')
+  assert.deepEqual(await spelling.getAutocorrection(['hello wrold.'], 0, 12), { startCol: 6, endCol: 12, insert: 'world.' })
+  spelling.dispose()
+})
+
+test('autocorrect is not asked for a caret that did not complete a prose word', async () => {
+  const backend = createBackend(async () => ({ correction: 'world' }))
+  const spelling = createSpellingProvider({ backend, features: { autocorrect: true }, debounceMs: 1 })
+
+  assert.equal(await spelling.getAutocorrection(['hello wrold'], 0, 11), null, 'no boundary character')
+  assert.equal(await spelling.getAutocorrection(['hello wrold '], 0, 11), null, 'the caret sits before the boundary')
+  assert.equal(await spelling.getAutocorrection(['hello wrold '], 1, 12), null, 'a row that does not exist')
+  assert.equal(await spelling.getAutocorrection(['hello wrold '], 0, 13), null, 'a column past the line')
+  assert.equal(await spelling.getAutocorrection(['hello wrold '], 0, 0), null, 'the start of the line')
+  assert.equal(await spelling.getAutocorrection(['src/wrold '], 0, 10), null, 'a path is not prose')
+  assert.equal(await spelling.getAutocorrection(['--wrold '], 0, 8), null, 'a flag is not prose')
+  assert.equal(await spelling.getAutocorrection(['/wrold '], 0, 7), null, 'a command line is never corrected')
+  assert.equal(await spelling.getAutocorrection(['a'.repeat(MAX_LINE_LENGTH + 1) + ' '], 0, MAX_LINE_LENGTH + 2), null, 'an over-long line')
+  assert.equal(await spelling.getAutocorrection(['wrold ', 'a'.repeat(MAX_BUFFER_LENGTH)], 0, 6), null, 'an oversized buffer')
+  assert.equal(backend.calls.length, 0, 'a non-qualifying caret never spawns a correction')
+  spelling.dispose()
+})
+
+test('an unusable correction reply is never applied', async () => {
+  let reply = {}
+  const backend = createBackend(async () => reply)
+  const spelling = createSpellingProvider({ backend, features: { autocorrect: true }, debounceMs: 1 })
+  const ask = () => spelling.getAutocorrection(['hello wrold '], 0, 12)
+
+  assert.equal(await ask(), null, 'a reply with no correction key')
+  reply = { correction: null }
+  assert.equal(await ask(), null, 'a null correction')
+  reply = { correction: '' }
+  assert.equal(await ask(), null, 'an empty correction')
+  reply = { correction: 'wrold' }
+  assert.equal(await ask(), null, 'the word the user already typed')
+  reply = { correction: 'world\n' }
+  assert.equal(await ask(), null, 'a correction carrying a line break')
+  reply = { correction: 'new york' }
+  assert.equal(await ask(), null, 'a correction carrying whitespace')
+  reply = { correction: 'World' }
+  assert.deepEqual(await ask(), { startCol: 6, endCol: 12, insert: 'World ' }, 'the comparison is case-sensitive')
+  assert.equal(backend.calls.length, 7, 'every reply in the list was really asked')
+  spelling.dispose()
+})
+
+test('autocorrect is gated by its own feature flag and is opt-in', async () => {
+  const backend = createBackend(async () => ({ correction: 'world' }))
+  const off = createSpellingProvider({ backend, features: { autocorrect: false }, debounceMs: 1 })
+  assert.equal(await off.getAutocorrection(['hello wrold '], 0, 12), null)
+
+  const unset = createSpellingProvider({ backend, features: {}, debounceMs: 1 })
+  assert.equal(await unset.getAutocorrection(['hello wrold '], 0, 12), null, 'an unset flag can never edit the buffer')
+  await delay(20)
+  assert.equal(backend.calls.length, 0, 'a feature that is not on never spawns')
+  off.dispose()
+  unset.dispose()
+})
+
+test('a correction whose line changed while waiting resolves null', async () => {
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const backend = createBackend(async () => {
+    await gate
+    return { correction: 'world' }
+  })
+  const spelling = createSpellingProvider({ backend, features: { autocorrect: true }, debounceMs: 1 })
+  const lines = ['hello wrold ']
+
+  const pending = spelling.getAutocorrection(lines, 0, 12)
+  await delay(5)
+  lines[0] = 'hello wrold x'
+  release()
+
+  assert.equal(await pending, null, 'the edited line drops the stale correction')
+  spelling.dispose()
+})
+
+test('an in-flight correction is dropped when the feature is turned off', async () => {
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const backend = createBackend(async () => {
+    await gate
+    return { correction: 'world' }
+  })
+  const spelling = createSpellingProvider({ backend, features: { autocorrect: true }, debounceMs: 1 })
+
+  const pending = spelling.getAutocorrection(['hello wrold '], 0, 12)
+  await delay(5)
+  spelling.setFeatures({ autocorrect: false })
+  release()
+
+  assert.equal(await pending, null, 'the correction never lands once the feature is off')
+  spelling.dispose()
+})
+
+test('turning autocorrect off drops a queued correction', async () => {
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const backend = createBackend(async (request) => {
+    if (request.op === 'check') await gate
+    return request.op === 'correction' ? { correction: 'world' } : { ranges: [] }
+  })
+  const spelling = createSpellingProvider({
+    backend,
+    features: { typoDetection: true, autocorrect: true },
+    debounceMs: 1,
+  })
+
+  spelling.getTypoRanges('line A wrold')
+  await delay(20)
+  assert.equal(backend.calls.length, 1, 'the check holds the single child slot')
+  const pending = spelling.getAutocorrection(['hello wrold '], 0, 12)
+  await delay(5)
+  assert.equal(backend.calls.length, 1, 'the correction is queued behind it')
+
+  spelling.setFeatures({ autocorrect: false })
+  release()
+
+  assert.equal(await pending, null, 'the queued correction resolves instead of hanging')
+  await delay(20)
+  assert.equal(backend.calls.filter((c) => c.request.op === 'correction').length, 0, 'and it is never spawned')
+  spelling.dispose()
+})
+
+test('dispose resolves a pending correction with null and aborts the child', async () => {
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const backend = createBackend(async (_request, _call, options) => {
+    // Mirror the real backend: an aborted call rejects instead of resolving.
+    await new Promise((resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+      gate.then(resolve)
+    })
+    return { correction: 'world' }
+  })
+  const spelling = createSpellingProvider({ backend, features: { autocorrect: true }, debounceMs: 1 })
+
+  const pending = spelling.getAutocorrection(['hello wrold '], 0, 12)
+  await delay(5)
+  assert.equal(backend.calls.length, 1)
+
+  spelling.dispose()
+  assert.equal(backend.calls[0].signal.aborted, true, 'the in-flight child is aborted')
+  assert.equal(await pending, null, 'the awaiting caller is not left hanging')
+  release()
+})
+
+test('a quoted word is corrected without touching its quotes', async () => {
+  const backend = createBackend(async (request) =>
+    request.op === 'correction' ? { correction: 'world' } : { ranges: [] }
+  )
+  const spelling = createSpellingProvider({ backend, features: { autocorrect: true }, debounceMs: 1 })
+
+  const quoted = "he said 'wrold "
+  assert.deepEqual(await spelling.getAutocorrection([quoted], 0, quoted.length), {
+    startCol: 9,
+    endCol: quoted.length,
+    insert: 'world ',
+  })
+  assert.deepEqual(backend.calls[0].request, { op: 'correction', text: quoted, location: 9, length: 5 })
+
+  // A closing quote sits between the word and the boundary: the range still
+  // starts at the word and the quote is written back after the correction.
+  const both = "he said 'wrold' "
+  assert.deepEqual(await spelling.getAutocorrection([both], 0, both.length), {
+    startCol: 9,
+    endCol: both.length,
+    insert: "world' ",
+  })
+  assert.deepEqual(backend.calls[1].request, { op: 'correction', text: both, location: 9, length: 5 })
+  spelling.dispose()
+})
+
+test('a correction carrying nothing but quotes is never applied', async () => {
+  const backend = createBackend(async () => ({ correction: 'world' }))
+  const spelling = createSpellingProvider({ backend, features: { autocorrect: true }, debounceMs: 1 })
+
+  assert.equal(await spelling.getAutocorrection(["he said '' "], 0, 10), null)
+  await delay(10)
+  assert.equal(backend.calls.length, 0, 'a word of quotes alone is not a word')
+  spelling.dispose()
+})
+
+test('a queued correction starts before a queued check', async () => {
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const backend = createBackend(async (request) => {
+    if (backend.calls.length === 1) await gate
+    return request.op === 'correction' ? { correction: 'world' } : { ranges: [] }
+  })
+  const spelling = createSpellingProvider({
+    backend,
+    features: { typoDetection: true, autocorrect: true },
+    debounceMs: 1,
+  })
+
+  spelling.getTypoRanges('line A wrold')
+  await delay(20)
+  assert.equal(backend.calls.length, 1, 'the first check is in flight')
+
+  spelling.getTypoRanges('line B wrold')
+  const correction = spelling.getAutocorrection(['hello wrold '], 0, 12)
+  await delay(20)
+  release()
+  await delay(40)
+
+  assert.deepEqual(backend.calls.map((c) => c.request.op), ['check', 'correction', 'check'], 'the correction outranks the check')
+  assert.deepEqual(await correction, { startCol: 6, endCol: 12, insert: 'world ' })
+  spelling.dispose()
+})
+
 test('off darwin the platform provider is a complete no-op', () => {
   for (const platform of ['linux', 'win32', 'freebsd']) {
     assert.equal(createPlatformSpellingProvider({ platform, features: {} }), null)
@@ -545,8 +765,12 @@ test('off darwin the platform provider is a complete no-op', () => {
 test('on darwin the platform provider exposes the provider contract', () => {
   const provider = createPlatformSpellingProvider({ platform: 'darwin', features: { typoDetection: true } })
   assert.equal(typeof provider.getTypoRanges, 'function')
+  assert.equal(typeof provider.getWordCompletion, 'function')
+  assert.equal(typeof provider.getWordReplacements, 'function')
+  assert.equal(typeof provider.getAutocorrection, 'function')
   assert.equal(typeof provider.setFeatures, 'function')
   assert.equal(typeof provider.dispose, 'function')
+  assert.equal(provider.maxCheckedLines, 256)
   assert.equal(provider.onUpdate, null)
   // Dispose without ever asking: nothing was spawned, so this is a plain no-op.
   provider.dispose()

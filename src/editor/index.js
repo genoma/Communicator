@@ -391,6 +391,45 @@ function readFromTTY(input, output, prompt, options) {
       repaintMode('normal')
     }
 
+    // Autocorrect: the word the just-typed character completed. The provider is
+    // asked on every single-character insert and answers null unless that
+    // character closed a prose word (see src/spelling/provider.js), so a plain
+    // letter never spawns a request. The lookup is async, so the captured
+    // row/col/line are re-validated when the result lands (the phase-1/2 dirty
+    // guard): a caret that moved, an edited line, an open list or a closed
+    // editor drops the correction silently — fast typing is never corrected
+    // mid-word.
+    let autocorrectRequest = 0
+
+    const maybeAutocorrect = async () => {
+      if (!spelling || typeof spelling.getAutocorrection !== 'function') return
+      if (model.isPasting) return
+      const row = model.row
+      const col = model.col
+      const lines = model.lines
+      const line = lines[row]
+      const token = ++autocorrectRequest
+      let result
+      try {
+        result = await spelling.getAutocorrection(lines, row, col)
+      } catch {
+        result = null
+      }
+      if (!active || token !== autocorrectRequest) return
+      if (model.row !== row || model.col !== col || model.lines !== lines || model.lines[row] !== line) return
+      if (model.suggestSession || replaceSession) return
+      const usable =
+        result &&
+        typeof result.insert === 'string' &&
+        result.insert !== '' &&
+        result.startCol >= 0 &&
+        result.endCol > result.startCol &&
+        result.endCol <= line.length
+      if (!usable) return
+      replaceRange(model, row, result.startCol, result.endCol, result.insert)
+      repaintMode('normal')
+    }
+
     const moveReplacement = (dir) => {
       if (!replaceSession) return false
       const count = replaceSession.matches.length
@@ -518,9 +557,10 @@ function readFromTTY(input, output, prompt, options) {
 
     // --- Key map ---
     const keyMap = new Map()
-    const insertCharAndPaint = (ch) => {
+    const insertCharAndPaint = (ch, { autocorrect = true } = {}) => {
       insertChar(model, ch)
       repaintMode('normal')
+      if (autocorrect) void maybeAutocorrect()
     }
     const insertNewlineAndPaint = () => {
       insertNewline(model)
@@ -664,12 +704,17 @@ function readFromTTY(input, output, prompt, options) {
 
     function insertRun(run) {
       if (model.historyArrowAttempt > 0) model.historyArrowAttempt = 0
+      // A run longer than one character is a paste (or a chunk the terminal
+      // batched): rewriting its last word would edit text the user did not just
+      // type, so autocorrect only ever fires for a one-character insert — OMP
+      // guards its own call the same way.
+      const autocorrect = run.length === 1
       for (const ch of run) {
         const handler = keyMap.get(ch)
         if (handler && (ch.charCodeAt(0) < 32 || ch === '\x7f')) {
           handler()
         } else if (ch.charCodeAt(0) >= 32) {
-          insertCharAndPaint(ch)
+          insertCharAndPaint(ch, { autocorrect })
         }
       }
     }
@@ -688,9 +733,10 @@ function readFromTTY(input, output, prompt, options) {
         dsrTimer = null
       }
       consumer.cancelPendingEsc()
-      // A lookup in flight must not open a list after the block closed: the
-      // token invalidates it and the repaint is inert anyway.
+      // A lookup in flight must not open a list or edit the buffer after the
+      // block closed: the tokens invalidate it and the repaint is inert anyway.
       replaceRequest += 1
+      autocorrectRequest += 1
       replaceSession = null
       if (typeof output.removeListener === 'function') {
         output.removeListener('resize', resizeHandler)

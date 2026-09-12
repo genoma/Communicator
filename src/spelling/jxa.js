@@ -8,7 +8,7 @@ export const JXA_REQUEST_ENV = 'COMMUNICATOR_SPELLING'
 // user's whole active dictionary set, so Italian/Russian prose stays unflagged
 // while English typos are still caught (the explicit-English path flags every
 // correctly spelled Italian word). The word-scoped operations (guesses /
-// correction / completions, used from phase 2 on) must pass an explicit
+// correction / completions) must pass an explicit
 // language instead — `completionsForPartialWordRange…` can hang for seconds on
 // a nil language or a non-word-aligned range.
 export const JXA_PROGRAM = `
