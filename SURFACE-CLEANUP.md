@@ -4,7 +4,7 @@ The approved direction for the "too many one-shots" complaint: remove the bare "
 and exit" dispatch and the generation/export knobs that duplicate the image REPL, replacing every
 lost capability with an in-app setter **before** anything is removed.
 
-**Status: in progress — Stage 1 landed, Stage 2 next.** Branch: `feat/surface-cleanup`, cut from
+**Status: in progress — Stage 2 landed, Stage 3 next.** Branch: `feat/surface-cleanup`, cut from
 `main` at tag `3.49.2`.
 How to use: stages are ordered and each ends with a green gate plus one commit. Tick the boxes as
 they land. Do not start a stage before the previous one is green.
@@ -15,7 +15,9 @@ documented behavior (the alternative resurrects the silent-no-op class); **Stage
 (the five image knobs go; the image REPL commands and their persisted defaults stay).
 
 Landed: Stage 1 (`8104f5f` `/safe-mode`, `49b6d6e` export-format persistence + `/export-format`,
-`851e0e6` review fixes) — gate 1854/1854, lint and knip clean.
+`851e0e6` review fixes) — gate 1854/1854, lint and knip clean. Stage 2 (`900cd7d` the five image
+sizing flags removed; the image-session channel and its persisted defaults are the in-app path) —
+gate 1851/1851, lint and knip clean.
 
 Baseline at plan time: `npm test` 1842/1842, `npm run lint`, `npx knip` clean, CI green on
 macOS/Ubuntu/Windows for `3.49.2`.

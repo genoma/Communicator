@@ -33,8 +33,6 @@ const BASE_OPTS = {
   resolution: undefined,
   quality: undefined,
   seed: undefined,
-  width: undefined,
-  height: undefined,
   safeMode: true,
   zdr: undefined,
 }
@@ -68,6 +66,14 @@ test('--image-model requires --image', () => {
     ['Error: --image-model requires --image.']
   )
   assert.deepEqual(validateCliFlags(opts({ image: true, imageModel: 'flux-1-1' }), { ...TTY, ...PROMPT() }), [])
+})
+
+test('--seed requires --image', () => {
+  assert.deepEqual(
+    validateCliFlags(opts({ seed: 42 }), TTY),
+    ['Error: --seed requires --image.']
+  )
+  assert.deepEqual(validateCliFlags(opts({ image: true, seed: 42 }), TTY), [])
 })
 
 test('--image rejects every chat session flag', () => {

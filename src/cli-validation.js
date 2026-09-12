@@ -333,10 +333,8 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
   // exempt: they double as persisted image defaults. --seed is the only
   // remaining generation flag; resolution/quality/variants are image-session
   // commands that persist per-provider defaults.
-  const imageOnlyFlags = ['seed']
-  const usedImageOnly = imageOnlyFlags.filter((f) => opts[f] !== undefined)
-  if (opts.image !== true && usedImageOnly.length > 0) {
-    errors.push(`Error: ${usedImageOnly.map((f) => `--${f}`).join(', ')} ${usedImageOnly.length === 1 ? 'requires' : 'require'} --image.`)
+  if (opts.image !== true && opts.seed !== undefined) {
+    errors.push('Error: --seed requires --image.')
   }
 
   if (opts.image && (opts.resume !== undefined || opts.export !== undefined || opts.delete !== undefined || exitModeFlags)) {

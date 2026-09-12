@@ -154,7 +154,7 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
     throw new CliError(`Error: ${err.message}`)
   }
 
-  validateSizingConstraints(resolved, { aspectRatio, format, resolution, quality, width, height, variants })
+  validateSizingConstraints(resolved, { aspectRatio, format, resolution, quality, variants })
 
   const savedDefaults = getImageDefaults(prefs, providerName)
   const interactive = sizingInteractive === true || (sizingInteractive !== false && stdout.isTTY === true && process.stdin.isTTY === true)

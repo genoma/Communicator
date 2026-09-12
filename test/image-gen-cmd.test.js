@@ -124,8 +124,6 @@ const BASE_OPTS = {
   resolution: undefined,
   quality: undefined,
   seed: undefined,
-  width: undefined,
-  height: undefined,
   safeMode: true,
   watermark: true,
   outputDir: undefined,
@@ -355,7 +353,7 @@ test('--image reads the prompt from piped stdin', async (t) => {
   assert.equal(matches.length, 1)
 })
 
-test('--image sizing/format/variants/seed/safe-mode flags reach generateImage', async (t) => {
+test('--image sizing/format/variants/seed/safe-mode opts reach generateImage', async (t) => {
   const { bodies } = mockVeniceFetch(t)
   withApiKey(t)
   mockConsole(t)
@@ -383,7 +381,7 @@ test('--image sizing/format/variants/seed/safe-mode flags reach generateImage', 
   assert.equal(body.height, undefined)
 })
 
-test('--image rejects flags that violate the model constraints', async (t) => {
+test('--image rejects opts that violate the model constraints', async (t) => {
   mockVeniceFetch(t)
   withApiKey(t)
   mockConsole(t)
@@ -581,7 +579,7 @@ test('--image without the flag and no pref sends safe_mode true and adds no pref
   assert.equal(prefs.safeMode, undefined)
 })
 
-test('--image rejects an invalid flag value with a CliError', async (t) => {
+test('--image rejects an invalid opts value with a CliError', async (t) => {
   mockVeniceFetch(t)
   withApiKey(t)
   mockConsole(t)
@@ -844,7 +842,7 @@ test('runImageGeneration drops saved resolution and quality defaults outside the
   assert.ok(warns.some((w) => w.includes('saved quality high is not supported by flux-1-1; it was not sent.')), warns.join('\n'))
 })
 
-test('runImageGeneration does not apply a saved resolution default when an explicit flag is set', async (t) => {
+test('runImageGeneration does not apply a saved resolution default when an explicit value is set', async (t) => {
   mockConsole(t)
   const provider = fakeSizingProvider({
     async fetchImageModels() {
