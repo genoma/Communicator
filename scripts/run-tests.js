@@ -6,6 +6,13 @@ import { join } from 'node:path'
 process.env.NO_COLOR = '1'
 delete process.env.FORCE_COLOR
 
+// The suite must behave the same with or without provider keys: a test that
+// needs one stubs it itself (withApiKey), and a developer shell that exports
+// the real keys must not change the outcome (CI has none). Clearing them here
+// makes `npm test` match CI exactly.
+delete process.env.OPENROUTER_API_KEY
+delete process.env.VENICE_API_KEY
+
 // src/constants.js resolves DATA_DIR and DEFAULT_CONFIG_FILE from the home
 // directory at module load, so every unhomed test file would read and write
 // the developer's real ~/.communicator.json and ~/.communicator/. Pointing

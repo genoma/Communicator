@@ -17,6 +17,8 @@ test('the wrapper forces plain styleText output before spawning the runner', asy
   const source = await readFile(join(ROOT, 'scripts', 'run-tests.js'), 'utf8')
   assert.match(source, /process\.env\.NO_COLOR = '1'/)
   assert.match(source, /delete process\.env\.FORCE_COLOR/)
+  assert.match(source, /delete process\.env\.OPENROUTER_API_KEY/)
+  assert.match(source, /delete process\.env\.VENICE_API_KEY/)
   assert.match(source, /'--test'/)
   assert.match(source, /--experimental-test-module-mocks/)
 })

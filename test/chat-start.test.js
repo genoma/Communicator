@@ -410,6 +410,7 @@ test('chatStart plain -r resume of a chapter session keeps its RPG identity', as
 })
 
 test('chatStart rpg resume continues the resolved chapter session', async (t) => {
+  withApiKey(t)
   resumeResult = null
   nonInteractiveSelection = {
     modelId: 'test/model',

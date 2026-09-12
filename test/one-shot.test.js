@@ -377,6 +377,7 @@ test('one-shot refuses an e2ee mismatch when resuming an RPG chapter', async (t)
 })
 
 test('one-shot refuses an --rpg chapter resumed with an image model selection', async (t) => {
+  withApiKey(t)
   const file = await tempConfig(t)
   const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
   t.after(() => rm(rpgDir, { recursive: true, force: true }))
