@@ -483,17 +483,27 @@ test('rejects --resume combined with --model, --output-dir or --attach', () => {
   )
 })
 
-test('rejects bare --output-dir without a TTY or --export', () => {
+test('rejects bare --output-dir without a TTY, a prompt or a session-shaping flag', () => {
+  const message = 'Error: --output-dir sets the default export directory. Use it alone (with a TTY) or with --export.'
   assert.deepEqual(
     validateCliFlags(opts({ outputDir: '/x' }), NO_TTY),
-    ['Error: --output-dir sets the default export directory. Use it alone (with a TTY) or with --export.']
+    [message]
   )
   assert.deepEqual(
     validateCliFlags(opts({ outputDir: '/x' }), { ...TTY, ...PROMPT() }),
-    ['Error: --output-dir sets the default export directory. Use it alone (with a TTY) or with --export.']
+    [message]
   )
+  // These shapes start a run instead of the setter dispatch, where nothing
+  // reads the flag (the F21 routing change), so it errors instead of being
+  // dropped silently. Other rules may follow it (an attachment still needs a
+  // prompt), but the surfaced errors[0] is the output-dir one.
+  for (const shape of [{ systemPrompt: 'p.md' }, { provider: 'venice', scrape: 'https://example.com' }, { rpg: 'dir' }, { attach: ['a.png'] }]) {
+    const errors = validateCliFlags(opts({ outputDir: '/x', ...shape }), TTY)
+    assert.equal(errors[0], message, JSON.stringify(shape))
+  }
   assert.deepEqual(validateCliFlags(opts({ outputDir: '/x' }), TTY), [])
   assert.deepEqual(validateCliFlags(opts({ outputDir: '/x', export: 'y' }), TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ outputDir: '/x', image: true, imageModel: 'm' }), TTY), [])
 })
 
 test('rejects bare --config combined with other flags', () => {

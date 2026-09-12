@@ -314,7 +314,11 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --resume, --export and --delete cannot be combined with --list-* flags.')
   }
 
-  if (opts.outputDir !== undefined && opts.export === undefined && opts.image !== true && (promptArg || !isTTY)) {
+  // A bare --output-dir is the setter form; with anything that starts a run
+  // (prompt, piped stdin, --system-prompt/--scrape/--rpg/--attach) nothing on
+  // that path reads it, so it errors instead of being dropped silently.
+  const outputDirRunShaped = promptArg || !isTTY || attachments || opts.systemPrompt !== undefined || opts.scrape !== undefined || opts.rpg !== undefined
+  if (opts.outputDir !== undefined && opts.export === undefined && opts.image !== true && outputDirRunShaped) {
     errors.push('Error: --output-dir sets the default export directory. Use it alone (with a TTY) or with --export.')
   }
 

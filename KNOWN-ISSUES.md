@@ -179,7 +179,11 @@ F21. A session-shaping flag sitting next to a config setter was silently dropped
     `--scrape` bills and injects the page into the chat. `--zdr`/`--e2ee` keep the old behavior until the
     surface cleanup (O31). Pinned by an `isConfigSetDispatch` unit test plus CLI tests for the
     missing prompt, the valid prompt, the scrape, and a `-m <id> --temperature 0.5` setter run
-    that must still persist.
+    that must still persist. Review follow-up: the same routing change left `--output-dir`
+    silently dropped next to `--system-prompt`/`--scrape`/`--rpg`/`--attach` (nothing on the chat
+    path reads it; on `main` the setter had persisted it), so the validation rule now also errors
+    in those shapes with the existing message — the approved D2 end state, without a notice or a
+    persist block that the cleanup would delete.
 F22. `--no-watermark` was documented as a persisted global pref (`index.js` help,
     `docs/commands.md`, `docs/images.md`) but only the config-set and image paths wrote it: a text
     chat or piped one-shot dropped it silently (verified A/B — the pre-fix text run persisted no
@@ -213,13 +217,16 @@ F24. `--aspect-ratio`/`--image-format` — documented as persisted per-provider 
     for free instead of paying for the page first — and the notices read the resolved values, so
     an empty `--aspect-ratio=`/`--image-format=` (Commander passes `''`, the resolvers treat it as
     unset) is ignored instead of crashing on `prefs.imageDefaults[providerType]`, and a value that
-    resolves to unset no longer prints a notice or writes prefs.
+    resolves to unset no longer prints a notice or writes prefs. Owner-approved: the notice wording,
+    the stdout-on-TTY/stderr-when-piped routing and the persist-before-run behavior are the
+    intended design, on this path and on the image branch (same helper).
 F25. `--image --no-watermark` was the one persisting path without the notice its safe-mode twin
     prints (`Venice safe mode disabled`), and its writer (`finalizeImageSession`) ran only after a
     successful generation, so a failed image run kept silent and saved nothing. The image branch
     now mirrors the safe-mode block: persist `hideWatermark: true` and print the TTY-gated
     `Venice watermark disabled` notice before the run. Pinned by an image-path stdout/stderr test
-    whose run fails after the write.
+    whose run fails after the write. Owner-approved: notice wording, TTY routing and the
+    persist-before-generation behavior.
 F26. The pure prefs (`--no-watermark`, `--no-safe-mode`, `--aspect-ratio`, `--image-format`) were
     silently accepted next to `--list-*`, `--export`, `--delete` and `--delete-all-sessions` and
     changed nothing (every exit path returns before the persist blocks) — the O5/O6 shape. The
