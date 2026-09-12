@@ -71,8 +71,8 @@ Choices are remembered as **global per-provider defaults** (`venice` and `openro
 }
 ```
 
-- A non-default picker choice becomes the provider default for future generations. From the CLI, `--aspect-ratio` and `--image-format` are promoted to a persisted per-provider default — on the bare config-setter form and on any chat/one-shot/image run that carries them. Resolution, quality and variant count are image-session settings only: set them with `/resolution`, `/quality` and `/variants` (their persisted defaults are applied to later runs, dropped with a note when the model does not support them), and `/aspect`, `/format` do the same for the two flag-backed defaults. Aspect ratios are stored; pixel sizes are always derived from the ratio and the model's divisor, never persisted.
-- Save them directly with the config-setter (no `--image` needed):
+- A non-default picker choice becomes the provider default for future generations. From the CLI, `--aspect-ratio` and `--image-format` are promoted to a persisted per-provider default on any chat/one-shot/image run that carries them. Resolution, quality and variant count are image-session settings only: set them with `/resolution`, `/quality` and `/variants` (their persisted defaults are applied to later runs, dropped with a note when the model does not support them), and `/aspect`, `/format` do the same for the two flag-backed defaults. Aspect ratios are stored; pixel sizes are always derived from the ratio and the model's divisor, never persisted.
+- Passing them to any run persists them for that provider (no `--image` needed):
   ```bash
   communicator -p venice --aspect-ratio 16:9 --image-format png
   communicator -p openrouter --aspect-ratio 1:1

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { validateCliFlags, isExitMode, isConfigSetter } from '../src/cli-validation.js'
+import { validateCliFlags, isExitMode } from '../src/cli-validation.js'
 
 const BASE_OPTS = {
   model: undefined,
@@ -165,12 +165,6 @@ test('--image-model alone with --list-image-models still requires --image', () =
 test('isExitMode includes --list-image-models', () => {
   assert.equal(isExitMode(opts({ listImageModels: true })), true)
   assert.equal(isExitMode(opts({ image: true })), false)
-})
-
-test('--aspect-ratio and --image-format make the invocation a config setter', () => {
-  assert.equal(isConfigSetter(opts({ aspectRatio: '16:9' })), true)
-  assert.equal(isConfigSetter(opts({ imageFormat: 'png' })), true)
-  assert.equal(isConfigSetter(opts()), false)
 })
 
 test('bare --config cannot be combined with the image default flags', () => {

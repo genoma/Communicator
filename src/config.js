@@ -159,7 +159,7 @@ function mergePerModelPref(map, modelId, value) {
   return next
 }
 
-export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageModel, lastProvider, reasoningEffort, temperature, topP, webSearch, smoothStreaming, smoothSpeed, compactThinking, budget, webResults, outputDir, exportFormat, hideWatermark, safeMode, imageDefaults } = {}) {
+export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageModel, lastProvider, reasoningEffort, temperature, topP, webSearch, smoothStreaming, smoothSpeed, compactThinking, webResults, outputDir, exportFormat, hideWatermark, safeMode, imageDefaults } = {}) {
   const merged = { ...prefs }
   if (lastModel !== undefined) merged.lastModel = lastModel
   if (lastImageModel !== undefined) merged.lastImageModel = lastImageModel
@@ -181,7 +181,6 @@ export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageMod
   if (smoothStreaming !== undefined) merged.smoothStreaming = smoothStreaming
   if (smoothSpeed !== undefined) merged.smoothSpeed = smoothSpeed
   if (compactThinking !== undefined) merged.compactThinking = compactThinking
-  if (budget !== undefined) merged.budget = budget
   if (webResults !== undefined) merged.webResults = webResults
   if (outputDir !== undefined) merged.outputDir = outputDir
   if (exportFormat !== undefined) merged.exportFormat = exportFormat

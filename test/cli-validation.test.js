@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { hasAttachments, hasConfigSetterFlags, isConfigSetDispatch, isConfigSetter, isExitMode, isInteractiveFlag, isPureConfigSetter, isSessionOnly, validateCliFlags } from '../src/cli-validation.js'
+import { hasAttachments, isExitMode, isInteractiveFlag, isSessionOnly, validateCliFlags } from '../src/cli-validation.js'
 
 const BASE_OPTS = {
   model: undefined,
@@ -76,12 +76,27 @@ test('--e2ee rejects --zdr', () => {
 })
 
 test('--e2ee rejects web search flags', () => {
-  for (const other of [{ webSearch: 'auto' }, { webSearch: true }, { webSearch: 'off' }, { webResults: 5 }]) {
+  for (const other of [{ webSearch: 'auto' }, { webSearch: true }, { webSearch: 'off' }]) {
     assert.deepEqual(
       validateCliFlags(opts({ e2ee: true, provider: 'venice', ...other }), TTY),
       ['Error: --e2ee cannot be combined with --web-search or --web-results (E2EE does not support web search).']
     )
   }
+  // --web-results on Venice surfaces the provider gate first: it defers only
+  // on --resume now that the set-and-exit dispatch is gone.
+  assert.deepEqual(
+    validateCliFlags(opts({ e2ee: true, provider: 'venice', webResults: 5 }), TTY),
+    [
+      'Error: --web-results is only available with --provider openrouter.',
+      'Error: --e2ee cannot be combined with --web-search or --web-results (E2EE does not support web search).',
+    ]
+  )
+  // A resumed run defers the provider gate to the session's provider, so only
+  // the e2ee rule remains.
+  assert.deepEqual(
+    validateCliFlags(opts({ e2ee: true, provider: 'venice', webResults: 5, resume: 'id' }), TTY),
+    ['Error: --e2ee cannot be combined with --web-search or --web-results (E2EE does not support web search).']
+  )
 })
 
 test('--web-results requires --provider openrouter', () => {
@@ -104,13 +119,18 @@ test('--web-results requires --provider openrouter', () => {
     ['Error: --web-results is only available with --provider openrouter.']
   )
   assert.deepEqual(validateCliFlags(opts({ webResults: 5 }), { ...TTY, ...PROMPT() }), [])
-  // Deferred: the standalone set-and-exit form issues no request, and a
-  // resumed run executes on the provider saved in its session — both are
-  // checked against the resolved provider in src/session-setup.js.
-  assert.deepEqual(validateCliFlags(opts({ webResults: 5, provider: 'venice' }), TTY), [])
+  // Only a resumed run defers (it executes on the provider saved in its
+  // session, checked against the resolved provider in src/session-setup.js);
+  // with the set-and-exit dispatch gone every other shape hits the gate.
   assert.deepEqual(validateCliFlags(opts({ webResults: 5, provider: 'venice', resume: 'id' }), TTY), [])
-  // The piped pure-setter dispatch (no TTY, no -m) also issues no request.
-  assert.deepEqual(validateCliFlags(opts({ webResults: 5, provider: 'venice', aspectRatio: '1:1' }), NO_TTY), [])
+  assert.deepEqual(
+    validateCliFlags(opts({ webResults: 5, provider: 'venice' }), TTY),
+    ['Error: --web-results is only available with --provider openrouter.']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ webResults: 5, provider: 'venice', aspectRatio: '1:1' }), NO_TTY),
+    ['Error: --web-results is only available with --provider openrouter.']
+  )
   // --rpg is a session route (the set-and-exit branch excludes it), so the
   // gate fires; --rpg --resume defers to the chapter's resolved provider.
   assert.deepEqual(
@@ -482,8 +502,8 @@ test('rejects --resume combined with --model, --output-dir or --attach', () => {
   )
 })
 
-test('rejects bare --output-dir without a TTY, a prompt or a session-shaping flag', () => {
-  const message = 'Error: --output-dir sets the default export directory. Use it alone (with a TTY) or with --export.'
+test('--output-dir requires --export or --image', () => {
+  const message = 'Error: --output-dir requires --export or --image.'
   assert.deepEqual(
     validateCliFlags(opts({ outputDir: '/x' }), NO_TTY),
     [message]
@@ -492,15 +512,11 @@ test('rejects bare --output-dir without a TTY, a prompt or a session-shaping fla
     validateCliFlags(opts({ outputDir: '/x' }), { ...TTY, ...PROMPT() }),
     [message]
   )
-  // These shapes start a run instead of the setter dispatch, where nothing
-  // reads the flag (the F21 routing change), so it errors instead of being
-  // dropped silently. Other rules may follow it (an attachment still needs a
-  // prompt), but the surfaced errors[0] is the output-dir one.
-  for (const shape of [{ systemPrompt: 'p.md' }, { provider: 'venice', scrape: 'https://example.com' }, { rpg: 'dir' }, { attach: ['a.png'] }]) {
-    const errors = validateCliFlags(opts({ outputDir: '/x', ...shape }), TTY)
-    assert.equal(errors[0], message, JSON.stringify(shape))
-  }
-  assert.deepEqual(validateCliFlags(opts({ outputDir: '/x' }), TTY), [])
+  // With the set-and-exit dispatch gone there is no bare setter form left: the
+  // flag is legal only where a run can consume it.
+  assert.deepEqual(validateCliFlags(opts({ outputDir: '/x' }), TTY), [message])
+  assert.deepEqual(validateCliFlags(opts({ outputDir: '/x' }), { ...TTY, ...PROMPT() }), [message])
+  assert.deepEqual(validateCliFlags(opts({ outputDir: '/x', export: 'y' }), TTY), [])
   assert.deepEqual(validateCliFlags(opts({ outputDir: '/x', export: 'y' }), TTY), [])
   assert.deepEqual(validateCliFlags(opts({ outputDir: '/x', image: true, imageModel: 'm' }), TTY), [])
 })
@@ -572,44 +588,9 @@ test('predicates classify flags', () => {
   assert.equal(isSessionOnly(opts({ attach: ['a.txt'] })), true)
   assert.equal(isSessionOnly(opts({ scrape: 'https://example.com' })), true)
 
-  assert.equal(isConfigSetter(opts()), false)
-  assert.equal(isConfigSetter(opts({ model: 'm' })), true)
-  assert.equal(isConfigSetter(opts({ outputDir: '/x' })), true)
-  assert.equal(isConfigSetter(opts({ webResults: 5 })), true)
-  assert.equal(isConfigSetter(opts({ watermark: false })), true)
-  assert.equal(isConfigSetter(opts({ safeMode: false })), true)
-
-  assert.equal(hasConfigSetterFlags(opts()), false)
-  assert.equal(hasConfigSetterFlags(opts({ safeMode: false })), false)
-  assert.equal(hasConfigSetterFlags(opts({ watermark: false })), true)
-  assert.equal(hasConfigSetterFlags(opts({ outputDir: '/x' })), true)
-
-  assert.equal(isPureConfigSetter(opts()), false)
-  assert.equal(isPureConfigSetter(opts({ imageFormat: 'png' })), true)
-  assert.equal(isPureConfigSetter(opts({ aspectRatio: '16:9' })), true)
-  assert.equal(isPureConfigSetter(opts({ watermark: false })), true)
-  assert.equal(isPureConfigSetter(opts({ safeMode: false })), true)
-  assert.equal(isPureConfigSetter(opts({ temperature: 0.5 })), false)
-  assert.equal(isPureConfigSetter(opts({ model: 'm' })), false)
-  assert.equal(isPureConfigSetter(opts({ outputDir: '/x' })), false)
-
   assert.equal(hasAttachments(opts()), false)
   assert.equal(hasAttachments(opts({ attach: [] })), false)
   assert.equal(hasAttachments(opts({ attach: ['a.txt'] })), true)
-})
-
-test('isConfigSetDispatch leaves session-shaping flags to the chat paths', () => {
-  const tty = { promptArg: undefined, isTTY: true }
-  assert.equal(isConfigSetDispatch(opts({ model: 'm' }), tty), true)
-  assert.equal(isConfigSetDispatch(opts({ model: 'm', temperature: '0.5' }), tty), true)
-  assert.equal(isConfigSetDispatch(opts({ watermark: false }), tty), true)
-  assert.equal(isConfigSetDispatch(opts({ model: 'm', systemPrompt: '/p' }), tty), false)
-  assert.equal(isConfigSetDispatch(opts({ model: 'm', scrape: 'https://example.com' }), tty), false)
-  assert.equal(isConfigSetDispatch(opts({ model: 'm' }), { promptArg: 'hi', isTTY: true }), false)
-  assert.equal(isConfigSetDispatch(opts({ model: 'm' }), { promptArg: undefined, isTTY: false }), false)
-  assert.equal(isConfigSetDispatch(opts({ watermark: false }), { promptArg: undefined, isTTY: false }), true)
-  assert.equal(isConfigSetDispatch(opts({ watermark: false, systemPrompt: '/p' }), { promptArg: undefined, isTTY: false }), false)
-  assert.equal(isConfigSetDispatch(opts({ watermark: false, scrape: 'https://example.com' }), { promptArg: undefined, isTTY: false }), false)
 })
 
 test('a session-shaping flag next to --web-results surfaces the provider gate', () => {

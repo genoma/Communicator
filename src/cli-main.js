@@ -6,7 +6,7 @@ import { sanitizeAnsi } from './ui/hyperlink.js'
 import { err, debug } from './ui/io.js'
 import { resolveSmoothSpeed, resolveTemperatureFlag, resolveTopPFlag, resolveWebResultsFlag, resolveReasoningFlag, resolveAspectRatio, resolveImageFormat, resolveExportFormat } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
-import { isConfigSetDispatch, validateCliFlags } from './cli-validation.js'
+import { validateCliFlags } from './cli-validation.js'
 import { parseScrapeUrl, scrapeContext } from './scrape.js'
 import { seedModelFetch } from './model-selection.js'
 import { loadRpgContext, rpgSessionsDir } from './rpg.js'
@@ -286,35 +286,6 @@ async function main(opts, promptArg) {
     process.exit(0)
   }
 
-  // --no-safe-mode alone is a chat-launch flag: it flows into the chat path,
-  // which persists the pref; combined with other config-setter flags it keeps
-  // the save-and-exit config-set behavior.
-  const configSetRun = isConfigSetDispatch(opts, { promptArg, isTTY: process.stdin.isTTY })
-  if (configSetRun && process.stdin.isTTY) {
-    const prefs = await loadPreferences(opts.config)
-    const apiKey = opts.model !== undefined ? getApiKey(providerType) : ''
-    try {
-      const { configSetCmd } = await import('./commands/config-set.js')
-      await configSetCmd({ opts, prefs, providerType, apiKey })
-    } catch (err) {
-      if (err instanceof CliError) throw err
-      fail(`Error: ${formatError(err)}`)
-    }
-    process.exit(0)
-  }
-
-  if (configSetRun && !process.stdin.isTTY) {
-    const prefs = await loadPreferences(opts.config)
-    try {
-      const { configSetCmd } = await import('./commands/config-set.js')
-      await configSetCmd({ opts, prefs, providerType, apiKey: '' })
-    } catch (err) {
-      if (err instanceof CliError) throw err
-      fail(`Error: ${formatError(err)}`)
-    }
-    process.exit(0)
-  }
-
   if (opts.image) {
     if (typeof provider.fetchImageModels !== 'function') {
       throw new CliError(`Error: --image is not supported by provider ${providerType}.`)
@@ -437,9 +408,8 @@ async function main(opts, promptArg) {
     else console.error('Venice watermark disabled')
   }
 
-  // --aspect-ratio/--image-format keep their documented setter meaning next to
-  // a chat run: the set-and-exit dispatch (their other writer) is not reached,
-  // so persist them here instead of dropping the flags.
+  // --aspect-ratio/--image-format persist their per-provider default on every
+  // run that carries them; there is no set-and-exit form left to write them.
   await applyImageDefaults({ prefs, config: opts.config, providerType, aspectRatio, imageFormat })
 
   if (promptArg || !process.stdin.isTTY) {

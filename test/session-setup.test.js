@@ -174,14 +174,13 @@ test('persistSession does not clobber mid-session prefs changes', async (t) => {
   const file = await tempConfig(t)
   const prefs = { lastModel: 'org/model' }
   // Mid-session saves keep the shared prefs object current (chat.js
-  // savePrefsFile, /smooth, /budget, /web-results).
-  syncPreferenceUpdates(prefs, { smoothStreaming: true, smoothSpeed: 500, budget: 2, webResults: 5 })
+  // savePrefsFile, /smooth, /web-results).
+  syncPreferenceUpdates(prefs, { smoothStreaming: true, smoothSpeed: 500, webResults: 5 })
   await persistSession({ finalState: finalState(), prefs, config: file })
 
   const saved = JSON.parse(await readFile(file, 'utf-8'))
   assert.equal(saved.smoothStreaming, true)
   assert.equal(saved.smoothSpeed, 500)
-  assert.equal(saved.budget, 2)
   assert.equal(saved.webResults, 5)
 })
 

@@ -35,57 +35,6 @@ export function isSessionOnly(opts) {
   )
 }
 
-export function hasConfigSetterFlags(opts) {
-  return (
-    opts.model !== undefined ||
-    opts.outputDir !== undefined ||
-    opts.temperature !== undefined ||
-    opts.topP !== undefined ||
-    opts.reasoningEffort !== undefined ||
-    opts.webSearch !== undefined ||
-    opts.webResults !== undefined ||
-    opts.smoothSpeed !== undefined ||
-    opts.smoothStreaming === false ||
-    opts.compactThinking === true ||
-    opts.watermark === false ||
-    opts.aspectRatio !== undefined ||
-    opts.imageFormat !== undefined
-  )
-}
-
-// Flags with no session meaning (a run path may still persist them, but they
-// never shape a request): piped stdin can never be a prompt for them, so the
-// config-set path may run without a TTY.
-export function isPureConfigSetter(opts) {
-  return (
-    opts.aspectRatio !== undefined ||
-    opts.imageFormat !== undefined ||
-    opts.watermark === false ||
-    opts.safeMode === false
-  )
-}
-
-export function isConfigSetter(opts) {
-  return hasConfigSetterFlags(opts) || opts.safeMode === false
-}
-
-// The two set-and-exit dispatches in src/cli-main.js only persist a
-// preference: no session, no request. Validation shares this predicate so it
-// never gates a flag on a run that cannot use it.
-export function isConfigSetDispatch(opts, { promptArg, isTTY }) {
-  // --system-prompt and --scrape shape a chat session, not a preference:
-  // with either present this is a chat launch on every input mode, otherwise
-  // the set-and-exit dispatch would drop the flag unread.
-  if (opts.systemPrompt !== undefined || opts.scrape !== undefined) return false
-  if (isTTY) {
-    const onlySafeModeSetter = opts.safeMode === false && !hasConfigSetterFlags(opts)
-    return isConfigSetter(opts) && !onlySafeModeSetter && opts.rpg === undefined && !promptArg && opts.resume === undefined && opts.image !== true
-  }
-  // Pure config-setter flags have no session meaning, so piped stdin can never
-  // be a prompt for them; -m is excluded because piped stdin means one-shot.
-  return !promptArg && opts.model === undefined && opts.resume === undefined && opts.image !== true && opts.rpg === undefined && isPureConfigSetter(opts)
-}
-
 const exclusionError = (prefix, forbidden) =>
   `Error: ${prefix} and the session flags (${SESSION_FLAGS_LIST}) cannot be combined with ${forbidden}.`
 
@@ -165,10 +114,9 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
 
   // Venice has no result-count knob: the flag would only flip its web search
   // to `auto`, turning billed search on while the count itself is dropped.
-  // Neither a resumed run (the provider comes from the session) nor a
-  // set-and-exit dispatch (no request at all) is decided by the flag's own
+  // A resumed run's provider comes from the session, not the flag's own
   // --provider; the resolved provider is checked in src/session-setup.js.
-  const webResultsDeferred = opts.resume !== undefined || isConfigSetDispatch(opts, { promptArg, isTTY })
+  const webResultsDeferred = opts.resume !== undefined
   if (opts.webResults !== undefined && opts.provider !== 'openrouter' && !webResultsDeferred) {
     errors.push('Error: --web-results is only available with --provider openrouter.')
   }
@@ -313,12 +261,8 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --resume, --export and --delete cannot be combined with --list-* flags.')
   }
 
-  // A bare --output-dir is the setter form; with anything that starts a run
-  // (prompt, piped stdin, --system-prompt/--scrape/--rpg/--attach) nothing on
-  // that path reads it, so it errors instead of being dropped silently.
-  const outputDirRunShaped = promptArg || !isTTY || attachments || opts.systemPrompt !== undefined || opts.scrape !== undefined || opts.rpg !== undefined
-  if (opts.outputDir !== undefined && opts.export === undefined && opts.image !== true && outputDirRunShaped) {
-    errors.push('Error: --output-dir sets the default export directory. Use it alone (with a TTY) or with --export.')
+  if (opts.outputDir !== undefined && opts.export === undefined && opts.image !== true) {
+    errors.push('Error: --output-dir requires --export or --image.')
   }
 
   if (opts.imageModel !== undefined && opts.image !== true) {

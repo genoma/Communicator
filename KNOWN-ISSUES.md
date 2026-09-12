@@ -85,7 +85,8 @@ F12. `--web-results` on Venice flipped web search to `auto` — a search Venice 
     cannot bill); `docs/web-search.md` and `MEMORY.md` updated. Two review rounds folded in: the
     first cut keyed on `opts.provider` alone, leaving `--resume <venice-session> --web-results 5`
     still billing and rejecting `-p venice -r <openrouter-session>`; the second added the
-    `--zdr` mirror case and the piped pure-setter form.
+    `--zdr` mirror case and the piped pure-setter form. The set-and-exit dispatch was removed in
+    4.0.0 (`SURFACE-CLEANUP.md`), so only `--resume` defers the provider gate now.
 F13. A plain `--resume` demanded the *flag* provider's API key before the session loaded:
     `-p venice -r <openrouter-session>` died with `Error: VENICE_API_KEY environment variable is
     not set.` even though the run executes on the session's provider and key
@@ -183,7 +184,8 @@ F21. A session-shaping flag sitting next to a config setter was silently dropped
     silently dropped next to `--system-prompt`/`--scrape`/`--rpg`/`--attach` (nothing on the chat
     path reads it; on `main` the setter had persisted it), so the validation rule now also errors
     in those shapes with the existing message — the approved D2 end state, without a notice or a
-    persist block that the cleanup would delete.
+    persist block that the cleanup would delete. The dispatch itself was removed in 4.0.0, so the
+    routing this entry describes no longer exists.
 F22. `--no-watermark` was documented as a persisted global pref (`index.js` help,
     `docs/commands.md`, `docs/images.md`) but only the config-set and image paths wrote it: a text
     chat or piped one-shot dropped it silently (verified A/B — the pre-fix text run persisted no
@@ -219,7 +221,8 @@ F24. `--aspect-ratio`/`--image-format` — documented as persisted per-provider 
     unset) is ignored instead of crashing on `prefs.imageDefaults[providerType]`, and a value that
     resolves to unset no longer prints a notice or writes prefs. Owner-approved: the notice wording,
     the stdout-on-TTY/stderr-when-piped routing and the persist-before-run behavior are the
-    intended design, on this path and on the image branch (same helper).
+    intended design, on this path and on the image branch (same helper). The set-and-exit dispatch
+    was removed in 4.0.0, so these flags now persist only on the run paths.
 F25. `--image --no-watermark` was the one persisting path without the notice its safe-mode twin
     prints (`Venice safe mode disabled`), and its writer (`finalizeImageSession`) ran only after a
     successful generation, so a failed image run kept silent and saved nothing. The image branch
@@ -239,8 +242,9 @@ F27. The `--list-endpoints` not-found hint pointed only at `--list-models`, whic
     id reported a plain "not found" with no sign the catalog had failed. The hint now names both
     catalog commands (`Use --list-models for text models or --list-image-models for image models.`)
     and the fetch failure warns like the picker (`Warning: could not load image models; showing
-    text models only. (<error>)`). The config-set twin (`src/commands/config-set.js:45`) keeps the
-    text-only hint on purpose: that path cannot accept an image model at all. Pinned by hint and
+    text models only. (<error>)`). The config-set twin (`src/commands/config-set.js:45`) kept the
+    text-only hint on purpose — that path could not accept an image model at all — and was removed
+    with the dispatch in 4.0.0. Pinned by hint and
     warning tests.
 F28. A rejected `--e2ee` resume still printed the at-rest warning first — and for an RPG chapter
     also the `Resumed RPG conversation from …` notice — before the resolved-provider guard refused

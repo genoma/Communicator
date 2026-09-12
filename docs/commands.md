@@ -8,18 +8,18 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |-------|-----------------------|----------|--------------------------------------------------------------------------------------|
 | `-m`  | `--model`             | `<id>`   | Skip all pickers and use this model ID directly (non-interactive)                    |
 | `-p`  | `--provider`          | `<name>` | Select the API backend: `openrouter` (default) or `venice`                           |
-|       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`. `none` disables reasoning. With `--model` alone, saves the per-model default |
-|       | `--temperature`       | `<0-2\|default>`  | Temperature override for the session (`default`: provider default, clears the persisted per-model value; unset: per-model preference, else the provider's own default). With `--model` alone, saves the per-model default |
-|       | `--top-p`             | `<0-1\|default>`  | Top-p (nucleus sampling) override for the session (`default`: provider default, clears the persisted per-model value; unset: per-model preference, else the provider's own default). With `--model` alone, saves the per-model default |
+|       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`. `none` disables reasoning. A run persists the resolved value per model |
+|       | `--temperature`       | `<0-2\|default>`  | Temperature override for the session (`default`: provider default, clears the persisted per-model value; unset: per-model preference, else the provider's own default). A run persists the resolved value per model |
+|       | `--top-p`             | `<0-1\|default>`  | Top-p (nucleus sampling) override for the session (`default`: provider default, clears the persisted per-model value; unset: per-model preference, else the provider's own default). A run persists the resolved value per model |
 |       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `on`, `off` (`on` = `auto`; bare flag = `auto`). Per-model default is persisted in preferences |
-|       | `--web-results`       | `<n>`    | Number of web search results, 1–20 (OpenRouter only, default 10). Implies `auto` mode. Bare use saves the default |
+|       | `--web-results`       | `<n>`    | Number of web search results, 1–20 (OpenRouter only, default 10). Implies `auto` mode. A run persists it per model; the standing count default is set with `/web-results <n>` |
 |       | `--zdr`               | —        | Force zero-data-retention routing (OpenRouter only). Filters model/provider selection to ZDR-capable endpoints; errors at selection if a model has none |
 |       | `--e2ee`              | —        | Enable end-to-end encryption (Venice only — a fresh run needs `--provider venice`, a resumed session is judged by the provider saved in its file). Filters model selection to E2EE-capable models; disables web search, attachments, and prompt caching; refuses to resume unencrypted sessions |
 |       | `--attach`            | `<path>` | Attach a file to the one-shot message (repeatable: images, pdf, xlsx/docx/pptx, txt, md, code, ...). Requires a prompt argument or piped stdin |
 |       | `--scrape`            | `<url>`  | Scrape a web page into the session as context, then answer the prompt (Venice only, $0.01 per page; bare use on a TTY opens a chat with the page in context). See [docs/web-scrape.md](web-scrape.md) |
-|       | `--no-smooth-streaming` | —      | Disable smooth streaming (default: on in interactive sessions). Bare use saves the default |
-|       | `--smooth-speed`      | `<level\|cps>` | Smooth streaming speed: `slow`, `normal`, `fast`, or chars per second (default: `normal` ≈ 2000). Bare use saves the default |
-|       | `--compact-thinking`  | —        | Show a `Thinking` meter instead of streaming the reasoning text (default: full text; TTY only). Bare use saves the default; `/compact-thinking` toggles mid-chat |
+|       | `--no-smooth-streaming` | —      | Disable smooth streaming (default: on in interactive sessions). `/smooth off` in chat persists it |
+|       | `--smooth-speed`      | `<level\|cps>` | Smooth streaming speed: `slow`, `normal`, `fast`, or chars per second (default: `normal` ≈ 2000). `/smooth <level\|cps>` in chat persists it |
+|       | `--compact-thinking`  | —        | Show a `Thinking` meter instead of streaming the reasoning text (default: full text; TTY only). `/compact-thinking on\|off` in chat persists it |
 | `-V`  | `--version`           | —        | Print the version and exit                                                           |
 | `-h`  | `--help`              | —        | Show the help menu and exit                                                          |
 |       | `--list-models`       | —        | List all available models (name, ID, context length) and exit                        |
@@ -30,19 +30,21 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--export-format`     | `<markdown\|jsonl>` | Export format: `markdown` (default) or `jsonl`. Persisted as the default with `--export --export-format <fmt>` and `/export-format` |
 |       | `--delete`            | `[partial-id]` | Delete saved session(s) (asks for confirmation). No arg = multi-select checkbox; partial ID = prefix match, unique prefix deletes directly. Removal is best-effort per session; anything it could not remove is reported and it exits 1 |
 |       | `--delete-all-sessions` | `[y/N]` | Delete ALL saved sessions. Bare flag asks "Are you sure?" on a terminal; pass `y` (or `yes`) to confirm — and to skip the prompt with piped stdin. Anything else does nothing |
-|       | `--output-dir`        | `<path>` | Set export directory for exported files (saved in preferences). Bare use saves it as the default (requires a TTY and no prompt or session-shaping flag). With `--image`, generated images are also copied there |
+|       | `--output-dir`        | `<path>` | Set export directory for exported files (saved in preferences). Requires `--export` or `--image`. With `--image`, generated images are also copied there |
 |       | `--config`            | `[path]` | Custom path for the preferences JSON file (default: `~/.communicator.json`). Bare flag prints the current config |
 |       | `--system-prompt`     | `<path>` | Custom path for the system prompt file (default: `~/.communicator-system-prompt.md`) |
 |       | `--rpg`              | `<dir>`  | Enable RPG mode using `char.md`, `user.md`, `prompt.md`, `scenario.md`, and `first-message.md` from a directory. Missing files are created as fill-in templates; edit them, delete the HTML comment at the top, and rerun. Chapters are saved as sessions in `sessions/` inside the directory; continue a story with `--rpg <dir> --resume` (a dir-local `history.json` from older versions is imported once, see [docs/chat.md](chat.md)) |
 |       | `--debug`            | —        | With `--rpg`: log the full prompt sent to the model to `prompt-log.jsonl` in the RPG directory (one JSON object per turn) |
 |       | `--image`             | —        | Generate an image with an image model and exit (both providers). See [docs/images.md](images.md) |
 |       | `--image-model`       | `<id>`   | Image model ID, skipping the interactive image model picker (required when piping input) |
-|       | `--image-format`      | `<fmt>`  | Image output format: `png`, `jpeg`, `webp` (default `webp` on Venice, `png` on OpenRouter; only sent when the model supports it). Persisted as the per-provider default: bare use saves it and exits, and a chat run saves it too |
-|       | `--aspect-ratio`      | `<x:y>`  | Image aspect ratio, model-dependent (e.g. `16:9`, `auto`; decimal ratios like `9:19.5` accepted). Persisted as the per-provider default: bare use saves it and exits, and a chat run saves it too |
+|       | `--image-format`      | `<fmt>`  | Image output format: `png`, `jpeg`, `webp` (default `webp` on Venice, `png` on OpenRouter; only sent when the model supports it). Persisted as the per-provider default by any chat/one-shot/image run that carries it |
+|       | `--aspect-ratio`      | `<x:y>`  | Image aspect ratio, model-dependent (e.g. `16:9`, `auto`; decimal ratios like `9:19.5` accepted). Persisted as the per-provider default by any chat/one-shot/image run that carries it |
 |       | `--seed`              | `<int>`  | Random seed for image generation (between -999999999 and 999999999) |
-|       | `--no-safe-mode`      | —        | Disable safe mode for image generation (Venice only; adult content returned unblurred). Bare use saves the default (global setting) and opens a chat session |
-|       | `--no-watermark`      | —        | Hide the Venice watermark on generated images. Persisted as the global `hideWatermark` pref on every launch path, announced with `Venice watermark disabled` (bare use saves it and exits) |
+|       | `--no-safe-mode`      | —        | Disable safe mode for image generation (Venice only; adult content returned unblurred). Persisted as a global setting on every launch path |
+|       | `--no-watermark`      | —        | Hide the Venice watermark on generated images. Persisted as the global `hideWatermark` pref on every launch path, announced with `Venice watermark disabled` |
 |       | `--list-image-models` | —        | List image models (name, id, per-image price, sizing options) and exit |
+
+Flags shape the run they are given to: **there is no set-a-preference-and-exit form**. With no prompt on a terminal, a flag-bearing invocation opens an interactive chat (`communicator --no-watermark`, `communicator -m <id>`), and the run's exit persists the preferences it resolved; the in-chat `/commands` persist the same keys mid-session.
 
 Flags with an optional value (`--web-search`, `--config`, `--resume`, `--export`, `--list-endpoints`, `--delete`, `--delete-all-sessions`) consume the next argument when it is not another flag: a prompt written directly after one is parsed as that flag's value. Put the prompt before them, or bind the value with `=`, e.g. `--web-search=auto "Latest AI news"`.
 
@@ -115,19 +117,12 @@ communicator -m "openai/gpt-4o" --web-search off "Latest AI news"       # disabl
 communicator -m "openai/gpt-4o" --web-results 5 "Latest AI news"        # 5 results, implies auto mode
 communicator -p venice -m "qwen-3-7-max" "Latest AI news" --web-search  # Venice: no result count knob; bare flag means auto
 
-# Standalone config commands (persist defaults to ~/.communicator.json and exit)
-communicator --output-dir ~/Documents                                  # save the default export directory
+# Preference defaults: a flag shapes the run it is given to and the run's exit
+# persists what it resolved (the in-chat /commands persist the same keys).
 communicator --config                                                  # print the current config
-communicator -m "deepseek/deepseek-v4-flash"                           # validate a model, show its details, set it as default
-communicator -m "deepseek/deepseek-v4-flash" --temperature 0.5         # set per-model temperature default
-communicator -m "deepseek/deepseek-v4-flash" --top-p 0.95              # set per-model top-p default
-communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort high   # set per-model reasoning default
-communicator -m "deepseek/deepseek-v4-flash" --web-search always       # set per-model web search default
-communicator --web-results 5                                           # set the default result count (OpenRouter only)
-communicator --smooth-speed fast                                       # set the default smooth streaming speed
-communicator --no-smooth-streaming                                     # disable smooth streaming by default
-communicator --compact-thinking                                        # use the Thinking meter instead of reasoning text
-communicator --no-watermark                                            # hide the Venice watermark on generated images by default
+communicator -m "deepseek/deepseek-v4-flash"                           # open a chat with that model; model, temperature, top-p, reasoning and web-search persist per model
+communicator -p venice --no-watermark                                  # open a chat and persist hideWatermark: true
+communicator -p venice --aspect-ratio 16:9 --image-format png          # open a chat and persist the per-provider image defaults
 ```
 
 ## Slash commands

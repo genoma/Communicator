@@ -6,7 +6,7 @@ Internal architecture and the provider contract for contributors. See the [READM
 
 ```
 cli (index.js)            — commander argument parsing, delegates to runCli
-├── cli-main.js           — runCli: error handling (ApiError/CliError/ExitPromptError), dispatch to commands and config setters
+├── cli-main.js           — runCli: error handling (ApiError/CliError/ExitPromptError), dispatch to commands
 ├── cli-utils.js          — resolveFlagOrExit (throws CliError on invalid flag values), collectFlag (repeatable --attach)
 ├── cli-validation.js     — pure flag-combination validation (validateCliFlags) + flag-group predicates
 ├── commands/
@@ -16,7 +16,6 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 │   ├── export-cmd.js     — --export handler
 │   ├── delete-cmd.js     — --delete handler (confirm + remove session)
 │   ├── delete-all-cmd.js — --delete-all-sessions handler (wipe all sessions)
-│   ├── config-set.js     — standalone config setters (--model, --temperature, --top-p, ... persist defaults)
 │   ├── config-view.js    — bare --config: print the current preferences
 │   ├── one-shot.js       — one-shot mode: prompt argument / stdin piping
 │   ├── resume.js         — --resume handler (load session, return params)

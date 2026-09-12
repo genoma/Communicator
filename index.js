@@ -26,7 +26,7 @@ program
   .option('-r, --resume [session-id]', 'resume a saved session (optional session ID)')
   .option('-x, --export [session-id]', 'export saved sessions (select one or more)')
   .option('--export-format <markdown|jsonl>', 'export format: markdown (default) or jsonl')
-  .option('--output-dir <path>', 'custom directory for exported files (bare use saves it as the default)')
+  .option('--output-dir <path>', 'custom directory for exported files (requires --export or --image)')
   .option('--list-sessions', 'list saved sessions and exit')
   .option('--config [path]', 'path to preferences config file (bare flag prints the current config)')
   .option('--system-prompt <path>', 'path to a custom system prompt file')

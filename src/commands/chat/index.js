@@ -651,8 +651,8 @@ const handlers = {
     ctx.state.setSmoothSpeed(cps)
     ctx.render.smooth = true
     ctx.render.smoothCharsPerTick = cpsToCharsPerTick(cps)
-    // Persist the canonical cps number (same format as --smooth-speed and
-    // /config-set), not the raw preset label.
+    // Persist the canonical cps number (same format as --smooth-speed), not the
+    // raw preset label.
     await ctx.savePrefs({ smoothStreaming: true, smoothSpeed: cps })
     console.log(`Smooth streaming enabled (${formatSmoothSpeed(cps)}).\n`)
     showStatus(ctx)

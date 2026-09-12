@@ -4,7 +4,7 @@ The approved direction for the "too many one-shots" complaint: remove the bare "
 and exit" dispatch and the generation/export knobs that duplicate the image REPL, replacing every
 lost capability with an in-app setter **before** anything is removed.
 
-**Status: in progress — Stage 3 landed, Stage 4 next.** Branch: `feat/surface-cleanup`, cut from
+**Status: in progress — Stage 4 landed, Stage 5 next.** Branch: `feat/surface-cleanup`, cut from
 `main` at tag `3.49.2`.
 How to use: stages are ordered and each ends with a green gate plus one commit. Tick the boxes as
 they land. Do not start a stage before the previous one is green.
@@ -19,7 +19,10 @@ Landed: Stage 1 (`8104f5f` `/safe-mode`, `49b6d6e` export-format persistence + `
 sizing flags removed; the image-session channel and its persisted defaults are the in-app path) —
 gate 1851/1851, lint and knip clean. Stage 3 (`--budget` removed with the standing pref; the
 resolver/constraint errors that only the image session can trigger lost their flag prefix, the
-owner-approved naming fix) — gate 1850/1850, lint and knip clean.
+owner-approved naming fix) — gate 1850/1850, lint and knip clean. Stage 4 (the set-and-exit
+`config-set.js` dispatch, its two call sites, the four predicates and the `--output-dir` bare form
+are gone; `budget` left `applyPreferenceUpdates`; docs/backlog swept) — gate 1821/1821, lint and
+knip clean.
 
 Baseline at plan time: `npm test` 1842/1842, `npm run lint`, `npx knip` clean, CI green on
 macOS/Ubuntu/Windows for `3.49.2`.
@@ -214,23 +217,23 @@ Commit `feat!: remove --budget; the cap is per-session via /budget`.
 
 Commit `feat!: remove the bare set-and-exit config dispatch`.
 
-- [ ] Delete `src/commands/config-set.js`; delete both `configSetRun` branches in
+- [x] Delete `src/commands/config-set.js`; delete both `configSetRun` branches in
       `src/cli-main.js` (TTY and piped).
-- [ ] `src/cli-validation.js`: delete `isConfigSetDispatch`, `isPureConfigSetter`,
+- [x] `src/cli-validation.js`: delete `isConfigSetDispatch`, `isPureConfigSetter`,
       `hasConfigSetterFlags`, `isConfigSetter`; the `--web-results` deferral becomes
       `opts.resume !== undefined`; the `--output-dir` rule becomes simply "requires `--export` or
       `--image`" (E4).
-- [ ] Tests: delete `test/config-set.test.js` and `test/config-set-command.test.js`; rewrite the
+- [x] Tests: delete `test/config-set.test.js` and `test/config-set-command.test.js`; rewrite the
       F21-era cases in `test/cli-main.test.js` (system-prompt/scrape now always shape the run);
       update `test/cli-validation.test.js` and `test/cli-validation-image.test.js` (predicates and
       imports gone); add cases for E1/E2/E4 (bare flag opens a chat; `-m <id>` opens a chat;
       `--output-dir` alone errors).
-- [ ] Docs: delete/rewrite the "Standalone config commands" section and the `--output-dir` row in
+- [x] Docs: delete/rewrite the "Standalone config commands" section and the `--output-dir` row in
       `docs/commands.md`; remove every "Bare use saves the default" phrase (7 today); drop the
       "With `--model` alone, saves the per-model default" clauses; `docs/images.md` config-setter
       mentions; MEMORY §Pending surface cleanup → completed; the `cli-main`/`cli-validation`
       bullets; KNOWN-ISSUES F21/F24/F26/F29 entries that describe the dispatch.
-- [ ] Verify: `communicator --no-watermark` alone opens a chat and persists on exit;
+- [x] Verify: `communicator --no-watermark` alone opens a chat and persists on exit;
       `communicator -m <id>` opens the chat; `communicator --temperature 0.5` alone opens a chat;
       `--list-models --no-watermark` still errors; `--config` view still works; gate green.
 

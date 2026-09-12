@@ -88,7 +88,7 @@ While the model is working, a dim indicator appears on the response line roughly
 
 By default the model's reasoning streams after the `❯ Thinking` banner, dimmed, until `❯ Answer` starts. With compact thinking the reasoning text is not printed: the response line instead shows a live meter — `Thinking · 1.2k · 3.5s` with a braille spinner — counting the reasoning characters received so far alongside the elapsed thinking time. The meter's clock starts when you send the message, so the seconds shown are the real wait even when the endpoint delivers the whole reasoning block in one burst (as the web-search path does); a block with no measurable duration shows count-only (`✓ Thinking · N`, never `· 0s`). When thinking ends the line resolves to a green `✓ Thinking · 1.2k · 3.5s` checkpoint and the answer streams normally. The full reasoning text is still saved with the session and included in `--export` markdown; only the terminal display (and history replay on `--resume`, which replays the checkpoint) hides it.
 
-Enable/disable with `/compact-thinking on|off` mid-chat (`/compact-thinking` shows the current state), persist the default with `--compact-thinking` (bare use saves it, like `--no-smooth-streaming`), and the `compactThinking` preference key. Compact thinking is a TTY display mode: piped output is unaffected. The `[compact-thinking]` badge appears on the banner and `/status` when it is on.
+Enable/disable with `/compact-thinking on|off` mid-chat (`/compact-thinking` shows the current state, and the command persists the default), and the `compactThinking` preference key. Compact thinking is a TTY display mode: piped output is unaffected. The `[compact-thinking]` badge appears on the banner and `/status` when it is on.
 
 ## Budget caps
 

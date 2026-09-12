@@ -1,8 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { runCli } from '../src/cli-main.js'
 import { resetModelCaches as resetOpenRouterModelCaches } from '../src/providers/openrouter.js'
 import { resetModelCaches as resetVeniceModelCaches } from '../src/providers/venice.js'
@@ -123,34 +125,48 @@ function mockVeniceApi(t) {
   t.mock.method(globalThis, 'fetch', async () => jsonResponse({ data: models }))
 }
 
+test('-m <id> alone takes the chat path instead of validating and exiting', async (t) => {
+  withTTY(t, true)
+  const previous = process.env.OPENROUTER_API_KEY
+  delete process.env.OPENROUTER_API_KEY
+  t.after(() => {
+    if (previous === undefined) delete process.env.OPENROUTER_API_KEY
+    else process.env.OPENROUTER_API_KEY = previous
+  })
+  const { err } = await runAndExit(t, { model: 'test/model-a' }, undefined, 1)
+  assert.match(err[0], /OPENROUTER_API_KEY environment variable is not set/)
+})
+
+test('the removed one-shot flags are rejected as unknown options', async (t) => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+  const home = await mkdtemp(join(tmpdir(), 'communicator-cli-spawn-'))
+  t.after(() => rm(home, { recursive: true, force: true }))
+  const cases = [
+    ['--variants', '2'],
+    ['--resolution', '2K'],
+    ['--quality', 'high'],
+    ['--width', '512'],
+    ['--height', '512'],
+    ['--budget', '2'],
+  ]
+  for (const [flag, value] of cases) {
+    const res = spawnSync(process.execPath, [join(root, 'index.js'), flag, value, 'x'], {
+      cwd: root,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+      encoding: 'utf-8',
+      timeout: 20000,
+    })
+    assert.equal(res.status, 1, `${flag}: ${res.stdout}${res.stderr}`)
+    assert.match(res.stderr, /unknown option/, `${flag} stderr: ${res.stderr}`)
+  }
+})
+
 test('invalid --web-search mode is rejected before any dispatch', async (t) => {
   const { err } = await runAndExit(t, { webSearch: 'bogus' }, undefined, 1)
   assert.match(err[0], /--web-search expects "auto", "always", "on", or "off"/)
 })
 
-test('--web-search on is accepted and persisted as auto', async (t) => {
-  withTTY(t, true)
-  withApiKey(t)
-  mockOpenRouterApi(t)
-  const file = await tempConfig(t)
-  const { out } = await runAndExit(t, { config: file, model: 'test/model-a', webSearch: 'on' }, undefined, 0)
-  assert.match(out.join('\n'), /Web search set to auto/)
-  const saved = JSON.parse(await readFile(file, 'utf-8'))
-  assert.equal(saved.webSearch['test/model-a'], 'auto')
-})
-
-test('a config-setter run with -m still persists instead of opening a chat', async (t) => {
-  withTTY(t, true)
-  withApiKey(t)
-  mockOpenRouterApi(t)
-  const file = await tempConfig(t)
-  const { out } = await runAndExit(t, { config: file, model: 'test/model-a', temperature: '0.5' }, undefined, 0)
-  assert.match(out.join('\n'), /Temperature set to 0.5/)
-  const saved = JSON.parse(await readFile(file, 'utf-8'))
-  assert.equal(saved.temperature['test/model-a'], 0.5)
-})
-
-test('a piped run with a session flag and a pure setter is not a config-set dispatch', async (t) => {
+test('a piped run with --system-prompt and no model needs a TTY', async (t) => {
   withTTY(t, false)
   withVeniceApiKey(t)
   mockVeniceApi(t)
@@ -161,7 +177,7 @@ test('a piped run with a session flag and a pure setter is not a config-set disp
   await assert.rejects(readFile(file, 'utf-8'), /ENOENT/)
 })
 
-test('a piped run with --scrape and a pure setter never reaches the billed fetch', async (t) => {
+test('a piped --scrape run with no model needs a TTY and never bills', async (t) => {
   withTTY(t, false)
   withVeniceApiKey(t)
   const file = await tempConfig(t)
@@ -349,15 +365,15 @@ test('--output-dir cannot be combined with --resume', async (t) => {
   assert.match(err[0], /cannot be combined with --resume/)
 })
 
-test('standalone --output-dir rejects a prompt argument', async (t) => {
+test('standalone --output-dir requires --export or --image even with a prompt', async (t) => {
   withTTY(t, true)
   const { err } = await runAndExit(t, { outputDir: '/tmp' }, 'hello', 1)
-  assert.match(err[0], /--output-dir sets the default export directory/)
+  assert.match(err[0], /--output-dir requires --export or --image/)
 })
 
-test('standalone --output-dir requires a TTY', async (t) => {
+test('standalone --output-dir requires --export or --image without a TTY', async (t) => {
   const { err } = await runAndExit(t, { outputDir: '/tmp' }, undefined, 1)
-  assert.match(err[0], /--output-dir sets the default export directory/)
+  assert.match(err[0], /--output-dir requires --export or --image/)
 })
 
 test('bare --config cannot be combined with other flags', async (t) => {
@@ -389,24 +405,24 @@ test('bare --config prints the config file header and exits 0', async (t) => {
   assert.match(out[0], /^Config file:/)
 })
 
-test('--output-dir alone persists the default export directory', async (t) => {
+test('--output-dir alone errors: it requires --export or --image', async (t) => {
   withTTY(t, true)
   const file = await tempConfig(t)
-  const { out } = await runAndExit(t, { config: file, outputDir: '/tmp/exports' }, undefined, 0)
-  assert.match(out[0], /Export directory set to \/tmp\/exports/)
-  const saved = JSON.parse(await readFile(file, 'utf-8'))
-  assert.equal(saved.outputDir, '/tmp/exports')
+  const { err } = await runAndExit(t, { config: file, outputDir: '/tmp/exports' }, undefined, 1)
+  assert.match(err[0], /Error: --output-dir requires --export or --image\./)
+  await assert.rejects(readFile(file, 'utf-8'), /ENOENT/)
 })
 
-test('--no-smooth-streaming alone persists the default', async (t) => {
+test('--no-smooth-streaming alone takes the chat path instead of persisting a default', async (t) => {
   withTTY(t, true)
+  withApiKey(t)
   const file = await tempConfig(t)
-  await runAndExit(t, { config: file, smoothStreaming: false }, undefined, 0)
-  const saved = JSON.parse(await readFile(file, 'utf-8'))
-  assert.equal(saved.smoothStreaming, false)
+  const { err } = await runAndExit(t, { config: file, smoothStreaming: false, systemPrompt: '/nonexistent.md' }, undefined, 1)
+  assert.match(err.join('\n'), /system prompt file not found/)
+  await assert.rejects(readFile(file, 'utf-8'), /ENOENT/)
 })
 
-test('--no-safe-mode alone routes into the chat instead of config-set mode', async (t) => {
+test('--no-safe-mode alone takes the chat path and fails on the missing key', async (t) => {
   withTTY(t, true)
   const previous = process.env.VENICE_API_KEY
   delete process.env.VENICE_API_KEY
@@ -418,68 +434,32 @@ test('--no-safe-mode alone routes into the chat instead of config-set mode', asy
   assert.match(err[0], /VENICE_API_KEY environment variable is not set/)
 })
 
-test('--no-safe-mode combined with another config setter keeps config-set mode', async (t) => {
+test('--no-safe-mode with --output-dir errors instead of persisting anything', async (t) => {
   withTTY(t, true)
   const file = await tempConfig(t)
-  const { out } = await runAndExit(t, { config: file, safeMode: false, outputDir: '/tmp/x' }, undefined, 0)
-  assert.match(out[0], /Export directory set to \/tmp\/x/)
-  const saved = JSON.parse(await readFile(file, 'utf-8'))
-  assert.equal(saved.safeMode, false)
-  assert.equal(saved.outputDir, '/tmp/x')
+  const { err } = await runAndExit(t, { config: file, safeMode: false, outputDir: '/tmp/x' }, undefined, 1)
+  assert.match(err[0], /Error: --output-dir requires --export or --image\./)
+  await assert.rejects(readFile(file, 'utf-8'), /ENOENT/)
 })
 
-test('piped stdin with --image-format runs the config-set path and exits 0', async (t) => {
+test('piped stdin with a setter flag but no model takes the run path and demands a TTY', async (t) => {
   withTTY(t, false)
-  const file = await tempConfig(t)
-  const { out } = await runAndExit(t, { config: file, imageFormat: 'png' }, undefined, 0)
-  assert.match(out[0], /Image format set to png \(openrouter image defaults\)/)
-  const saved = JSON.parse(await readFile(file, 'utf-8'))
-  assert.deepEqual(saved.imageDefaults.openrouter, { format: 'png' })
+  // With the set-and-exit dispatch gone these flags no longer apply and exit:
+  // a piped run without -m stops at the model-selection TTY gate and writes
+  // nothing.
+  for (const overrides of [{ imageFormat: 'png' }, { safeMode: false }, { aspectRatio: '16:9' }]) {
+    const file = await tempConfig(t)
+    const { err } = await runAndExit(t, { config: file, ...overrides }, undefined, 1)
+    assert.match(err.join('\n'), /Interactive selection needs a TTY/, JSON.stringify(overrides))
+    await assert.rejects(readFile(file, 'utf-8'), /ENOENT/)
+  }
 })
 
-test('piped stdin with --no-safe-mode persists the pref and exits 0', async (t) => {
-  withTTY(t, false)
-  const file = await tempConfig(t)
-  const { out } = await runAndExit(t, { config: file, safeMode: false }, undefined, 0)
-  assert.match(out[0], /Venice safe mode disabled/)
-  const saved = JSON.parse(await readFile(file, 'utf-8'))
-  assert.equal(saved.safeMode, false)
-})
-
-test('piped stdin with --aspect-ratio runs the config-set path and exits 0', async (t) => {
-  withTTY(t, false)
-  const file = await tempConfig(t)
-  const { out } = await runAndExit(t, { config: file, aspectRatio: '16:9' }, undefined, 0)
-  assert.match(out[0], /Aspect ratio set to 16:9 \(openrouter image defaults\)/)
-  const saved = JSON.parse(await readFile(file, 'utf-8'))
-  assert.deepEqual(saved.imageDefaults.openrouter, { aspectRatio: '16:9' })
-})
-
-test('per-model setters without --model are rejected', async (t) => {
-  withTTY(t, true)
-  const file = await tempConfig(t)
-  const { err } = await runAndExit(t, { config: file, temperature: '0.5' }, undefined, 1)
-  assert.match(err[0], /require --model <id>/)
-})
-
-test('invalid temperature in config-set mode fails gracefully', async (t) => {
+test('an invalid --temperature is rejected before any dispatch', async (t) => {
   withTTY(t, true)
   const file = await tempConfig(t)
   const { err } = await runAndExit(t, { config: file, temperature: '3' }, undefined, 1)
   assert.match(err[0], /Temperature must be a number between 0 and 2/)
-})
-
-test('--model with a setter validates, persists defaults, and exits 0', async (t) => {
-  withTTY(t, true)
-  withApiKey(t)
-  mockOpenRouterApi(t)
-  const file = await tempConfig(t)
-  const { out } = await runAndExit(t, { config: file, model: 'test/model-a', temperature: '0.5' }, undefined, 0)
-  assert.match(out[0], /Model: test\/model-a via ProviderX/)
-  const saved = JSON.parse(await readFile(file, 'utf-8'))
-  assert.equal(saved.lastModel, 'test/model-a')
-  assert.equal(saved.lastProvider, 'ProviderX')
-  assert.equal(saved.temperature['test/model-a'], 0.5)
 })
 
 test('--model with an unknown id fails gracefully', async (t) => {
@@ -488,7 +468,7 @@ test('--model with an unknown id fails gracefully', async (t) => {
   mockOpenRouterApi(t)
   const file = await tempConfig(t)
   const { err } = await runAndExit(t, { config: file, model: 'nope/x' }, undefined, 1)
-  assert.match(err[0], /Model "nope\/x" not found/)
+  assert.match(err[0], /model nope\/x not found/)
 })
 
 test('--web-search default is gated against model support', async (t) => {
@@ -602,6 +582,6 @@ test('plain --e2ee warns that the session file is stored unencrypted', async (t)
   withVeniceApiKey(t)
   mockVeniceApi(t)
   const file = await tempConfig(t)
-  const { err } = await runAndExit(t, { e2ee: true, provider: 'venice', config: file, model: 'venice/model-x' }, undefined, 0)
-  assert.match(err[0], /--e2ee encrypts messages sent to the API, but the session file stores them unencrypted/)
+  const { err } = await runAndExit(t, { e2ee: true, provider: 'venice', config: file, model: 'venice/model-x' }, undefined, 1)
+  assert.ok(err.some((l) => /--e2ee encrypts messages sent to the API, but the session file stores them unencrypted/.test(l)))
 })

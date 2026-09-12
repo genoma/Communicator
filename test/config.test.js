@@ -101,12 +101,11 @@ test('applyPreferenceUpdates does not mutate the input prefs', () => {
 
 test('syncPreferenceUpdates returns the merged object and keeps the input current', () => {
   const prefs = { lastModel: 'm' }
-  const merged = syncPreferenceUpdates(prefs, { smoothStreaming: false, smoothSpeed: 500, budget: 2, webResults: 5 })
+  const merged = syncPreferenceUpdates(prefs, { smoothStreaming: false, smoothSpeed: 500, webResults: 5 })
 
-  assert.deepEqual(merged, { lastModel: 'm', smoothStreaming: false, smoothSpeed: 500, budget: 2, webResults: 5 })
+  assert.deepEqual(merged, { lastModel: 'm', smoothStreaming: false, smoothSpeed: 500, webResults: 5 })
   assert.equal(prefs.smoothStreaming, false)
   assert.equal(prefs.smoothSpeed, 500)
-  assert.equal(prefs.budget, 2)
   assert.equal(prefs.webResults, 5)
 })
 
@@ -181,28 +180,32 @@ test('applyPreferenceUpdates skips undefined smoothSpeed', () => {
   assert.deepEqual(Object.keys(updated).sort(), ['lastModel'])
 })
 
-test('applyPreferenceUpdates merges global budget, webResults and outputDir keys', () => {
+test('applyPreferenceUpdates merges global webResults and outputDir keys', () => {
   const updated = applyPreferenceUpdates({ lastModel: 'm' }, {
     modelId: 'm',
-    budget: 2.5,
     webResults: 5,
     outputDir: '/tmp/exports',
   })
 
-  assert.equal(updated.budget, 2.5)
   assert.equal(updated.webResults, 5)
   assert.equal(updated.outputDir, '/tmp/exports')
 })
 
-test('applyPreferenceUpdates skips undefined budget, webResults and outputDir', () => {
+test('applyPreferenceUpdates skips undefined webResults and outputDir', () => {
   const updated = applyPreferenceUpdates({ lastModel: 'm' }, {
     modelId: 'm',
-    budget: undefined,
     webResults: undefined,
     outputDir: undefined,
   })
 
   assert.deepEqual(Object.keys(updated).sort(), ['lastModel'])
+})
+
+test('applyPreferenceUpdates preserves a legacy budget key untouched', () => {
+  const updated = applyPreferenceUpdates({ lastModel: 'm', budget: 2 }, { modelId: 'm', webResults: 5 })
+
+  assert.equal(updated.budget, 2)
+  assert.equal(updated.webResults, 5)
 })
 
 test('applyPreferenceUpdates sets lastImageModel', () => {
