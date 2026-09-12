@@ -459,7 +459,8 @@ F42. O42: the file-level `not ok - test/chat-loop.test.js` with `failureType: 'u
     `test/runner-console-guard.test.js` spawns the real runner over
     `scripts/fixtures/console-noise-child.js` — 500 async tests logging a frame-shaped block (`'zz'` plus
     4 NUL bytes, i.e. a size of 0) — asserts the unguarded run dies at file level with the error above
-    (20 of 20 unguarded runs fail on Node 22 and on Node 26), and asserts the guarded run exits 0 with
+    (50 of 50 runs of the fixture fail on Node 22 and on Node 26; the glue is a read/write race, so the
+    pin retries up to 8 runs and needs one hit), and asserts the guarded run exits 0 with
     no deserialization error while still surfacing the child's output. **Do not remove the guard while
     the upstream bug stands, and note that a bare `node --test` bypasses the whole wrapper.**
 

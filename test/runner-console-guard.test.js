@@ -11,6 +11,7 @@ import assert from 'node:assert/strict'
 const GUARD = fileURLToPath(new URL('../scripts/test-child-console-guard.js', import.meta.url))
 const FIXTURE = fileURLToPath(new URL('../scripts/fixtures/console-noise-child.js', import.meta.url))
 const DESERIALIZE_ERROR = 'Unable to deserialize cloned data due to invalid or unsupported version.'
+const MAX_OUTPUT = 64 * 1024 * 1024
 
 // This pin runs inside a test child itself, so it must not hand its own
 // NODE_TEST_CONTEXT to the runner it spawns: the runner picks its reporter from
@@ -43,7 +44,7 @@ test('the guard keeps the fixture output off the runner protocol channel', () =>
   const guarded = spawnSync(
     process.execPath,
     ['--test', '--experimental-test-module-mocks', '--import', GUARD, FIXTURE],
-    { encoding: 'utf8', env: PARENT_ENV },
+    { encoding: 'utf8', env: PARENT_ENV, maxBuffer: MAX_OUTPUT },
   )
   assert.equal(guarded.status, 0, guarded.stderr)
   assert.doesNotMatch(guarded.stdout + guarded.stderr, /Unable to deserialize/)
@@ -51,14 +52,18 @@ test('the guard keeps the fixture output off the runner protocol channel', () =>
   assert.match(guarded.stdout, /zz/)
 })
 
+// Whether the parent's reads glue a frame and a text block together is a race
+// between the child's writes and the parent's reads, so the unguarded failure
+// is measured over several runs instead of one: 20 out of 20 single runs fail
+// on Node 22 and on Node 26, and the pin needs one hit out of these attempts.
 test('without the guard the fixture output fails the runner', (t) => {
   const attempts = []
   let failed = null
-  for (let i = 0; i < 4 && failed === null; i++) {
+  for (let i = 0; i < 8 && failed === null; i++) {
     const raw = spawnSync(
       process.execPath,
       ['--test', '--experimental-test-module-mocks', FIXTURE],
-      { encoding: 'utf8', env: PARENT_ENV },
+      { encoding: 'utf8', env: PARENT_ENV, maxBuffer: MAX_OUTPUT },
     )
     attempts.push(raw.status)
     if ((raw.stdout + raw.stderr).includes(DESERIALIZE_ERROR)) failed = raw
