@@ -947,6 +947,27 @@ test('--no-safe-mode alone opens the chat and persists the pref', async (t) => {
   assert.equal(imageCalls.length, 1, `expected one image listing request, saw ${imageCalls.length}`)
 })
 
+test('--no-save --no-safe-mode prints the notice without persisting the pref', async (t) => {
+  withTTY(t, false)
+  withStdoutTTY(t, false)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  const { resetModelCaches } = await import('../src/providers/venice.js')
+  resetModelCaches()
+  t.after(resetModelCaches)
+  // An empty listing fails the run right after the notice, so the assertions
+  // cover the notice routing and the write that must NOT happen.
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  )
+
+  const { out, err } = await runAndExit(t, { provider: 'venice', model: 'venice-model', config: configFile, safeMode: false, save: false }, 'Hi', 1)
+
+  assert.match(err.join('\n'), /^Venice safe mode disabled$/m)
+  assert.ok(!out.join('\n').includes('Venice safe mode disabled'), 'the notice must stay off piped stdout')
+  await assert.rejects(readFile(configFile, 'utf-8'), /ENOENT/)
+})
+
 test('--no-safe-mode notice goes to stderr when stdout is piped', async (t) => {
   withTTY(t, true)
   withStdoutTTY(t, false)

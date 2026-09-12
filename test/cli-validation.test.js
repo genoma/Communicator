@@ -572,6 +572,43 @@ test('rejects --attach without a prompt in a TTY', () => {
   assert.deepEqual(validateCliFlags(opts({ attach: ['a.txt'] }), { ...TTY, ...PROMPT() }), [])
 })
 
+test('--no-save requires a headless run', () => {
+  const message = 'Error: --no-save requires a prompt argument or piped stdin (an interactive session always saves).'
+  assert.deepEqual(validateCliFlags(opts({ save: false }), TTY), [message])
+  assert.deepEqual(validateCliFlags(opts({ save: false }), NO_TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ save: false }), { ...TTY, ...PROMPT() }), [])
+})
+
+test('--no-save is rejected next to every exit path', () => {
+  // Piped stdin keeps the rule under test the only one that fires.
+  for (const [extra, expected] of [
+    [{ listModels: true }, 'Error: --no-save cannot be combined with --list-* flags.'],
+    [{ export: 'x' }, 'Error: --no-save cannot be combined with --export.'],
+    [{ delete: 'x' }, 'Error: --no-save cannot be combined with --delete.'],
+    [{ deleteAllSessions: 'y' }, 'Error: --no-save cannot be combined with --delete-all-sessions.'],
+    [{ config: true }, 'Error: bare --config (config view) cannot be combined with other flags.'],
+  ]) {
+    assert.deepEqual(validateCliFlags(opts({ save: false, ...extra }), NO_TTY), [expected])
+  }
+})
+
+test('--no-save rejects the image-default flags on a text run but not on --image', () => {
+  const both = 'Error: --aspect-ratio and --image-format cannot be combined with --no-save on a text run (they only persist image defaults there).'
+  assert.deepEqual(
+    validateCliFlags(opts({ save: false, aspectRatio: '16:9' }), NO_TTY),
+    ['Error: --aspect-ratio cannot be combined with --no-save on a text run (they only persist image defaults there).']
+  )
+  assert.deepEqual(
+    validateCliFlags(opts({ save: false, imageFormat: 'png' }), NO_TTY),
+    ['Error: --image-format cannot be combined with --no-save on a text run (they only persist image defaults there).']
+  )
+  assert.deepEqual(validateCliFlags(opts({ save: false, aspectRatio: '16:9', imageFormat: 'png' }), NO_TTY), [both])
+  // On an --image run both flags shape the request, so --no-save only means
+  // "do not persist the default they resolve".
+  assert.deepEqual(validateCliFlags(opts({ save: false, image: true, aspectRatio: '16:9', imageFormat: 'png' }), NO_TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ save: false, image: true, aspectRatio: '16:9' }), { ...TTY, ...PROMPT() }), [])
+})
+
 test('reports every violated combination in order', () => {
   assert.deepEqual(
     validateCliFlags(opts({ resume: 'x', export: 'y', webSearch: 'bogus' }), TTY),

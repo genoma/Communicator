@@ -41,19 +41,29 @@ async function scrapeForSession({ provider, apiKey, url }) {
   return { url, content: text }
 }
 
-// Persists and announces the --aspect-ratio/--image-format per-provider
-// defaults. Shared by the chat/one-shot path and the --image branch so both
-// announce the same thing; the generation path alone would save them silently
-// and only after a successful run.
-async function applyImageDefaults({ prefs, config, providerType, aspectRatio, imageFormat }) {
-  if (aspectRatio === undefined && imageFormat === undefined) return
-  const merged = mergeImageDefaults(prefs, providerType, { aspectRatio, format: imageFormat })
-  prefs.imageDefaults = merged.imageDefaults
+// Writes a preference a launch path persists; --no-save runs skip the write
+// instead (the in-memory values still shape the request, and the notices still
+// describe the run that really happens).
+async function persistPreference({ noSave, prefs, config, what }) {
+  if (noSave) return
   try {
     await savePreferences(prefs, config)
   } catch (err) {
-    fail(`Error: could not save the image defaults preference: ${err.message}`)
+    fail(`Error: could not save the ${what} preference: ${err.message}`)
   }
+}
+
+// Persists and announces the --aspect-ratio/--image-format per-provider
+// defaults. Shared by the chat/one-shot path and the --image branch so both
+// announce the same thing; the generation path alone would save them silently
+// and only after a successful run. Under --no-save nothing is written and
+// nothing is announced: the run only shapes its own request with them.
+async function applyImageDefaults({ prefs, config, providerType, aspectRatio, imageFormat, noSave = false }) {
+  if (aspectRatio === undefined && imageFormat === undefined) return
+  const merged = mergeImageDefaults(prefs, providerType, { aspectRatio, format: imageFormat })
+  prefs.imageDefaults = merged.imageDefaults
+  await persistPreference({ noSave, prefs, config, what: 'image defaults' })
+  if (noSave) return
   if (aspectRatio !== undefined) {
     const notice = `Aspect ratio set to ${aspectRatio} (${providerType} image defaults)`
     if (process.stdout.isTTY === true) console.log(notice)
@@ -94,6 +104,8 @@ export async function runCli(opts, promptArg) {
 
 async function main(opts, promptArg) {
   const providerType = opts.provider || 'openrouter'
+  // --no-save runs read and generate normally but must leave no file behind.
+  const noSave = opts.save === false
 
   // Numeric session flags are validated up front so an invalid value errors
   // with its own message regardless of the path (exit modes, image runs,
@@ -147,8 +159,10 @@ async function main(opts, promptArg) {
     // A story dir that only holds the legacy history.json log gets it
     // imported once as chapter #1; afterwards history.json is read-only
     // (and no longer written), and every run saves one chapter session.
+    // --no-save writes nothing to the --rpg dir, so the import waits for a run
+    // that may save (nothing was migrated, and nothing is announced).
     const { importLegacyRpgHistory } = await import('./rpg.js')
-    const migrated = await importLegacyRpgHistory({
+    const migrated = noSave ? null : await importLegacyRpgHistory({
       rpgDir: rpgContext.dir,
       history: rpgContext.history,
       historyUpdatedAt: rpgContext.historyUpdatedAt,
@@ -297,11 +311,7 @@ async function main(opts, promptArg) {
     // path exits before the shared notice below, so say it here.
     if (opts.safeMode === false) {
       prefs.safeMode = false
-      try {
-        await savePreferences(prefs, opts.config)
-      } catch (err) {
-        fail(`Error: could not save the safe mode preference: ${err.message}`)
-      }
+      await persistPreference({ noSave, prefs, config: opts.config, what: 'safe mode' })
       if (process.stdout.isTTY === true) console.log('Venice safe mode disabled')
       else console.error('Venice safe mode disabled')
     }
@@ -310,18 +320,14 @@ async function main(opts, promptArg) {
     // save it (and announce it) before the run like safe mode does.
     if (opts.watermark === false) {
       prefs.hideWatermark = true
-      try {
-        await savePreferences(prefs, opts.config)
-      } catch (err) {
-        fail(`Error: could not save the watermark preference: ${err.message}`)
-      }
+      await persistPreference({ noSave, prefs, config: opts.config, what: 'watermark' })
       if (process.stdout.isTTY === true) console.log('Venice watermark disabled')
       else console.error('Venice watermark disabled')
     }
     // The image-generation path persists these only after a successful run;
     // save and announce them here like safe mode and the watermark so an
     // --image run matches a chat run (same notice wording).
-    await applyImageDefaults({ prefs, config: opts.config, providerType, aspectRatio, imageFormat })
+    await applyImageDefaults({ prefs, config: opts.config, providerType, aspectRatio, imageFormat, noSave })
     const { imageGenCmd } = await import('./commands/image-gen.js')
     await imageGenCmd({ apiKey, opts, prefs, providerType, prompt: promptArg })
     process.exit(0)
@@ -385,11 +391,7 @@ async function main(opts, promptArg) {
   // (interactive chat, one-shot, piped stdin), per its documented behavior.
   if (opts.safeMode === false) {
     prefs.safeMode = false
-    try {
-      await savePreferences(prefs, opts.config)
-    } catch (err) {
-      fail(`Error: could not save the safe mode preference: ${err.message}`)
-    }
+    await persistPreference({ noSave, prefs, config: opts.config, what: 'safe mode' })
     if (process.stdout.isTTY === true) console.log('Venice safe mode disabled')
     else console.error('Venice safe mode disabled')
   }
@@ -399,18 +401,14 @@ async function main(opts, promptArg) {
   // itself and has already exited above.
   if (opts.watermark === false) {
     prefs.hideWatermark = true
-    try {
-      await savePreferences(prefs, opts.config)
-    } catch (err) {
-      fail(`Error: could not save the watermark preference: ${err.message}`)
-    }
+    await persistPreference({ noSave, prefs, config: opts.config, what: 'watermark' })
     if (process.stdout.isTTY === true) console.log('Venice watermark disabled')
     else console.error('Venice watermark disabled')
   }
 
   // --aspect-ratio/--image-format persist their per-provider default on every
   // run that carries them; there is no set-and-exit form left to write them.
-  await applyImageDefaults({ prefs, config: opts.config, providerType, aspectRatio, imageFormat })
+  await applyImageDefaults({ prefs, config: opts.config, providerType, aspectRatio, imageFormat, noSave })
 
   if (promptArg || !process.stdin.isTTY) {
     const { oneShotCmd } = await import('./commands/one-shot.js')

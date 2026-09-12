@@ -176,7 +176,11 @@ export async function resumeSessionContext({ result, opts, prefs, forcedEffort, 
   }
 }
 
-export async function persistSession({ finalState, prefs, config, rpgDir = null, rpgCharName = null, rpgUserName = null, rpgFirstMessage = null }) {
+// `noSave` (--no-save) returns before both writes: the run is meant to leave
+// no session file and no preference change behind (the callers that still need
+// their in-memory prefs kept simply skip this call entirely).
+export async function persistSession({ finalState, prefs, config, rpgDir = null, rpgCharName = null, rpgUserName = null, rpgFirstMessage = null, noSave = false }) {
+  if (noSave) return
   if (finalState.sessionId && finalState.messages && finalState.messages.length > 1) {
     const payload = buildSessionPayload(finalState, { rpgDir, rpgCharName, rpgUserName, rpgFirstMessage })
     if (rpgDir) await persistSessionFileTo(rpgSessionsDir(rpgDir), finalState.sessionId, payload)

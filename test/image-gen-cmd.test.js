@@ -148,6 +148,16 @@ async function sessionsDir() {
   return join(tempHome, '.communicator', 'sessions')
 }
 
+// Every entry under a directory (recursive), or null when it does not exist -
+// the shape a --no-save run must reproduce exactly.
+async function listFiles(dir) {
+  try {
+    return (await readdir(dir, { recursive: true })).map(String).sort()
+  } catch {
+    return null
+  }
+}
+
 function mockConsole(t) {
   const stderrChunks = []
   t.mock.method(console, 'log', () => {})
@@ -219,6 +229,32 @@ test('--image happy path writes a resumable session with refs and prints saved/c
 
   const prefs = JSON.parse(await readFile(file, 'utf-8'))
   assert.equal(prefs.lastImageModel, 'flux-1-1')
+})
+
+test('--no-save writes the generated images but no session file and no prefs', async (t) => {
+  const { bodies } = mockVeniceFetch(t)
+  withApiKey(t)
+  const file = await tempConfig(t)
+  mockConsole(t)
+
+  const dir = await sessionsDir()
+  const before = await listFiles(dir)
+
+  const { exited, stdoutChunks } = await runImageGen(t, { overrides: { config: file, save: false } })
+
+  assert.equal(exited, false)
+  assert.equal(bodies.length, 1, 'the generation still ran')
+  const lines = stdoutChunks.join('').split('\n').filter(Boolean)
+  const savedPaths = lines.filter((l) => l.startsWith('saved to ')).map((l) => l.slice('saved to '.length))
+  assert.equal(savedPaths.length, 2)
+  // The images are the run's output: they stay on disk (in the sessions dir's
+  // attachments/, or --output-dir when given).
+  assert.deepEqual(await readFile(savedPaths[0]), IMG1)
+  assert.deepEqual(await readFile(savedPaths[1]), IMG2)
+  // Nothing else was left behind: no session file, no 0-byte claim, no prefs.
+  const added = (await listFiles(dir) ?? []).filter((f) => f.endsWith('.json') && !(before ?? []).includes(f))
+  assert.deepEqual(added, [])
+  await assert.rejects(readFile(file, 'utf-8'), { code: 'ENOENT' })
 })
 
 test('--image persists the session creation time, not the generation end time', async (t) => {

@@ -12,6 +12,19 @@ resume/export/delete pickers so listing never has to parse full session files �
 If the index is missing or stale (e.g. from an older version), it is rebuilt
 automatically from the session files.
 
+## Running without saving
+
+`--no-save` runs a headless one-shot (a prompt argument or piped stdin) without
+leaving anything behind: the prompt is sent and the answer prints on stdout (or
+the image is generated), but no session file — and no empty session claim — is
+written, no `.index.json` entry changes, no preference is saved, and nothing is
+written to the `--rpg` directory. The sessions directory, `~/.communicator.json`
+and the story directory are exactly as they were, which is the point for smoke
+tests, scripted runs and CI. An interactive session always saves (so `--no-save`
+rejects a run with neither a prompt argument nor piped stdin), `--resume <id>`
+reads the session and answers without rewriting its file, and `--image` still
+writes the generated images — those files are the run's output.
+
 ## Listing sessions
 
 ```bash

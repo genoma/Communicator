@@ -29,6 +29,7 @@ program
   .option('--output-dir <path>', 'custom directory for exported files (requires --export or --image)')
   .option('--list-sessions', 'list saved sessions and exit')
   .option('--config [path]', 'path to preferences config file (bare flag prints the current config)')
+  .option('--no-save', 'run without writing session files or preferences (headless runs)')
   .option('--system-prompt <path>', 'path to a custom system prompt file')
   .option('--rpg <dir>', 'enable RPG mode using char.md, user.md, prompt.md, scenario.md, and first-message.md from a directory')
   .option('--debug', 'with --rpg: log the full prompt sent to the model to prompt-log.jsonl in the RPG directory')

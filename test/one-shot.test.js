@@ -1,6 +1,6 @@
 import { test, mock, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, readdir, writeFile } from 'node:fs/promises'
 import { Readable } from 'node:stream'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -673,6 +673,51 @@ test('one-shot with --rpg --debug logs the request body to prompt-log.jsonl', as
   assert.equal(entry.provider, 'openrouter')
   assert.deepEqual(entry.request, bodies[0])
   assert.ok(errors.some((line) => line.includes('prompt logged:') && line.includes('prompt-log.jsonl')))
+})
+
+// Every file under a directory (recursive), or null when it does not exist -
+// the shape a --no-save run must reproduce exactly.
+async function listFiles(dir) {
+  try {
+    return (await readdir(dir, { recursive: true })).map(String).sort()
+  } catch {
+    return null
+  }
+}
+
+test('one-shot --no-save leaves the sessions dir, the prefs file and the RPG dir untouched', async (t) => {
+  const bodies = []
+  mockOpenRouterStream(t, [], bodies)
+  withApiKey(t)
+  withStdoutTTY(t, false)
+  const file = await tempConfig(t)
+  await writeFile(file, JSON.stringify({ budget: 5 }, null, 2) + '\n')
+  const prefsBefore = await readFile(file, 'utf-8')
+  const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(rpgDir, { recursive: true, force: true }))
+  const rpgSessions = await ensureRpgSessionsDir(rpgDir)
+  const globalSessions = await ensureSessionsDir()
+  const sessionsBefore = await listFiles(globalSessions)
+  const rpgBefore = await listFiles(rpgDir)
+  const writes = []
+  t.mock.method(process.stdout, 'write', (chunk) => { writes.push(String(chunk)); return true })
+  mockExit(t)
+
+  const { exited } = await runOneShot(t, {
+    overrides: { config: file, rpg: rpgDir, save: false },
+    rpgHistory: [{ role: 'user', content: 'Hello' }],
+  })
+
+  assert.equal(exited, false)
+  // The run itself is unchanged: one request, and the answer still streams.
+  assert.equal(bodies.length, 1)
+  assert.ok(writes.join('').includes('Hello world'))
+  // Nothing was left behind: no session file (and no 0-byte claim), no chapter
+  // in the RPG dir, no prefs write.
+  assert.deepEqual(await listFiles(globalSessions), sessionsBefore)
+  assert.deepEqual(await listFiles(rpgDir), rpgBefore)
+  assert.ok(!(await listFiles(rpgSessions)).some((f) => f.endsWith('.json')))
+  assert.equal(await readFile(file, 'utf-8'), prefsBefore)
 })
 
 test('one-shot ignores a legacy prefs.budget entirely', async (t) => {

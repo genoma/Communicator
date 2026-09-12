@@ -17,7 +17,7 @@ This file tracks **defects**, not planned feature or flag-surface work. The surf
 removed those flags and the dispatch (and kept `--export-format` with a persisted default) is
 recorded in `SURFACE-CLEANUP.md`; it was never a defect item.
 
-Reference convention: the fixed entries are `F1`–`F39` and the open-list items `O1`–`O41`
+Reference convention: the fixed entries are `F1`–`F40` and the open-list items `O1`–`O41`
 (struck items stay in place, so both ranges keep growing). Every
 reference carries its prefix, so the two lists cannot be confused — do not renumber an
 existing entry, and do not cite a bare number.
@@ -359,6 +359,22 @@ F39. O25: an ambiguous partial id fails fast instead of opening a picker without
    resolved (necessarily unique) session without a prompt while still printing the matched session
    line and the success line. `--export` needed no confirm change, only the resolver.
 
+F40. O22: `--no-save` gives headless runs a way to leave no global state behind. It is declared in
+   `index.js` (Commander's negation sets `opts.save === false`) and rejected by
+   `src/cli-validation.js` next to an interactive session and next to `--aspect-ratio`/
+   `--image-format` on a text run (there they only persist an image default), and it joins
+   `exitIgnoredFlags`/`hasBareConfigOtherFlags` so the established `--list-*`/`--export`/
+   `--delete`/`--delete-all-sessions`/bare `--config` rules reject it with their own wording.
+   `persistSession` (`src/session-setup.js`) returns before both writes; `src/commands/one-shot.js`
+   removes the empty claim instead of filling it in (a resumed run's own file stays untouched);
+   `finalizeImageSession` (`src/commands/image-gen.js`) skips the image-session file and the prefs
+   write while still printing the outcome; `src/cli-main.js` routes the shared and image-branch
+   safe-mode/watermark writes plus `applyImageDefaults` through one `persistPreference` helper
+   (in-memory values and notices kept) and skips the legacy `importLegacyRpgHistory` write. The
+   generated images are the run's output and are never suppressed. Pinned by
+   `test/cli-validation.test.js`, `test/cli-main-success.test.js`, `test/one-shot.test.js` and
+   `test/image-gen-cmd.test.js`.
+
 ## Open — piped-output purity
 
 The contract (`MEMORY.md` §Display consistency): a piped one-shot writes **only** the answer
@@ -576,11 +592,12 @@ O21. ~~**The real `~/.communicator.json` still contains leaked test keys** — `
     leaks; these stale keys remain and are harmless but should be purged deliberately, not
     silently.~~ **Fixed** — the two `test/model-a` keys were purged from the real config (nothing
     under `src/` references that id); local data cleanup, not a repo change; see F30.
-O22. **Every one-shot run rewrites global state**: it claims a session file and rewrites
+O22. ~~**Every one-shot run rewrites global state**: it claims a session file and rewrites
     `~/.communicator.json` (`src/commands/one-shot.js`, `src/session-setup.js:176-195`). Writes
     are atomic but unsynchronised, so concurrent agent/CI invocations are read-modify-write on
     the same prefs file and can lose updates. An opt-in no-save switch for headless runs is the
-    candidate fix.
+    candidate fix.~~ **Fixed** — `--no-save` gives headless runs exactly that switch: no session
+    file (the claim is removed), no prefs write, nothing in the `--rpg` dir; see F40.
 O23. ~~**Piped prompts are `.trim()`ed** (`src/cli-utils.js:19`), so a piped diff or code block
     loses its leading indentation and trailing newline before reaching the model.~~ **Fixed** —
     piped input is preserved as prompt content (indentation, internal blank lines, trailing

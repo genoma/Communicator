@@ -335,6 +335,14 @@ export function buildImageSessionPayload({ messages, modelId, createdAt, updated
 }
 
 export async function finalizeImageSession({ prefs, opts = {}, config, sessionId, messages, outcome, createdAt, updatedAt, providerName = 'venice', stdout = process.stdout }) {
+  // --no-save: the generated images are the run's output (and already saved),
+  // but neither the session file, nor the id claim behind it, nor the prefs
+  // may be written - the outcome still prints exactly as it does on a normal run.
+  if (opts.save === false) {
+    await removeEmptySessionClaim(SESSIONS_DIR, sessionId)
+    printImageOutcome(outcome, stdout)
+    return
+  }
   await persistSessionFile(sessionId, buildImageSessionPayload({ messages, modelId: outcome.modelId, createdAt, updatedAt, providerName, endpointProviderName: outcome.endpointProviderName, pricing: outcome.pricing }))
   const updated = syncPreferenceUpdates(prefs, {
     lastImageModel: outcome.modelId,
