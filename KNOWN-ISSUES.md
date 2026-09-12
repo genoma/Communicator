@@ -377,11 +377,14 @@ O17. ~~**`docs/chat.md:11`** says a bare `-m <id>` "goes straight to chat"; the 
     validate-and-exit config setter (`docs/commands.md` documents it correctly).~~ **Fixed** — the
     paragraph now scopes picker-skipping to `-m <id>` with a prompt and states the bare form
     validates, saves the default and exits; see F29.
-O18. **Bare `--config` ignores the path it could be given** (`src/commands/config-view.js:2-9`):
+O18. ~~**Bare `--config` ignores the path it could be given** (`src/commands/config-view.js:2-9`):
     the view is dispatched only for the boolean form (`src/cli-main.js:163`), which cannot
     coexist with `--config <path>`, and it always prints `DEFAULT_CONFIG_FILE`. The flag's two
     forms therefore disagree about what `--config` means. The surface cleanup makes the path
-    required.
+    required.~~ **Closed — by decision**: the two forms keep their documented split (bare flag
+    prints the default config; `--config <path>` selects a preferences file for the run), the view
+    stays a family-1 inspector outside the setter dispatch, and the cleanup does not require the
+    path. Verified with the owner.
 O19. ~~**Dead branch at `src/commands/list-endpoints.js:27-28`** — the Venice-specific message is
     unreachable because the model id always comes from the same cached catalog.~~ **Fixed** by F23:
     an explicit image id now resolves from the image catalog and `venice.fetchEndpoints` re-resolves

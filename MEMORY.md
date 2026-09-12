@@ -348,11 +348,16 @@ moves into text chat.
 - D3 — resolved: `--export-format` is out of scope and stays (the JSONL format is a feature).
   Making it a settable default later is a separate change: `/export-format markdown|jsonl` plus
   `prefs.exportFormat` consumed by the export dispatch.
-- D4 — OPEN, needs the owner's pick: after removing `--variants`/`--resolution`/`--quality`/
-  `--width`/`--height`, the image REPL covers resolution, quality, format, aspect, variants, seed
-  and watermark, but has no explicit pixel sizing (pixel models only derive pixels from a ratio
-  preset). Either add a session-only `/size <WxH>` to the image REPL or accept ratio-derived
-  pixels.
+- D4 — resolved: drop explicit pixel sizing with the flags; no `/size` command. Sizing stays
+  capability-driven — aspect models validate against their advertised `aspect_ratio` list (live:
+  Venice lists e.g. `1:1, 3:2, 16:9, 21:9, 9:16, 2:3, 3:4, 4:5`), pixel models derive the pixels
+  from the model's `widthHeightDivisor` over the same hardcoded ratio presets
+  (`src/image-sizing.js`, whose comment records the live API facts: the 1280 cap per side and the
+  API divisor winning over the web UI's rounding), and resolution/quality tiers are advertised
+  lists validated per model. Live check of all 41 Venice image models: 34 advertise an aspect list
+  (several also resolutions/qualities) and 7 are pixel models (divisors 8 or 16); the derived
+  presets verify — 2:3 → 848x1272 at div 8 and 848x1264 at div 16, every preset within the 1280
+  cap. `--width`/`--height` only added arbitrary in-range pixels, which no other interface offers.
 - D5 — agreed to remove `--budget` entirely (one-shot runs never enforced the cap and only printed
   the TTY bar; `/budget <usd>` covers the interactive case), on one condition: also drop the
   `prefs.budget` fallback in `resolveSessionFlags` (`src/session-setup.js:17`) so a legacy standing
@@ -360,6 +365,10 @@ moves into text chat.
   session's own cap from its payload (`:168`). Confirm the condition.
 - D6 — approved: add `/safe-mode on|off` to the image REPL (Venice-only, mirroring `/watermark`),
   persisting `prefs.safeMode`.
+- D7 — resolved: keep the `--config` view. It is a family-1 inspector (bare flag prints the
+  default config; `--config <path>` selects a preferences file for the run), not part of the
+  setter dispatch, and the cleanup does not remove it; O18 closes by decision rather than by
+  making the path required.
 
 **Implementation outline.** `index.js` drops the removed flags (`--variants`, `--resolution`,
 `--quality`, `--width`, `--height`, `--budget`) and the bare-only forms; `src/cli-main.js` deletes
@@ -374,7 +383,7 @@ approved) add commands with `COMMAND_DESCRIPTIONS`/`COMMAND_USAGE` rows, `ctx.sa
 persistence and help/count tests; docs `docs/commands.md` (flag rows, examples, the "Bare use
 saves the default" phrases), `docs/images.md`, `docs/chat.md`, `README.md` and the MEMORY sections
 that name the dispatch (`src/cli-main.js`, `src/cli-validation.js`, Budget semantics, Web search
-semantics, Text vs Image) are updated; `KNOWN-ISSUES.md` closes O1/O31/O15/O18/O26. Gate:
+semantics, Text vs Image) are updated; `KNOWN-ISSUES.md` closes O1/O31/O15/O26 and O18 by decision (the `--config` view stays). Gate:
 `npm test`, `npm run lint`, `npx knip`.
 
 **Versioning / migration.** Removing flags is breaking: the next tag is MAJOR (`4.0.0`, with the
