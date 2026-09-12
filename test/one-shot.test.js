@@ -956,7 +956,7 @@ test('one-shot reads the prompt from piped stdin when no prompt is given', async
   assert.equal(matches.length, 1)
 })
 
-test('one-shot SIGINT during the request aborts and exits 130', async (t) => {
+test('one-shot SIGINT during a --rpg --debug request flushes the prompt log and exits 130', async (t) => {
   const models = [{ id: 'test/model-a', name: 'Model A', context_length: 1000, description: 'd', reasoning: null }]
   const endpoints = [{
     provider_name: 'ProviderX',
@@ -970,6 +970,9 @@ test('one-shot SIGINT during the request aborts and exits 130', async (t) => {
   }]
   let rejectCompletion
   const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  let dispatch
+  const dispatched = new Promise((resolve) => { dispatch = resolve })
+  const bodies = []
   const fetchCalls = []
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
     fetchCalls.push(String(url))
@@ -977,15 +980,23 @@ test('one-shot SIGINT during the request aborts and exits 130', async (t) => {
       opts.signal.addEventListener('abort', () => {
         rejectCompletion(Object.assign(new Error('aborted'), { pendingBuffer: 'data: {"choices":[{"delta":{"content":"Hel' }))
       })
+      // The prompt-log append is issued while the body is built, right before
+      // this fetch: only interrupt a request that is really out (see the pin).
+      if (opts.body) bodies.push(JSON.parse(opts.body))
+      dispatch()
       return pending
     }
     if (String(url).includes('/endpoints')) return jsonResponse({ data: { endpoints } })
     return jsonResponse({ data: models })
   })
   withApiKey(t)
+  const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(rpgDir, { recursive: true, force: true }))
   const getExitCode = mockExit(t)
   const errors = []
   t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+  appendFileDelayMs = 200
+  t.after(() => { appendFileDelayMs = 0 })
 
   let sigintHandler = null
   let handlerReady
@@ -1002,15 +1013,71 @@ test('one-shot SIGINT during the request aborts and exits 130', async (t) => {
   t.mock.method(process, 'off', (event, fn) => originalOff(event, fn))
 
   const { oneShotCmd } = await import('../src/commands/one-shot.js')
-  const run = oneShotCmd({ apiKey: 'test-key', opts: opts(), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: 'Hello' })
+  const run = oneShotCmd({ apiKey: 'test-key', opts: opts({ rpg: rpgDir, debug: true }), prefs: {}, systemPrompt: 'RPG system prompt', rpgFirstMessage: 'The gate creaks open.', providerType: 'openrouter', prompt: 'Hello' })
   const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('SIGINT handler never registered')), 5000))
   await Promise.race([handlerSet, timeout])
+  await dispatched
   assert.ok(sigintHandler !== null)
   sigintHandler()
 
   await assert.rejects(run, (e) => e instanceof ExitSignal && e.code === 130)
   assert.equal(getExitCode(), 130)
   assert.ok(errors.some((e) => e.includes('Interrupted.')))
+  // The interrupt path awaits the log chain before its process.exit(130), with
+  // the append held open by the pin above: an exit that skipped the flush would
+  // find no file at all here (this test fails with ENOENT without it).
+  const logged = (await readFile(join(rpgDir, 'prompt-log.jsonl'), 'utf-8')).trim().split('\n')
+  assert.equal(logged.length, 1)
+  assert.deepEqual(JSON.parse(logged[0]).request, bodies[0])
+})
+
+// The failed-request half of the same catch: the rethrow happens after the
+// flush (the caller prints it and exits 1), so the log is on disk by the time
+// the run rejects.
+test('one-shot --rpg --debug flushes the prompt log before a failed request rethrows', async (t) => {
+  resetOpenRouterModelCaches()
+  const models = [{ id: 'test/model-a', name: 'Model A', context_length: 1000, description: 'd', reasoning: null }]
+  const endpoints = [{
+    provider_name: 'ProviderX',
+    tag: 't',
+    status: 'available',
+    uptime_last_30m: null,
+    pricing: { prompt: 1e-6, completion: 2e-6 },
+    context_length: 1000,
+    max_completion_tokens: null,
+    supported_parameters: {},
+  }]
+  const bodies = []
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    if (String(url).includes('/chat/completions')) {
+      if (opts.body) bodies.push(JSON.parse(opts.body))
+      return jsonResponse({ error: { message: 'bad request' } }, 400)
+    }
+    if (String(url).includes('/endpoints')) return jsonResponse({ data: { endpoints } })
+    return jsonResponse({ data: models })
+  })
+  withApiKey(t)
+  const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(rpgDir, { recursive: true, force: true }))
+  t.mock.method(console, 'error', () => {})
+  const getExitCode = mockExit(t)
+  appendFileDelayMs = 200
+  t.after(() => { appendFileDelayMs = 0 })
+
+  const { exited, exitCode, message } = await runOneShot(t, {
+    overrides: { rpg: rpgDir, debug: true },
+    systemPrompt: 'RPG system prompt',
+    rpgFirstMessage: 'The gate creaks open.',
+  })
+
+  assert.equal(exited, true)
+  assert.equal(exitCode, 1)
+  assert.match(message, /OpenRouter request failed \(400\)/)
+  assert.equal(getExitCode(), null)
+  assert.equal(bodies.length, 1)
+  const logged = (await readFile(join(rpgDir, 'prompt-log.jsonl'), 'utf-8')).trim().split('\n')
+  assert.equal(logged.length, 1)
+  assert.deepEqual(JSON.parse(logged[0]).request, bodies[0])
 })
 
 

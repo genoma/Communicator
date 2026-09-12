@@ -511,34 +511,48 @@ F42. O42: the file-level `not ok - test/chat-loop.test.js` with `failureType: 'u
 
 F43. O43: a `--rpg --debug` run no longer drops its prompt-log line when the process exits right
 after the request. The append chain `logRpgPrompt` (`src/rpg.js:331`) already maintained is now
-returned by the exported `flushRpgPromptLog` (`src/rpg.js:327-329`), and every deliberate exit path
-awaits it. One-shot: the request `catch` flushes before both the interrupt `process.exit(130)` and
-the rethrow (`src/commands/one-shot.js:354`), the `--no-save` return flushes at `:266` and the
+returned by the exported `flushRpgPromptLog` (`src/rpg.js:327-329`), and every exit path awaits it
+before the run returns or leaves, so the process cannot leave with a prompt-log append still in
+flight. One-shot: the request `catch` flushes before both the interrupt `process.exit(130)` and
+the rethrow (`src/commands/one-shot.js:266`), the `--no-save` return flushes at `:354` and the
 normal return at `:365` — so `src/cli-main.js:421`'s `process.exit(0)` can no longer race the write.
-Chat: `exitCleanly` flushes before it returns the final state (`src/chat.js:346`, the `/quit` and
-exit-outcome path) and the idle-SIGINT chain flushes alongside the exit save
+Chat: `exitCleanly` flushes before it returns the final state (`src/chat.js:348`, the `/quit` and
+exit-outcome path), the idle-SIGINT chain flushes alongside the exit save
 (`exitSavePromise ??= Promise.all([bestEffortExitSave(), flushRpgPromptLog()]).finally(() =>
-exit(130))`, `src/chat.js:327`). The append itself is unchanged: same serialized chain, same
+exit(130))`, `src/chat.js:327`), the streaming Ctrl+C/SIGTERM exit flushes through the injected
+`interruptSave` (`() => Promise.all([bestEffortExitSave(), flushRpgPromptLog()])`,
+`src/chat.js:387`) that the runner's `interruptedExit` awaits before its `exit(130)`
+(`src/turn-runner.js:93-105`), and the `beforeExit`/`uncaughtException` handlers save and flush
+together (`src/chat.js:331-340`). The append itself is unchanged: same serialized chain, same
 plain (non-atomic) write, same `Warning: could not log prompt to …` wording, same
 `[debug] prompt logged: …` notice, and the flush never rejects (each append catches its own
-failure), so awaiting it unconditionally is safe and total. Still exposed, all with the same narrow
-window (the append is usually already on disk by the time the path runs): the mid-stream Ctrl+C exit
-(`interruptedExit` in `src/turn-runner.js:93-105` saves via the injected `interruptSave` and then
-`exit(130)` without the flush), and the interactive `uncaughtException`/`beforeExit` handlers
-(`src/chat.js:329-338`), which are error/natural-exit paths rather than deliberate exits.
+failure), so awaiting it unconditionally is safe and total. With that, no deliberate exit path is
+left that can drop an append: the run returns or leaves only after everything it issued has landed.
+A crash in a run that installs no handler — a one-shot's uncaught exception, say; only the chat
+REPL registers `uncaughtException` — can still take a pending append with it, which is the same
+narrow window this entry started from and is left as is (a debug-log line is not worth a crash
+handler that would have to replace Node's own). The
+`beforeExit` flush is belt-and-braces — a pending append is a libuv request, so the loop cannot be
+empty (and the chain's continuation drains as a microtask) while one is still in flight — but it
+keeps the handlers uniform.
 Pin (the load-bearing part): the prompt log is written through `appendFile`, so
 `test/one-shot.test.js` mocks `node:fs/promises` (spread of the real module, before the src imports)
 to hold that single append open for 200 ms while everything else runs normally — a run that returned
 without flushing finds no file at all rather than one a poll eventually sees
 (`one-shot --rpg --debug does not return before the prompt log has landed`, `:679`; the two
-`--rpg --debug` tests lose their 1 s notice polls and read the file directly). The same technique
-pins the chat exits in `test/chat-prompt-log-flush.test.js` (`:110` `/quit`, `:129` idle SIGINT,
-which records what was on disk at the instant `exit(130)` runs) and `test/rpg.test.js:354` pins the
-export itself (two unawaited appends land after one flush, and a failed append still leaves the
-flush resolving). Fail-before evidence: with the flush removed from `src/commands/one-shot.js` all
-three one-shot tests red with `ENOENT` at ~2 ms against the 200 ms append, and with it removed from
-`src/chat.js` both chat tests red (the `/quit` read gives `ENOENT`, the SIGINT exit records
-`logAtExit: null`) — verified on this branch.
+`--rpg --debug` tests lose their 1 s notice polls and read the file directly). The two exits that
+are not a plain return are pinned with the same technique: `one-shot SIGINT during a --rpg
+--debug request flushes the prompt log and exits 130` (`:959`) interrupts only a dispatch that is
+really out and then reads the log after the 130, and `one-shot --rpg --debug flushes the prompt log
+before a failed request rethrows` (`:1037`) reads it after the run rejects. The same technique pins
+the chat exits in `test/chat-prompt-log-flush.test.js` (`:111` `/quit`, `:130` idle SIGINT, `:166`
+the streaming SIGINT, `:205` the unhandled-error exit — the last three record what was on disk at
+the instant `exit(130)`/`exit(1)` runs) and `test/rpg.test.js:354` pins the export
+itself (two unawaited appends land after one flush, and a failed append still leaves the flush
+resolving). Fail-before evidence: with the three flushes removed from `src/commands/one-shot.js` all
+five one-shot tests that read the log red with `ENOENT` (1–2 ms against the 200 ms append), and with
+the four flushes removed from `src/chat.js` all four chat tests red (the `/quit` read gives
+`ENOENT`, the three exits record `logAtExit: null`) — verified on this branch.
 
 ## Open — piped-output purity
 

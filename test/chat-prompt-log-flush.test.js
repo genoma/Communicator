@@ -44,7 +44,7 @@ function scriptedInput(values) {
   }
 }
 
-function fakeProvider() {
+function fakeProvider(overrides = {}) {
   const calls = []
   return {
     calls,
@@ -55,6 +55,7 @@ function fakeProvider() {
         opts.onRequest?.({ model: opts.model, messages: opts.messages.slice(), stream: true })
         return { content: 'Hello!', usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }
       },
+      ...overrides,
     },
   }
 }
@@ -160,4 +161,78 @@ test('SIGINT exits 130 only after a pending prompt-log append has landed', async
 
   assert.deepEqual(exits.map((entry) => entry.code), [130])
   assert.equal(exits[0].logAtExit?.length, 1, 'the prompt-log line must already be on disk when the exit runs')
+})
+
+test('SIGINT during streaming exits 130 only after a pending prompt-log append has landed', async (t) => {
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', () => {})
+  const dir = await tempRpgDir(t)
+  let rejectCompletion
+  const pending = new Promise((resolve, reject) => { rejectCompletion = reject })
+  let loggedRequest
+  const requestLogged = new Promise((resolve) => { loggedRequest = resolve })
+  // The streaming interrupt runs through the runner's `interruptedExit`, which
+  // saves via the injected `interruptSave` (src/chat.js) and then exits 130.
+  const { provider } = fakeProvider({
+    async chatCompletion(opts) {
+      opts.onRequest?.({ model: opts.model, messages: opts.messages.slice(), stream: true })
+      loggedRequest()
+      opts.signal.addEventListener('abort', () => {
+        rejectCompletion(Object.assign(new Error('aborted'), { pendingBuffer: 'data: {"choices":[{"delta":{"content":"Hel' }))
+      })
+      return pending
+    },
+  })
+  const logPath = join(dir, 'prompt-log.jsonl')
+  const exits = []
+  const { deps, signals } = makeHarness({
+    readInput: scriptedInput(['hello', '/quit']),
+    onExit: (code) => exits.push({ code, logAtExit: existsSync(logPath) ? readLog(dir) : null }),
+  })
+  appendFileDelayMs = 200
+  t.after(() => { appendFileDelayMs = 0 })
+
+  const session = runChatSession(baseCtx(provider, dir), deps)
+  await requestLogged
+  signals().sigint()
+  await waitFor(() => exits.length === 1)
+  await session
+
+  assert.deepEqual(exits.map((entry) => entry.code), [130])
+  assert.equal(exits[0].logAtExit?.length, 1, 'the prompt-log line must already be on disk when the streaming interrupt exits')
+})
+
+test('uncaughtException exits 1 only after a pending prompt-log append has landed', async (t) => {
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', () => {})
+  const dir = await tempRpgDir(t)
+  const { provider, calls } = fakeProvider()
+  // The loop parks on this input, so the handler sees a finished turn whose
+  // append is still in flight.
+  let releaseInput
+  const parked = new Promise((resolve) => { releaseInput = () => resolve({ cancelled: true }) })
+  let inputCalls = 0
+  const readInput = async () => {
+    inputCalls += 1
+    return inputCalls === 1 ? { value: 'hello' } : parked
+  }
+  const logPath = join(dir, 'prompt-log.jsonl')
+  const exits = []
+  const { deps, signals } = makeHarness({
+    readInput,
+    onExit: (code) => exits.push({ code, logAtExit: existsSync(logPath) ? readLog(dir) : null }),
+  })
+  appendFileDelayMs = 200
+  t.after(() => { appendFileDelayMs = 0 })
+
+  const session = runChatSession(baseCtx(provider, dir), deps)
+  await waitFor(() => inputCalls === 2)
+  assert.equal(calls.length, 1)
+  signals().uncaughtException(new Error('boom'))
+  await waitFor(() => exits.length === 1)
+  releaseInput()
+  await session
+
+  assert.deepEqual(exits.map((entry) => entry.code), [1])
+  assert.equal(exits[0].logAtExit?.length, 1, 'the prompt-log line must already be on disk when the unhandled-error exit runs')
 })

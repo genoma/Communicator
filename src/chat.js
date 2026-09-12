@@ -326,15 +326,17 @@ export async function runChatSession(ctx = {}, deps = {}) {
       // pending prompt-log append too (see flushRpgPromptLog).
       exitSavePromise ??= Promise.all([bestEffortExitSave(), flushRpgPromptLog()]).finally(() => exit(130))
     },
+    // The natural-exit and unhandled-error handlers save best-effort and flush
+    // the prompt log with the save (see flushRpgPromptLog).
     beforeExit: () => {
-      void bestEffortSave()
+      void Promise.all([bestEffortSave(), flushRpgPromptLog()])
     },
     uncaughtException: (err) => {
       console.error(`\nUnhandled error: ${formatError(err)}`)
       // Tear the streaming raw mode down before the best-effort save so an
       // unhandled error mid-stream never leaves the terminal raw.
       sessionState.streamKeys?.stop()
-      void bestEffortSave().finally(() => exit(1))
+      void Promise.all([bestEffortSave(), flushRpgPromptLog()]).finally(() => exit(1))
     },
   })
 
@@ -379,7 +381,10 @@ export async function runChatSession(ctx = {}, deps = {}) {
     stdout,
     tty,
     saveCurrentSession,
-    interruptSave: bestEffortExitSave,
+    // The streaming Ctrl+C/SIGTERM exit is the runner's (`interruptedExit`
+    // awaits this, then exits 130), so the prompt log flushes with the save
+    // there too (see flushRpgPromptLog).
+    interruptSave: () => Promise.all([bestEffortExitSave(), flushRpgPromptLog()]),
     exit,
     sessionState,
     onRequest,
