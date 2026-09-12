@@ -113,8 +113,10 @@ export function mergePreferenceState(prefs, updates) {
 // Applies a delta like applyPreferenceUpdates but ALSO keeps the shared prefs
 // object current (mutated in place) and returns the merged object. Every
 // writer then merges from the latest state instead of the launch snapshot, so
-// a mid-session change (/smooth, /budget, /web-results, image defaults) is
-// preserved by the end-of-session prefs save instead of being dropped.
+// a mid-session change (/smooth, /web-results, image defaults) is preserved by
+// the end-of-session prefs save instead of being dropped. (/budget is
+// deliberately absent: the slash command changes the session cap, which travels
+// in the session payload, not the global prefs.budget.)
 export function syncPreferenceUpdates(prefs, updates) {
   const merged = applyPreferenceUpdates(prefs, updates)
   mergePreferenceState(prefs, merged)

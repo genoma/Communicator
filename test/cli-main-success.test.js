@@ -255,6 +255,26 @@ test('--delete with a unique partial id removes the session and exits 0', async 
   assert.ok(!sessions.some((s) => s.id === '2026-01-03T00-00-00'))
 })
 
+test('--delete bare lists exactly the chosen sessions and deletes only those', async (t) => {
+  withTTY(t, true)
+  const dir = await seedSession('2026-01-04T00-00-00', { model: 'test/model-chosen' })
+  await seedSession('2026-01-05T00-00-00', { model: 'test/model-also-chosen' })
+  await seedSession('2026-01-06T00-00-00', { model: 'test/model-kept' })
+  checkboxImpl = async () => ['2026-01-04T00-00-00', '2026-01-05T00-00-00']
+
+  const { out } = await runAndExit(t, { delete: true }, undefined, 0)
+  const printed = out.join('\n')
+  assert.match(printed, /test\/model-chosen/)
+  assert.match(printed, /test\/model-also-chosen/)
+  assert.ok(!printed.includes('test/model-kept'), 'an unselected session must not be listed')
+
+  const { listSessions } = await import('../src/sessions.js')
+  const remaining = await listSessions(dir)
+  assert.ok(!remaining.some((s) => s.id === '2026-01-04T00-00-00'))
+  assert.ok(!remaining.some((s) => s.id === '2026-01-05T00-00-00'))
+  assert.ok(remaining.some((s) => s.id === '2026-01-06T00-00-00'))
+})
+
 test('--delete-all-sessions y removes every session and exits 0', async (t) => {
   const dir = await seedSession('2026-01-10T00-00-00')
   await seedSession('2026-01-11T00-00-00')
@@ -1163,6 +1183,22 @@ test('--rpg --resume --e2ee warns for the chapter files once the run is accepted
   assert.equal(startChatCalls.length, callsBefore + 1)
   assert.match(err.join('\n'), /Resumed RPG conversation from/)
   assert.ok(!out.join('\n').includes('Resumed RPG conversation'), 'the notice must stay off piped stdout')
+})
+
+test('--debug reaches the interactive RPG chat and is off by default', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  const dir = await seedRpgChapter(t)
+  const configFile = await tempConfig(t)
+  const callsBefore = startChatCalls.length
+
+  await runCliNoExit(t, { rpg: dir, resume: true, provider: 'venice', config: configFile }, undefined)
+  assert.equal(startChatCalls.length, callsBefore + 1)
+  assert.equal(startChatCalls.at(-1).opts.rpgDebug, false)
+
+  await runCliNoExit(t, { rpg: dir, resume: true, provider: 'venice', config: configFile, debug: true }, undefined)
+  assert.equal(startChatCalls.length, callsBefore + 2)
+  assert.equal(startChatCalls.at(-1).opts.rpgDebug, true)
 })
 
 test('--rpg setup exit does not warn about e2ee at rest', async (t) => {

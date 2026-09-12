@@ -50,6 +50,8 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--no-watermark`      | —        | Hide the Venice watermark on generated images. Persisted as the global `hideWatermark` pref on every launch path, announced with `Venice watermark disabled` (bare use saves it and exits) |
 |       | `--list-image-models` | —        | List image models (name, id, per-image price, sizing options) and exit |
 
+Flags with an optional value (`--web-search`, `--config`, `--resume`, `--list-endpoints`, `--delete`, `--delete-all-sessions`) consume the next argument when it is not another flag: a prompt written directly after one is parsed as that flag's value. Put the prompt before them, or bind the value with `=`, e.g. `--web-search=auto "Latest AI news"`.
+
 ## Usage examples
 
 ```bash
@@ -90,7 +92,7 @@ communicator -m "openai/gpt-4o" "What is the capital of France?"     # positiona
 echo "Summarize this: ..." | communicator -m "openai/gpt-4o"          # piped stdin
 communicator -m "openai/gpt-4o" --temperature 0.2 "Write a haiku"     # with temperature
 communicator -m "openai/gpt-4o" --top-p 0.8 "Write a haiku"           # with top-p
-cat notes.md | communicator -m "openai/gpt-4o" --budget 0.5 "Fix typos:" # with budget cap
+cat notes.md | communicator -m "openai/gpt-4o" --budget 0.5 "Fix typos:" # budget tracked and persisted; one-shot never refuses
 communicator -m "openai/gpt-4o" --attach screenshot.png "What is the bug?"   # vision model + image
 communicator -p venice -m "qwen-3-7-max" --attach data.xlsx "Summarize this" # Venice office file
 communicator -p venice --scrape "https://example.com/article" "Summarize this article" # scrape + answer
@@ -117,7 +119,7 @@ communicator -m "openai/gpt-4o" --web-search auto "Latest AI news"      # auto m
 communicator -m "openai/gpt-4o" --web-search always "Latest AI news"    # force a web search on every request
 communicator -m "openai/gpt-4o" --web-search off "Latest AI news"       # disable web search
 communicator -m "openai/gpt-4o" --web-results 5 "Latest AI news"        # 5 results, implies auto mode
-communicator -p venice -m "qwen-3-7-max" --web-search "Latest AI news"  # Venice: no result count knob; bare flag means auto
+communicator -p venice -m "qwen-3-7-max" "Latest AI news" --web-search  # Venice: no result count knob; bare flag means auto
 
 # Standalone config commands (persist defaults to ~/.communicator.json and exit)
 communicator --output-dir ~/Documents                                  # save the default export directory

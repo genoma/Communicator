@@ -9,7 +9,7 @@ surface cleanup (removing `--export-format`, `--variants`, `--resolution`, `--qu
 `--width`/`--height`, and the bare "set a preference and exit" dispatch) is tracked in
 `MEMORY.md` §Pending surface cleanup and is not listed here.
 
-Reference convention: the fixed entries are `F1`–`F28` and the open-list items `O1`–`O38`
+Reference convention: the fixed entries are `F1`–`F31` and the open-list items `O1`–`O38`
 (struck items stay in place, so both ranges keep growing). Every
 reference carries its prefix, so the two lists cannot be confused — do not renumber an
 existing entry, and do not cite a bare number.
@@ -192,9 +192,8 @@ F23. `--list-endpoints <id>` resolved only against the text catalog, so the 43 O
     Venice image id prints the existing `… is directly available on Venice (no multi-provider
     routing)` line, which this makes reachable. The interactive picker stays text-only and
     `--image --list-endpoints` stays rejected. Same commit: `fetchEndpoints` sends `Authorization`
-    only when a key is present, like its sibling fetchers (O11's evidence line is updated; the
-    O11's evidence line is updated; the
-    item itself stays open for its disposition). Pinned by seven new `listEndpointsCmd` tests;
+    only when a key is present, like its sibling fetchers (O11's evidence line is updated; the item
+    itself is struck below). Pinned by seven new `listEndpointsCmd` tests;
     the review pass also proved the Venice-direct branch reachable, which closes O19.
 F24. `--aspect-ratio`/`--image-format` — documented as persisted per-provider defaults — were
     dropped by the F21 routing change whenever the same run carried `--system-prompt`/`--scrape`:
@@ -236,6 +235,32 @@ F28. A rejected `--e2ee` resume still printed the at-rest warning first — and 
     `E2EE_AT_REST_WARNING` (`src/constants.js`). Verified live: both refused forms print only the
     error; an accepted Venice e2ee resume still warns, and an accepted RPG resume still prints its
     notice (both pinned in tests).
+
+F29. The documentation and comment drift items O14, O16, O17 and O20 were closed together:
+    `README.md`'s budget bullet now reads "refuses further turns at 100% in interactive sessions
+    (one-shot runs never pre-check the cap)", the piped `--budget` example in `docs/commands.md`
+    says "budget tracked and persisted; one-shot never refuses", `docs/chat.md` scopes picker
+    skipping to `-m <id>` with a prompt and documents the bare form as validate-save-exit, the
+    Venice web-search example puts the prompt before the bare flag, the flags table gained a
+    positional-order note for all six optional-value flags (`--web-search`, `--config`, `--resume`,
+    `--list-endpoints`, `--delete`, `--delete-all-sessions`), and `src/config.js`'s
+    `syncPreferenceUpdates` comment dropped `/budget` from its caller list and states where the cap
+    lives (session payload; the global `prefs.budget` remains the bare setter's). No behavior
+    changed; the O14 evidence that one-shot persists the cap (`src/commands/one-shot.js:293`) and
+    prints the bar on a TTY (`:275-276`) is folded into the entry.
+
+F30. The real `~/.communicator.json` was purged of the two leaked audit keys (`temperature` and
+    `topP` for `test/model-a`). Nothing under `src/` references that id, and `scripts/run-tests.js`
+    already points `HOME`/`USERPROFILE` at a throwaway directory, so `npm test` produces no new
+    leaks; the purge is local data hygiene and leaves the rest of the file (`lastModel`,
+    `lastProvider`, `reasoningEffort`, `compactThinking`) intact.
+
+F31. The two untested paths O28 and O29 gained CLI-level coverage in
+    `test/cli-main-success.test.js`: a `--rpg <dir> --resume --debug` launch now pins that `--debug`
+    reaches the interactive chat as `rpgDebug: true` (the unflagged run pins `false`), and a bare
+    `--delete` checkbox run pins that the printed list is exactly the confirmed set — the unselected
+    session is neither listed nor removed. `--export <unique-id>` stays non-TTY unreachable behind
+    the blanket gate, as O28 recorded.
 
 ## Open — piped-output purity
 
@@ -298,13 +323,16 @@ O10. ~~**`--web-results` on Venice can turn billed search ON.** `src/flags.js:68
     (`src/cli-main.js:233-257`), which only persists the count. Billing path when it does:
     `src/providers/venice.js:289-296` (`enable_web_search: 'auto'`).~~ **Fixed** — see the
     matching entry in "Fixed on `fix/one-shot-bugs`" above.
-O11. **`--list-endpoints` needed an API key on OpenRouter** (`fetchEndpoints` sent
+O11. ~~**`--list-endpoints` needed an API key on OpenRouter** (`fetchEndpoints` sent
     `Authorization: Bearer` unconditionally at `src/providers/openrouter.js:327`) while `--list-models` and
     `--list-image-models` were keyless by design — the audit claimed a keyless script 401s on the
     endpoint listing for the same model. *Re-verified in the O12 commit: that 401 does not
     reproduce — a keyless `--list-endpoints` lists three providers and an empty `Bearer` returns
     200 — and `fetchEndpoints` now sends the header only when a key is present, like its sibling
-    fetchers. The entry stays open only for its disposition decision (strike vs. hardening note).*
+    fetchers. The entry stays open only for its disposition decision (strike vs. hardening note).*~~
+    **Fixed** — disposition: strike. The 401 premise never reproduced and the header was already
+    hardened in F23's commit (re-verified keyless again: two providers listed for `openai/gpt-4o`);
+    see F23.
 O12. ~~**`--list-endpoints <id>` resolves against the text catalog only**, so image models cannot
     be inspected and `--image` cannot be combined with it (`src/cli-validation.js`).~~ **Fixed** —
     see the matching entry in "Fixed on `fix/one-shot-bugs`" above.
@@ -315,9 +343,13 @@ O13. **[docs-clarity, not a defect] `--temperature default` / `--top-p default` 
     question is only that a one-shot run makes a per-invocation-looking flag write global state
     with no note at the point of use. Do **not** "fix" this by dropping the clear without also
     changing `docs/commands.md`.
-O14. **`--budget` is inert on a piped one-shot** (no pre-check, no metrics, not persisted), yet
+O14. ~~**`--budget` is inert on a piped one-shot** (no pre-check, no metrics, not persisted), yet
     `docs/commands.md:93` shows it used with piped stdin and `README.md:20` still describes the
-    cap unscoped. `docs/commands.md`'s flag row is now precise; these two examples are not.
+    cap unscoped. `docs/commands.md`'s flag row is now precise; these two examples are not.~~
+    **Fixed** — the piped example now reads "budget tracked and persisted; one-shot never refuses" and
+    `README.md` scopes the 100% refusal to interactive sessions; see F29. The entry's "not persisted"
+    half was stale: one-shot carries the cap in the session payload (`src/commands/one-shot.js:293`)
+    and prints the bar on a TTY (`:275-276`).
 O15. **`--width` / `--height` precedence trap.** A saved `imageDefaults.<provider>.aspectRatio`
     is applied whenever `opts.aspectRatio === undefined`, with no width/height guard
     (`src/commands/image-gen.js:191-198`); on aspect-list models the explicit pixels are then
@@ -326,13 +358,18 @@ O15. **`--width` / `--height` precedence trap.** A saved `imageDefaults.<provide
 
 ## Open — docs and comment drift
 
-O16. **`src/config.js:116-117`** claims a mid-session `/budget` change is "preserved by the
+O16. ~~**`src/config.js:116-117`** claims a mid-session `/budget` change is "preserved by the
     end-of-session prefs save". `/budget` never touches the prefs object, and `prefs.budget`
     is the standing cap for later sessions (`src/session-setup.js:17`) with the bare
     `--budget` setter as its only writer. Adding a `savePrefs` call to `/budget` would make
-    the two agree and let the CLI setter be dropped.
-O17. **`docs/chat.md:11`** says a bare `-m <id>` "goes straight to chat"; the code makes it a
-    validate-and-exit config setter (`docs/commands.md` documents it correctly).
+    the two agree and let the CLI setter be dropped.~~ **Fixed** — the comment no longer lists
+    `/budget` among the `syncPreferenceUpdates` callers and now says where the cap lives (session
+    payload; the global `prefs.budget` stays the bare setter's); see F29. The optional follow-up
+    (a `/budget` prefs write) is user-visible and stays unapproved.
+O17. ~~**`docs/chat.md:11`** says a bare `-m <id>` "goes straight to chat"; the code makes it a
+    validate-and-exit config setter (`docs/commands.md` documents it correctly).~~ **Fixed** — the
+    paragraph now scopes picker-skipping to `-m <id>` with a prompt and states the bare form
+    validates, saves the default and exits; see F29.
 O18. **Bare `--config` ignores the path it could be given** (`src/commands/config-view.js:2-9`):
     the view is dispatched only for the boolean form (`src/cli-main.js:163`), which cannot
     coexist with `--config <path>`, and it always prints `DEFAULT_CONFIG_FILE`. The flag's two
@@ -342,18 +379,22 @@ O19. ~~**Dead branch at `src/commands/list-endpoints.js:27-28`** — the Venice-
     unreachable because the model id always comes from the same cached catalog.~~ **Fixed** by F23:
     an explicit image id now resolves from the image catalog and `venice.fetchEndpoints` re-resolves
     against the text catalog, so the Venice-direct line prints (pinned by a test).
-O20. **`docs/commands.md`'s Venice web-search example fails as written.** With
+O20. ~~**`docs/commands.md`'s Venice web-search example fails as written.** With
     `--web-search [mode]` the optional value swallows the following prompt, which then fails
     validation. Same trap applies to `--config [path]`, `--resume [session-id]`,
     `--list-endpoints [model]`, `--delete [partial-id]`, `--delete-all-sessions [y/N]` — worth
-    a positional-order note or an explicit `=` example.
+    a positional-order note or an explicit `=` example.~~ **Fixed** — the example now puts the prompt
+    before the bare flag and the flags table carries the positional-order note for all six
+    optional-value flags; the old form was re-verified live failing with
+    `Error: --web-search expects "auto", "always", "on", or "off" (bare flag = auto).`; see F29.
 
 ## Open — prefs, sessions and data hygiene
 
-O21. **The real `~/.communicator.json` still contains leaked test keys** — `temperature` and
+O21. ~~**The real `~/.communicator.json` still contains leaked test keys** — `temperature` and
     `topP` for `test/model-a`. The `scripts/run-tests.js` wrapper change above prevents new
     leaks; these stale keys remain and are harmless but should be purged deliberately, not
-    silently.
+    silently.~~ **Fixed** — the two `test/model-a` keys were purged from the real config (nothing
+    under `src/` references that id); local data cleanup, not a repo change; see F30.
 O22. **Every one-shot run rewrites global state**: it claims a session file and rewrites
     `~/.communicator.json` (`src/commands/one-shot.js`, `src/session-setup.js:176-195`). Writes
     are atomic but unsynchronised, so concurrent agent/CI invocations are read-modify-write on
@@ -384,14 +425,20 @@ O27. **Node 26.8.2 reporter quirk**: 4 tests in `test/one-shot.test.js` execute 
     25 declared vs 21 reported at HEAD; re-count with `grep -c '^test(' test/one-shot.test.js`).
     Failures are still counted and named, so a regression stays loud — but a silent pass count is
     a trap for future audits.
-O28. **Untested paths**: the `--debug` → interactive-chat wiring has no CLI-level test (only the
+O28. ~~**Untested paths**: the `--debug` → interactive-chat wiring has no CLI-level test (only the
     one-shot path and the unit-level ctx flag are covered), and `--export <unique-id>` on a
-    non-TTY is unverifiable while the blanket gate fires first.
-O29. **The multi-select `--delete` confirmation has no test pinning that the printed session
+    non-TTY is unverifiable while the blanket gate fires first.~~ **Fixed (first half)** — a CLI-level
+    test now drives `--rpg <dir> --resume --debug` and pins `rpgDebug: true` on the chat launch
+    (`false` without the flag); see F31. The `--export <unique-id>` half stays as recorded: the
+    blanket gate (`src/cli-validation.js:270-271`) fires before the id resolves, so it is unreachable
+    headlessly by design.
+O29. ~~**The multi-select `--delete` confirmation has no test pinning that the printed session
     list matches the confirmed set** (`src/commands/delete-cmd.js:16-22`). `--delete-all-sessions`
     was originally named here too, but it prints no list — it confirms a whole-directory delete
     (`src/commands/delete-all-cmd.js:18`) and reports a count (`:28`) — so only the multi-select
-    path is at issue.
+    path is at issue.~~ **Fixed** — a CLI-level test now selects 2 of 3 seeded sessions, asserts the
+    printed list is exactly the chosen set (the unselected model is absent) and that only those two
+    were removed; see F31.
 
 ## Open — flag combinations (found while fixing F8)
 
