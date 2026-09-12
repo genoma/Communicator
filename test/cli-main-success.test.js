@@ -866,6 +866,17 @@ test('--scrape with a prompt scrapes the page, injects it, and answers', async (
   withVeniceApiKey(t)
   const configFile = await tempConfig(t)
   const calls = mockVeniceScrapeFetch(t)
+  // Capture only: the piped answer reaches the real fd 1 otherwise, next to the
+  // runner's frames on the test child's protocol channel
+  // (see test/runner-console-guard.test.js). Frames arrive as buffers and are
+  // forwarded untouched.
+  const piped = []
+  const forwardStdout = process.stdout.write.bind(process.stdout)
+  t.mock.method(process.stdout, 'write', (chunk, ...rest) => {
+    if (typeof chunk !== 'string') return forwardStdout(chunk, ...rest)
+    piped.push(String(chunk))
+    return true
+  })
 
   const { out, err } = await runAndExit(t, {
     provider: 'venice',
@@ -874,6 +885,7 @@ test('--scrape with a prompt scrapes the page, injects it, and answers', async (
     scrape: 'https://example.com/article',
   }, 'Summarize', 0)
 
+  assert.ok(piped.join('').includes('Summary'), 'the piped run streams the answer to stdout')
   assert.ok(calls.some((u) => u.includes('/augment/scrape')))
   assert.ok(!out.join('\n').includes('Scraped '), 'the scrape notice must stay off piped stdout')
   assert.match(err.join('\n'), /Scraped https:\/\/example\.com\/article \(\d+ chars\) into context\./)

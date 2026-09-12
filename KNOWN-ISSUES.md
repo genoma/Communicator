@@ -455,15 +455,26 @@ F42. O42: the file-level `not ok - test/chat-loop.test.js` with `failureType: 'u
     `--experimental-test-module-mocks`; the guard replaces `globalThis.console` with a `node:console`
     Console whose stdout and stderr are `process.stderr` when `NODE_TEST_CONTEXT` marks the process as a
     test child — the parent runner keeps its own console and reporter, and `process.stdout.write` stays
-    untouched because the runner writes its frames through it. Census after the guard: `chat-loop` 0 and
-    `chat-commands` 0; `one-shot` 530 and `cli-main-success` 8 unchanged, because those two reach fd 1
-    through `process.stdout.write` (the piped-content path and the artifact/answer printing in
-    `src/commands/one-shot.js`), which a console-only guard cannot move without moving the runner's own
-    frames. Those runs are benign as they stand — their pseudo-sizes are positive (~1.6e9), so the
-    parser breaks and drains the text on the next data event — but a non-ASCII direct write would still
-    create a fatal negative size on Node 22, so the exposure is real and remains on the record.
+    untouched because the runner writes its frames through it. Census after the guard: **0 bytes on all
+    four files** (`chat-loop` 0, `chat-commands` 0, `one-shot` 0, `cli-main-success` 0) — the guard covers
+    console output, and the four `one-shot` tests that echoed every `process.stdout.write` to the real fd 1
+    plus the four `one-shot` tests and the `cli-main-success` test whose piped answer reached fd 1 with no
+    capture at all now capture instead (`mockPipedStdout` in `test/one-shot.test.js`, an inline capture in
+    the `--scrape` one-shot test of `test/cli-main-success.test.js`); no assertion, expected value or test
+    name changed. On this tree the unguarded census reads `chat-loop` 1328, `one-shot` 0,
+    `cli-main-success` 0, `chat-commands` 0 — the console half is the part that still depends on the
+    guard. That capture forwards non-string chunks to the real stream on purpose: the runner frames
+    its results as buffers on the same channel, and swallowing them loses the report — measured with a
+    plain capture-only mock, `test/one-shot.test.js` reported 21 of 28 tests instead of 26. That is why
+    the capture keeps forwarding buffers, and why the two pre-existing inline capture-only mocks left in
+    `test/one-shot.test.js` (`t.mock.method(process.stdout, 'write', () => {})` in the mandatory-reasoning
+    test, the one test of the two unreported ones that has such a mock) are left as they are: the
+    unreported-test pair coincides with `O27`/F34, which stays open separately and is unchanged by this
+    work (26 of 28 reported before and after).
     Verification: 20 consecutive `npm test` runs green (1855 tests each); 30 consecutive guarded
-    `test/chat-loop.test.js` runs green with 0 bytes on the child's fd 1 outside frames each time. Upstream:
+    `test/chat-loop.test.js` runs green with 0 bytes on the child's fd 1 outside frames each time, and
+    `test/one-shot.test.js` / `test/cli-main-success.test.js` still report the same test counts as before
+    the capture change (26 and 76 on Node 22). Upstream:
     nodejs/node#62693 (the same parser, including its infinite-loop variant on a partial `FF 0F` plus a
     large size; still open) and nodejs/node#48103. Pin (the guard, not the upstream bug — a
     bug-triggering pin would not fail on 24+): `test/runner-console-guard.test.js` runs

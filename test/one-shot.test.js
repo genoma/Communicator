@@ -156,6 +156,21 @@ function mockExit(t) {
   return () => exitCode
 }
 
+// The piped one-shot writes the answer with process.stdout.write, which is also
+// the test child's protocol channel: capturing those writes keeps application
+// text off fd 1 (see test/runner-console-guard.test.js). The runner frames its
+// results as buffers on that same channel, so they are forwarded untouched.
+function mockPipedStdout(t) {
+  const writes = []
+  const forward = process.stdout.write.bind(process.stdout)
+  t.mock.method(process.stdout, 'write', (chunk, ...rest) => {
+    if (typeof chunk !== 'string') return forward(chunk, ...rest)
+    writes.push(String(chunk))
+    return true
+  })
+  return writes
+}
+
 async function runOneShot(t, { overrides = {}, prefs = {}, prompt = 'Hello', systemPrompt = null, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, rpgResume = null, scraped = null } = {}) {
   const { oneShotCmd } = await import('../src/commands/one-shot.js')
   try {
@@ -171,12 +186,7 @@ test('one-shot success path writes plain output, the session file and persisted 
   mockOpenRouterStream(t)
   withApiKey(t)
   const file = await tempConfig(t)
-  const writes = []
-  const originalWrite = process.stdout.write.bind(process.stdout)
-  t.mock.method(process.stdout, 'write', function (chunk, ...rest) {
-    writes.push(String(chunk))
-    return originalWrite(chunk, ...rest)
-  })
+  const writes = mockPipedStdout(t)
   const getExitCode = mockExit(t)
 
   const { exited } = await runOneShot(t, { overrides: { config: file }, prefs: { budget: 5 } })
@@ -256,6 +266,7 @@ test('one-shot piped stdout streams content but never reasoning', async (t) => {
 test('one-shot with --web-search on persists the per-model webSearch pref', async (t) => {
   mockOpenRouterStream(t)
   withApiKey(t)
+  mockPipedStdout(t)
   const file = await tempConfig(t)
   const getExitCode = mockExit(t)
 
@@ -760,6 +771,7 @@ test('one-shot ignores a legacy prefs.budget entirely', async (t) => {
   const fetchCalls = []
   mockOpenRouterStream(t, fetchCalls)
   withApiKey(t)
+  mockPipedStdout(t)
   const file = await tempConfig(t)
 
   const sessionsDir = join(tempHome, '.communicator', 'sessions')
@@ -832,6 +844,7 @@ test('one-shot with --zdr sends provider.zdr in the request body', async (t) => 
     return jsonResponse({ data: models })
   })
   withApiKey(t)
+  mockPipedStdout(t)
   const file = await tempConfig(t)
   mockExit(t)
   resetMetadataCaches()
@@ -870,12 +883,7 @@ test('one-shot reads the prompt from piped stdin when no prompt is given', async
     Object.defineProperty(process, 'stdin', { value: originalStdin, configurable: true })
   })
   const file = await tempConfig(t)
-  const writes = []
-  const originalWrite = process.stdout.write.bind(process.stdout)
-  t.mock.method(process.stdout, 'write', function (chunk, ...rest) {
-    writes.push(String(chunk))
-    return originalWrite(chunk, ...rest)
-  })
+  const writes = mockPipedStdout(t)
   mockExit(t)
 
   const { oneShotCmd } = await import('../src/commands/one-shot.js')
@@ -982,12 +990,7 @@ test('one-shot TTY output prints the banner, sources and the skipped-chunk warni
     if (original) Object.defineProperty(process.stdout, 'isTTY', original)
     else delete process.stdout.isTTY
   })
-  const writes = []
-  const originalWrite = process.stdout.write.bind(process.stdout)
-  t.mock.method(process.stdout, 'write', function (chunk, ...rest) {
-    writes.push(String(chunk))
-    return originalWrite(chunk, ...rest)
-  })
+  const writes = mockPipedStdout(t)
   const logs = []
   t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
   mockExit(t)
@@ -1062,6 +1065,7 @@ function mockVeniceImageFetch(t, fetchCalls = []) {
 
 test('one-shot with a scraped page injects it as the first user message and persists the scrape count', async (t) => {
   resetVeniceModelCaches()
+  mockPipedStdout(t)
   const models = [{ id: 'venice-model', model_spec: { name: 'V', capabilities: {}, constraints: {} } }]
   const stream = [
     event({ choices: [{ delta: { content: 'Summary' } }] }),
@@ -1109,12 +1113,7 @@ test('one-shot with a scraped page injects it as the first user message and pers
 test('-m with an image model id routes to one-shot image generation', async (t) => {
   const { bodies, fetchCalls } = mockVeniceImageFetch(t)
   const file = await tempConfig(t)
-  const writes = []
-  const originalWrite = process.stdout.write.bind(process.stdout)
-  t.mock.method(process.stdout, 'write', function (chunk, ...rest) {
-    writes.push(String(chunk))
-    return originalWrite(chunk, ...rest)
-  })
+  const writes = mockPipedStdout(t)
   t.mock.method(console, 'log', () => {})
 
   const sessionsDir = join(tempHome, '.communicator', 'sessions')
