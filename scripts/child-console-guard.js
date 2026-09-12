@@ -6,6 +6,9 @@
 // or unsupported version" (nodejs/node#62693, nodejs/node#48103). Moving the
 // console object to stderr keeps app output off fd 1; the runner writes its
 // protocol through process.stdout itself, so that stays untouched.
+// The file must stay named without a `test-` prefix: the runner's default test
+// discovery matches `**/test-*.js`, and a `test-` prefix beside scripts/ makes
+// this helper a phantom test file in every suite run.
 import { Console } from 'node:console'
 
 // Only a test child carries NODE_TEST_CONTEXT; the parent runner's own console

@@ -36,10 +36,10 @@ process.on('exit', () => {
 })
 
 // Keeps app console output off the child's fd 1, where it corrupts the runner's
-// frame stream (see scripts/test-child-console-guard.js). A workaround for
+// frame stream (see scripts/child-console-guard.js). A workaround for
 // nodejs/node#62693, an upstream Node bug that makes the parent runner fail a
 // whole test file with an uncaught deserialization error.
-const consoleGuard = new URL('./test-child-console-guard.js', import.meta.url).href
+const consoleGuard = new URL('./child-console-guard.js', import.meta.url).href
 
 const result = spawnSync(
   process.execPath,

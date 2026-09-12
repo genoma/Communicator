@@ -17,7 +17,7 @@ This file tracks **defects**, not planned feature or flag-surface work. The surf
 removed those flags and the dispatch (and kept `--export-format` with a persisted default) is
 recorded in `SURFACE-CLEANUP.md`; it was never a defect item.
 
-Reference convention: the fixed entries are `F1`–`F42` and the open-list items `O1`–`O42`
+Reference convention: the fixed entries are `F1`–`F42` and the open-list items `O1`–`O43`
 (struck items stay in place, so both ranges keep growing). Every
 reference carries its prefix, so the two lists cannot be confused — do not renumber an
 existing entry, and do not cite a bare number.
@@ -318,7 +318,9 @@ F34. O27's four unreported tests are a Node 26.8.2 test-runner bug, not a test-f
     dropping the same four (`-m` image-model pair, Ctrl+C picker test, piped mandatory-reasoning
     test). Renaming them, moving their position, appending dummy tests, sending the reporter to a
     file, `--test-concurrency=1`, deleting the file-level `after()` hook and splitting the file all
-    leave the drop unchanged — not stdout mocking, the reporter, ordering or nesting. A failure in
+    leave the drop unchanged — not stdout mocking, the reporter, ordering or nesting (on this
+    26.8.2 line: Node 22's separate 28-declared/26-reported drop does have stdout mocking as one
+    measured cause — see the `MEMORY.md` §Tests, CI and platform notes note). A failure in
     one of them still reds the run (injected `assert.fail` → `fail 1`) but surfaces only as
     `not ok - test/one-shot.test.js`, with the assertion message lost; the working diagnostic is
     `node --test --experimental-test-module-mocks --test-name-pattern="<name>" test/one-shot.test.js`.
@@ -451,7 +453,7 @@ F42. O42: the file-level `not ok - test/chat-loop.test.js` with `failureType: 'u
     (child stream captured with `NODE_TEST_CONTEXT=child-v8 node --experimental-test-module-mocks <file>`,
     walked 2-byte header to 4-byte size): `chat-loop` 1328 (`─────` source rules, 0x80 as the size's top
     byte), `one-shot` 530, `cli-main-success` 8, `chat-commands` 0. `scripts/run-tests.js` now passes
-    `--import <absolute file URL of scripts/test-child-console-guard.js>` to the runner next to
+    `--import <absolute file URL of scripts/child-console-guard.js>` to the runner next to
     `--experimental-test-module-mocks`; the guard replaces `globalThis.console` with a `node:console`
     Console whose stdout and stderr are `process.stderr` when `NODE_TEST_CONTEXT` marks the process as a
     test child — the parent runner keeps its own console and reporter, and `process.stdout.write` stays
@@ -471,7 +473,8 @@ F42. O42: the file-level `not ok - test/chat-loop.test.js` with `failureType: 'u
     test, the one test of the two unreported ones that has such a mock) are left as they are: the
     unreported-test pair coincides with `O27`/F34, which stays open separately and is unchanged by this
     work (26 of 28 reported before and after).
-    Verification: 20 consecutive `npm test` runs green (1855 tests each); 30 consecutive guarded
+    Verification: 20 consecutive `npm test` runs green (1855 tests each on 26.8.2, 1858 on 22.23.2);
+    30 consecutive guarded
     `test/chat-loop.test.js` runs green with 0 bytes on the child's fd 1 outside frames each time, and
     `test/one-shot.test.js` / `test/cli-main-success.test.js` still report the same test counts as before
     the capture change (26 and 76 on Node 22). Upstream:
@@ -487,7 +490,15 @@ F42. O42: the file-level `not ok - test/chat-loop.test.js` with `failureType: 'u
     text bytes, without it the same 110 frames plus **5720** text bytes (the exact bytes the guard moves
     to stderr, verified on Node 22.23.2 and on 26.8.2, 20/20 runs each); a third assertion pins that the
     guard moves console output to stderr while `process.stdout.write` keeps working and a parent process
-    is left untouched. **Do not remove the guard while `engines` allows Node 22, and note that a bare
+    is left untouched, and a fourth runs the real runner over `scripts/fixtures/guard-propagation-child.js`
+    — a child that asserts from the inside that `console.log` never reaches its `process.stdout.write` —
+    so a Node change that stopped forwarding `--import` to the children would red the pin instead of
+    silently disabling the guard (the same run without `--import` fails, which is what makes it a
+    signal). The guard is `scripts/child-console-guard.js`, deliberately without a `test-` prefix: the
+    runner's default discovery matches `**/test-*.js`, so the earlier `scripts/test-child-console-guard.js`
+    name was collected and run as a phantom test file of its own in every suite (dropping that phantom
+    file is why the totals stayed put while the guard's own pin gained a test).
+    **Do not remove the guard while `engines` allows Node 22, and note that a bare
     `node --test` bypasses the whole wrapper.** CI runs the guard only through `npm test`; widening the
     CI matrix to Node 24 is a separate change.
 
@@ -721,6 +732,18 @@ O23. ~~**Piped prompts are `.trim()`ed** (`src/cli-utils.js:19`), so a piped dif
     spaces); only one trailing shell newline is dropped, and whitespace-only input is still the
     empty prompt; see F33.
 
+O43. **A one-shot RPG run can drop its `--debug` prompt-log line when it exits right after the
+    request.** `logRpgPrompt` (`src/rpg.js:322-335`) chains the append and both call sites drop the
+    promise (`void logRpgPrompt(...)` at `src/commands/one-shot.js:195` and `src/chat.js:348`), while
+    `src/cli-main.js:421` calls `process.exit(0)` as soon as `oneShotCmd` returns — an exit discards
+    pending async work. The append is issued when the request body is built, so an ordinary run gives
+    it a whole round-trip to land and only an immediately failing or aborted request followed by that
+    exit can lose the line; the log is a documented artifact the run was explicitly asked for, so the
+    window is narrow but real. Test-side answer only so far (both `--rpg --debug` tests in
+    `test/one-shot.test.js` poll up to 1 s for the `prompt logged:` notice and still fail loudly on a
+    missing file, which neither hides nor fixes this): awaiting the append (or flushing the chain) on
+    the exit path is a separate change.
+
 ## Open — non-interactive reachability
 
 O24. ~~**`-x/--export`, `--delete` and any `-r/--resume` with an id are rejected without a TTY in
@@ -773,7 +796,7 @@ O42. ~~**`test/chat-loop.test.js` intermittently reds as a whole file with a run
     unsupported version.'` from `FileTest.parseMessage` → `#processRawBuffer`.~~ **Fixed** — a test child's
     fd 1 carries both the runner's v8 result frames and the application's console output, and Node 22's
     parser mishandles the short buffer heads that creates (Node 24/26 carry the upstream framer/loop
-    fixes). `npm test` now loads `scripts/test-child-console-guard.js` through `--import` in every test
+    fixes). `npm test` now loads `scripts/child-console-guard.js` through `--import` in every test
     child (console to stderr, the parent runner untouched), pinned by the fd-1 census in
     `test/runner-console-guard.test.js`; see F42.
 
