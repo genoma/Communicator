@@ -564,7 +564,9 @@ both real backends over a 17-request corpus and requires identical replies once 
 `id` echo is stripped, plus an integer `id` on every helper reply so a silent osascript fallback
 cannot pass for a match; malformed requests must reject on both backends. It skips with
 `t.skip('macOS only')` / `t.skip('no Command Line Tools')` before constructing anything, so
-Linux/Windows never compile. `sweepStaleBinaries()` evicts superseded
+Linux/Windows never compile; the probe it skips on is the backend's exported `toolchainAvailable()`
+(gate and build share one function, so a future candidate developer directory cannot make the gate
+silently skip while production compiles). `sweepStaleBinaries()` evicts superseded
 `<DATA_DIR>/spelling-helper-<16 hex>` files once the compiled path is usable — never a `*.tmp`
 compile scratch, never the current binary, all errors swallowed, nothing printed, once per backend
 instance — so a source or toolchain change no longer leaves a ~54 KB binary behind. The restart

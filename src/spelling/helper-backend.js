@@ -40,6 +40,7 @@ const HELPER_SOURCE = fileURLToPath(new URL('./helper.m', import.meta.url))
 // osascript fallback instead of asking the user to install anything.
 const DEVELOPER_LINK = '/var/db/xcode_select_link'
 const DEVELOPER_DIRS = ['/Library/Developer/CommandLineTools', '/Applications/Xcode.app/Contents/Developer']
+const DEFAULT_TOOLCHAIN_DIRS = [DEVELOPER_LINK, ...DEVELOPER_DIRS]
 
 const BUILD_TIMEOUT_MS = 30_000
 const MAX_HELPER_RESTARTS = 1
@@ -56,7 +57,7 @@ const CACHED_HELPER_PATTERN = /^spelling-helper-[0-9a-f]{16}$/
 const OS_RELEASE = process.getBuiltinModule?.('node:os')?.release?.() ?? ''
 
 /** True when one of the candidate developer directories actually carries clang */
-async function compilerAvailable(candidates) {
+export async function toolchainAvailable(candidates = DEFAULT_TOOLCHAIN_DIRS) {
   for (const candidate of candidates) {
     const dir = candidate === DEVELOPER_LINK ? await readlink(candidate).catch(() => null) : candidate
     if (dir === null) continue
@@ -104,7 +105,7 @@ export function createHelperBackend({
   buildTimeoutMs = BUILD_TIMEOUT_MS,
   maxBuffer = SPELLING_MAX_OUTPUT_BYTES,
   healthyBeforeRearm = HEALTHY_REPLIES_BEFORE_REARM,
-  toolchainDirs = [DEVELOPER_LINK, ...DEVELOPER_DIRS],
+  toolchainDirs = DEFAULT_TOOLCHAIN_DIRS,
 } = {}) {
   const pending = new Map()
   let binary = null
@@ -323,7 +324,7 @@ export function createHelperBackend({
   const buildHelper = async () => {
     try {
       if (disposed) return false
-      if (!(await compilerAvailable(toolchainDirs))) {
+      if (!(await toolchainAvailable(toolchainDirs))) {
         compiled = false
         return false
       }

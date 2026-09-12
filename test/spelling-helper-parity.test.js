@@ -5,27 +5,11 @@
 // never compiles anything.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { constants as fsConstants } from 'node:fs'
-import { access, mkdtemp, readlink, rm } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createHelperBackend } from '../src/spelling/helper-backend.js'
+import { createHelperBackend, toolchainAvailable } from '../src/spelling/helper-backend.js'
 import { createOsascriptBackend } from '../src/spelling/osascript.js'
-
-// The backend's filesystem-only toolchain probe, repeated because it is not
-// exported: `/usr/bin/cc` is a developer-tools shim, so running it on a Mac
-// without Command Line Tools would make macOS offer the installer dialog.
-const DEVELOPER_LINK = '/var/db/xcode_select_link'
-const DEVELOPER_DIRS = ['/Library/Developer/CommandLineTools', '/Applications/Xcode.app/Contents/Developer']
-
-async function toolchainAvailable() {
-  for (const candidate of [DEVELOPER_LINK, ...DEVELOPER_DIRS]) {
-    const dir = candidate === DEVELOPER_LINK ? await readlink(candidate).catch(() => null) : candidate
-    if (dir === null) continue
-    if (await access(join(dir, 'usr/bin/clang'), fsConstants.X_OK).then(() => true, () => false)) return true
-  }
-  return false
-}
 
 // The request shapes src/spelling/provider.js sends: `location`/`length` are
 // the prose word's own word-aligned range.
