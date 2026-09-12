@@ -293,13 +293,86 @@ Half the rule set self-updates (`\p{Emoji_Presentation}` reads the runtime's ICU
 
 ## Pending surface cleanup
 
-Approved-direction workstream, not a defect list (the backlog in `KNOWN-ISSUES.md` fences `O1` and
-`O31` behind it, and marks `O15` moot pending it). Scope: remove `--export-format`, `--variants`, `--resolution`,
-`--quality`, `--width`/`--height`, and the bare "set a preference and exit" dispatch (the
-`configSetCmd` path, the only reason `isConfigSetDispatch` exists in validation). Removing that
-dispatch also removes the last place a provider-only flag is accepted with no request, and drops
-`src/commands/config-set.js`'s unconditional stdout notices with it. Approval status is not
-recorded in-repo; confirm before starting.
+Approved-direction workstream, not a defect list. **This section is the approval document**: the
+direction is approved, the plan below is not started — confirm before touching code. The backlog
+fences `O1` and `O31` behind it (their surface disappears rather than getting a rule) and marks
+`O15`, `O18` and `O26` moot pending it.
+
+**Scope — removed outright.** Generation/export knobs that duplicate a REPL command or a
+surviving default: `--export-format`, `--variants`, `--resolution`, `--quality`, `--width`,
+`--height`. The image REPL's `/variants`, `/resolution` and `/quality` keep persisting
+per-provider defaults, `--width`/`--height` have no persisted default at all, and
+`--export-format` is the one removal that deletes a user feature rather than a setter form (JSONL
+export; decision D3).
+
+**Scope — the bare "set a preference and exit" dispatch.** `src/commands/config-set.js` (whole
+file), its two call sites in `src/cli-main.js` (TTY and piped setter branches), and
+`isConfigSetDispatch` / `isPureConfigSetter` / `hasConfigSetterFlags` / `isConfigSetter` in
+`src/cli-validation.js` (validation used them only for the `--web-results` deferral, which becomes
+a resume-only deferral again). Affected flags keep their run forms: `-m`, `--budget`,
+`--temperature`, `--top-p`, `--reasoning-effort`, `--web-search`, `--web-results`,
+`--smooth-speed`, `--no-smooth-streaming`, `--compact-thinking`, `--no-watermark`,
+`--no-safe-mode`, `--aspect-ratio`, `--image-format`, `--output-dir`. Removing the dispatch also
+removes the last place a provider-only flag is accepted with no request, and drops
+`config-set.js`'s unconditional stdout notices (`KNOWN-ISSUES` O1) with it.
+
+**Parity requirement (approved): every pref the bare setters wrote must stay settable in-app.**
+Coverage today:
+
+| pref | bare form | in-app setter | after cleanup |
+|------|-----------|---------------|---------------|
+| `lastModel` / `lastProvider` | `-m <id>` alone | picker, `/model` | ok |
+| `temperature[model]` | `--temperature` | `/temp` (run flag persists too) | ok |
+| `topP[model]` | `--top-p` | `/top-p` (run flag persists too) | ok |
+| `reasoningEffort[model]` | `--reasoning-effort` | `/reasoning` (run flag persists too) | ok |
+| `webSearch[model]` | `--web-search` | `/web-search` (run flag persists too) | ok |
+| `webResults` | `--web-results` | `/web-results` (interactive run persists too) | ok |
+| `smoothSpeed`, `smoothStreaming` | `--smooth-speed`, `--no-smooth-streaming` | `/smooth` | ok (command; the flag itself never persisted on a run) |
+| `compactThinking` | `--compact-thinking` | `/compact-thinking` | ok (command; same) |
+| `hideWatermark` | `--no-watermark` | image REPL `/watermark`; run flag persists | ok |
+| `safeMode` | `--no-safe-mode` | run flag persists; no command today | ok |
+| `imageDefaults[].aspectRatio` | `--aspect-ratio` | image REPL `/aspect`; run flag persists | ok |
+| `imageDefaults[].format` | `--image-format` | image REPL `/format`; run flag persists | ok |
+| **`budget` (standing)** | `--budget` | **none** (`/budget` is session-only, O16) | **gap → D1** |
+| **`outputDir`** | `--output-dir` | **none** | **gap → D2** |
+
+Image prefs keep living in the image REPL per the command-separation contract; no image command
+moves into text chat.
+
+**Blocking decisions.**
+- D1 — standing budget: add `/budget default <usd>` (and `/budget default clear`) to text chat,
+  leaving `/budget <usd>` session-only as decided in O16 — or keep the bare `--budget` setter.
+  Proposal: the command.
+- D2 — standing export dir: add `/output-dir <path>` (and `clear`) to text chat — or keep the bare
+  `--output-dir` setter. Proposal: the command.
+- D3 — `--export-format`: confirm deleting the JSONL export format, or keep the flag (it is a
+  feature, not a setter form).
+- D4 — per-run sizing: after removal there is no one-shot `--variants`/`--resolution`/`--quality`/
+  `--width`/`--height`; sizing is image-REPL defaults plus `--aspect-ratio`/`--image-format`.
+  Confirm intended.
+- D5 — post-removal bare forms (`communicator --budget 2`, `-m <id>` alone, `--smooth-speed fast`
+  alone): ordinary no-prompt error, or a hint naming the replacement. Proposal: ordinary error.
+- D6 (optional, not parity) — `/safe-mode on|off` in the image REPL for symmetry with
+  `/watermark`; today safe mode only changes by relaunching with the flag.
+
+**Implementation outline.** `index.js` drops the removed flags and the bare-only forms;
+`src/cli-main.js` deletes both `configSetRun` branches and the `--output-dir`/no-prompt rules
+become ordinary run validation; `src/cli-validation.js` loses the four predicates, the
+`--export-format` rules, and the `--output-dir` rule now requires `--export`/`--image`;
+`src/commands/config-set.js` and `test/config-set.test.js`, `test/config-set-command.test.js` are
+deleted, and `test/cli-validation.test.js`, `test/cli-validation-image.test.js`,
+`test/cli-main.test.js`, `test/cli-main-success.test.js`, `test/docs-consistency.test.js` are
+updated; D1/D2/D6 add commands with `COMMAND_DESCRIPTIONS`/`COMMAND_USAGE` rows, `ctx.savePrefs`
+persistence and help/count tests; docs `docs/commands.md` (flag rows, examples, the "Bare use
+saves the default" phrases), `docs/images.md`, `docs/chat.md`, `README.md` and the MEMORY sections
+that name the dispatch (`src/cli-main.js`, `src/cli-validation.js`, Budget semantics, Web search
+semantics, Text vs Image) are updated; `KNOWN-ISSUES.md` closes O1/O31/O15/O18/O26. Gate:
+`npm test`, `npm run lint`, `npx knip`.
+
+**Versioning / migration.** Removing flags is breaking: the next tag is MAJOR (`4.0.0`, with the
+changelog commit enumerating every removal). No prefs migration — all keys stay and values written
+by a bare setter keep working; the removed forms simply error, and the docs point at the
+replacements.
 
 ## Tests, CI and platform notes
 
