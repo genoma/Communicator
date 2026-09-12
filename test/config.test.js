@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { applyPreferenceUpdates, syncPreferenceUpdates, loadSystemPrompt, getApiKey, getImageDefaults, mergeImageDefaults, loadPreferences, mergePreferenceState } from '../src/config.js'
+import { applyPreferenceUpdates, syncPreferenceUpdates, loadSystemPrompt, getApiKey, getImageDefaults, mergeImageDefaults, loadPreferences, mergePreferenceState, resolveSpellingSettings } from '../src/config.js'
 import { CliError } from '../src/errors.js'
 
 test('applyPreferenceUpdates merges per-model maps by spread', () => {
@@ -178,6 +178,42 @@ test('applyPreferenceUpdates skips undefined smoothSpeed', () => {
   const updated = applyPreferenceUpdates({ lastModel: 'm' }, { modelId: 'm', smoothSpeed: undefined })
 
   assert.deepEqual(Object.keys(updated).sort(), ['lastModel'])
+})
+
+test('resolveSpellingSettings defaults to typo detection and autocomplete on, autocorrect off', () => {
+  assert.deepEqual(resolveSpellingSettings({}), { typoDetection: true, autocomplete: true, autocorrect: false })
+  assert.deepEqual(resolveSpellingSettings(), { typoDetection: true, autocomplete: true, autocorrect: false })
+})
+
+test('resolveSpellingSettings reads the persisted spelling keys', () => {
+  const settings = resolveSpellingSettings({
+    spellingTypoDetection: false,
+    spellingAutocomplete: false,
+    spellingAutocorrect: true,
+  })
+  assert.deepEqual(settings, { typoDetection: false, autocomplete: false, autocorrect: true })
+})
+
+test('the spelling prefs round-trip through applyPreferenceUpdates', () => {
+  const prefs = { lastModel: 'm' }
+  const updated = applyPreferenceUpdates(prefs, {
+    modelId: 'm',
+    spellingTypoDetection: false,
+    spellingAutocorrect: true,
+  })
+
+  assert.equal(updated.spellingTypoDetection, false)
+  assert.equal(updated.spellingAutocorrect, true)
+  assert.equal(updated.spellingAutocomplete, undefined, 'an untouched setting is not written')
+  assert.equal(prefs.spellingTypoDetection, undefined, 'the input object is not mutated')
+  assert.deepEqual(resolveSpellingSettings(updated), { typoDetection: false, autocomplete: true, autocorrect: true })
+})
+
+test('syncPreferenceUpdates keeps the live prefs spelling keys current', () => {
+  const prefs = {}
+  syncPreferenceUpdates(prefs, { modelId: 'm', spellingAutocomplete: false })
+  assert.equal(prefs.spellingAutocomplete, false)
+  assert.deepEqual(resolveSpellingSettings(prefs), { typoDetection: true, autocomplete: false, autocorrect: false })
 })
 
 test('applyPreferenceUpdates merges global webResults and outputDir keys', () => {

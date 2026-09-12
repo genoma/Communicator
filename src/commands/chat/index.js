@@ -12,8 +12,9 @@ import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArg
 import { attachGateOptions } from '../../session-setup.js'
 import { fetchModelPubKey } from '../../e2ee.js'
 import { buildStatusLine, wrapStatusLine } from '../../status-line.js'
+import { resolveSpellingSettings } from '../../config.js'
 import { parseScrapeUrl, scrapeContext, scrapeMessage } from '../../scrape.js'
-const ARG_COMMANDS = new Set(['/temp', '/top-p', '/budget', '/web-search', '/web-results', '/smooth', '/compact-thinking', '/attach', '/attachments', '/scrape', '/export-format'])
+const ARG_COMMANDS = new Set(['/temp', '/top-p', '/budget', '/web-search', '/web-results', '/smooth', '/compact-thinking', '/settings', '/attach', '/attachments', '/scrape', '/export-format'])
 
 // Recompute the live usage tracker from the surviving messages exactly like a
 // resumed session, so /cost and the persisted cost summary (stamped by
@@ -49,6 +50,7 @@ const COMMAND_DESCRIPTIONS = {
   '/markdown': 'Toggle terminal markdown rendering',
   '/smooth': 'Show or set smooth streaming state and speed',
   '/compact-thinking': 'Show or set whether reasoning streams as a meter',
+  '/settings': 'Show or set the macOS spelling assistance settings',
   '/export-format': 'Show or set the export format for future exports',
   '/cost': 'Print the running session cost/token totals',
 }
@@ -61,6 +63,7 @@ const COMMAND_USAGE = {
   '/web-results': '/web-results <n>',
   '/smooth': '/smooth [on|off|<level>|<cps>]',
   '/compact-thinking': '/compact-thinking [on|off]',
+  '/settings': '/settings [typo|autocomplete|autocorrect] [on|off]',
   '/export-format': '/export-format <markdown|jsonl>',
   '/attach': '/attach <path>...',
   '/attachments': '/attachments [clear]',
@@ -68,6 +71,18 @@ const COMMAND_USAGE = {
 }
 
 const QUIT_ALIASES = ['/exit', '/q']
+
+// /settings: the three macOS spelling settings, their preference keys and the
+// wording of their confirmation line.
+const SPELLING_SETTINGS = {
+  typo: { feature: 'typoDetection', pref: 'spellingTypoDetection', label: 'Typo detection' },
+  autocomplete: { feature: 'autocomplete', pref: 'spellingAutocomplete', label: 'Autocomplete' },
+  autocorrect: { feature: 'autocorrect', pref: 'spellingAutocorrect', label: 'Autocorrect' },
+}
+
+function spellingState(enabled) {
+  return enabled ? 'on' : 'off'
+}
 
 function commandDescription(command) {
   return COMMAND_DESCRIPTIONS[command] || ''
@@ -527,6 +542,9 @@ const handlers = {
     const result = await ctx.readInput({
       initialValue: messageText(target),
       onResizeRepaint: ctx.onResizeRepaint,
+      // The nested editor is the same prompt editor, so it carries the same
+      // macOS spelling assistance as the main prompt.
+      spelling: ctx.spelling,
       // The edited content is a user message (never a command, even when it
       // starts with `/`), so the submitted line carries the user marker — but
       // the empty-edit branch below returns to the prompt without a turn, so
@@ -675,6 +693,29 @@ const handlers = {
     await ctx.savePrefs({ compactThinking: next })
     console.log(`Compact thinking ${next ? 'enabled' : 'disabled'}.\n`)
     showStatus(ctx)
+  },
+
+  '/settings': async (ctx) => {
+    const settings = ctx.spellingSettings ?? resolveSpellingSettings(ctx.prefs ?? {})
+    const value = ctx.args
+    if (!value) {
+      // Off darwin no provider was constructed and the feature is inert; the
+      // setting still persists in case this preferences file meets a Mac.
+      const inactive = ctx.spelling ? '' : ' (inactive on this platform)'
+      console.log(`Spelling (macOS): typo detection ${spellingState(settings.typoDetection)}, autocomplete ${spellingState(settings.autocomplete)}, autocorrect ${spellingState(settings.autocorrect)}.${inactive}\n`)
+      return
+    }
+    const [key, mode, ...rest] = value.split(/\s+/)
+    const setting = SPELLING_SETTINGS[key]
+    if (!setting || (mode !== 'on' && mode !== 'off') || rest.length > 0) {
+      console.error('Error: /settings expects typo|autocomplete|autocorrect and on|off.\n')
+      return
+    }
+    const next = mode === 'on'
+    settings[setting.feature] = next
+    ctx.spelling?.setFeatures(settings)
+    await ctx.savePrefs({ [setting.pref]: next })
+    console.log(`${setting.label} ${spellingState(next)}.\n`)
   },
 
   '/export-format': async (ctx) => {

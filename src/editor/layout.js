@@ -11,6 +11,59 @@ function usableWidth(termWidth, prefixWidth) {
   return Math.max(1, termWidth - prefixWidth)
 }
 
+// Misspelled-prose decoration (macOS spelling assistance): red curly underline.
+// Escape-vt only — it renders no column of its own, so `stringWidth` and every
+// width oracle keep measuring exactly the text.
+const TYPO_UNDERLINE = '\x1b[4:3m\x1b[58:2::255:95:95m'
+const TYPO_UNDERLINE_OFF = '\x1b[4:0m\x1b[59m'
+
+/**
+ * Wrap the `[start, end)` code-unit ranges of the SOURCE line that fall inside
+ * this wrapped row slice. Ranges are clipped to the slice, so decoration is
+ * applied to the produced row — never to the text before wrapping.
+ */
+function decorateTypos(segment, segmentStart, ranges) {
+  if (!ranges || ranges.length === 0) return segment
+  const segmentEnd = segmentStart + segment.length
+  // Ranges arrive sorted and disjoint from the provider; the defensive copy
+  // keeps an out-of-order caller from leaving text it should decorate plain.
+  const ordered = [...ranges].sort((a, b) => a[0] - b[0])
+  let out = ''
+  let cursor = segmentStart
+  for (const [start, end] of ordered) {
+    if (end <= segmentStart || start >= segmentEnd) continue
+    const to = Math.min(end, segmentEnd)
+    if (to <= cursor) continue
+    // Ranges arrive sorted and disjoint, but an overlap must never re-emit text
+    // already rendered: that would duplicate characters and desync the grid.
+    const from = Math.max(start, segmentStart, cursor)
+    if (from > cursor) out += segment.slice(cursor - segmentStart, from - segmentStart)
+    out += TYPO_UNDERLINE + segment.slice(from - segmentStart, to - segmentStart) + TYPO_UNDERLINE_OFF
+    cursor = to
+  }
+  if (cursor === segmentStart) return segment
+  if (cursor < segmentEnd) out += segment.slice(cursor - segmentStart)
+  return out
+}
+
+/**
+ * Per-line typo ranges for this paint. The provider answers `undefined` while a
+ * check is pending (the row paints plain until it lands) and schedules the
+ * check it still needs, so asking once per line is also the request. A buffer
+ * larger than the provider cache is bounded to the caret line: with more
+ * checkable lines than the cache can hold, every landed result evicts a line
+ * another paint is still asking about, so the cycle would never settle.
+ */
+function requestTypoRanges(spelling, lines, caretLine) {
+  let bufferLength = 0
+  for (const line of lines) bufferLength += line.length + 1
+  const maxCheckedLines = Number.isInteger(spelling.maxCheckedLines) ? spelling.maxCheckedLines : lines.length
+  if (lines.length > maxCheckedLines) {
+    return lines.map((line, index) => (index === caretLine ? spelling.getTypoRanges(line, bufferLength) : undefined))
+  }
+  return lines.map((line) => spelling.getTypoRanges(line, bufferLength))
+}
+
 /**
  * Split a plain logical line into wrapped segments that each fit `limit`
  * display columns. Segments fold at word boundaries: the word that would not
@@ -171,6 +224,7 @@ export function computeGrid(ctx) {
     footerRows,
     inputStyle,
     submittedMarker,
+    spelling,
   } = ctx
   // Submitted-marker form (chat replays the user line as `❯ You\n\n<text>`):
   // the block becomes [blank, marker, blank, body rows at FULL width (no line
@@ -203,9 +257,14 @@ export function computeGrid(ctx) {
   // (segments, code-unit starts and fold-dropped offsets) instead of
   // re-wrapping every line a second time per keystroke.
   const wrappedLines = lines.map((line) => wrapSegmentsDetailed(line, limit))
-  for (const { segments } of wrappedLines) {
-    for (const segment of segments) {
-      rows.push(linePrefix + applyStyle(segment, inputStyle))
+  // Decorations live only in the pending body rows: the submitted-marker form
+  // above paints the replay form (`❯ You\n\n<text>`), which carries none.
+  const typoRanges = spelling ? requestTypoRanges(spelling, lines, row) : null
+  for (let li = 0; li < lines.length; li++) {
+    const { segments, starts } = wrappedLines[li]
+    const ranges = typoRanges ? typoRanges[li] : null
+    for (let si = 0; si < segments.length; si++) {
+      rows.push(linePrefix + applyStyle(decorateTypos(segments[si], starts[si], ranges), inputStyle))
     }
   }
   let cursorRow = 0

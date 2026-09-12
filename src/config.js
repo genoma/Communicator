@@ -127,6 +127,20 @@ export function getImageDefaults(prefs, providerName) {
   return prefs?.imageDefaults?.[providerName] || {}
 }
 
+/**
+ * The three macOS spelling settings resolved at session creation (`?? default`,
+ * cf. `compactThinking`): typo underlines and word autocomplete default on,
+ * autocorrect off. `/settings` mutates the returned object in place and
+ * persists the change through `applyPreferenceUpdates`.
+ */
+export function resolveSpellingSettings(prefs = {}) {
+  return {
+    typoDetection: prefs.spellingTypoDetection ?? true,
+    autocomplete: prefs.spellingAutocomplete ?? true,
+    autocorrect: prefs.spellingAutocorrect ?? false,
+  }
+}
+
 export function mergeImageDefaults(prefs, providerName, { aspectRatio, format, resolution, quality, variants } = {}) {
   if (aspectRatio === undefined && format === undefined && resolution === undefined && quality === undefined && variants === undefined) return prefs
   const current = getImageDefaults(prefs, providerName)
@@ -159,7 +173,7 @@ function mergePerModelPref(map, modelId, value) {
   return next
 }
 
-export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageModel, lastProvider, reasoningEffort, temperature, topP, webSearch, smoothStreaming, smoothSpeed, compactThinking, webResults, outputDir, exportFormat, hideWatermark, safeMode, imageDefaults } = {}) {
+export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageModel, lastProvider, reasoningEffort, temperature, topP, webSearch, smoothStreaming, smoothSpeed, compactThinking, spellingTypoDetection, spellingAutocomplete, spellingAutocorrect, webResults, outputDir, exportFormat, hideWatermark, safeMode, imageDefaults } = {}) {
   const merged = { ...prefs }
   if (lastModel !== undefined) merged.lastModel = lastModel
   if (lastImageModel !== undefined) merged.lastImageModel = lastImageModel
@@ -181,6 +195,9 @@ export function applyPreferenceUpdates(prefs, { modelId, lastModel, lastImageMod
   if (smoothStreaming !== undefined) merged.smoothStreaming = smoothStreaming
   if (smoothSpeed !== undefined) merged.smoothSpeed = smoothSpeed
   if (compactThinking !== undefined) merged.compactThinking = compactThinking
+  if (spellingTypoDetection !== undefined) merged.spellingTypoDetection = spellingTypoDetection
+  if (spellingAutocomplete !== undefined) merged.spellingAutocomplete = spellingAutocomplete
+  if (spellingAutocorrect !== undefined) merged.spellingAutocorrect = spellingAutocorrect
   if (webResults !== undefined) merged.webResults = webResults
   if (outputDir !== undefined) merged.outputDir = outputDir
   if (exportFormat !== undefined) merged.exportFormat = exportFormat

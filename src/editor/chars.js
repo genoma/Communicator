@@ -196,9 +196,16 @@ function rowWidth(cp, { base = false } = {}) {
   return { width: w, base }
 }
 
+// node:util's stripVTControlCharacters drops colon subparameters only from Node
+// 24 on, and the editor emits exactly those forms for typo underlines (SGR `4:3`
+// and `58:2:...`). Strip SGR-shaped CSIs carrying a colon here too; Node's own
+// stripper still owns every other escape form (semicolon SGR, OSC hyperlinks).
+// eslint-disable-next-line no-control-regex
+const COLON_SGR = /\x1b\[[0-9;:]*:[0-9;:]*m/g
+
 /** Returns the terminal display width of a string (ANSI escape codes are ignored) */
 export function stringWidth(str) {
-  const s = str.includes('\x1b') ? stripVTControlCharacters(str) : str
+  const s = str.includes('\x1b') ? stripVTControlCharacters(str.replace(COLON_SGR, '')) : str
   let width = 0
   let base = false
   for (const { segment } of graphemeSegmenter.segment(s)) {

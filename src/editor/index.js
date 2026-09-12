@@ -116,6 +116,7 @@ function readFromTTY(input, output, prompt, options) {
       suggest,
       onResizeRepaint,
       submitMarker = null,
+      spelling = null,
     } = options
     const resolvedLinePrefixOption = linePrefixOption ?? prefixOption
     const themeInputStyle = theme?.input
@@ -206,6 +207,7 @@ function readFromTTY(input, output, prompt, options) {
         footerRows: opts.noFooter ? [] : footerRows(),
         inputStyle: themeInputStyle,
         submittedMarker: submitMarkerValue,
+        spelling,
       })
       return grid
     }
@@ -284,6 +286,13 @@ function readFromTTY(input, output, prompt, options) {
 
     const repaintMode = (mode, param) => {
       paint(computeGridFn(mode === 'submit' ? { noFooter: true } : {}), mode, param)
+    }
+
+    // Async spelling results must never repaint a dead editor: the callback is
+    // installed on start and cleared by cleanup (the provider also drops it on
+    // dispose).
+    const repaintForSpelling = () => {
+      if (active) repaintMode('normal')
     }
 
     // --- Resize handling ---
@@ -513,6 +522,7 @@ function readFromTTY(input, output, prompt, options) {
       }
       output.write('\x1b[?2004l') // Disable bracketed paste mode
       output.write('\x1b[<u') // Disable kitty protocol
+      if (spelling) spelling.onUpdate = null
       input.setRawMode?.(false)
       input.removeListener('data', dataHandler)
       input.removeListener('end', onEof)
@@ -586,6 +596,7 @@ function readFromTTY(input, output, prompt, options) {
     // --- Startup ---
     function start() {
       active = true
+      if (spelling) spelling.onUpdate = repaintForSpelling
       repaintMode('normal')
       input.setRawMode?.(true)
       input.resume()

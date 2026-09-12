@@ -1226,6 +1226,18 @@ test('/exit and /q are not arg commands', () => {
   assert.equal(commandAcceptsArgs('/q'), false)
 })
 
+test('/settings is a visible arg command in every session shape', () => {
+  assert.ok(CHAT_COMMANDS.includes('/settings'))
+  assert.equal(commandAcceptsArgs('/settings'), true)
+  for (const visible of [
+    visibleChatCommands({ visionSupported: true, providerName: 'openrouter' }),
+    visibleChatCommands({ visionSupported: false, providerName: 'venice' }),
+    visibleChatCommands({ visionSupported: true, e2ee: true, providerName: 'venice' }),
+  ]) {
+    assert.ok(visible.includes('/settings'), 'the command is never hidden')
+  }
+})
+
 test('/delete is a chat command, visible, and not an arg command', () => {
   assert.ok(CHAT_COMMANDS.includes('/delete'))
   assert.ok(visibleChatCommands({ visionSupported: true, providerName: 'openrouter' }).includes('/delete'))
@@ -1417,6 +1429,96 @@ test('/compact-thinking rejects invalid values and leaves state unchanged', asyn
   assert.equal(consoleSpy.error(0), 'Error: /compact-thinking expects "on" or "off".\n')
   assert.equal(ctx.state.compactThinking, false)
   assert.equal(ctx.render.compactThinking, undefined)
+})
+
+function fakeSpelling() {
+  return {
+    onUpdate: null,
+    features: null,
+    setFeatures(next) { this.features = next },
+    getTypoRanges: () => undefined,
+  }
+}
+
+function spellingSettings(overrides = {}) {
+  return { typoDetection: true, autocomplete: true, autocorrect: false, ...overrides }
+}
+
+test('/settings lists the spelling settings and persists nothing', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx({ spelling: fakeSpelling(), spellingSettings: spellingSettings() })
+  await chatCommands['/settings'](harness.ctx)
+  assert.equal(consoleSpy.log(0), 'Spelling (macOS): typo detection on, autocomplete on, autocorrect off.\n')
+  assert.deepEqual(harness.prefsUpdates, [])
+})
+
+test('/settings lists the persisted values without a spelling provider (inactive platform)', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const harness = makeCtx({
+    prefs: { spellingTypoDetection: false, spellingAutocomplete: true, spellingAutocorrect: true },
+  })
+  assert.equal(harness.ctx.spelling, undefined)
+  await chatCommands['/settings'](harness.ctx)
+  assert.equal(consoleSpy.log(0), 'Spelling (macOS): typo detection off, autocomplete on, autocorrect on. (inactive on this platform)\n')
+})
+
+test('/settings typo off persists the pref and applies it to the provider', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const provider = fakeSpelling()
+  const settings = spellingSettings()
+  const harness = makeCtx({ spelling: provider, spellingSettings: settings })
+
+  await chatCommands['/settings']({ ...harness.ctx, args: 'typo off' })
+
+  assert.equal(settings.typoDetection, false)
+  assert.equal(provider.features, settings)
+  assert.deepEqual(harness.prefsUpdates, [{ spellingTypoDetection: false }])
+  assert.equal(consoleSpy.log(0), 'Typo detection off.\n')
+})
+
+test('/settings autocomplete and autocorrect persist their own keys', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const provider = fakeSpelling()
+  const settings = spellingSettings({ autocorrect: true })
+  const harness = makeCtx({ spelling: provider, spellingSettings: settings })
+
+  await chatCommands['/settings']({ ...harness.ctx, args: 'autocomplete off' })
+  assert.equal(settings.autocomplete, false)
+  assert.deepEqual(harness.prefsUpdates, [{ spellingAutocomplete: false }])
+  assert.equal(consoleSpy.log(0), 'Autocomplete off.\n')
+
+  await chatCommands['/settings']({ ...harness.ctx, args: 'autocorrect off' })
+  assert.equal(settings.autocorrect, false)
+  assert.deepEqual(harness.prefsUpdates[1], { spellingAutocorrect: false })
+  assert.equal(consoleSpy.log(1), 'Autocorrect off.\n')
+})
+
+test('/settings rejects anything but a known key and on|off, without persisting', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const provider = fakeSpelling()
+  const settings = spellingSettings()
+  const harness = makeCtx({ spelling: provider, spellingSettings: settings })
+
+  const args = ['nope on', 'typo maybe', 'typo', 'typo on extra', 'on', 'typo ON']
+  for (let i = 0; i < args.length; i++) {
+    await chatCommands['/settings']({ ...harness.ctx, args: args[i] })
+    assert.equal(consoleSpy.error(i), 'Error: /settings expects typo|autocomplete|autocorrect and on|off.\n', args[i])
+  }
+  assert.deepEqual(harness.prefsUpdates, [])
+  assert.deepEqual(settings, spellingSettings())
+  assert.equal(provider.features, null)
+})
+
+test('/settings persists on a platform without a provider', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const settings = spellingSettings()
+  const harness = makeCtx({ spellingSettings: settings })
+
+  await chatCommands['/settings']({ ...harness.ctx, args: 'autocorrect on' })
+
+  assert.equal(settings.autocorrect, true)
+  assert.deepEqual(harness.prefsUpdates, [{ spellingAutocorrect: true }])
+  assert.equal(consoleSpy.log(0), 'Autocorrect on.\n')
 })
 
 test('budgetGuard blocks when cost meets the budget', () => {
@@ -1641,7 +1743,7 @@ test('/model keeps compatible attachments on switch', async (t) => {
   assert.equal(consoleSpy.log(0), 'Switched to NewProvider / new/model\n')
 })
 
-test('CHAT_COMMANDS keeps the 25-command order', () => {
+test('CHAT_COMMANDS keeps the 26-command order', () => {
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/status',
@@ -1663,6 +1765,7 @@ test('CHAT_COMMANDS keeps the 25-command order', () => {
     '/markdown',
     '/smooth',
     '/compact-thinking',
+    '/settings',
     '/export-format',
     '/cost',
     '/help',

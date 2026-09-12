@@ -699,7 +699,7 @@ test('unknown command is rejected with the exact message and the provider is not
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /status, /new, /model, /attach, /attachments, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /edit, /delete, /copy, /markdown, /smooth, /compact-thinking, /export-format, /cost, /help, /exit, /q\n'
+    'Unknown command "/nope". Available: /quit, /status, /new, /model, /attach, /attachments, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /edit, /delete, /copy, /markdown, /smooth, /compact-thinking, /settings, /export-format, /cost, /help, /exit, /q\n'
   )
 })
 
@@ -766,7 +766,7 @@ test('unknown command list omits /attach and /attachments when the model lacks v
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /status, /new, /model, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /edit, /delete, /copy, /markdown, /smooth, /compact-thinking, /export-format, /cost, /help, /exit, /q\n'
+    'Unknown command "/nope". Available: /quit, /status, /new, /model, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /edit, /delete, /copy, /markdown, /smooth, /compact-thinking, /settings, /export-format, /cost, /help, /exit, /q\n'
   )
 })
 
@@ -1728,4 +1728,104 @@ test('the edit prompt submits user content with a marker even when it starts wit
   }), harness.deps)
 
   assert.equal(sawEditRead, true, 'the /edit nested prompt ran with its predicate')
+})
+
+test('the spelling provider is created once, forwarded to the prompt and disposed on exit', async (t) => {
+  mockConsole(t)
+  const optsSeen = []
+  const created = []
+  const features = []
+  const provider = {
+    disposed: 0,
+    onUpdate: null,
+    setFeatures() {},
+    getTypoRanges: () => undefined,
+    dispose() { this.disposed += 1 },
+  }
+  const harness = makeDeps({
+    createSpelling: (settings) => {
+      features.push(settings)
+      created.push(provider)
+      return provider
+    },
+    readInput: async (opts) => {
+      optsSeen.push(opts)
+      return { cancelled: true }
+    },
+  })
+
+  await runChatSession(baseCtx(fakeProvider().provider), harness.deps)
+
+  assert.equal(created.length, 1, 'exactly one provider per session')
+  assert.deepEqual(features[0], { typoDetection: true, autocomplete: true, autocorrect: false }, 'the prefs defaults are resolved')
+  assert.equal(optsSeen[0].spelling, provider, 'the prompt editor receives the provider')
+  assert.equal(provider.disposed, 1, 'the exit path disposes it')
+})
+
+test('the spelling settings are resolved from the persisted prefs', async (t) => {
+  mockConsole(t)
+  const features = []
+  const harness = makeDeps({
+    createSpelling: (settings) => {
+      features.push(settings)
+      return null
+    },
+    readInput: async () => ({ cancelled: true }),
+  })
+
+  await runChatSession(baseCtx(fakeProvider().provider, { prefs: { spellingTypoDetection: false, spellingAutocorrect: true } }), harness.deps)
+
+  assert.deepEqual(features[0], { typoDetection: false, autocomplete: true, autocorrect: true })
+})
+
+test('a session without a spelling provider forwards null and never disposes', async (t) => {
+  mockConsole(t)
+  const optsSeen = []
+  const harness = makeDeps({
+    createSpelling: () => null,
+    readInput: async (opts) => {
+      optsSeen.push(opts)
+      return { cancelled: true }
+    },
+  })
+
+  await runChatSession(baseCtx(fakeProvider().provider), harness.deps)
+
+  assert.equal(optsSeen[0].spelling, null)
+})
+
+test('a mid-stream SIGINT disposes the spelling provider on the interrupt exit', async (t) => {
+  mockConsole(t)
+  const disposed = []
+  let started = 0
+  const provider = {
+    onUpdate: null,
+    setFeatures() {},
+    getTypoRanges: () => undefined,
+    dispose() { disposed.push('dispose') },
+  }
+  const { provider: hangingProvider } = fakeProvider({
+    async chatCompletion(opts) {
+      started += 1
+      // Abort-aware on purpose: the runner must regain control after the
+      // SIGINT to run its interrupt save and exit.
+      return new Promise((_, reject) => {
+        opts.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+      })
+    },
+  })
+  const harness = makeDeps({
+    createSpelling: () => provider,
+    readInput: scriptedInput(['hi', neverResolving()]),
+  })
+
+  runChatSession(baseCtx(hangingProvider), harness.deps)
+  for (let i = 0; i < 50 && started === 0; i++) await tick()
+  assert.equal(started, 1, 'the turn is in flight, so a SIGINT takes the streaming branch')
+
+  harness.signalHandlers.sigint()
+  for (let i = 0; i < 50 && harness.exitCodes.length === 0; i++) await tick()
+
+  assert.equal(disposed.length, 1, 'the streaming exit path disposes the provider too')
+  assert.deepEqual(harness.exitCodes, [130])
 })

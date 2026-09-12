@@ -10,7 +10,8 @@ import { dim, sep, you, char } from './ui/style.js'
 import { out } from './ui/io.js'
 import { ensureSessionsDir, generateSessionId, persistSessionFile, persistSessionFileTo, buildSessionPayload, removeEmptySessionClaim } from './sessions.js'
 import { logRpgPrompt, flushRpgPromptLog, rpgSessionsDir, ensureRpgSessionsDir } from './rpg.js'
-import { savePreferences, syncPreferenceUpdates, savePrefsBestEffort } from './config.js'
+import { savePreferences, syncPreferenceUpdates, savePrefsBestEffort, resolveSpellingSettings } from './config.js'
+import { createPlatformSpellingProvider } from './spelling/index.js'
 import { copyText } from './clipboard.js'
 import { ChatState } from './chat-state.js'
 import { createE2eeSession } from './e2ee.js'
@@ -100,6 +101,10 @@ export async function runChatSession(ctx = {}, deps = {}) {
     input = process.stdin,
     createStreamKeyMonitor,
     now = null,
+    // Spelling provider factory (darwin-only, injectable): the platform gate
+    // lives in src/spelling/index.js, so a non-macOS session never constructs
+    // the osascript backend.
+    createSpelling = (features) => createPlatformSpellingProvider({ features }),
   } = deps
 
   const rpgSessionDir = rpgDir ? rpgSessionsDir(rpgDir) : null
@@ -282,6 +287,12 @@ export async function runChatSession(ctx = {}, deps = {}) {
   // as the other persistence paths)
   const savePrefs = savePrefsBestEffort((updates) => savePrefsFile(updates))
 
+  // macOS spelling assistance: one provider per session, holding the debounce
+  // timer and at most one osascript child (see src/spelling/). `/settings`
+  // mutates the shared settings object and the provider follows it.
+  const spellingSettings = resolveSpellingSettings(prefs)
+  const spelling = createSpelling(spellingSettings) ?? null
+
   let exitSaveDone = false
   let exitSavePromise = null
   const bestEffortSave = async () => {
@@ -318,17 +329,23 @@ export async function runChatSession(ctx = {}, deps = {}) {
       if (sessionState.streaming) {
         sessionState.interrupted = true
         sessionState.streamController?.abort()
+        // This branch exits through turn-runner's interruptSave (exit 130), so
+        // it never reaches the save path below: dispose here or a debounced
+        // check would outlive the session as an orphan child.
+        spelling?.dispose()
         return
       }
       // A second Ctrl+C while the exit save is in flight must not call
       // exit(130) early and truncate the write; the first press chains the
       // exit onto the save, so repeat presses are no-ops. The exit waits for a
       // pending prompt-log append too (see flushRpgPromptLog).
+      spelling?.dispose()
       exitSavePromise ??= Promise.all([bestEffortExitSave(), flushRpgPromptLog()]).finally(() => exit(130))
     },
     // The natural-exit and unhandled-error handlers save best-effort and flush
     // the prompt log with the save (see flushRpgPromptLog).
     beforeExit: () => {
+      spelling?.dispose()
       void Promise.all([bestEffortSave(), flushRpgPromptLog()])
     },
     uncaughtException: (err) => {
@@ -336,12 +353,16 @@ export async function runChatSession(ctx = {}, deps = {}) {
       // Tear the streaming raw mode down before the best-effort save so an
       // unhandled error mid-stream never leaves the terminal raw.
       sessionState.streamKeys?.stop()
+      spelling?.dispose()
       void Promise.all([bestEffortSave(), flushRpgPromptLog()]).finally(() => exit(1))
     },
   })
 
   const exitCleanly = async () => {
     cleanupSignals()
+    // No timer or osascript child may outlive the session: every exit path
+    // that returns to the caller goes through here.
+    spelling?.dispose()
     await bestEffortSave()
     // The caller exits the process as soon as this returns, so what the run
     // issued has to be on disk first (see flushRpgPromptLog).
@@ -408,6 +429,8 @@ export async function runChatSession(ctx = {}, deps = {}) {
     rpgMarkers,
     saveSession: saveCurrentSession,
     savePrefs,
+    spelling,
+    spellingSettings,
     runTurn,
     render,
     readInput,
@@ -454,6 +477,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
         if (trimmed === '' || trimmed.startsWith('/')) return null
         return rpgMarkers.userMarker ?? you()
       },
+      spelling,
     })
 
     if (result.cancelled) {
