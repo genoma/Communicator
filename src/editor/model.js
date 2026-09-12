@@ -243,6 +243,36 @@ export function insertChar(model, ch) {
   postEdit(model)
 }
 
+/** Insert an accepted completion at the cursor as one undoable edit */
+export function insertCompletion(model, text) {
+  if (typeof text !== 'string' || text === '') return
+  if (!canInsertChar(model, [...text].length)) return
+  saveUndo(model)
+  const line = model.lines[model.row]
+  model.lines[model.row] = line.slice(0, model.col) + text + line.slice(model.col)
+  model.col += text.length
+  model.lastEditType = ''
+  postEdit(model)
+}
+
+/**
+ * Replace `[start, end)` of a line with `text` as one undoable edit, leaving the
+ * cursor at the end of the replacement plus `cursorOffset` (the caret's
+ * position relative to the replaced range). Returns false when the range is not
+ * valid for the line.
+ */
+export function replaceRange(model, row, start, end, text, cursorOffset = 0) {
+  const line = model.lines[row]
+  if (typeof line !== 'string' || start < 0 || end < start || end > line.length) return false
+  saveUndo(model)
+  model.lines[row] = line.slice(0, start) + text + line.slice(end)
+  model.row = row
+  model.col = start + text.length + Math.max(0, cursorOffset)
+  model.lastEditType = ''
+  postEdit(model)
+  return true
+}
+
 /** Bulk-insert a bracketed-paste payload in one operation */
 export function insertPaste(model, text) {
   text = text.replace(/\r\n|\r|\u0085|\u2028|\u2029/g, '\n')

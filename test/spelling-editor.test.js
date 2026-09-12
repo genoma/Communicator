@@ -183,7 +183,7 @@ function openEditor(extra = {}) {
 
 test('a landed check repaints the block and a closed editor never repaints again', async () => {
   const backend = { calls: [], run: async (request) => { backend.calls.push(request); return { ranges: [[0, 9]] } } }
-  const spelling = createSpellingProvider({ backend, features: { typoDetection: true }, debounceMs: 1 })
+  const spelling = createSpellingProvider({ backend, features: { typoDetection: true, autocomplete: false }, debounceMs: 1 })
   const { input, output, pending } = openEditor({ spelling })
   assert.equal(typeof spelling.onUpdate, 'function', 'the editor installs its repaint hook')
 
@@ -203,6 +203,350 @@ test('a landed check repaints the block and a closed editor never repaints again
   await delay(10)
   assert.equal(output.chunks.length, chunksAfterClose, 'nothing is written after the editor closes')
   spelling.dispose()
+})
+
+test('the ghost hint extends the caret row without moving the cursor or the row count', () => {
+  const line = 'please recon'
+  const plain = gridFor([line], { col: line.length })
+  const hinted = gridFor([line], { col: line.length, ghostHint: 'ciliation' })
+
+  assert.deepEqual(hinted.cursor, plain.cursor, 'the cursor stays before the hint')
+  assert.equal(hinted.rows.length, plain.rows.length)
+  assert.equal(visible(hinted.rows[0]), `${plain.rows[0]}ciliation`, 'the hint is appended, not inserted')
+  assert.equal(stringWidth(hinted.rows[0]), stringWidth(plain.rows[0]) + 'ciliation'.length)
+})
+
+test('the ghost hint is clipped to the terminal and only paints at the row end', () => {
+  const line = 'please recon'
+  const long = gridFor([line], { col: line.length, ghostHint: 'x'.repeat(80) })
+  assert.ok(stringWidth(long.rows[0]) <= 40, 'a hint never overflows the terminal')
+
+  const midLine = gridFor([line], { col: 3, ghostHint: 'ciliation' })
+  assert.equal(visible(midLine.rows[0]), `❯ ${line}`, 'a caret inside the row carries no hint')
+
+  const submitted = gridFor([line], { col: line.length, ghostHint: 'ciliation', submittedMarker: '❯ You' })
+  assert.deepEqual(submitted.rows, ['', '❯ You', '', line], 'the replay form never carries a hint')
+})
+
+test('a landed completion repaints the block with the dim hint', async () => {
+  const backend = {
+    calls: [],
+    async run(request) {
+      backend.calls.push(request)
+      return { words: request.op === 'completions' ? ['reconciliation'] : [] }
+    },
+  }
+  const spelling = createSpellingProvider({ backend, features: { autocomplete: true }, debounceMs: 1 })
+  const { input, output, pending } = openEditor({ spelling })
+
+  input.emit('data', 'please recon')
+  await delay(30)
+  assert.equal(backend.calls.filter((c) => c.op === 'completions').length, 1)
+  assert.ok(output.text().includes('ciliation'), 'the hint is painted after the result lands')
+
+  input.emit('data', '\r')
+  assert.deepEqual(await pending, ['please recon', null], 'the hint is never part of the submitted text')
+  spelling.dispose()
+})
+
+test('Tab accepts the ghost hint only when no suggestion list is open', async () => {
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordReplacements: async () => null,
+    getWordCompletion: () => 'ciliation',
+  }
+
+  const accepted = openEditor({ spelling })
+  accepted.input.emit('data', 'please recon')
+  accepted.input.emit('data', '\t')
+  accepted.input.emit('data', '\r')
+  assert.deepEqual(await accepted.pending, ['please reconciliation', null], 'Tab accepts the hint')
+
+  const cycling = openEditor({ spelling, suggest: ({ value }) => (value.startsWith('/') ? ['/edit', '/export-format'] : []) })
+  cycling.input.emit('data', '/e')
+  cycling.input.emit('data', '\t')
+  cycling.input.emit('data', '\r')
+  const [cycled] = await cycling.pending
+  assert.equal(cycled, '/edit', 'the command list kept Tab')
+  assert.ok(!cycled.includes('ciliation'), 'the hint is not accepted while a list is open')
+})
+
+test('an accepted hint is one undoable edit', async () => {
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordReplacements: async () => null,
+    getWordCompletion: () => 'ciliation',
+  }
+  const { input, pending } = openEditor({ spelling })
+
+  input.emit('data', 'please recon')
+  input.emit('data', '\t')
+  input.emit('data', '\x1b[122;5u') // Ctrl+Z (kitty)
+  input.emit('data', '\r')
+
+  assert.deepEqual(await pending, ['please recon', null], 'one undo reverts the whole completion')
+})
+
+test('Ctrl+. opens the replacement list and Enter applies it in one undo step', async () => {
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordCompletion: () => null,
+    getWordReplacements: async (lines, row) => ({ line: row, startCol: 6, endCol: 11, items: ['world', 'word'] }),
+  }
+  const { input, output, pending } = openEditor({ spelling })
+
+  input.emit('data', 'hello wrold')
+  input.emit('data', '\x1b[46;5u') // Ctrl+.
+  await delay(10)
+  assert.ok(output.text().includes('world'), 'the replacement list is rendered')
+
+  input.emit('data', '\r')
+  await delay(10)
+  input.emit('data', '\x1b[122;5u') // Ctrl+Z reverts the replacement only
+  input.emit('data', '\r')
+
+  assert.deepEqual(await pending, ['hello wrold', null], 'the replacement is one undoable edit')
+})
+
+test('Escape cancels an open replacement list without editing', async () => {
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordCompletion: () => null,
+    getWordReplacements: async (lines, row) => ({ line: row, startCol: 6, endCol: 11, items: ['world'] }),
+  }
+  const { input, output, pending } = openEditor({ spelling })
+
+  input.emit('data', 'hello wrold')
+  input.emit('data', '\x1b[46;5u')
+  await delay(10)
+  assert.ok(output.text().includes('world'), 'the list is open before Escape')
+
+  input.emit('data', '\x1b') // a lone Escape is flushed after 50 ms
+  await delay(80)
+  input.emit('data', '\r')
+
+  assert.deepEqual(await pending, ['hello wrold', null], 'the line is untouched')
+})
+
+test('Tab never inserts a completion the layout did not paint', async () => {
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordReplacements: async () => null,
+    getWordCompletion: () => 'ciliation',
+  }
+
+  const midRow = openEditor({ spelling })
+  midRow.input.emit('data', 'please recon and more')
+  midRow.input.emit('data', '\x1b[D'.repeat(9))
+  midRow.input.emit('data', '\t')
+  midRow.input.emit('data', '\r')
+  assert.deepEqual(await midRow.pending, ['please recon and more', null], 'a caret inside the row accepts nothing')
+
+  const full = openEditor({ spelling })
+  const fullLine = `${'word '.repeat(10)}ab recon`
+  assert.equal(fullLine.length, 58, 'the line fills the usable width exactly')
+  full.input.emit('data', fullLine)
+  full.input.emit('data', '\t')
+  full.input.emit('data', '\r')
+  assert.deepEqual(await full.pending, [fullLine, null], 'a row with no free column accepts nothing')
+})
+
+test('Tab inserts exactly the clipped hint the layout painted', async () => {
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordReplacements: async () => null,
+    getWordCompletion: () => 'ciliation',
+  }
+  const { input, pending } = openEditor({ spelling })
+  const line = `${'word '.repeat(9)}ab recon`
+
+  input.emit('data', line)
+  input.emit('data', '\t')
+  input.emit('data', '\r')
+
+  const [value] = await pending
+  assert.equal(value, `${line}cilia`, 'only the columns the row had room for are inserted')
+})
+
+test('a submitted block never carries the ghost hint', async () => {
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordReplacements: async () => null,
+    getWordCompletion: () => 'ciliation',
+  }
+  const { input, output, pending } = openEditor({ spelling })
+
+  input.emit('data', 'please recon')
+  await delay(10)
+  assert.ok(output.text().includes('ciliation'), 'the hint is painted while typing')
+
+  const before = output.text().length
+  input.emit('data', '\r')
+  assert.deepEqual(await pending, ['please recon', null])
+  assert.ok(!output.text().slice(before).includes('ciliation'), 'the submit repaint drops the hint')
+})
+
+test('Shift+Tab never accepts the ghost hint', async () => {
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordReplacements: async () => null,
+    getWordCompletion: () => 'ciliation',
+  }
+  const { input, pending } = openEditor({ spelling })
+
+  input.emit('data', 'please recon')
+  input.emit('data', '\x1b[Z')
+  input.emit('data', '\r')
+
+  assert.deepEqual(await pending, ['please recon', null])
+})
+
+test('a replacement lookup that lands after a cursor move is dropped', async () => {
+  let resolveLookup
+  const lookup = new Promise((resolve) => { resolveLookup = resolve })
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordCompletion: () => null,
+    getWordReplacements: () => lookup,
+  }
+  const { input, output, pending } = openEditor({ spelling })
+
+  input.emit('data', 'hello wrold')
+  input.emit('data', '\x1b[46;5u')
+  await delay(5)
+  input.emit('data', '\x1b[D')
+  const before = output.text().length
+  resolveLookup({ line: 0, startCol: 6, endCol: 11, items: ['world'] })
+  await delay(10)
+
+  assert.ok(!output.text().slice(before).includes('world'), 'a stale lookup opens nothing')
+  input.emit('data', '\r')
+  assert.deepEqual(await pending, ['hello wrold', null])
+})
+
+test('a second Ctrl+. that finds nothing closes the open list', async () => {
+  let lookups = 0
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordCompletion: () => null,
+    async getWordReplacements(lines, row) {
+      lookups += 1
+      return lookups === 1 ? { line: row, startCol: 6, endCol: 11, items: ['world'] } : null
+    },
+  }
+  const { input, output, pending } = openEditor({ spelling })
+
+  input.emit('data', 'hello wrold')
+  input.emit('data', '\x1b[46;5u')
+  await delay(10)
+  assert.ok(output.text().includes('world'), 'the first lookup opens the list')
+
+  const before = output.text().length
+  input.emit('data', '\x1b[46;5u')
+  await delay(10)
+  assert.ok(!output.text().slice(before).includes('world'), 'the empty second lookup closes it')
+
+  input.emit('data', '\r')
+  assert.deepEqual(await pending, ['hello wrold', null])
+})
+
+test('the arrows move the replacement selection and Enter applies the selected one', async () => {
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordCompletion: () => null,
+    getWordReplacements: async (lines, row) => ({ line: row, startCol: 6, endCol: 11, items: ['world', 'word'] }),
+  }
+  const { input, pending } = openEditor({ spelling })
+
+  input.emit('data', 'hello wrold')
+  input.emit('data', '\x1b[46;5u')
+  await delay(10)
+  input.emit('data', '\x1b[B')
+  input.emit('data', '\r')
+  input.emit('data', '\r')
+
+  assert.deepEqual(await pending, ['hello word', null], 'the second entry is applied')
+})
+
+test('Ctrl+. on a word that is not flagged opens nothing', async () => {
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordCompletion: () => null,
+    getWordReplacements: async () => null,
+  }
+  const { input, output, pending } = openEditor({ spelling })
+
+  input.emit('data', 'hello world')
+  const before = output.text().length
+  input.emit('data', '\x1b[46;5u')
+  await delay(10)
+  assert.ok(!output.text().slice(before).includes('\u203a'), 'no list row is painted')
+
+  input.emit('data', '\r')
+  assert.deepEqual(await pending, ['hello world', null], 'the line is untouched')
+})
+
+test('the ghost hint is suppressed while the replacement list is open', async () => {
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordCompletion: () => 'ciliation',
+    getWordReplacements: async (lines, row) => ({ line: row, startCol: 6, endCol: 11, items: ['world'] }),
+  }
+  const { input, output, pending } = openEditor({ spelling })
+
+  input.emit('data', 'please recon')
+  await delay(10)
+  assert.ok(output.text().includes('ciliation'), 'the hint is painted first')
+
+  const before = output.text().length
+  input.emit('data', '\x1b[46;5u')
+  await delay(10)
+  assert.ok(output.text().slice(before).includes('world'), 'the list opens')
+  assert.ok(!output.text().slice(before).includes('ciliation'), 'and the hint is gone')
+
+  input.emit('data', '\x1b')
+  await delay(80)
+  input.emit('data', '\r')
+  assert.deepEqual(await pending, ['please recon', null])
 })
 
 test('a provider-less editor is unaffected', async () => {

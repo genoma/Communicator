@@ -141,4 +141,4 @@ The check cannot verify behavioral prose. When touching related code, re-verify 
 - ZDR: OpenRouter-only, filters pickers to ZDR-capable endpoints, runtime error kept as a safety net, not persisted.
 - Venice watermark (image-session `/watermark off` hides it → `hideWatermark: true`) and safe-mode are global preferences.
 - Session file format: `providerName`/`providerType`/`usage`/`sources` fields, `ref://attachments/` blobs, the `.index.json` sidecar rebuild, title from the first user message truncated to 50 chars.
-- Command autocomplete: hints appear on `/`, Tab fills the first match, Shift+Tab the last, Enter always submits.
+- Command autocomplete: hints appear on `/`, Tab fills the first match, Shift+Tab the last, Enter always submits. On macOS a dictionary completion hint is accepted with Tab only when no `/`-command list is open, and Ctrl+. lists spelling replacements.

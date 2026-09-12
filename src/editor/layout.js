@@ -204,7 +204,8 @@ function segmentDisplayStarts(segments) {
  *
  * Input: header rows (styled, pre-split), the styled line prefix (+ its raw
  * display width), the plain logical input lines, the logical cursor, an
- * optional status row, and the styled footer rows.
+ * optional status row, the styled footer rows and an optional ghost completion
+ * hint (a plain word suffix painted after the caret, see `ghostHint`).
  *
  * Output: `rows` (block rows in paint order, without trailing erase codes) and
  * `cursor` (0-based visual row + 0-based display column).
@@ -225,6 +226,7 @@ export function computeGrid(ctx) {
     inputStyle,
     submittedMarker,
     spelling,
+    ghostHint,
   } = ctx
   // Submitted-marker form (chat replays the user line as `❯ You\n\n<text>`):
   // the block becomes [blank, marker, blank, body rows at FULL width (no line
@@ -249,6 +251,7 @@ export function computeGrid(ctx) {
       rows,
       cursor: { r: rows.length - 1, c: stringWidth(bodyRows.at(-1) ?? '') },
       width,
+      ghost: null,
     }
   }
   const rows = [...headerRows]
@@ -269,6 +272,10 @@ export function computeGrid(ctx) {
   }
   let cursorRow = 0
   let cursorCol = 0
+  // The caret ends its row's text: only then the ghost hint sits exactly at the
+  // cursor (a hint elsewhere would slide the rest of the row and change the
+  // width/grid contract).
+  let caretAtRowEnd = false
   let inputOffset = headerRows.length
   for (let li = 0; li < lines.length; li++) {
     const { segments, starts, drops } = wrappedLines[li]
@@ -294,6 +301,7 @@ export function computeGrid(ctx) {
       }
       cursorRow = inputOffset + idx
       cursorCol = linePrefixWidth + (dcol - dispStarts[idx])
+      caretAtRowEnd = starts[idx] + segments[idx].length === col
     }
     inputOffset += segments.length
   }
@@ -310,8 +318,19 @@ export function computeGrid(ctx) {
     }
     rows.push(statusRow)
   }
+  // Ghost completion (macOS spelling autocomplete): dim, after the caret and
+  // clipped to the free columns, so the row still fits the terminal exactly and
+  // neither the cursor column nor the row count moves. The grid carries the
+  // text that was actually painted: Tab accepts exactly that, so a completion
+  // this gate refused to draw (caret not at the row end, or no free columns)
+  // can never be inserted invisibly.
+  let ghost = null
+  if (ghostHint && caretAtRowEnd && cursorCol < width) {
+    ghost = clipToWidth(ghostHint, width - cursorCol)
+    rows[cursorRow] += applyStyle(ghost, 'dim')
+  }
   if (footerRows && footerRows.length > 0) {
     for (const line of footerRows) rows.push(line)
   }
-  return { rows, cursor: { r: cursorRow, c: cursorCol }, width }
+  return { rows, cursor: { r: cursorRow, c: cursorCol }, width, ghost }
 }

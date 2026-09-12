@@ -2,7 +2,7 @@
 // validate/transform/highlight/inlinePrompt options have no in-repo callers
 // and are rejected loudly).
 import { stringWidth } from './chars.js'
-import { buildHelpFooter, detectKittyProtocol, resetKittyDetectionCache } from './footer.js'
+import { buildHelpFooter, clipToWidth, detectKittyProtocol, resetKittyDetectionCache } from './footer.js'
 import { loadHistory } from './history.js'
 import { createInputConsumer } from './keys.js'
 import {
@@ -20,6 +20,7 @@ import {
   historyNext,
   historyPrev,
   insertChar,
+  insertCompletion,
   insertNewline,
   insertPaste,
   lineEnd,
@@ -29,6 +30,7 @@ import {
   moveRight,
   moveUpOrHistory,
   redo,
+  replaceRange,
   saveUndo,
   suggestMove,
   undo,
@@ -144,6 +146,14 @@ function readFromTTY(input, output, prompt, options) {
 
     const view = { shadow: null, windowed: false }
 
+    // Replacement list for the flagged word under the caret (Ctrl+.). It is a
+    // suggestion session too, so it is mutually exclusive with the
+    // `/`-command session and shares its row rendering. `replaceRequest`
+    // invalidates a lookup whose result lands after a newer one or after
+    // teardown.
+    let replaceSession = null
+    let replaceRequest = 0
+
     const headerRows = () => {
       const header = buildPromptHeader(prefixOption, prompt, theme, model.visualState)
       return computeHeaderHeight(header) > 0 ? header.split('\n') : []
@@ -157,9 +167,12 @@ function readFromTTY(input, output, prompt, options) {
 
     // Suggestion list rows for the active suggestion session: the window is
     // centred around the selected match, selected entry bold/cyan with a
-    // marker, plus a "… N more" trailer (matches the vendored layout).
+    // marker, plus a "… N more" trailer (matches the vendored layout). Rows are
+    // clipped to the terminal width: a dictionary word (a replacement) has no
+    // length bound, and an over-wide row would soft-wrap and desync the grid.
     const suggestionRows = (session) => {
       const MAX_SUGGESTIONS = 8
+      const width = terminalWidth()
       const windowStart = Math.min(
         Math.max(0, session.index - Math.floor(MAX_SUGGESTIONS / 2)),
         Math.max(0, session.matches.length - MAX_SUGGESTIONS)
@@ -169,7 +182,8 @@ function readFromTTY(input, output, prompt, options) {
         const isSelected = windowStart + offset === session.index
         const marker = isSelected ? '› ' : '  '
         const styled = isSelected ? applyStyle(item, ['bold', 'cyan']) : applyStyle(item, 'dim')
-        return marker + styled
+        const row = marker + styled
+        return stringWidth(row) > width ? clipToWidth(row, width) : row
       })
       if (session.matches.length > shown.length) {
         rows.push(applyStyle(`… ${session.matches.length - shown.length} more`, 'dim'))
@@ -178,12 +192,43 @@ function readFromTTY(input, output, prompt, options) {
     }
 
     const footerRows = () => {
-      if (model.suggestSession) {
-        return suggestionRows(model.suggestSession)
+      if (model.suggestSession || replaceSession) {
+        return suggestionRows(model.suggestSession ?? replaceSession)
       }
       const text = rebuildFooter(terminalWidth())
       return text === '' ? [] : text.split('\n')
     }
+
+    // The replacement session is valid only while its row, its cursor position
+    // and that row's content are unchanged: any move or edit closes it, and a
+    // `/`-suggestion session always takes the footer slot instead.
+    const dropStaleReplaceSession = () => {
+      if (!replaceSession) return
+      if (
+        model.suggestSession ||
+        model.row !== replaceSession.row ||
+        model.col !== replaceSession.col ||
+        model.lines[replaceSession.row] !== replaceSession.text
+      ) {
+        replaceSession = null
+      }
+    }
+
+    // Ghost completion: the cached suffix for the word before the caret. Asking
+    // on every repaint is also the request (see src/spelling/), and a suffix
+    // only lands here once it is cached. The layout decides whether the caret
+    // ends its row with free columns, and the grid records what it painted.
+    const ghostHint = () => {
+      if (!spelling || typeof spelling.getWordCompletion !== 'function') return null
+      if (model.suggestSession || replaceSession) return null
+      const suffix = spelling.getWordCompletion(model.lines, model.row, model.col)
+      return typeof suffix === 'string' && suffix !== '' ? suffix : null
+    }
+
+    // The completion the last paint actually drew: null when the layout refused
+    // it (caret not at the row end, or no free columns), so Tab can never commit
+    // a hint the user did not see.
+    const paintedGhost = () => (typeof grid?.ghost === 'string' && grid.ghost !== '' ? grid.ghost : null)
 
     let grid = null
     // Marker for the in-flight submit repaint: set by submit() before the
@@ -193,6 +238,7 @@ function readFromTTY(input, output, prompt, options) {
     let submitMarkerValue = null
     const computeGridFn = (opts = {}) => {
       updateSuggestionSession(model)
+      dropStaleReplaceSession()
       grid = computeGrid({
         width: terminalWidth(),
         headerRows: headerRows(),
@@ -208,6 +254,7 @@ function readFromTTY(input, output, prompt, options) {
         inputStyle: themeInputStyle,
         submittedMarker: submitMarkerValue,
         spelling,
+        ghostHint: opts.noGhost ? null : ghostHint(),
       })
       return grid
     }
@@ -285,7 +332,7 @@ function readFromTTY(input, output, prompt, options) {
     }
 
     const repaintMode = (mode, param) => {
-      paint(computeGridFn(mode === 'submit' ? { noFooter: true } : {}), mode, param)
+      paint(computeGridFn(mode === 'submit' ? { noFooter: true, noGhost: true } : {}), mode, param)
     }
 
     // Async spelling results must never repaint a dead editor: the callback is
@@ -294,6 +341,109 @@ function readFromTTY(input, output, prompt, options) {
     const repaintForSpelling = () => {
       if (active) repaintMode('normal')
     }
+
+    // Ctrl+.: the replacement list for the flagged word under the caret. The
+    // lookup is async, so the state it was asked for is captured and
+    // re-validated when the result lands (the phase-1 dirty guard): a moved
+    // cursor, an edited line, a closed block, a `/`-suggestion session or a
+    // newer lookup drops the result instead of opening a stale list.
+    const openReplacements = async () => {
+      if (!spelling || typeof spelling.getWordReplacements !== 'function') return
+      const row = model.row
+      const col = model.col
+      const lines = model.lines
+      const line = lines[row]
+      const token = ++replaceRequest
+      let result
+      try {
+        result = await spelling.getWordReplacements(lines, row, col)
+      } catch {
+        result = null
+      }
+      if (!active || token !== replaceRequest) return
+      if (model.row !== row || model.col !== col || model.lines !== lines || model.lines[row] !== line) return
+      if (model.suggestSession) return
+      const usable =
+        result &&
+        result.line === row &&
+        Array.isArray(result.items) &&
+        result.items.length > 0 &&
+        result.items.every((item) => typeof item === 'string' && item !== '') &&
+        result.startCol >= 0 &&
+        result.endCol > result.startCol &&
+        result.endCol <= line.length
+      if (!usable) {
+        if (!replaceSession) return
+        // A second Ctrl+. that finds nothing closes the open list.
+        replaceSession = null
+        repaintMode('normal')
+        return
+      }
+      replaceSession = {
+        row,
+        col,
+        text: line,
+        startCol: result.startCol,
+        endCol: result.endCol,
+        matches: result.items,
+        index: 0,
+      }
+      repaintMode('normal')
+    }
+
+    const moveReplacement = (dir) => {
+      if (!replaceSession) return false
+      const count = replaceSession.matches.length
+      replaceSession = { ...replaceSession, index: (replaceSession.index + dir + count) % count }
+      return true
+    }
+
+    // Enter on the open list: one undoable edit replacing the flagged word,
+    // with the caret keeping its position relative to the replaced range.
+    const applyReplacement = () => {
+      const session = replaceSession
+      if (!session) return false
+      replaceSession = null
+      if (
+        model.row !== session.row ||
+        model.col !== session.col ||
+        model.lines[session.row] !== session.text
+      ) {
+        return true
+      }
+      replaceRange(
+        model,
+        session.row,
+        session.startCol,
+        session.endCol,
+        session.matches[session.index],
+        session.col - session.endCol
+      )
+      return true
+    }
+
+    // Tab precedence (approved): an open suggestion session — `/`-commands or a
+    // replacement list — keeps Tab as it is, and the ghost completion is only
+    // accepted when no list is open. Shift+Tab never accepts the hint.
+    const tabForward = () => {
+      if (model.suggestSession || replaceSession) {
+        cycleSuggestion(model, 1)
+        return
+      }
+      const hint = paintedGhost()
+      if (hint) insertCompletion(model, hint)
+      else cycleSuggestion(model, 1)
+    }
+
+    const dismissOverlay = () => {
+      if (replaceSession) {
+        replaceSession = null
+        return
+      }
+      if (suggest) dismissSuggestions(model)
+    }
+
+    const tabBackward = () => cycleSuggestion(model, -1)
 
     // --- Resize handling ---
     let resizeTimer = null
@@ -383,8 +533,17 @@ function readFromTTY(input, output, prompt, options) {
 
     const enterAction = preferNewlineOnEnter ? insertNewlineAndPaint : submit
     const modifiedAction = preferNewlineOnEnter ? submit : insertNewlineAndPaint
-    keyMap.set('\r', enterAction)
-    keyMap.set('\x1b[13u', enterAction) // kitty Enter
+    // Enter applies the open replacement list instead of submitting; with no
+    // list open it is the plain Enter.
+    const enterWithReplacement = () => {
+      if (!applyReplacement()) {
+        enterAction()
+        return
+      }
+      repaintMode('normal')
+    }
+    keyMap.set('\r', enterWithReplacement)
+    keyMap.set('\x1b[13u', enterWithReplacement) // kitty Enter
     if (!disabledKeySet.has('ctrl+j')) {
       keyMap.set('\n', insertNewlineAndPaint)
       keyMap.set('\x1b[106;5u', insertNewlineAndPaint) // kitty Ctrl+J
@@ -426,11 +585,11 @@ function readFromTTY(input, output, prompt, options) {
     keyMap.set('\x0c', () => repaintMode('refresh')) // Ctrl+L
     keyMap.set('\x1b[108;5u', () => repaintMode('refresh')) // kitty Ctrl+L
     keyMap.set('\x1b[A', () => {
-      if (!suggestMove(model, -1)) moveUpOrHistory(model)
+      if (!moveReplacement(-1) && !suggestMove(model, -1)) moveUpOrHistory(model)
       repaintMode('normal')
     })
     keyMap.set('\x1b[B', () => {
-      if (!suggestMove(model, 1)) moveDownOrHistory(model)
+      if (!moveReplacement(1) && !suggestMove(model, 1)) moveDownOrHistory(model)
       repaintMode('normal')
     })
     keyMap.set('\x1b[C', withRepaint(moveRight))
@@ -461,23 +620,35 @@ function readFromTTY(input, output, prompt, options) {
     keyMap.set('\x1b[101;5u', withRepaint(lineEnd)) // kitty Ctrl+E
     keyMap.set('\x1b[H', withRepaint(lineStart)) // Home
     keyMap.set('\x1b[F', withRepaint(lineEnd)) // End
-    if (suggest) {
+    // Tab/Shift+Tab/Escape: an open suggestion session (`/`-commands or the
+    // replacement list) owns them exactly as before; Escape also closes the
+    // replacement list.
+    if (suggest || spelling) {
       for (const seq of ['\t', '\x1b[9u', '\x1b[9;1u']) {
         keyMap.set(seq, () => {
-          cycleSuggestion(model, 1)
+          tabForward()
           repaintMode('normal')
         })
       }
       for (const seq of ['\x1b[Z', '\x1b[9;2u', '\x1b[1;2Z']) {
         keyMap.set(seq, () => {
-          cycleSuggestion(model, -1)
+          tabBackward()
           repaintMode('normal')
         })
       }
       for (const seq of ['\x1b', '\x1b[27u', '\x1b[27;1u']) {
         keyMap.set(seq, () => {
-          dismissSuggestions(model)
+          dismissOverlay()
           repaintMode('normal')
+        })
+      }
+    }
+    if (spelling) {
+      // Ctrl+.: the kitty keyboard protocol reports it as CSI-u, and xterm's
+      // modifyOtherKeys form is accepted too.
+      for (const seq of ['\x1b[46;5u', '\x1b[27;5;46~']) {
+        keyMap.set(seq, () => {
+          void openReplacements()
         })
       }
     }
@@ -517,6 +688,10 @@ function readFromTTY(input, output, prompt, options) {
         dsrTimer = null
       }
       consumer.cancelPendingEsc()
+      // A lookup in flight must not open a list after the block closed: the
+      // token invalidates it and the repaint is inert anyway.
+      replaceRequest += 1
+      replaceSession = null
       if (typeof output.removeListener === 'function') {
         output.removeListener('resize', resizeHandler)
       }

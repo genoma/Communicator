@@ -1243,3 +1243,36 @@ test('moveUp/moveDown preserve the visual column across a ZWJ family (no collaps
   const [value] = await editor
   assert.equal(value, 'abcdefgh\nab👨‍👩‍👧‍👦xy')
 })
+
+// --- Spelling ghost completion (macOS) ---
+
+test('the ghost hint paints on the caret row and leaves no stale cells when it goes', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let suffix = null
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+    getWordReplacements: async () => null,
+    getWordCompletion: () => suffix,
+  }
+  const { term, stdin, editor } = setup(t, { options: { spelling } })
+
+  type(stdin, 'please recon')
+  assert.equal(term.lines()[0], '❯ please recon', 'no hint while the provider answers null')
+
+  suffix = 'ciliation'
+  spelling.onUpdate()
+  assert.equal(term.lines()[0], '❯ please reconciliation')
+  assert.equal(term.cursor.c, '❯ please recon'.length, 'the cursor stays before the hint')
+
+  suffix = null
+  spelling.onUpdate()
+  assert.equal(term.lines()[0], '❯ please recon', 'the erased hint leaves no stale cells')
+  assert.ok(term.lines().every((row) => !row.includes('ciliation')))
+
+  submit(stdin)
+  const [value] = await editor
+  assert.equal(value, 'please recon', 'the hint is never part of the submitted value')
+})
