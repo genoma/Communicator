@@ -277,10 +277,13 @@ O2. ~~**`src/commands/chat/index.js:467-469`** — the interactive `/scrape` not
    then `/scrape`; a positional prompt takes the one-shot branch at `src/cli-main.js:342`, so
    `communicator "hi" | cat` never reaches the REPL), so lower impact than the fixed sites.
    *Not fenced; unowned.*~~ **Fixed** — see the matching entry in "Fixed on `fix/one-shot-bugs`" above.
-O3. **`src/commands/image-gen.js:317-323`** (`printImageOutcome`) writes `saved to …`, sizing and
+O3. ~~**`src/commands/image-gen.js:317-323`** (`printImageOutcome`) writes `saved to …`, sizing and
    cost lines to stdout when piped. Classified as the image run's own output rather than a
    notice (there is no text answer to keep pure). Changing it would break scripts that parse
-   those lines, so treat as by-design unless decided otherwise.
+   those lines, so treat as by-design unless decided otherwise.~~ **Closed — by design**: the
+   outcome lines are the image run's own output on both streams (the blurred-safe-mode warning
+   stays on stderr), so they keep printing when piped and the format is not changed; pinned in
+   `MEMORY.md` §Text vs Image command separation.
 
 ## Open — silent no-ops and ignored flags
 
@@ -336,13 +339,15 @@ O11. ~~**`--list-endpoints` needed an API key on OpenRouter** (`fetchEndpoints` 
 O12. ~~**`--list-endpoints <id>` resolves against the text catalog only**, so image models cannot
     be inspected and `--image` cannot be combined with it (`src/cli-validation.js`).~~ **Fixed** —
     see the matching entry in "Fixed on `fix/one-shot-bugs`" above.
-O13. **[docs-clarity, not a defect] `--temperature default` / `--top-p default` also resets the
+O13. ~~**[docs-clarity, not a defect] `--temperature default` / `--top-p default` also resets the
     persisted per-model value** (`src/session-setup.js:59-67`, plus the resume branch at
     `:154-158`). This is the documented, tested contract — `docs/commands.md:12-13` defines
     `default` as clearing the saved per-model value — so the behaviour is intended; the open
     question is only that a one-shot run makes a per-invocation-looking flag write global state
     with no note at the point of use. Do **not** "fix" this by dropping the clear without also
-    changing `docs/commands.md`.
+    changing `docs/commands.md`.~~ **Closed — accepted as is**: the clear-on-`default` contract is
+    documented (`docs/commands.md:12-13`, `MEMORY.md` §Temperature/§Top-p semantics) and no
+    point-of-use note is required; never drop the clear without changing those docs.
 O14. ~~**`--budget` is inert on a piped one-shot** (no pre-check, no metrics, not persisted), yet
     `docs/commands.md:93` shows it used with piped stdin and `README.md:20` still describes the
     cap unscoped. `docs/commands.md`'s flag row is now precise; these two examples are not.~~

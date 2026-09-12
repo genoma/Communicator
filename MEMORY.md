@@ -43,6 +43,7 @@
 - Image REPL owns `/resolution`, `/quality`, `/format`, `/aspect`, `/variants`, `/seed`, `/watermark` (Venice only), each gated by `model.constraints`; `/help`, `/status`, `/model`, `/quit` always available.
 - The CLI flags mirror that gate: `--resolution`/`--quality` hard-error (`Error: --resolution 2K is not supported by <id>.`) when `model.constraints.resolutions`/`qualities` is `null`, exactly like `--image-format` on a null `formats` list, so flag and REPL agree on what the model cannot take; values the advertised list contains are passed through to the provider, as is every value when `model.constraints` itself is missing (the REPL's guards are `constraints && …` too).
 - `/model` can hand off between image and text sessions; image command visibility disappears accordingly. The image → text handoff runs the chat on the key the resume branch resolved from the session's provider (`ctx.apiKey`), never on `chatStart`'s `apiKey` parameter, which is empty for a plain `--resume`.
+- Image run outcome lines (`saved to …`, sizing, cost; `printImageOutcome`) are the run's own output, not notices: they print to stdout even when piped (the blurred-safe-mode warning stays on stderr), because there is no text answer whose purity they could break — a piped image run is meant to be parsed as-is. Closed by decision (KNOWN-ISSUES O3); changing the format is a breaking change.
 
 ## Temperature semantics
 
