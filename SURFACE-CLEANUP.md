@@ -4,7 +4,7 @@ The approved direction for the "too many one-shots" complaint: remove the bare "
 and exit" dispatch and the generation/export knobs that duplicate the image REPL, replacing every
 lost capability with an in-app setter **before** anything is removed.
 
-**Status: in progress — Stage 5 landed, Stage 6 next.** Branch: `feat/surface-cleanup`, cut from
+**Status: completed in 4.0.0** (tag `4.0.0`, pushed, CI green on macOS/Ubuntu/Windows). Branch: `feat/surface-cleanup`, cut from
 `main` at tag `3.49.2`.
 How to use: stages are ordered and each ends with a green gate plus one commit. Tick the boxes as
 they land. Do not start a stage before the previous one is green.
@@ -24,6 +24,8 @@ owner-approved naming fix) — gate 1850/1850, lint and knip clean. Stage 4 (the
 are gone; `budget` left `applyPreferenceUpdates`; docs/backlog swept) — gate 1821/1821, lint and
 knip clean. Stage 5 (the O1/O31/O15/O26 strikes with provenance F37, the F29/O16 clause refresh,
 MEMORY's completed status and the `exportFormat` contract) — gate 1822/1822, lint and knip clean.
+Stage 6 (4.0.0 bump + changelog, fast-forward into `main`, tag pushed, CI green on all three
+platforms, branch deleted).
 
 Baseline at plan time: `npm test` 1842/1842, `npm run lint`, `npx knip` clean, CI green on
 macOS/Ubuntu/Windows for `3.49.2`.
@@ -261,13 +263,13 @@ Commit `docs: close the surface-cleanup backlog items`.
 
 Commit `chore: bump version to 4.0.0` with the AGENTS changelog.
 
-- [ ] `package.json` → `4.0.0`; `npm install --package-lock-only`.
-- [ ] Changelog: `### Features` for `/safe-mode`, `/export-format`, the persisted export format;
-      `### Fixes` for anything fixed along the way; every removal listed as `- feat: removed … (breaking)`
+- [x] `package.json` → `4.0.0`; `npm install --package-lock-only`.
+- [x] Changelog: `### Features` for `/safe-mode`, `/export-format`, the persisted export format;
+      `### Fixes` for anything fixed along the way; every removal listed as a breaking feat
       (Commander now rejects those flags). No prefs migration (E5).
-- [ ] Gate: `npm test`, `npm run lint`, `npx knip`.
-- [ ] Merge `feat/surface-cleanup` → `main`, tag `4.0.0`, push `main` + tag, verify CI green on
-      macOS/Ubuntu/Windows, delete the merged branch.
+- [x] Gate: `npm test` 1822/1822, `npm run lint`, `npx knip`.
+- [x] Merge `feat/surface-cleanup` → `main` (fast-forward to `ed8c0ac`), tag `4.0.0`, push `main`
+      + tag, CI green on macOS/Ubuntu/Windows, merged branch deleted.
 
 ## Verification matrix
 
