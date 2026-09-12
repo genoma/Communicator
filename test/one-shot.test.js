@@ -675,6 +675,11 @@ test('one-shot with --rpg --debug logs the request body to prompt-log.jsonl', as
   assert.equal(bodies.length, 1)
   assert.equal(bodies[0].messages[0].content, 'RPG system prompt')
 
+  // The run appends the prompt with a fire-and-forget logRpgPrompt (src/rpg.js),
+  // so both the file and its debug notice can land a tick after the run returns.
+  for (let tries = 0; tries < 200 && !errors.some((line) => line.includes('prompt logged:')); tries++) {
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
   const raw = await readFile(join(rpgDir, 'prompt-log.jsonl'), 'utf-8')
   const lines = raw.trim().split('\n')
   assert.equal(lines.length, 1)
@@ -758,6 +763,11 @@ test('one-shot --no-save still writes the prompt log --debug asked for', async (
   // --debug is an explicit request for a log, so --no-save still writes it: the
   // flag governs the saved session state (session file, chapter, prefs), not
   // the artifacts the run was asked to produce.
+  // The run appends the prompt with a fire-and-forget logRpgPrompt (src/rpg.js),
+  // so both the file and its debug notice can land a tick after the run returns.
+  for (let tries = 0; tries < 200 && !errors.some((line) => line.includes('prompt logged:')); tries++) {
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
   const logged = (await readFile(join(rpgDir, 'prompt-log.jsonl'), 'utf-8')).trim().split('\n')
   assert.equal(logged.length, 1)
   assert.deepEqual(JSON.parse(logged[0]).request, bodies[0])
