@@ -806,6 +806,10 @@ function readFromTTY(input, output, prompt, options) {
           preferNewlineOnEnter,
           disabledKeys,
           columns: cols,
+          // Ctrl+. is bound whenever a provider exists (see the keymap), not
+          // only while a replacement list is open; a terminal whose protocol
+          // cannot deliver it hides the hint like Shift+Enter (footer.js).
+          replacements: Boolean(spelling),
         })
         if (!custom) return helpText
         if (!helpText) return custom

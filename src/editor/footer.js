@@ -142,11 +142,13 @@ function resolveAction(action, preferNewlineOnEnter, submitLabels, newlineLabels
       return { keys: ['Ctrl+Delete'], action: 'clear' }
     case 'clear-screen':
       return { keys: ['Ctrl+L'], action: 'clear screen' }
+    case 'replacements':
+      return { keys: ['Ctrl+.'], action: 'replacements' }
   }
 }
 
 function buildItems(options) {
-  const { preferNewlineOnEnter = false, disabledKeys = [], maxKeysPerAction = 2, items: actions = DEFAULT_ITEMS } = options
+  const { preferNewlineOnEnter = false, disabledKeys = [], maxKeysPerAction = 2, items: actions = DEFAULT_ITEMS, replacements = false } = options
   const disabled = new Set(disabledKeys)
   const available = getAvailableModifiedKeys(disabled)
   // Ctrl+J is always on the newline side
@@ -158,8 +160,11 @@ function buildItems(options) {
   const newlineLabels = newlineKeys
     .slice(0, Math.max(1, maxKeysPerAction))
     .map((k) => MODIFIED_KEY_LABELS[k])
+  // Ctrl+. is protocol-dependent like Shift+Enter: a terminal whose kitty
+  // detection settled negative cannot deliver it, so it is not advertised.
+  const itemActions = replacements && _kittySupported !== false ? [...actions, 'replacements'] : actions
   const items = []
-  for (const action of actions) {
+  for (const action of itemActions) {
     const item = resolveAction(action, preferNewlineOnEnter, submitLabels, newlineLabels)
     if (item) items.push(item)
   }

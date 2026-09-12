@@ -7,6 +7,7 @@ import { EventEmitter } from 'node:events'
 import { stripVTControlCharacters } from 'node:util'
 import { readEditor } from '../src/editor/index.js'
 import { computeGrid } from '../src/editor/layout.js'
+import { buildHelpFooter, _resetKittyDetection } from '../src/editor/footer.js'
 import { stringWidth } from '../src/editor/chars.js'
 import { createSpellingProvider } from '../src/spelling/provider.js'
 
@@ -555,6 +556,64 @@ test('a provider-less editor is unaffected', async () => {
   input.emit('data', '\r')
   assert.deepEqual(await pending, ['hello', null])
   assert.ok(!output.text().includes(UNDERLINE))
+})
+
+test('the help footer advertises Ctrl+. only while a spelling provider is present', async () => {
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+  }
+  _resetKittyDetection(undefined)
+  const advertised = openEditor({ spelling, helpFooter: true })
+  advertised.input.emit('data', 'hello')
+  advertised.input.emit('data', '\r')
+  assert.deepEqual(await advertised.pending, ['hello', null])
+
+  const plain = openEditor({ helpFooter: true })
+  plain.input.emit('data', 'hello')
+  plain.input.emit('data', '\r')
+  assert.deepEqual(await plain.pending, ['hello', null])
+
+  const text = advertised.output.text()
+  const cancelAt = text.indexOf('Ctrl+C: cancel')
+  const replacementsAt = text.indexOf('Ctrl+.: replacements')
+  assert.ok(replacementsAt !== -1, 'the replacement list is advertised')
+  assert.ok(cancelAt !== -1 && cancelAt < replacementsAt, 'the item comes after the generic keys')
+  assert.ok(!plain.output.text().includes('Ctrl+.'), 'without a provider no hint is drawn')
+  // Strictly opt-in at the seam too: the default (and any caller that passes
+  // no option) renders no such item.
+  assert.ok(!buildHelpFooter({ columns: 100 }).includes('Ctrl+.'))
+  // Opting out is byte-identical: the item is appended, so removing it (with
+  // the grid padding in front of it) leaves exactly what an editor without a
+  // provider renders — every other item keeps its bytes.
+  assert.equal(text.replace(/ +Ctrl\+\.: replacements/g, ''), plain.output.text())
+})
+
+test('a terminal that cannot deliver Ctrl+. is not told about it', async () => {
+  const spelling = {
+    onUpdate: null,
+    setFeatures() {},
+    dispose() {},
+    getTypoRanges: () => undefined,
+  }
+  // Kitty detection settled negative (e.g. macOS Terminal.app): the footer
+  // hides the hint exactly as it hides Shift/Ctrl/Cmd+Enter there.
+  _resetKittyDetection(false)
+  const undeliverable = openEditor({ spelling, helpFooter: true })
+  undeliverable.input.emit('data', 'hello')
+  undeliverable.input.emit('data', '\r')
+  assert.deepEqual(await undeliverable.pending, ['hello', null])
+  assert.ok(!undeliverable.output.text().includes('Ctrl+.'), 'no hint without a protocol')
+
+  _resetKittyDetection(true)
+  const deliverable = openEditor({ spelling, helpFooter: true })
+  deliverable.input.emit('data', 'hello')
+  deliverable.input.emit('data', '\r')
+  assert.deepEqual(await deliverable.pending, ['hello', null])
+  assert.ok(deliverable.output.text().includes('Ctrl+.: replacements'), 'the hint survives a positive detection')
+  _resetKittyDetection(undefined)
 })
 
 // The correction backend speaks the real op shape: only the word the system
