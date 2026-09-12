@@ -29,7 +29,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     throw new CliError(NO_PROMPT_MESSAGE)
   }
 
-  const { forcedEffort, forcedTemperature, forcedTopP, forcedBudget, budget, forcedWebResults, smoothSpeed, compactThinking, zdr, e2ee } = resolveSessionFlags(opts, prefs)
+  const { forcedEffort, forcedTemperature, forcedTopP, budget, forcedWebResults, smoothSpeed, compactThinking, zdr, e2ee } = resolveSessionFlags(opts, prefs)
 
   // A resumed RPG chapter brings its own provider and key; the run's default
   // provider only applies to fresh runs.
@@ -46,7 +46,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   let context
   try {
     context = rpgResume
-      ? await resumeSessionContext({ result: rpgResume, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedBudget, forcedWebResults, provider, apiKey: runApiKey, zdr, e2ee })
+      ? await resumeSessionContext({ result: rpgResume, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedWebResults, provider, apiKey: runApiKey, zdr, e2ee })
       : await buildSessionContext({
           provider,
           apiKey: runApiKey,

@@ -89,7 +89,6 @@ const BASE_OPTS = {
   systemPrompt: undefined,
   reasoningEffort: undefined,
   temperature: undefined,
-  budget: undefined,
   webSearch: undefined,
   webResults: undefined,
   smoothStreaming: true,
@@ -548,7 +547,7 @@ test('--resume --reasoning-effort none disables reasoning on resume', async (t) 
   assert.equal(call.reasoningEffort, null)
 })
 
-test('--resume --temperature and --budget override the stored session values', async (t) => {
+test('--resume --temperature overrides the stored session value', async (t) => {
   withTTY(t, true)
   withApiKey(t)
   await seedSession('2026-01-07T00-00-00')
@@ -557,12 +556,12 @@ test('--resume --temperature and --budget override the stored session values', a
     config: configFile,
     resume: '2026-01-07',
     temperature: '0.5',
-    budget: '2',
   }, undefined)
 
   const call = startChatCalls[startChatCalls.length - 1]
   assert.equal(call.temperature, 0.5)
-  assert.equal(call.opts.budget, 2)
+  // budget has no flag any more (4.0.0): the stored session cap comes back.
+  assert.equal(call.opts.budget, 5)
 })
 
 test('--resume --web-search always overrides the stored mode', async (t) => {

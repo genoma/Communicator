@@ -393,11 +393,11 @@ test('--image rejects opts that violate the model constraints', async (t) => {
 
   const { exited: ex2, message: msg2 } = await runImageGen(t, { overrides: { resolution: '4K' } })
   assert.equal(ex2, true)
-  assert.equal(msg2, 'Error: --resolution 4K is not supported by flux-1-1. Supported: 1K, 2K.')
+  assert.equal(msg2, 'Error: Resolution 4K is not supported by flux-1-1. Supported: 1K, 2K.')
 
   const { exited: ex3, message: msg3 } = await runImageGen(t, { overrides: { quality: 'medium' } })
   assert.equal(ex3, true)
-  assert.equal(msg3, 'Error: --quality medium is not supported by flux-1-1. Supported: low, high.')
+  assert.equal(msg3, 'Error: Quality medium is not supported by flux-1-1. Supported: low, high.')
 })
 
 test('--image applies the image-session defaults for resolution/quality/variants', async (t) => {
@@ -587,7 +587,7 @@ test('--image rejects an invalid opts value with a CliError', async (t) => {
   const { exited, message } = await runImageGen(t, { overrides: { variants: '9' } })
 
   assert.equal(exited, true)
-  assert.equal(message, 'Error: --variants must be an integer between 1 and 4.')
+  assert.equal(message, 'Error: Variants must be an integer between 1 and 4.')
 })
 
 function fakeSizingProvider(overrides = {}) {
@@ -648,7 +648,7 @@ test('runImageGeneration rejects an explicit resolution the model cannot take', 
 
   await assert.rejects(
     runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'flux-1-1', resolution: '2K' }, prefs: {}, sessionId: '2026-01-01T00-00-00', stdout: plainStdout }),
-    (err) => err instanceof CliError && err.message === 'Error: --resolution 2K is not supported by flux-1-1.'
+    (err) => err instanceof CliError && err.message === 'Error: Resolution 2K is not supported by flux-1-1.'
   )
 })
 
@@ -662,7 +662,7 @@ test('runImageGeneration rejects an explicit quality the model cannot take', asy
 
   await assert.rejects(
     runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'flux-1-1', quality: 'high' }, prefs: {}, sessionId: '2026-01-01T00-00-00', stdout: plainStdout }),
-    (err) => err instanceof CliError && err.message === 'Error: --quality high is not supported by flux-1-1.'
+    (err) => err instanceof CliError && err.message === 'Error: Quality high is not supported by flux-1-1.'
   )
 })
 
@@ -791,7 +791,7 @@ test('runImageGeneration rejects an explicit variants count above the model maxN
 
   await assert.rejects(
     runImageGeneration({ provider, apiKey: 'k', prompt: 'x', opts: { imageModel: 'flux-1-1', variants: '3' }, prefs: {}, sessionId: '2026-01-01T00-00-00', stdout: plainStdout }),
-    (err) => err instanceof CliError && err.message === 'Error: --variants 3 is not supported by flux-1-1. Supported: 1-2.'
+    (err) => err instanceof CliError && err.message === 'Error: Variants 3 is not supported by flux-1-1. Supported: 1-2.'
   )
 })
 

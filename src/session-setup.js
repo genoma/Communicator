@@ -1,4 +1,4 @@
-import { resolveFlagValues, resolveWebSearchFlag, webSearchGate, resolvePrefOrNull, resolveBudget, resolveWebResultsFlag, normalizeSmoothSpeed } from './flags.js'
+import { resolveFlagValues, resolveWebSearchFlag, webSearchGate, resolvePrefOrNull, resolveWebResultsFlag, normalizeSmoothSpeed } from './flags.js'
 import { CliError } from './errors.js'
 import { selectModelAndEndpoint, selectModelNonInteractive } from './model-selection.js'
 
@@ -8,13 +8,12 @@ import { savePreferences, savePrefsBestEffort, syncPreferenceUpdates } from './c
 
 export function resolveSessionFlags(opts, prefs) {
   try {
-    const { reasoningEffort: forcedEffort, temperature: forcedTemperature, topP: forcedTopP, budget: forcedBudget, webResults: forcedWebResults, smoothSpeed } = resolveFlagValues(opts)
+    const { reasoningEffort: forcedEffort, temperature: forcedTemperature, topP: forcedTopP, webResults: forcedWebResults, smoothSpeed } = resolveFlagValues(opts)
     return {
       forcedEffort,
       forcedTemperature,
       forcedTopP,
-      forcedBudget,
-      budget: forcedBudget ?? resolvePrefOrNull(resolveBudget, prefs.budget) ?? null,
+      budget: null,
       forcedWebResults,
       smoothSpeed: smoothSpeed ?? normalizeSmoothSpeed(prefs.smoothSpeed),
       compactThinking: opts.compactThinking === true || prefs.compactThinking === true,
@@ -121,7 +120,7 @@ export function assertResumeFlags({ result, providerName, zdr, e2ee, forcedWebRe
 // chapter resume share this): the payload's model/sampling/provider values
 // win unless the run forces them, mirroring buildSessionContext's precedence
 // for a fresh run. An explicit --model always overrides the payload.
-export async function resumeSessionContext({ result, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedBudget, forcedWebResults, provider, apiKey, zdr, e2ee = false, modelsPromise = null }) {
+export async function resumeSessionContext({ result, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedWebResults, provider, apiKey, zdr, e2ee = false, modelsPromise = null }) {
   assertResolvedProviderFlags({ providerName: provider.meta.name, zdr, forcedWebResults, e2ee })
   let selection
   if (opts.model) {
@@ -166,7 +165,7 @@ export async function resumeSessionContext({ result, opts, prefs, forcedEffort, 
     // The snapshot is the last fallback for the session's own settings: a
     // resumed run restores what the session was saved with, and only the
     // per-model pref may step in for webSearch.
-    budget: forcedBudget ?? resolvePrefOrNull(resolveBudget, result.budget) ?? null,
+    budget: result.budget ?? null,
     webSearch: e2ee ? 'off' : resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: prefs.webSearch?.[selection.modelId] ?? (result.webSearchSnapshot != null ? result.webSearch : undefined) }),
     webSearchExplicit: !e2ee && (opts.webSearch !== undefined || forcedWebResults != null),
     webResultsExplicit: opts.webResults !== undefined,

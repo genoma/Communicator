@@ -1,6 +1,6 @@
 import { WEB_SEARCH_MODES, resolveExportFormat } from './flags.js'
 
-const SESSION_FLAGS_LIST = '--temperature, --top-p, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --compact-thinking, --system-prompt, --rpg, --attach, --scrape'
+const SESSION_FLAGS_LIST = '--temperature, --top-p, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --compact-thinking, --system-prompt, --rpg, --attach, --scrape'
 
 export function hasAttachments(opts) {
   return (opts.attach?.length ?? 0) > 0
@@ -22,7 +22,6 @@ export function isSessionOnly(opts) {
   return (
     opts.temperature !== undefined ||
     opts.topP !== undefined ||
-    opts.budget !== undefined ||
     opts.reasoningEffort !== undefined ||
     opts.webSearch !== undefined ||
     opts.webResults !== undefined ||
@@ -42,7 +41,6 @@ export function hasConfigSetterFlags(opts) {
     opts.outputDir !== undefined ||
     opts.temperature !== undefined ||
     opts.topP !== undefined ||
-    opts.budget !== undefined ||
     opts.reasoningEffort !== undefined ||
     opts.webSearch !== undefined ||
     opts.webResults !== undefined ||
@@ -121,7 +119,6 @@ function hasBareConfigOtherFlags(opts, promptArg) {
     opts.reasoningEffort !== undefined ||
     opts.temperature !== undefined ||
     opts.topP !== undefined ||
-    opts.budget !== undefined ||
     opts.webSearch !== undefined ||
     opts.webResults !== undefined ||
     opts.smoothStreaming === false ||
@@ -342,7 +339,7 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
   }
 
   if (opts.image && (opts.model !== undefined || opts.zdr === true || sessionOnlyFlags)) {
-    errors.push('Error: --image cannot be combined with chat session flags (--model, --attach, --system-prompt, --rpg, --temperature, --top-p, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --compact-thinking, --zdr, --scrape).')
+    errors.push('Error: --image cannot be combined with chat session flags (--model, --attach, --system-prompt, --rpg, --temperature, --top-p, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --compact-thinking, --zdr, --scrape).')
   }
 
   if (opts.config === true && hasBareConfigOtherFlags(opts, promptArg)) {

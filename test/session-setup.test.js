@@ -194,21 +194,16 @@ test('persistSession survives a failed session save', async (t) => {
   assert.equal(prefs.lastModel, 'org/model')
 })
 
-test('resolveSessionFlags treats an invalid configured budget as unset', async () => {
+test('resolveSessionFlags ignores a legacy prefs.budget and any opts.budget', async () => {
   const { resolveSessionFlags } = await import('../src/session-setup.js')
-  const opts = { budget: undefined, temperature: undefined, reasoningEffort: undefined, webResults: undefined, smoothSpeed: undefined, zdr: false }
+  const opts = { temperature: undefined, reasoningEffort: undefined, webResults: undefined, smoothSpeed: undefined, zdr: false }
 
-  assert.equal(resolveSessionFlags(opts, { budget: 0 }).budget, null)
-  assert.equal(resolveSessionFlags(opts, { budget: -1 }).budget, null)
-  assert.equal(resolveSessionFlags(opts, { budget: 'abc' }).budget, null)
-  assert.equal(resolveSessionFlags(opts, { budget: 2.5 }).budget, 2.5)
-  assert.equal(resolveSessionFlags(opts, {}).budget, null)
-})
-
-test('resolveSessionFlags lets an explicit CLI budget win over an invalid pref', async () => {
-  const { resolveSessionFlags } = await import('../src/session-setup.js')
-  const opts = { budget: '3', temperature: undefined, reasoningEffort: undefined, webResults: undefined, smoothSpeed: undefined, zdr: false }
-  assert.equal(resolveSessionFlags(opts, { budget: 0 }).budget, 3)
+  // 4.0.0 removed the --budget flag and the standing pref: a fresh session is
+  // uncapped whatever the config file or a stale opts key says.
+  for (const prefs of [{}, { budget: 0 }, { budget: 2.5 }, { budget: 'abc' }]) {
+    assert.equal(resolveSessionFlags(opts, prefs).budget, null)
+  }
+  assert.equal(resolveSessionFlags({ ...opts, budget: '3' }, { budget: 0 }).budget, null)
 })
 
 test('resolveSessionFlags enables compact thinking from flag or preference', async () => {

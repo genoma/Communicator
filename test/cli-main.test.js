@@ -30,7 +30,6 @@ const BASE_OPTS = {
   systemPrompt: undefined,
   reasoningEffort: undefined,
   temperature: undefined,
-  budget: undefined,
   webSearch: undefined,
   webResults: undefined,
   smoothStreaming: true,
@@ -309,7 +308,7 @@ test('--e2ee cannot be combined with --delete or --delete-all-sessions', async (
 
 test('session flags cannot be combined with --export', async (t) => {
   withTTY(t, true)
-  const { err } = await runAndExit(t, { export: true, budget: '1' }, undefined, 1)
+  const { err } = await runAndExit(t, { export: true, temperature: '0.5' }, undefined, 1)
   assert.match(err[0], /cannot be combined with --export/)
 })
 
@@ -397,15 +396,6 @@ test('--output-dir alone persists the default export directory', async (t) => {
   assert.match(out[0], /Export directory set to \/tmp\/exports/)
   const saved = JSON.parse(await readFile(file, 'utf-8'))
   assert.equal(saved.outputDir, '/tmp/exports')
-})
-
-test('--budget alone persists the default budget', async (t) => {
-  withTTY(t, true)
-  const file = await tempConfig(t)
-  const { out } = await runAndExit(t, { config: file, budget: '2' }, undefined, 0)
-  assert.match(out[0], /Budget set to \$2/)
-  const saved = JSON.parse(await readFile(file, 'utf-8'))
-  assert.equal(saved.budget, 2)
 })
 
 test('--no-smooth-streaming alone persists the default', async (t) => {

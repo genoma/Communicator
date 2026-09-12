@@ -88,7 +88,7 @@
 
 - `budgetStatus(cost, budget)` → `{ pct, remaining }`; warning at ≥80% once; refusal pre-turn when `cost >= budget`.
 - Per-session, stored/restored, cleared by `/new`.
-- `/budget <usd>` sets/resets warning; bare shows status.
+- `/budget <usd>` sets/resets warning; bare shows status. The standing `--budget` flag was removed in 4.0.0: `/budget` is the only cap path, a fresh session starts uncapped, and a legacy `prefs.budget` entry is inert (no longer read, no migration).
 - One-shot does not pre-check budget; it still prints the 80% `budgetLine` bar on a TTY (the interactive 80% bar is once per session, the one-shot one once per run).
 
 ## Zero data retention (ZDR)
@@ -297,8 +297,8 @@ Half the rule set self-updates (`\p{Emoji_Presentation}` reads the runtime's ICU
 Approved-direction workstream for the 4.0.0 release: remove the bare "set a preference and exit"
 dispatch and the generation/export knobs that duplicate the image REPL. **The execution plan is
 `SURFACE-CLEANUP.md`** — scope, parity matrix, owner decisions D1–D7, staged checklist and
-verification; do not duplicate it here. Status: approved, not started (branch
-`feat/surface-cleanup` cut from `3.49.2`).
+verification; do not duplicate it here. Status: in progress — Stages 1-3 landed on
+`feat/surface-cleanup` (cut from `3.49.2`).
 
 Pointers that stay here: the backlog fences `O1`/`O31` behind it and marks `O15` moot; `O26`'s
 `--seed` half is closed as documented behavior by the plan. `--config` stays a family-1 inspector

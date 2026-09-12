@@ -59,7 +59,6 @@ const BASE_OPTS = {
   systemPrompt: undefined,
   reasoningEffort: undefined,
   temperature: undefined,
-  budget: undefined,
   webSearch: undefined,
   webResults: undefined,
   smoothStreaming: true,

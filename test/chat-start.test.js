@@ -231,18 +231,20 @@ test('chatStart resume branch forwards the persisted scrape count for cost track
   assert.equal(startChatCalls[startChatCalls.length - 1].opts.scrapes, 0)
 })
 
-test('chatStart resume branch applies --temperature, --top-p, --budget and --web-search overrides', async (t) => {
+test('chatStart resume branch applies --temperature, --top-p and --web-search overrides', async (t) => {
   resumeResult = resumeSession()
   withApiKey(t)
   const configFile = await tempConfig(t)
   t.mock.method(console, 'log', () => {})
 
-  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x', temperature: '0.5', topP: '0.6', budget: '2', webSearch: 'always', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'openrouter' })
+  await chatStart({ apiKey: 'k', opts: baseOpts({ resume: 'x', temperature: '0.5', topP: '0.6', webSearch: 'always', config: configFile }), prefs: {}, systemPrompt: null, providerType: 'openrouter' })
 
   const call = startChatCalls[startChatCalls.length - 1]
   assert.equal(call.temperature, 0.5)
   assert.equal(call.opts.topP, 0.6)
-  assert.equal(call.opts.budget, 2)
+  // budget has no flag or pref any more (4.0.0): a resume restores the
+  // session's own stored cap.
+  assert.equal(call.opts.budget, 5)
   assert.equal(call.opts.webSearch, 'always')
 })
 
@@ -571,14 +573,15 @@ test('chatStart non-resume branch builds the context from selection and prefs', 
   const configFile = await tempConfig(t)
   t.mock.method(console, 'log', () => {})
 
-  await chatStartFresh({ apiKey: 'k', opts: baseOpts({ model: 'test/model', temperature: '0.5', budget: '2', config: configFile }), prefs: { budget: 1 }, systemPrompt: null, providerType: 'openrouter' })
+  await chatStartFresh({ apiKey: 'k', opts: baseOpts({ model: 'test/model', temperature: '0.5', config: configFile }), prefs: { budget: 1 }, systemPrompt: null, providerType: 'openrouter' })
 
   const call = startChatCalls[startChatCalls.length - 1]
   assert.equal(call.model, 'test/model')
   assert.equal(call.endpointProviderName, 'ProviderX')
   assert.equal(call.reasoningEffort, 'medium')
   assert.equal(call.temperature, 0.5)
-  assert.equal(call.opts.budget, 2)
+  // A standing prefs.budget is inert since 4.0.0: a fresh session starts uncapped.
+  assert.equal(call.opts.budget, null)
   assert.equal(call.opts.webSearch, 'off')
   assert.equal(call.opts.webSearchSupported, true)
   assert.equal(call.opts.contextLength, 64000)

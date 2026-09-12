@@ -4,7 +4,7 @@ import { getProvider } from './providers/index.js'
 import { ApiError, CliError, formatError, isExitPromptError } from './errors.js'
 import { sanitizeAnsi } from './ui/hyperlink.js'
 import { err, debug } from './ui/io.js'
-import { resolveSmoothSpeed, resolveTemperatureFlag, resolveTopPFlag, resolveBudget, resolveWebResultsFlag, resolveReasoningFlag, resolveAspectRatio, resolveImageFormat, resolveExportFormat } from './flags.js'
+import { resolveSmoothSpeed, resolveTemperatureFlag, resolveTopPFlag, resolveWebResultsFlag, resolveReasoningFlag, resolveAspectRatio, resolveImageFormat, resolveExportFormat } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
 import { isConfigSetDispatch, validateCliFlags } from './cli-validation.js'
 import { parseScrapeUrl, scrapeContext } from './scrape.js'
@@ -101,7 +101,6 @@ async function main(opts, promptArg) {
   resolveFlagOrExit(resolveSmoothSpeed, opts.smoothSpeed)
   resolveFlagOrExit(resolveTemperatureFlag, { temperature: opts.temperature })
   resolveFlagOrExit(resolveTopPFlag, { topP: opts.topP })
-  resolveFlagOrExit(resolveBudget, opts.budget)
   resolveFlagOrExit(resolveWebResultsFlag, { webResults: opts.webResults })
   resolveFlagOrExit((value) => resolveReasoningFlag({ reasoningEffort: value }), opts.reasoningEffort)
 

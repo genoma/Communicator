@@ -16,7 +16,6 @@ export function resolveFlagValues(opts) {
     reasoningEffort: opts.reasoningEffort !== undefined ? resolveReasoningFlag({ reasoningEffort: opts.reasoningEffort }) : undefined,
     temperature: opts.temperature !== undefined ? resolveTemperatureFlag({ temperature: opts.temperature }) : undefined,
     topP: opts.topP !== undefined ? resolveTopPFlag({ topP: opts.topP }) : undefined,
-    budget: opts.budget !== undefined ? resolveBudget(opts.budget) : undefined,
     webResults: opts.webResults !== undefined ? resolveWebResultsFlag({ webResults: opts.webResults }) : undefined,
     smoothSpeed: opts.smoothSpeed !== undefined ? resolveSmoothSpeed(opts.smoothSpeed) : undefined,
   }
@@ -132,7 +131,7 @@ export function resolveVariants(value) {
   if (value === undefined || value === null || value === '') return undefined
   const num = Number(value)
   if (!Number.isInteger(num) || num < 1 || num > 4) {
-    throw new Error('--variants must be an integer between 1 and 4.')
+    throw new Error('Variants must be an integer between 1 and 4.')
   }
   return num
 }
@@ -148,7 +147,7 @@ export function resolveAspectRatio(value) {
 export function resolveResolution(value) {
   if (value === undefined || value === null || value === '') return undefined
   if (!IMAGE_RESOLUTIONS.has(value)) {
-    throw new Error('--resolution must be one of: 1K, 2K, 4K.')
+    throw new Error('Resolution must be one of: 1K, 2K, 4K.')
   }
   return value
 }
@@ -156,7 +155,7 @@ export function resolveResolution(value) {
 export function resolveQuality(value) {
   if (value === undefined || value === null || value === '') return undefined
   if (!IMAGE_QUALITIES.has(value)) {
-    throw new Error('--quality must be one of: low, medium, high.')
+    throw new Error('Quality must be one of: low, medium, high.')
   }
   return value
 }

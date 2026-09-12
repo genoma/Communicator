@@ -35,7 +35,6 @@ program
   .option('--reasoning-effort <level>', 'reasoning effort: max, xhigh, high, medium, low, minimal, none')
   .option('--temperature <0-2|default>', 'temperature override (0 to 2; "default" uses the provider default and clears the persisted value)')
   .option('--top-p <0-1|default>', 'top-p override (0 to 1; "default" uses the provider default and clears the persisted value)')
-  .option('--budget <usd>', 'per-session budget cap in USD')
   .option('--web-search [mode]', 'web search mode: auto, always, on, off (bare flag = auto; per-model default persisted)')
   .option('--web-results <n>', 'number of web search results (OpenRouter only, default 10)')
   .option('--zdr', 'force zero-data-retention routing (OpenRouter only; filters model/provider selection to ZDR-capable endpoints)')

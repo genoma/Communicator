@@ -39,19 +39,19 @@ function validateSizingConstraints(model, { aspectRatio, format, resolution, qua
     throw new CliError(`Error: --image-format ${format} is not supported by ${model.id}.`)
   }
   if (resolution && Array.isArray(constraints.resolutions) && !constraints.resolutions.includes(resolution)) {
-    throw new CliError(`Error: --resolution ${resolution} is not supported by ${model.id}. Supported: ${constraints.resolutions.join(', ')}.`)
+    throw new CliError(`Error: Resolution ${resolution} is not supported by ${model.id}. Supported: ${constraints.resolutions.join(', ')}.`)
   }
   if (resolution && constraints.resolutions === null) {
-    throw new CliError(`Error: --resolution ${resolution} is not supported by ${model.id}.`)
+    throw new CliError(`Error: Resolution ${resolution} is not supported by ${model.id}.`)
   }
   if (quality && Array.isArray(constraints.qualities) && !constraints.qualities.includes(quality)) {
-    throw new CliError(`Error: --quality ${quality} is not supported by ${model.id}. Supported: ${constraints.qualities.join(', ')}.`)
+    throw new CliError(`Error: Quality ${quality} is not supported by ${model.id}. Supported: ${constraints.qualities.join(', ')}.`)
   }
   if (quality && constraints.qualities === null) {
-    throw new CliError(`Error: --quality ${quality} is not supported by ${model.id}.`)
+    throw new CliError(`Error: Quality ${quality} is not supported by ${model.id}.`)
   }
   if (variants != null && constraints.maxN != null && variants > constraints.maxN) {
-    throw new CliError(`Error: --variants ${variants} is not supported by ${model.id}. Supported: 1-${constraints.maxN}.`)
+    throw new CliError(`Error: Variants ${variants} is not supported by ${model.id}. Supported: 1-${constraints.maxN}.`)
   }
 }
 

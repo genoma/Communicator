@@ -1119,7 +1119,7 @@ test('/resolution with an invalid value errors', async (t) => {
 
   await startImageSession(baseOpts({ readInput: scriptedInput(['/resolution 8K', '/quit']) }))
 
-  assert.ok(errors.some((e) => e.includes('--resolution must be one of: 1K, 2K, 4K.')))
+  assert.ok(errors.some((e) => e.includes('Resolution must be one of: 1K, 2K, 4K.')))
 })
 
 test('/resolution clear unsets the resolution and removes the persisted key', async (t) => {
@@ -1227,7 +1227,7 @@ test('/quality with an invalid value errors', async (t) => {
 
   await startImageSession(baseOpts({ readInput: scriptedInput(['/quality 8k', '/quit']) }))
 
-  assert.ok(errors.some((e) => e.includes('--quality must be one of: low, medium, high.')))
+  assert.ok(errors.some((e) => e.includes('Quality must be one of: low, medium, high.')))
 })
 
 test('/quality clear unsets the quality and removes the persisted key', async (t) => {
@@ -1316,7 +1316,7 @@ test('/variants with a value outside the range errors', async (t) => {
 
   await startImageSession(baseOpts({ readInput: scriptedInput(['/variants 5', '/quit']) }))
 
-  assert.ok(errors.some((e) => e.includes('Error: --variants must be an integer between 1 and 4.')))
+  assert.ok(errors.some((e) => e.includes('Error: Variants must be an integer between 1 and 4.')))
   assert.deepEqual(genCalls, [])
 })
 

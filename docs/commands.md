@@ -11,7 +11,6 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`. `none` disables reasoning. With `--model` alone, saves the per-model default |
 |       | `--temperature`       | `<0-2\|default>`  | Temperature override for the session (`default`: provider default, clears the persisted per-model value; unset: per-model preference, else the provider's own default). With `--model` alone, saves the per-model default |
 |       | `--top-p`             | `<0-1\|default>`  | Top-p (nucleus sampling) override for the session (`default`: provider default, clears the persisted per-model value; unset: per-model preference, else the provider's own default). With `--model` alone, saves the per-model default |
-|       | `--budget`            | `<usd>`  | Per-session budget cap in USD. At 80% used it prints the budget bar (interactive; one-shot on a terminal); at 100% interactive sessions refuse further turns, while one-shot runs never pre-check the cap. Bare use saves the default |
 |       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `on`, `off` (`on` = `auto`; bare flag = `auto`). Per-model default is persisted in preferences |
 |       | `--web-results`       | `<n>`    | Number of web search results, 1–20 (OpenRouter only, default 10). Implies `auto` mode. Bare use saves the default |
 |       | `--zdr`               | —        | Force zero-data-retention routing (OpenRouter only). Filters model/provider selection to ZDR-capable endpoints; errors at selection if a model has none |
@@ -87,7 +86,7 @@ communicator -m "openai/gpt-4o" "What is the capital of France?"     # positiona
 echo "Summarize this: ..." | communicator -m "openai/gpt-4o"          # piped stdin
 communicator -m "openai/gpt-4o" --temperature 0.2 "Write a haiku"     # with temperature
 communicator -m "openai/gpt-4o" --top-p 0.8 "Write a haiku"           # with top-p
-cat notes.md | communicator -m "openai/gpt-4o" --budget 0.5 "Fix typos:" # budget tracked and persisted; one-shot never refuses
+cat notes.md | communicator -m "openai/gpt-4o" "Fix typos:"                   # piped stdin + prompt (budget: /budget in chat)
 communicator -m "openai/gpt-4o" --attach screenshot.png "What is the bug?"   # vision model + image
 communicator -p venice -m "qwen-3-7-max" --attach data.xlsx "Summarize this" # Venice office file
 communicator -p venice --scrape "https://example.com/article" "Summarize this article" # scrape + answer
@@ -124,7 +123,6 @@ communicator -m "deepseek/deepseek-v4-flash" --temperature 0.5         # set per
 communicator -m "deepseek/deepseek-v4-flash" --top-p 0.95              # set per-model top-p default
 communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort high   # set per-model reasoning default
 communicator -m "deepseek/deepseek-v4-flash" --web-search always       # set per-model web search default
-communicator --budget 2                                                # set the default budget cap for sessions
 communicator --web-results 5                                           # set the default result count (OpenRouter only)
 communicator --smooth-speed fast                                       # set the default smooth streaming speed
 communicator --no-smooth-streaming                                     # disable smooth streaming by default

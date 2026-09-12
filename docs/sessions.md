@@ -48,7 +48,7 @@ When resuming, the original model, provider backend (OpenRouter or Venice),
 endpoint provider, reasoning effort, temperature, top-p, budget, and web search state
 (mode + result count) are restored automatically. The conversation picks up
 right where you left off — all previous messages are preserved. Session flags
-override the stored values on resume (`--temperature`, `--top-p`, `--budget`,
+override the stored values on resume (`--temperature`, `--top-p`,
 `--web-search`, `--web-results`, `--reasoning-effort`), while `-p` is silently
 ignored and `-m`, `--output-dir`, `--attach`, and `--scrape` are rejected with
 an error. An ambiguous prefix (matching more than one session) opens an

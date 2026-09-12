@@ -31,8 +31,9 @@ test('resolveConfigValues passes through reasoning-effort levels', () => {
 })
 
 test('resolveConfigValues resolves global setters without needsModel', () => {
-  const v = resolveConfigValues({ budget: '2.5', webResults: '5', smoothSpeed: 'fast', outputDir: '/tmp/exports' })
-  assert.equal(v.budget, 2.5)
+  const v = resolveConfigValues({ webResults: '5', smoothSpeed: 'fast', outputDir: '/tmp/exports' })
+  // budget has no flag any more (4.0.0), so the setter no longer resolves one.
+  assert.equal(v.budget, undefined)
   assert.equal(v.webResults, 5)
   assert.equal(v.smoothSpeed, 8000)
   assert.equal(v.outputDir, '/tmp/exports')
@@ -90,7 +91,6 @@ test('resolveConfigValues maps --compact-thinking to true', () => {
 test('resolveConfigValues throws on invalid values', () => {
   assert.throws(() => resolveConfigValues({ temperature: '3' }), /between 0 and 2/)
   assert.throws(() => resolveConfigValues({ topP: '2' }), /between 0 and 1/)
-  assert.throws(() => resolveConfigValues({ budget: 'nope' }), /positive number/)
   assert.throws(() => resolveConfigValues({ webResults: '0' }), /positive integer/)
   assert.throws(() => resolveConfigValues({ smoothSpeed: 'insane' }), /Smooth speed/)
 })

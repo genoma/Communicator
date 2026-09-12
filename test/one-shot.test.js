@@ -134,7 +134,6 @@ async function tempConfig(t) {
 const BASE_OPTS = {
   model: 'test/model-a',
   temperature: undefined,
-  budget: undefined,
   reasoningEffort: undefined,
   webSearch: undefined,
   webResults: undefined,
@@ -200,7 +199,8 @@ test('one-shot success path writes plain output, the session file and persisted 
   assert.equal(saved.providerType, 'openrouter')
   assert.equal(saved.temperature, undefined)
   assert.equal(saved.topP, undefined)
-  assert.equal(saved.budget, 5)
+  // A legacy prefs.budget is inert since 4.0.0: the session carries no cap.
+  assert.equal(saved.budget, null)
   assert.equal(saved.webSearch, 'off')
   assert.equal(saved.messages.length, 3)
   assert.equal(saved.messages[2].content, 'Hello world')
@@ -675,7 +675,7 @@ test('one-shot with --rpg --debug logs the request body to prompt-log.jsonl', as
   assert.ok(errors.some((line) => line.includes('prompt logged:') && line.includes('prompt-log.jsonl')))
 })
 
-test('one-shot treats an invalid configured budget as unset', async (t) => {
+test('one-shot ignores a legacy prefs.budget entirely', async (t) => {
   const fetchCalls = []
   mockOpenRouterStream(t, fetchCalls)
   withApiKey(t)
@@ -690,10 +690,12 @@ test('one-shot treats an invalid configured budget as unset', async (t) => {
   assert.equal(negative.exited, false)
   const garbage = await runOneShot(t, { overrides: { config: file }, prefs: { budget: 'abc' } })
   assert.equal(garbage.exited, false)
+  const configured = await runOneShot(t, { overrides: { config: file }, prefs: { budget: 5 } })
+  assert.equal(configured.exited, false)
   assert.ok(fetchCalls.some((u) => u.includes('/chat/completions')))
 
   const created = (await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.') && !before.has(f))
-  assert.equal(created.length, 3)
+  assert.equal(created.length, 4)
   for (const f of created) {
     const saved = JSON.parse(await readFile(join(sessionsDir, f), 'utf-8'))
     assert.equal(saved.budget, null)

@@ -4,7 +4,7 @@ The approved direction for the "too many one-shots" complaint: remove the bare "
 and exit" dispatch and the generation/export knobs that duplicate the image REPL, replacing every
 lost capability with an in-app setter **before** anything is removed.
 
-**Status: in progress — Stage 2 landed, Stage 3 next.** Branch: `feat/surface-cleanup`, cut from
+**Status: in progress — Stage 3 landed, Stage 4 next.** Branch: `feat/surface-cleanup`, cut from
 `main` at tag `3.49.2`.
 How to use: stages are ordered and each ends with a green gate plus one commit. Tick the boxes as
 they land. Do not start a stage before the previous one is green.
@@ -17,7 +17,9 @@ documented behavior (the alternative resurrects the silent-no-op class); **Stage
 Landed: Stage 1 (`8104f5f` `/safe-mode`, `49b6d6e` export-format persistence + `/export-format`,
 `851e0e6` review fixes) — gate 1854/1854, lint and knip clean. Stage 2 (`900cd7d` the five image
 sizing flags removed; the image-session channel and its persisted defaults are the in-app path) —
-gate 1851/1851, lint and knip clean.
+gate 1851/1851, lint and knip clean. Stage 3 (`--budget` removed with the standing pref; the
+resolver/constraint errors that only the image session can trigger lost their flag prefix, the
+owner-approved naming fix) — gate 1850/1850, lint and knip clean.
 
 Baseline at plan time: `npm test` 1842/1842, `npm run lint`, `npx knip` clean, CI green on
 macOS/Ubuntu/Windows for `3.49.2`.
@@ -190,19 +192,23 @@ pin it, so it needs the owner's call — raise it in the Stage 2 review pass.
 
 Commit `feat!: remove --budget; the cap is per-session via /budget`.
 
-- [ ] `index.js`: drop `--budget`.
-- [ ] `src/session-setup.js`: remove `forcedBudget` from `resolveFlagValues` destructuring and both
+- [x] `index.js`: drop `--budget`.
+- [x] `src/session-setup.js`: remove `forcedBudget` from `resolveFlagValues` destructuring and both
       returns; fresh runs resolve `budget: null` (no `prefs.budget` read — D5); resume keeps
       `result.budget`.
-- [ ] `src/cli-validation.js`: remove `budget` from `hasConfigSetterFlags` and the image-exclusion
+- [x] `src/cli-validation.js`: remove `budget` from `hasConfigSetterFlags` and the image-exclusion
       message, and drop budget-specific rules if any.
-- [ ] `src/flags.js`: keep `resolveBudget` (the `/budget` handler uses it).
-- [ ] Tests: remove the `--budget` flag tests; keep `/budget` tests; add one asserting a legacy
+- [x] `src/flags.js`: keep `resolveBudget` (the `/budget` handler uses it).
+- [x] Tests: remove the `--budget` flag tests; keep `/budget` tests; add one asserting a legacy
       `{"budget": 2}` pref no longer caps a fresh session.
-- [ ] Docs: README budget bullet, `docs/commands.md` row + examples, MEMORY §Budget semantics
+- [x] Docs: README budget bullet, `docs/commands.md` row + examples, MEMORY §Budget semantics
       (`--budget` gone; `/budget` only; the standing pref is inert).
-- [ ] Verify: `--budget 2` → unknown option; `/budget 0.5` caps the session; an old config with
+- [x] Verify: `--budget 2` → unknown option; `/budget 0.5` caps the session; an old config with
       `budget` is ignored; gate green.
+- [x] Owner-approved wording (choice "a"): the sizing resolver errors and the
+      resolution/quality/variants constraint errors are dash-free now (`Resolution must be one of:
+      1K, 2K, 4K.`, `Variants 5 is not supported by <id>.`) because only the image-session commands
+      can reach them; the `--aspect-ratio`/`--image-format` messages keep their flag names.
 
 ### Stage 4 — remove the set-and-exit dispatch
 

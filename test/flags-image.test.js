@@ -25,10 +25,10 @@ test('resolveVariants accepts integers in 1-4', () => {
 })
 
 test('resolveVariants rejects out-of-range and non-integer values', () => {
-  throws(() => resolveVariants('0'), '--variants must be an integer between 1 and 4.')
-  throws(() => resolveVariants('5'), '--variants must be an integer between 1 and 4.')
-  throws(() => resolveVariants('2.5'), '--variants must be an integer between 1 and 4.')
-  throws(() => resolveVariants('abc'), '--variants must be an integer between 1 and 4.')
+  throws(() => resolveVariants('0'), 'Variants must be an integer between 1 and 4.')
+  throws(() => resolveVariants('5'), 'Variants must be an integer between 1 and 4.')
+  throws(() => resolveVariants('2.5'), 'Variants must be an integer between 1 and 4.')
+  throws(() => resolveVariants('abc'), 'Variants must be an integer between 1 and 4.')
   assert.equal(resolveVariants(undefined), undefined)
 })
 
@@ -59,8 +59,8 @@ test('resolveResolution accepts the tier list', () => {
 })
 
 test('resolveResolution rejects unknown tiers', () => {
-  throws(() => resolveResolution('1080p'), '--resolution must be one of: 1K, 2K, 4K.')
-  throws(() => resolveResolution('8K'), '--resolution must be one of: 1K, 2K, 4K.')
+  throws(() => resolveResolution('1080p'), 'Resolution must be one of: 1K, 2K, 4K.')
+  throws(() => resolveResolution('8K'), 'Resolution must be one of: 1K, 2K, 4K.')
   assert.equal(resolveResolution(undefined), undefined)
 })
 
@@ -71,7 +71,7 @@ test('resolveQuality accepts the level list', () => {
 })
 
 test('resolveQuality rejects unknown levels', () => {
-  throws(() => resolveQuality('ultra'), '--quality must be one of: low, medium, high.')
+  throws(() => resolveQuality('ultra'), 'Quality must be one of: low, medium, high.')
   assert.equal(resolveQuality(undefined), undefined)
 })
 

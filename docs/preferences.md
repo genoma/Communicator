@@ -22,7 +22,6 @@ The preferences file (`~/.communicator.json`, customizable with `--config`), per
   "smoothStreaming": true,
   "smoothSpeed": 2000,
   "compactThinking": true,
-  "budget": 2,
   "webResults": 10,
   "outputDir": "/home/user/Documents/CommunicatorExports",
   "hideWatermark": true,
@@ -35,7 +34,7 @@ The preferences file (`~/.communicator.json`, customizable with `--config`), per
 - `reasoningEffort` / `temperature` / `topP` / `webSearch` — saved per model ID and restored automatically.
 - `smoothStreaming` / `smoothSpeed` — global defaults; the speed is stored as a chars-per-second number, e.g. `2000`.
 - `compactThinking` — global default for the reasoning display: `true` shows a `Thinking` meter (TTY only) instead of streaming the reasoning text. Set by `--compact-thinking` alone, saved by `/compact-thinking`, and removed or set `false` by `/compact-thinking off`.
-- `budget` / `webResults` — session defaults applied when no flag is given.
+- `webResults` — session default applied when no flag is given. (`budget` is inert since 4.0.0: the cap comes from `/budget <usd>` for the current session only, and a leftover `budget` key is ignored — no migration removes it.)
 - `exportFormat` — format for future `--export` runs: `markdown` (default) or `jsonl`; set with `/export-format` in chat or persisted by an `--export --export-format <fmt>` run.
 - `hideWatermark` — global Venice image setting: when `true`, generated images are requested without the Venice watermark (Venice may ignore it for some content/models).
 - `safeMode` — global Venice image setting: when `false`, generated images are requested with safe mode disabled (`--no-safe-mode` persists it; removing the key re-enables safe mode).
