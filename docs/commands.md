@@ -39,13 +39,8 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--image`             | —        | Generate an image with an image model and exit (both providers). See [docs/images.md](images.md) |
 |       | `--image-model`       | `<id>`   | Image model ID, skipping the interactive image model picker (required when piping input) |
 |       | `--image-format`      | `<fmt>`  | Image output format: `png`, `jpeg`, `webp` (default `webp` on Venice, `png` on OpenRouter; only sent when the model supports it). Persisted as the per-provider default: bare use saves it and exits, and a chat run saves it too |
-|       | `--variants`          | `<n>`    | Number of images to generate, 1–4 (default 1; values above the model's advertised `maxN` are rejected) |
-|       | `--aspect-ratio`      | `<x:y>`  | Image aspect ratio, model-dependent (e.g. `16:9`, `auto`; decimal ratios like `9:19.5` accepted). Persisted as the per-provider default: bare use saves it and exits, and a chat run saves it too. Conflicts with `--width`/`--height` |
-|       | `--resolution`        | `<tier>` | Image resolution tier, model-dependent: `1K`, `2K`, `4K`. Conflicts with `--width`/`--height` |
-|       | `--quality`           | `<level>`| Image quality tier, model-dependent: `low`, `medium`, `high` |
+|       | `--aspect-ratio`      | `<x:y>`  | Image aspect ratio, model-dependent (e.g. `16:9`, `auto`; decimal ratios like `9:19.5` accepted). Persisted as the per-provider default: bare use saves it and exits, and a chat run saves it too |
 |       | `--seed`              | `<int>`  | Random seed for image generation (between -999999999 and 999999999) |
-|       | `--width`             | `<px>`   | Image width in pixels, 1–1280, multiples of the model's divisor (pixel-based models). Must be given with `--height` |
-|       | `--height`            | `<px>`   | Image height in pixels, 1–1280, multiples of the model's divisor (pixel-based models). Must be given with `--width` |
 |       | `--no-safe-mode`      | —        | Disable safe mode for image generation (Venice only; adult content returned unblurred). Bare use saves the default (global setting) and opens a chat session |
 |       | `--no-watermark`      | —        | Hide the Venice watermark on generated images. Persisted as the global `hideWatermark` pref on every launch path, announced with `Venice watermark disabled` (bare use saves it and exits) |
 |       | `--list-image-models` | —        | List image models (name, id, per-image price, sizing options) and exit |
@@ -74,8 +69,8 @@ communicator -p venice --image "a red cat"                        # interactive 
 communicator -p openrouter --image "a red cat"                    # OpenRouter image models
 communicator -p venice --image --image-model flux-1-1 "a red cat" # fixed image model, no picker
 communicator -p openrouter --image --image-model "openai/gpt-image-1-mini" --aspect-ratio 16:9 "a red cat"
-communicator -p venice --image --variants 2 --image-format png --seed 42 "cyberpunk city"
-communicator -p venice --image --image-model gpt-image-2 --resolution 2K --quality high "wide shot"
+communicator -p venice --image --image-format png --seed 42 "cyberpunk city"
+communicator -p venice --image --image-model gpt-image-2 "wide shot"   # resolution/quality/variants come from the image session
 communicator -p venice --image --image-model z-image-turbo --aspect-ratio 2:3 "portrait"   # pixel-based model: ratio is computed to pixels
 communicator -p venice --image --output-dir ~/Pictures "a red cat"   # also copy the images there
 communicator -p venice --list-image-models                           # list image models (no API key needed)

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolveImageFormat, resolveVariants, resolveAspectRatio, resolveResolution, resolveQuality, resolveSeed, resolveWidth, resolveHeight } from '../src/flags.js'
+import { resolveImageFormat, resolveVariants, resolveAspectRatio, resolveResolution, resolveQuality, resolveSeed } from '../src/flags.js'
 import { MAX_IMAGE_DIMENSION } from '../src/constants.js'
 
 const throws = (fn, message) => assert.throws(fn, (err) => err.message === message)
@@ -86,22 +86,6 @@ test('resolveSeed rejects out-of-range and non-integer values', () => {
   throws(() => resolveSeed('1.5'), '--seed must be an integer between -999999999 and 999999999.')
   throws(() => resolveSeed('abc'), '--seed must be an integer between -999999999 and 999999999.')
   assert.equal(resolveSeed(undefined), undefined)
-})
-
-test('resolveWidth and resolveHeight accept integers in 1-1280', () => {
-  assert.equal(resolveWidth('1'), 1)
-  assert.equal(resolveWidth('1280'), 1280)
-  assert.equal(resolveHeight('768'), 768)
-})
-
-test('resolveWidth and resolveHeight reject out-of-range and non-integer values', () => {
-  throws(() => resolveWidth('0'), '--width must be an integer between 1 and 1280.')
-  throws(() => resolveWidth('1281'), '--width must be an integer between 1 and 1280.')
-  throws(() => resolveWidth('10.5'), '--width must be an integer between 1 and 1280.')
-  throws(() => resolveHeight('0'), '--height must be an integer between 1 and 1280.')
-  throws(() => resolveHeight('abc'), '--height must be an integer between 1 and 1280.')
-  assert.equal(resolveWidth(undefined), undefined)
-  assert.equal(resolveHeight(undefined), undefined)
 })
 
 test('MAX_IMAGE_DIMENSION anchors pixel sizing at 1280 per side', () => {

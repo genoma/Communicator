@@ -1,4 +1,4 @@
-import { MAX_TEMPERATURE, MAX_TOP_P, MAX_WEB_SEARCH_RESULTS, SMOOTH_DEFAULT_SPEED, SMOOTH_SPEED_PRESETS, EFFORT_LABELS, IMAGE_FORMATS, IMAGE_RESOLUTIONS, IMAGE_QUALITIES, MAX_IMAGE_DIMENSION, MAX_SEED } from './constants.js'
+import { MAX_TEMPERATURE, MAX_TOP_P, MAX_WEB_SEARCH_RESULTS, SMOOTH_DEFAULT_SPEED, SMOOTH_SPEED_PRESETS, EFFORT_LABELS, IMAGE_FORMATS, IMAGE_RESOLUTIONS, IMAGE_QUALITIES, MAX_SEED } from './constants.js'
 
 export const WEB_SEARCH_MODES = new Set(['auto', 'always', 'on', 'off'])
 
@@ -168,21 +168,4 @@ export function resolveSeed(value) {
     throw new Error(`--seed must be an integer between -${MAX_SEED} and ${MAX_SEED}.`)
   }
   return num
-}
-
-function resolveImageDimension(name, value) {
-  if (value === undefined || value === null || value === '') return undefined
-  const num = Number(value)
-  if (!Number.isInteger(num) || num < 1 || num > MAX_IMAGE_DIMENSION) {
-    throw new Error(`--${name} must be an integer between 1 and ${MAX_IMAGE_DIMENSION}.`)
-  }
-  return num
-}
-
-export function resolveWidth(value) {
-  return resolveImageDimension('width', value)
-}
-
-export function resolveHeight(value) {
-  return resolveImageDimension('height', value)
 }

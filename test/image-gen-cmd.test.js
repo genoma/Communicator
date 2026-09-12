@@ -383,18 +383,6 @@ test('--image sizing/format/variants/seed/safe-mode flags reach generateImage', 
   assert.equal(body.height, undefined)
 })
 
-test('--image --width/--height are passed through', async (t) => {
-  const { bodies } = mockVeniceFetch(t)
-  withApiKey(t)
-  mockConsole(t)
-
-  const { exited } = await runImageGen(t, { overrides: { width: '1024', height: '768' } })
-
-  assert.equal(exited, false)
-  assert.equal(bodies[0].width, 1024)
-  assert.equal(bodies[0].height, 768)
-})
-
 test('--image rejects flags that violate the model constraints', async (t) => {
   mockVeniceFetch(t)
   withApiKey(t)
@@ -412,10 +400,23 @@ test('--image rejects flags that violate the model constraints', async (t) => {
   const { exited: ex3, message: msg3 } = await runImageGen(t, { overrides: { quality: 'medium' } })
   assert.equal(ex3, true)
   assert.equal(msg3, 'Error: --quality medium is not supported by flux-1-1. Supported: low, high.')
+})
 
-  const { exited: ex4, message: msg4 } = await runImageGen(t, { overrides: { width: '1023' } })
-  assert.equal(ex4, true)
-  assert.equal(msg4, 'Error: --width 1023 must be divisible by 8 for flux-1-1.')
+test('--image applies the image-session defaults for resolution/quality/variants', async (t) => {
+  const { bodies } = mockVeniceFetch(t)
+  withApiKey(t)
+  mockConsole(t)
+
+  // The image REPL persists its /resolution, /quality and /variants choices as
+  // per-provider defaults; with the CLI flags gone this is how they reach a run.
+  const { exited } = await runImageGen(t, {
+    prefs: { imageDefaults: { venice: { resolution: '2K', quality: 'high', variants: 2 } } },
+  })
+
+  assert.equal(exited, false)
+  assert.equal(bodies[0].resolution, '2K')
+  assert.equal(bodies[0].quality, 'high')
+  assert.equal(bodies[0].variants, 2)
 })
 
 test('--image with an unknown --image-model errors before any generation call', async (t) => {

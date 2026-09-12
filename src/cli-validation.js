@@ -330,8 +330,10 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
 
   // Generation-only flags are meaningless outside --image (image sessions
   // validate them on their own paths). --aspect-ratio and --image-format are
-  // exempt: they double as persisted image defaults.
-  const imageOnlyFlags = ['variants', 'seed', 'resolution', 'quality', 'width', 'height']
+  // exempt: they double as persisted image defaults. --seed is the only
+  // remaining generation flag; resolution/quality/variants are image-session
+  // commands that persist per-provider defaults.
+  const imageOnlyFlags = ['seed']
   const usedImageOnly = imageOnlyFlags.filter((f) => opts[f] !== undefined)
   if (opts.image !== true && usedImageOnly.length > 0) {
     errors.push(`Error: ${usedImageOnly.map((f) => `--${f}`).join(', ')} ${usedImageOnly.length === 1 ? 'requires' : 'require'} --image.`)
@@ -343,19 +345,6 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
 
   if (opts.image && (opts.model !== undefined || opts.zdr === true || sessionOnlyFlags)) {
     errors.push('Error: --image cannot be combined with chat session flags (--model, --attach, --system-prompt, --rpg, --temperature, --top-p, --budget, --reasoning-effort, --web-search, --web-results, --smooth-speed, --no-smooth-streaming, --compact-thinking, --zdr, --scrape).')
-  }
-
-  if (opts.image && (opts.width !== undefined || opts.height !== undefined)) {
-    if ((opts.width !== undefined) !== (opts.height !== undefined)) {
-      errors.push('Error: --width and --height must be used together.')
-    } else {
-      if (opts.aspectRatio !== undefined) {
-        errors.push('Error: --width and --height cannot be combined with --aspect-ratio.')
-      }
-      if (opts.resolution !== undefined) {
-        errors.push('Error: --width and --height cannot be combined with --resolution.')
-      }
-    }
   }
 
   if (opts.config === true && hasBareConfigOtherFlags(opts, promptArg)) {

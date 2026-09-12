@@ -149,27 +149,40 @@ macOS/Ubuntu/Windows for `3.49.2`.
 
 Commit `feat!: remove the image sizing flags (the image REPL keeps them)`.
 
-- [ ] `index.js`: drop `--variants` (21), `--resolution` (23), `--quality` (24), `--width` (26),
+- [x] `index.js`: drop `--variants` (21), `--resolution` (23), `--quality` (24), `--width` (26),
       `--height` (27). Keep `--seed`, `--aspect-ratio`, `--image-format`.
-- [ ] `src/cli-validation.js`: `imageOnlyFlags` → `['seed']`; delete the `--width`/`--height`
-      conflict rules (grep `width`/`height`); update the `--image` exclusion message text that
-      enumerates generation flags.
-- [ ] `src/commands/image-gen.js`: remove the `opts.variants/resolution/quality/width/height`
-      reads (`:151-158`), the `opts.*`-gated prefs writes (`:211-231`), and the width/height
-      derivation guard (always derive pixels from the ratio for pixel models). Keep the saved-default
-      application — with the flags gone it runs unconditionally, which is how the REPL defaults
-      reach a run.
-- [ ] `src/flags.js`: delete `resolveWidth`/`resolveHeight` if nothing imports them (knip will
-      confirm); keep `resolveVariants`/`resolveResolution`/`resolveQuality` (the REPL uses them).
-- [ ] Tests: delete/repair the flag tests in `test/image-gen-cmd.test.js`,
-      `test/cli-validation-image.test.js`, `test/cli-main*.test.js`, and the docs-consistency flag
-      coverage; add a test that a REPL-persisted `resolution`/`quality`/`variants` default still
-      reaches an `--image` run.
-- [ ] Docs: `docs/commands.md` (rows + every example using the removed flags), `docs/images.md`
-      (flag table + examples), README/grep for the flags.
-- [ ] Verify: `--image --resolution 2K` → `error: unknown option '--resolution'`, exit 1;
-      `--image --seed 5` works; REPL `/resolution 2K` persists and a later `--image` run uses it;
-      gate green.
+- [x] `src/cli-validation.js`: `imageOnlyFlags` → `['seed']`; deleted the `--width`/`--height`
+      conflict rules; the `--image` exclusion message now names only the flags that exist.
+- [x] `src/commands/image-gen.js`: removed the `opts.width`/`opts.height` reads, the width/height
+      divisibility check in `validateSizingConstraints`, and the derivation guard (pixel models
+      always derive the pixels from the ratio now). The saved-default application for
+      resolution/quality/variants stays and now runs for every run.
+      **Deviation (required for correctness): the `opts.resolution`/`opts.quality`/`opts.variants`
+      reads stay.** The image session passes its live command values through `opts`
+      (`src/commands/image-session.js:412-419`), so removing those reads would silently break
+      `/resolution`, `/quality` and `/variants` — the exact silent-no-op class this cleanup exists
+      to remove. Only the CLI flags go; the internal channel stays.
+- [x] `src/flags.js`: `resolveWidth`/`resolveHeight` and their `resolveImageDimension` helper are
+      gone (knip clean); `resolveVariants`/`resolveResolution`/`resolveQuality` stay (the REPL).
+- [x] Tests: removed the `resolveWidth`/`resolveHeight` cases, the `--width`/`--height` validation
+      conflict test and the `--width`/`--height` passthrough case; added
+      "`--image` applies the image-session defaults for resolution/quality/variants" (a persisted
+      `imageDefaults.venice` set reaching a run) and kept the aspect/quality/resolution constraint
+      rejections.
+- [x] Docs: `docs/commands.md` (rows + examples), `docs/images.md` (flag table, sizing-defaults
+      bullets, the explicit-flag paragraph; the resolution/quality enum lists moved to the image
+      session text to keep the docs-consistency token check passing), `MEMORY.md` (Text vs Image).
+- [x] Verify: `--image --resolution 2K` → `error: unknown option '--resolution'`, exit 1;
+      `--image --width 512` likewise; `--image --seed 5` still parses (reaches model selection);
+      gate green at 1851 tests + lint + knip.
+
+Open wording follow-up (owner-visible, not fixed here): with the flags gone, the shared resolvers
+and the constraints check still phrase their errors with the flag names — `--variants must be an
+integer between 1 and 4.`, `--resolution must be one of: 1K, 2K, 4K.`, `--quality must be one of:
+low, medium, high.`, `--variants N is not supported by <id>`. Those messages are now reachable only
+from the image session (`/variants 5` etc.), so they name a flag that no longer exists. Rewording
+them (e.g. to `/variants` or a command-agnostic phrasing) changes visible text and the tests that
+pin it, so it needs the owner's call — raise it in the Stage 2 review pass.
 
 ### Stage 3 — remove `--budget`
 

@@ -11,11 +11,11 @@ import { readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { getImageDefaults, mergeImageDefaults, savePreferences, savePrefsBestEffort, syncPreferenceUpdates } from '../config.js'
 import { createLoader } from '../ui/loader.js'
 import { dim } from '../ui/style.js'
-import { resolveAspectRatio, resolveHeight, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants, resolveWidth } from '../flags.js'
+import { resolveAspectRatio, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizeLabel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
 import { formatUsd } from '../ui/format.js'
 
-function validateSizingConstraints(model, { aspectRatio, format, resolution, quality, width, height, variants }) {
+function validateSizingConstraints(model, { aspectRatio, format, resolution, quality, variants }) {
   if (!model) return
   const constraints = model.constraints || {}
   if (aspectRatio && Array.isArray(constraints.aspectRatios) && !constraints.aspectRatios.includes(aspectRatio)) {
@@ -52,13 +52,6 @@ function validateSizingConstraints(model, { aspectRatio, format, resolution, qua
   }
   if (variants != null && constraints.maxN != null && variants > constraints.maxN) {
     throw new CliError(`Error: --variants ${variants} is not supported by ${model.id}. Supported: 1-${constraints.maxN}.`)
-  }
-  if (constraints.widthHeightDivisor != null) {
-    for (const [flag, value] of [['--width', width], ['--height', height]]) {
-      if (value != null && value % constraints.widthHeightDivisor !== 0) {
-        throw new CliError(`Error: ${flag} ${value} must be divisible by ${constraints.widthHeightDivisor} for ${model.id}.`)
-      }
-    }
   }
 }
 
@@ -145,6 +138,9 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
   let resolution
   let quality
   let seed
+  // resolution/quality/variants still read opts: the image session passes its
+  // live command values through opts, and the CLI flags for them are gone.
+  // width/height have no flag at all (derived below for pixel-based models).
   let width
   let height
   try {
@@ -154,8 +150,6 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
     resolution = resolveResolution(opts.resolution)
     quality = resolveQuality(opts.quality)
     seed = resolveSeed(opts.seed)
-    width = resolveWidth(opts.width)
-    height = resolveHeight(opts.height)
   } catch (err) {
     throw new CliError(`Error: ${err.message}`)
   }
@@ -234,14 +228,12 @@ export async function runImageGeneration({ provider, apiKey, prompt, opts = {}, 
 
   // Pixel-based models take width/height in multiples of their divisor, never
   // aspect_ratio (they ignore it and return a square default): derive the
-  // pixels from the ratio and drop the parameter. Explicit --width/--height
-  // win over a saved ratio.
+  // pixels from the ratio and drop the parameter. The ratio is the only pixel
+  // knob — there is no explicit width/height flag.
   if (aspectRatio !== undefined && isPixelModel(resolved)) {
-    if (width === undefined && height === undefined) {
-      const computed = computePixelSize(aspectRatio, resolved.constraints.widthHeightDivisor)
-      width = computed.width
-      height = computed.height
-    }
+    const computed = computePixelSize(aspectRatio, resolved.constraints.widthHeightDivisor)
+    width = computed.width
+    height = computed.height
     aspectRatio = undefined
   }
 
