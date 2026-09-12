@@ -1180,6 +1180,11 @@ test('an empty --aspect-ratio/--image-format value is ignored instead of crashin
   withStdoutTTY(t, false)
   withVeniceApiKey(t)
   const configFile = await tempConfig(t)
+  // The Venice text catalog is process-cached: an empty listing would leak
+  // into a later test's model lookup.
+  const { resetModelCaches } = await import('../src/providers/venice.js')
+  resetModelCaches()
+  t.after(resetModelCaches)
   t.mock.method(globalThis, 'fetch', async () =>
     new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
   )
@@ -1189,6 +1194,44 @@ test('an empty --aspect-ratio/--image-format value is ignored instead of crashin
   assert.ok(!`${out.join('\n')}\n${err.join('\n')}`.includes('image defaults'), 'an empty value gets no notice')
   assert.ok(!err.join('\n').includes('TypeError'), 'an empty value must not crash')
   await assert.rejects(readFile(configFile, 'utf-8'), /ENOENT/)
+})
+
+test('an empty Venice catalog stub cannot leak into a later model lookup', async (t) => {
+  withTTY(t, true)
+  withStdoutTTY(t, false)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  // Same cold start as the empty-listing tests: in file order this test may
+  // follow one that cached a good listing.
+  const { resetModelCaches } = await import('../src/providers/venice.js')
+  resetModelCaches()
+  t.after(resetModelCaches)
+  let listing = { data: [] }
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    const u = String(url)
+    if (u.includes('/models?type=text')) {
+      return new Response(JSON.stringify(listing), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    if (u.includes('/models?type=image')) {
+      return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    throw new Error(`unexpected fetch: ${u}`)
+  })
+
+  const empty = await runAndExit(t, { provider: 'venice', model: 'venice-model', config: configFile, aspectRatio: '', imageFormat: '' }, 'Hi', 1)
+  assert.match(empty.err.join('\n'), /model venice-model not found/)
+
+  // The empty-catalog tests hand a cold cache to whatever runs next through
+  // t.after(resetModelCaches); this call stands in for that hand-off, so the
+  // hazard is pinned here instead of by whichever test happens to follow.
+  resetModelCaches()
+  listing = { data: [{ id: 'venice-model', model_spec: { name: 'V', capabilities: {}, constraints: {} } }] }
+  await trackNewSessions(t)
+  const callsBefore = startChatCalls.length
+
+  await runCliNoExit(t, { provider: 'venice', model: 'venice-model', config: configFile }, undefined)
+
+  assert.equal(startChatCalls.length, callsBefore + 1, 'the good catalog must resolve after the empty-listing run')
 })
 
 test('--scrape with a bad --aspect-ratio fails before the page is billed', async (t) => {
@@ -1206,6 +1249,15 @@ test('--scrape with a bad --aspect-ratio fails before the page is billed', async
 test('Ctrl+C at the picker in one-shot (prompt arg) aborts cleanly with Aborted.', async (t) => {
   withTTY(t, true)
   withApiKey(t)
+  // The aborted picker has already fetched both OpenRouter listings: an empty
+  // one stays cached and would answer every later model lookup.
+  const { resetModelCaches, resetImageModelCaches } = await import('../src/providers/openrouter.js')
+  resetModelCaches()
+  resetImageModelCaches()
+  t.after(() => {
+    resetModelCaches()
+    resetImageModelCaches()
+  })
   t.mock.method(globalThis, 'fetch', async () =>
     new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
   )
@@ -1218,6 +1270,15 @@ test('Ctrl+C at the picker in one-shot (prompt arg) aborts cleanly with Aborted.
 test('Ctrl+C at the picker with a foreign ExitPromptError-named error still aborts (cross-instance guard)', async (t) => {
   withTTY(t, true)
   withApiKey(t)
+  // Same as the picker test above: the aborted picker leaves both OpenRouter
+  // listings cached empty unless they are reset.
+  const { resetModelCaches, resetImageModelCaches } = await import('../src/providers/openrouter.js')
+  resetModelCaches()
+  resetImageModelCaches()
+  t.after(() => {
+    resetModelCaches()
+    resetImageModelCaches()
+  })
   t.mock.method(globalThis, 'fetch', async () =>
     new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
   )
