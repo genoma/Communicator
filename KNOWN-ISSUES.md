@@ -72,15 +72,15 @@ F12. `--web-results` on Venice flipped web search to `auto` — a search Venice 
     dropping the count it cannot read → rejected by a provider gate
     (`Error: --web-results is only available with --provider openrouter.`,
     `src/cli-validation.js:173-176`), matching the flag's documented "OpenRouter only" contract
-    and the `--zdr` precedent. Two forms defer, because CLI validation only sees the flag's own
-    `--provider`: a resumed session executes on the provider saved in its file, and a
-    set-and-exit dispatch issues no request at all — the latter now shares
-    `isConfigSetDispatch` (`src/cli-validation.js:76-87`) with `src/cli-main.js`, so the
-    validator no longer re-derives the dispatch. The resume form is judged by
+    and the `--zdr` precedent. Two forms deferred, because CLI validation only sees the flag's own
+    `--provider`: a resumed session executes on the provider saved in its file, and a set-and-exit
+    dispatch issued no request at all — the latter shared `isConfigSetDispatch`
+    (`src/cli-validation.js`) with `src/cli-main.js`, so the validator never re-derived the
+    dispatch (the dispatch itself was removed in 4.0.0). The resume form is judged by
     `assertResolvedProviderFlags` against the resolved provider (`src/session-setup.js:43-55`,
     called at `:70` and `:124`), which also made `--zdr` defer on `--resume`
     (`src/cli-validation.js:164-166`) and thereby closed the same hole for a resumed Venice session;
-    the set-and-exit form is deliberately unchecked because it issues no request.
+    the set-and-exit form was deliberately unchecked because it issued no request.
     `/web-results` still stores a count Venice never reads (it does not change the mode, so it
     cannot bill); `docs/web-search.md` and `MEMORY.md` updated. Two review rounds folded in: the
     first cut keyed on `opts.provider` alone, leaving `--resume <venice-session> --web-results 5`

@@ -629,8 +629,24 @@ test('--system-prompt with a valid file next to -m opens the chat with that prom
 
   await runCliNoExit(t, { provider: 'venice', model: 'venice-model', config: configFile, systemPrompt: promptFile }, undefined)
 
-  assert.equal(startChatCalls.length, callsBefore + 1, 'the run must reach the chat, not the set-and-exit dispatch')
+  assert.equal(startChatCalls.length, callsBefore + 1, 'the flag-bearing run must reach the chat')
   assert.equal(startChatCalls[startChatCalls.length - 1].opts.systemPrompt, 'Speak like a pirate.')
+})
+
+test('-m <id> alone opens the chat with that model instead of validating and exiting', async (t) => {
+  withTTY(t, true)
+  withStdoutTTY(t, true)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  mockVeniceScrapeFetch(t)
+  await trackNewSessions(t)
+  const callsBefore = startChatCalls.length
+
+  const { out } = await runCliNoExit(t, { provider: 'venice', model: 'venice-model', config: configFile }, undefined)
+
+  assert.equal(startChatCalls.length, callsBefore + 1, 'a bare -m must open the chat, not validate and exit')
+  assert.equal(startChatCalls[startChatCalls.length - 1].model, 'venice-model')
+  assert.ok(!out.join('\n').includes('Saved to'), 'no set-and-exit confirmation may be printed')
 })
 
 function mockVeniceScrapeFetch(t) {
@@ -750,7 +766,7 @@ test('--scrape next to -m opens the chat with the page in context instead of con
 
   assert.ok(calls.some((u) => u.includes('/augment/scrape')))
   assert.match(out.join('\n'), /Scraped https:\/\/example\.com\/article \(\d+ chars\) into context\./)
-  assert.equal(startChatCalls.length, callsBefore + 1, 'the run must reach the chat, not the set-and-exit dispatch')
+  assert.equal(startChatCalls.length, callsBefore + 1, 'the flag-bearing run must reach the chat')
   assert.equal(startChatCalls[startChatCalls.length - 1].opts.scrapes, 1)
   assert.ok(!out.join('\n').includes('Saved to'))
 })

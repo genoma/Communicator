@@ -96,8 +96,8 @@ async function main(opts, promptArg) {
   const providerType = opts.provider || 'openrouter'
 
   // Numeric session flags are validated up front so an invalid value errors
-  // with its own message regardless of the dispatch path (exit modes, image
-  // runs, non-TTY invocations). Every chat/config path re-resolves them.
+  // with its own message regardless of the path (exit modes, image runs,
+  // non-TTY invocations). Every chat path re-resolves them.
   resolveFlagOrExit(resolveSmoothSpeed, opts.smoothSpeed)
   resolveFlagOrExit(resolveTemperatureFlag, { temperature: opts.temperature })
   resolveFlagOrExit(resolveTopPFlag, { topP: opts.topP })

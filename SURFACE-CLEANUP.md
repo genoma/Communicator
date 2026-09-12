@@ -98,7 +98,10 @@ macOS/Ubuntu/Windows for `3.49.2`.
   `--smooth-speed fast`, `-m <id>` etc. with no prompt on a TTY start an interactive chat instead
   of saving and exiting. Flags that persist on run paths (F22/F24) still persist; runtime-only
   knobs (`--smooth-speed`, `--compact-thinking`) apply to that session and are persisted by their
-  `/commands`.
+  `/commands`. With **piped stdin** a bare flag cannot open a chat: the run takes the one-shot
+  path and fails at the model-selection TTY gate (`Interactive selection needs a TTY. Use -m
+  <model-id> when piping input.`, exit 1) — the pre-existing behavior of a piped run without `-m`,
+  now also what `echo hi | communicator --no-watermark` does instead of persisting and exiting.
 - **E2 — `-m <id>` alone no longer validates-and-exits**; the model is validated when the chat
   starts (same error surfacing). `--list-models`/`--list-endpoints <id>` remain the catalog
   inspectors.

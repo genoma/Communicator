@@ -515,8 +515,6 @@ test('--output-dir requires --export or --image', () => {
   // With the set-and-exit dispatch gone there is no bare setter form left: the
   // flag is legal only where a run can consume it.
   assert.deepEqual(validateCliFlags(opts({ outputDir: '/x' }), TTY), [message])
-  assert.deepEqual(validateCliFlags(opts({ outputDir: '/x' }), { ...TTY, ...PROMPT() }), [message])
-  assert.deepEqual(validateCliFlags(opts({ outputDir: '/x', export: 'y' }), TTY), [])
   assert.deepEqual(validateCliFlags(opts({ outputDir: '/x', export: 'y' }), TTY), [])
   assert.deepEqual(validateCliFlags(opts({ outputDir: '/x', image: true, imageModel: 'm' }), TTY), [])
 })

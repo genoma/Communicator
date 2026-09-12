@@ -18,7 +18,7 @@ User-facing documentation for the `communicator` CLI, split into guides, referen
 |------|--------|
 | [commands.md](commands.md) | The full CLI flag reference table, usage examples for every flag, and the in-chat slash commands with autocomplete behavior |
 | [sessions.md](sessions.md) | Session persistence: listing, resuming, deleting, exporting, and the on-disk session file format |
-| [preferences.md](preferences.md) | The preferences file (`~/.communicator.json`), per-model defaults, and standalone config commands |
+| [preferences.md](preferences.md) | The preferences file (`~/.communicator.json`), per-model defaults, and the in-chat setters |
 | [providers.md](providers.md) | The OpenRouter and Venice.ai backends, and zero-data-retention (ZDR) routing |
 | [platforms.md](platforms.md) | Platform support, clipboard tools, terminals, data locations, per-OS install notes, and uninstalling |
 

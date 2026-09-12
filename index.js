@@ -43,7 +43,7 @@ program
   .option('--scrape <url>', 'scrape a web page into the session as context, then chat or answer (Venice only, $0.01 per page)')
   .option('--no-smooth-streaming', 'disable smooth streaming (default: on in interactive sessions)')
   .option('--smooth-speed <level|cps>', 'smooth streaming speed: slow, normal, fast, or chars per second')
-  .option('--compact-thinking', 'show a Thinking meter instead of streaming the reasoning text (persisted; /compact-thinking toggles mid-chat)')
+  .option('--compact-thinking', 'show a Thinking meter instead of streaming the reasoning text (this run; /compact-thinking toggles and persists)')
   .option('--delete [partial-id]', 'delete saved sessions (with confirmation, select one or more)')
   .option('--delete-all-sessions [y/N]', 'delete ALL saved sessions (asks for confirmation; pass y to confirm non-interactively)')
 

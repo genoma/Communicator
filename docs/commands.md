@@ -44,7 +44,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--no-watermark`      | —        | Hide the Venice watermark on generated images. Persisted as the global `hideWatermark` pref on every launch path, announced with `Venice watermark disabled` |
 |       | `--list-image-models` | —        | List image models (name, id, per-image price, sizing options) and exit |
 
-Flags shape the run they are given to: **there is no set-a-preference-and-exit form**. With no prompt on a terminal, a flag-bearing invocation opens an interactive chat (`communicator --no-watermark`, `communicator -m <id>`), and the run's exit persists the preferences it resolved; the in-chat `/commands` persist the same keys mid-session.
+Flags shape the run they are given to: **there is no set-a-preference-and-exit form**. With no prompt on a terminal, a flag-bearing invocation opens an interactive chat (`communicator --no-watermark`, `communicator -m <id>`), and the run's exit persists the preferences it resolved; the runtime-only display knobs (`--smooth-speed`, `--compact-thinking`) apply to that session and are persisted by `/smooth` and `/compact-thinking`.
 
 Flags with an optional value (`--web-search`, `--config`, `--resume`, `--export`, `--list-endpoints`, `--delete`, `--delete-all-sessions`) consume the next argument when it is not another flag: a prompt written directly after one is parsed as that flag's value. Put the prompt before them, or bind the value with `=`, e.g. `--web-search=auto "Latest AI news"`.
 
@@ -105,12 +105,12 @@ communicator --delete 2026-07-30T19-11-45               # delete a specific sess
 communicator --delete-all-sessions                     # asks "Are you sure?" on a terminal
 communicator --delete-all-sessions y                   # confirm non-interactively (piped stdin)
 
-# Reasoning (one-shot session, or use -m alone to save the default)
+# Reasoning (one-shot session)
 communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort high "Solve this"   # force high reasoning effort
 communicator -m "deepseek/deepseek-v4-flash" --reasoning-effort none                # disable reasoning
 communicator -p venice -m "deepseek-v4-flash" --reasoning-effort high "Solve this"  # Venice with reasoning
 
-# Web search (one-shot session; standalone use saves the default)
+# Web search (one-shot session)
 communicator -m "openai/gpt-4o" --web-search auto "Latest AI news"      # auto mode: the model decides when to search
 communicator -m "openai/gpt-4o" --web-search always "Latest AI news"    # force a web search on every request
 communicator -m "openai/gpt-4o" --web-search off "Latest AI news"       # disable web search

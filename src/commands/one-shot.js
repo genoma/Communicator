@@ -65,8 +65,8 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     fail(`Error: ${formatError(err)}`)
   }
   const { selection, temperature, topP, webSearch, webSearchExplicit, webResults, budget: resumeBudget } = context
-  // A resumed chapter restores its own budget (null stays null); the prefs
-  // default only applies to fresh runs.
+  // A resumed chapter restores its own budget (null stays null); a fresh run is
+  // uncapped (4.0.0: the standing prefs.budget default is gone).
   const runBudget = rpgResume ? resumeBudget : budget
   // A chapter resume extends its own session file, so its persisted cost summary
   // must stay cumulative: replay the stored turns' usage and flat scrape cost

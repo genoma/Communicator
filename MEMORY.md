@@ -69,7 +69,7 @@
 - Resume resolution: flag > `prefs.webSearch[modelId]` > session snapshot > off; the per-model pref wins over a stale snapshot (older versions wrote a default `off` to every session).
 - Precedence: flag > pref > off; `--web-results` implies `auto` (OpenRouter only — a Venice run is refused, the check following the resolved provider so `--resume` of a Venice session is refused too; Venice has no result-count knob and would otherwise only flip its billed web search to `auto` while dropping the count, and `/web-results` there merely stores the unused count). A `--web-results` (or `--web-search`) run is an explicit per-model choice, so the exit prefs writer persists it (`auto` for `--web-results`) — mirrors the `--web-search` flag persistence contract.
 - Exit prefs writers (`persistSession`, `bestEffortExitSave`) persist `webSearch` only when the session explicitly set it (via `/web-search` or `--web-search`/`--web-results`, tracked by `ChatState.webSearchExplicit`); a default/forced `off` (unsupported model, `--e2ee`) never overwrites the user's per-model pref.
-- The count (`prefs.webResults`, global, not per-model) follows the same explicitness rule: `ChatState.webResultsExplicit` (set by `--web-results`, the bare setter and `/web-results` — the latter persists immediately; false for a resumed snapshot and for e2ee) is what makes `bestEffortExitSave` write it, and a resume resolves the count as flag > pref > session snapshot, so an old snapshot can neither resurrect a stale count nor clear a newer default (F35).
+- The count (`prefs.webResults`, global, not per-model) follows the same explicitness rule: `ChatState.webResultsExplicit` (set by `--web-results` and `/web-results` — the latter persists immediately; false for a resumed snapshot and for e2ee) is what makes `bestEffortExitSave` write it, and a resume resolves the count as flag > pref > session snapshot, so an old snapshot can neither resurrect a stale count nor clear a newer default (F35).
 - OpenRouter: `auto` uses server tool with `max_results` + `max_total_results`; `always` uses legacy `plugins: [{ id: 'web', max_results }]`; `off` sends neither. Default N = 10, cap 20 (OpenRouter allows max_results 1–25, 1–20 on the Perplexity engine; 20 also matches Venice's standalone search limit).
 - Venice: `venice_parameters.enable_web_search` (`auto`/`on`/`off`) + `enable_web_citations`; no result-count knob.
 - Sources are persisted on assistant messages when non-empty and replayed/exported; cite markers `^n^`.
@@ -297,7 +297,7 @@ Half the rule set self-updates (`\p{Emoji_Presentation}` reads the runtime's ICU
 Approved-direction workstream for the 4.0.0 release: remove the bare "set a preference and exit"
 dispatch and the generation/export knobs that duplicate the image REPL. **The execution plan is
 `SURFACE-CLEANUP.md`** — scope, parity matrix, owner decisions D1–D7, staged checklist and
-verification; do not duplicate it here. Status: in progress — Stages 1-3 landed on
+verification; do not duplicate it here. Status: in progress — Stages 1-4 landed on
 `feat/surface-cleanup` (cut from `3.49.2`).
 
 Pointers that stay here: the backlog fences `O1`/`O31` behind it and marks `O15` moot; `O26`'s
