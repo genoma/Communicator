@@ -17,7 +17,7 @@ This file tracks **defects**, not planned feature or flag-surface work. The surf
 removed those flags and the dispatch (and kept `--export-format` with a persisted default) is
 recorded in `SURFACE-CLEANUP.md`; it was never a defect item.
 
-Reference convention: the fixed entries are `F1`–`F41` and the open-list items `O1`–`O41`
+Reference convention: the fixed entries are `F1`–`F42` and the open-list items `O1`–`O42`
 (struck items stay in place, so both ranges keep growing). Every
 reference carries its prefix, so the two lists cannot be confused — do not renumber an
 existing entry, and do not cite a bare number.
@@ -425,6 +425,44 @@ F41. O39: a non-generative Venice utility model no longer enters the image surfa
    explicit `--image-model` id) and `test/one-shot.test.js` (`-m <id>` fails before any generation
    call).
 
+## Fixed on `fix/runner-stdout-flake` (kept for provenance)
+
+F42. O42: the file-level `not ok - test/chat-loop.test.js` with `failureType: 'uncaughtException'` and
+    `error: 'Unable to deserialize cloned data due to invalid or unsupported version.'` is application
+    console output on the runner's protocol channel, not a test bug. With `--test-isolation=process` (the
+    default) a test child streams its v8-serialized results on fd 1, and `FileTest#processRawBuffer`
+    (`node:internal/test_runner/runner`) assumes the bytes after a consumed frame start the next frame:
+    its text-draining loop runs only before the message loop, so a text run that follows a frame inside
+    one read is parsed as a header plus a 4-byte size. That is harmless while the pseudo-size exceeds the
+    buffered bytes (the parser breaks and the text is drained on the next data event — hence the
+    intermittency) and fatal when it does not: on Node 22 any text whose 3rd byte is >= 0x80 does it,
+    because the size is assembled with signed `<< 24` shifts (the `>>> 0` that makes it a huge positive
+    number came later), so `fullMessageSize` is negative, `if (this.#rawBufferSize < fullMessageSize)
+    break` never fires and the parser deserializes a text slice; a small positive pseudo-size (text
+    carrying NUL bytes) does the same on every Node version. Census of bytes on a child's fd 1 outside
+    well-framed messages (child stream captured with `NODE_TEST_CONTEXT=child-v8 node
+    --experimental-test-module-mocks <file>`, walked 2-byte header to 4-byte size): `chat-loop` 1328
+    (`─────` source rules, 0x80 as the size's top byte), `one-shot` 530, `cli-main-success` 8,
+    `chat-commands` 0. `scripts/run-tests.js` now passes `--import <absolute file URL of
+    scripts/test-child-console-guard.js>` to the runner next to `--experimental-test-module-mocks`; the
+    guard replaces `globalThis.console` with a `node:console` Console whose stdout and stderr are
+    `process.stderr` when `NODE_TEST_CONTEXT` marks the process as a test child — the parent runner keeps
+    its own console and reporter, and `process.stdout.write` stays untouched because the runner writes
+    its frames through it. Census after the guard: `chat-loop` 0, `chat-commands` 0, `one-shot` 530 and
+    `cli-main-success` 8 unchanged — the last two write to the real `process.stdout` directly, a path a
+    console-only guard deliberately does not intercept; their runs are benign today (positive pseudo-size
+    around 1.6e9, so the parser breaks instead of deserializing) but a non-ASCII direct write would still
+    fail the file. Verification: 20 consecutive `npm test` runs green (1855 tests each); 30 consecutive
+    guarded `test/chat-loop.test.js` runs green, with 0 bytes on the child's fd 1 outside frames each
+    time. Upstream: nodejs/node#62693 (the same parser, including its infinite-loop variant on a partial
+    `FF 0F` plus a large size; still open) and nodejs/node#48103. Pin:
+    `test/runner-console-guard.test.js` spawns the real runner over
+    `scripts/fixtures/console-noise-child.js` — 500 async tests logging a frame-shaped block (`'zz'` plus
+    4 NUL bytes, i.e. a size of 0) — asserts the unguarded run dies at file level with the error above
+    (20 of 20 unguarded runs fail on Node 22 and on Node 26), and asserts the guarded run exits 0 with
+    no deserialization error while still surfacing the child's output. **Do not remove the guard while
+    the upstream bug stands, and note that a bare `node --test` bypasses the whole wrapper.**
+
 ## Open — piped-output purity
 
 The contract (`MEMORY.md` §Display consistency): a piped one-shot writes **only** the answer
@@ -700,6 +738,15 @@ O29. ~~**The multi-select `--delete` confirmation has no test pinning that the p
     path is at issue.~~ **Fixed** — a CLI-level test now selects 2 of 3 seeded sessions, asserts the
     printed list is exactly the chosen set (the unselected model is absent) and that only those two
     were removed; see F31.
+
+O42. ~~**`test/chat-loop.test.js` intermittently reds as a whole file with a runner deserialization
+    error.** CI (Node 22) occasionally reports `not ok - test/chat-loop.test.js`,
+    `failureType: 'uncaughtException'`, `error: 'Unable to deserialize cloned data due to invalid or
+    unsupported version.'` from `FileTest.parseMessage` → `#processRawBuffer`.~~ **Fixed** — a test child's
+    fd 1 carries both the runner's v8 result frames and the application's console output, and the parent
+    parser reads text that follows a frame inside one read as another frame. `npm test` now loads
+    `scripts/test-child-console-guard.js` through `--import` in every test child (console to stderr, the
+    parent runner untouched), pinned by `test/runner-console-guard.test.js`; see F42.
 
 ## Open — flag combinations (found while fixing F8)
 

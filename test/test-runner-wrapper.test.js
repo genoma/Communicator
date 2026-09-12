@@ -24,6 +24,10 @@ test('the wrapper clears the ambient color, key and debug environment before spa
   assert.match(source, /delete process\.env\.COMMUNICATOR_DEBUG/)
   assert.match(source, /'--test'/)
   assert.match(source, /--experimental-test-module-mocks/)
+  // The console guard keeps test-child output off the runner's protocol channel
+  // (see test/runner-console-guard.test.js).
+  assert.match(source, /'--import', consoleGuard/)
+  assert.match(source, /test-child-console-guard\.js/)
 })
 
 test('the wrapper runs every test file against a throwaway home', (t) => {
