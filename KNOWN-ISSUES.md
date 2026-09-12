@@ -4,10 +4,18 @@ Open defect backlog for the one-shot (exit-mode) CLI surface, found by a full au
 exit-mode flag plus two independent review passes over the fix branch. Every entry cites
 `file:line` evidence as of the audit; re-check the line before acting on it.
 
-This file tracks **defects**, not planned feature or flag-surface work. The one-shot
-surface cleanup (removing `--variants`, `--resolution`, `--quality`, `--width`/`--height`,
-`--budget` and the bare "set a preference and exit" dispatch; `--export-format` stays and gains a
-persisted default) is tracked in `SURFACE-CLEANUP.md` and is not listed here.
+**Historical scope note (4.0.0).** Entries below describe the tree at their audit time. The
+completed surface cleanup (`SURFACE-CLEANUP.md`, provenance F37) deleted
+`src/commands/config-set.js`, the bare "set a preference and exit" dispatch and its validation
+predicates, and removed the `--variants`, `--resolution`, `--quality`, `--width`/`--height` and
+`--budget` flags. Every reference to that surface below is historical: it does not exist on `main`
+any more. Do not go looking for that code and do not "fix" it. The surviving replacements are the
+image session's `/variants`/`/resolution`/`/quality`/`/aspect`/`/format`/`/seed`, `/budget`,
+`/safe-mode`, `/export-format`, and the run forms of `--aspect-ratio`/`--image-format`/`--seed`.
+
+This file tracks **defects**, not planned feature or flag-surface work. The surface cleanup that
+removed those flags and the dispatch (and kept `--export-format` with a persisted default) is
+recorded in `SURFACE-CLEANUP.md`; it was never a defect item.
 
 Reference convention: the fixed entries are `F1`–`F37` and the open-list items `O1`–`O41`
 (struck items stay in place, so both ranges keep growing). Every
@@ -187,8 +195,9 @@ F21. A session-shaping flag sitting next to a config setter was silently dropped
     persist block that the cleanup would delete. The dispatch itself was removed in 4.0.0, so the
     routing this entry describes no longer exists.
 F22. `--no-watermark` was documented as a persisted global pref (`index.js` help,
-    `docs/commands.md`, `docs/images.md`) but only the config-set and image paths wrote it: a text
-    chat or piped one-shot dropped it silently (verified A/B — the pre-fix text run persisted no
+    `docs/commands.md`, `docs/images.md`) but only the config-set and image paths wrote it (the
+    config-set path was removed in 4.0.0; the run-path writers described below are the survivors):
+    a text chat or piped one-shot dropped it silently (verified A/B — the pre-fix text run persisted no
     `hideWatermark` key while `--no-safe-mode` persisted `safeMode: false`). `src/cli-main.js` now mirrors
     the `--no-safe-mode` block — persists `hideWatermark: true` and prints the TTY-gated
     `Venice watermark disabled` notice (stdout on a terminal, stderr when stdout is piped) — on
@@ -236,7 +245,9 @@ F26. The pure prefs (`--no-watermark`, `--no-safe-mode`, `--aspect-ratio`, `--im
     dedicated rule introduced for `--zdr`/`--e2ee` now names them too, keeping the
     name-only-the-flags-passed form and its position after the session-flags exclusion so no
     previously surfaced `errors[0]` changes (`Error: --no-watermark cannot be combined with
-    --list-* flags.` etc.). Pinned by validation tests including the ordering case.
+    --list-* flags.` etc.). Since 4.0.0 these flags have no bare setter form — they only shape a
+    run — and the rule keeps rejecting them next to an exit path. Pinned by validation tests
+    including the ordering case.
 F27. The `--list-endpoints` not-found hint pointed only at `--list-models`, which cannot list the
     image models F23 made resolvable, and a failed image-catalog fetch was swallowed, so an image
     id reported a plain "not found" with no sign the catalog had failed. The hint now names both
