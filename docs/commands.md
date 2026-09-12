@@ -46,7 +46,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--seed`              | `<int>`  | Random seed for image generation (between -999999999 and 999999999) |
 |       | `--width`             | `<px>`   | Image width in pixels, 1–1280, multiples of the model's divisor (pixel-based models). Must be given with `--height` |
 |       | `--height`            | `<px>`   | Image height in pixels, 1–1280, multiples of the model's divisor (pixel-based models). Must be given with `--width` |
-|       | `--no-safe-mode`      | —        | Disable safe mode for image generation (adult content returned unblurred). Bare use saves the default (global setting) and opens a chat session |
+|       | `--no-safe-mode`      | —        | Disable safe mode for image generation (Venice only; adult content returned unblurred). Bare use saves the default (global setting) and opens a chat session |
 |       | `--no-watermark`      | —        | Hide the Venice watermark on generated images. Persisted as the global `hideWatermark` pref on every launch path, announced with `Venice watermark disabled` (bare use saves it and exits) |
 |       | `--list-image-models` | —        | List image models (name, id, per-image price, sizing options) and exit |
 

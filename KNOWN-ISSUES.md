@@ -9,7 +9,7 @@ surface cleanup (removing `--export-format`, `--variants`, `--resolution`, `--qu
 `--width`/`--height`, and the bare "set a preference and exit" dispatch) is tracked in
 `MEMORY.md` §Pending surface cleanup and is not listed here.
 
-Reference convention: the fixed entries are `F1`–`F31` and the open-list items `O1`–`O38`
+Reference convention: the fixed entries are `F1`–`F34` and the open-list items `O1`–`O39`
 (struck items stay in place, so both ranges keep growing). Every
 reference carries its prefix, so the two lists cannot be confused — do not renumber an
 existing entry, and do not cite a bare number.
@@ -262,6 +262,36 @@ F31. The two untested paths O28 and O29 gained CLI-level coverage in
     session is neither listed nor removed. `--export <unique-id>` stays non-TTY unreachable behind
     the blanket gate, as O28 recorded.
 
+F32. O9's documentation half: `docs/commands.md`'s `--no-safe-mode` row now says "(Venice only; adult
+    content returned unblurred)", matching `docs/images.md`'s caveat. The behavior is kept by
+    decision — the pref is global and persists on every launch path (F22), and OpenRouter's image
+    API has no safe-mode/watermark parameter (re-verified: zero `safeMode`/`hideWatermark` reads in
+    `src/providers/openrouter.js`), so the flag is a Venice-shaped pref stored for Venice's sake
+    while running on OpenRouter.
+
+F33. O23: piped stdin is prompt content, not a shell word. `readStdin` (`src/cli-utils.js`) no
+    longer `.trim()`s — leading/tab indentation, internal blank lines and trailing spaces survive,
+    so a piped diff or code block reaches the model intact — and only the trailing newline a shell
+    appends is dropped (`/\r?\n$/`); whitespace-only input still resolves to an empty prompt
+    (no-prompt error, exit 1). `test/cli-utils-read-stdin.test.js` re-pinned the old trim contract
+    as "preserves piped whitespace and drops only the trailing newline" plus a diff-shaped case and
+    a whitespace-only case; `MEMORY.md` documents the contract in the one-shot entry.
+
+F34. O27's four unreported tests are a Node 26.8.2 test-runner bug, not a test-file fault. All 25
+    top-level `test()` callbacks in `test/one-shot.test.js` execute (verified by injecting
+    `console.error` markers: every one fired) yet the runner emits events for only 21, always
+    dropping the same four (`-m` image-model pair, Ctrl+C picker test, piped mandatory-reasoning
+    test). Renaming them, moving their position, appending dummy tests, sending the reporter to a
+    file, `--test-concurrency=1`, deleting the file-level `after()` hook and splitting the file all
+    leave the drop unchanged — not stdout mocking, the reporter, ordering or nesting. A failure in
+    one of them still reds the run (injected `assert.fail` → `fail 1`) but surfaces only as
+    `not ok - test/one-shot.test.js`, with the assertion message lost; the working diagnostic is
+    `node --test --experimental-test-module-mocks --test-name-pattern="<name>" test/one-shot.test.js`.
+    Independently fixed the order-dependence the item mentioned: only the image-model test actually
+    failed alone (it read the shared sessions dir before any test had created it) and now calls
+    `ensureSessionsDir()`; the other three pass in isolation. Documented in `MEMORY.md` §Tests, CI
+    and platform notes.
+
 ## Open — piped-output purity
 
 The contract (`MEMORY.md` §Display consistency): a piped one-shot writes **only** the answer
@@ -307,10 +337,12 @@ O7. ~~**`-m <id> --system-prompt <unreadable path>` exits 0.** The config-set br
 O8. ~~**`-m <model> --no-watermark "hi"` is a silent no-op.** The setter path requires `!promptArg`
    and the chat path persists only safe mode, so nothing applies it and nothing warns.~~ **Fixed**
    — see the matching entry in "Fixed on `fix/one-shot-bugs`" above.
-O9. **`--no-safe-mode` / `--no-watermark` are accepted on OpenRouter with zero request effect**
+O9. ~~**`--no-safe-mode` / `--no-watermark` are accepted on OpenRouter with zero request effect**
    (`src/providers/openrouter.js:262` has no `safeMode`/`hideWatermark` parameter) while the
    global pref is still written and the Venice-specific notice is still printed.
-   `docs/commands.md:49` omits the Venice-only caveat that `docs/images.md:48` carries.
+   `docs/commands.md:49` omits the Venice-only caveat that `docs/images.md:48` carries.~~ **Fixed** —
+   the flag row carries the `(Venice only)` caveat; the behavior is kept by decision (the pref is
+   global and persists on every launch path, and OpenRouter has no such parameters); see F32.
 O10. ~~**`--web-results` on Venice can turn billed search ON.** `src/flags.js:68` returns `'auto'`
     whenever `webResults != null` (the function takes no provider argument and nothing upstream
     filters by one), while Venice never reads the count (`src/providers/venice.js:263` has no
@@ -361,6 +393,21 @@ O15. **`--width` / `--height` precedence trap.** A saved `imageDefaults.<provide
     dropped with no note, and the code comment at `:235-238` claims the opposite. On pixel
     models the explicit pair does win. Moot if those flags are removed by the surface cleanup.
 
+## Open — image surface
+
+O39. **`bria-bg-remover` is offered as an image generator.** Venice's `/models?type=image` returns it
+    as an `image` model whose `model_spec.constraints` carries only `widthHeightDivisor: 1` and no
+    `aspectRatios`, so `isPixelModel` is true (`src/image-sizing.js:13-14`) and `fetchImageModels`
+    maps it like any generator (`src/providers/venice.js:165-190`): it appears in
+    `--list-image-models`, passes `--image`/`-m <image-model>` validation, and the image REPL offers
+    it the eight-ratio preset table. It is a background remover (its spec advertises generation plus
+    2x/4x upscale pricing, not a ratio list), so a text-only prompt has no defined meaning —
+    verified live: `communicator -p venice -m bria-bg-remover "a red cat"` exits 1 with
+    `Error: Venice request failed (400): Invalid request parameters` and saves nothing (it failed
+    before any generation, so the 400 was not billed). Fix direction: filter non-generative utility
+    models out of the generation surface (picker, `--list-image-models`, `--image`/`-m`), or gate
+    them behind an input-image path. No behavior change until decided.
+
 ## Open — docs and comment drift
 
 O16. ~~**`src/config.js:116-117`** claims a mid-session `/budget` change is "preserved by the
@@ -410,8 +457,11 @@ O22. **Every one-shot run rewrites global state**: it claims a session file and 
     are atomic but unsynchronised, so concurrent agent/CI invocations are read-modify-write on
     the same prefs file and can lose updates. An opt-in no-save switch for headless runs is the
     candidate fix.
-O23. **Piped prompts are `.trim()`ed** (`src/cli-utils.js:19`), so a piped diff or code block
-    loses its leading indentation and trailing newline before reaching the model.
+O23. ~~**Piped prompts are `.trim()`ed** (`src/cli-utils.js:19`), so a piped diff or code block
+    loses its leading indentation and trailing newline before reaching the model.~~ **Fixed** —
+    piped input is preserved as prompt content (indentation, internal blank lines, trailing
+    spaces); only one trailing shell newline is dropped, and whitespace-only input is still the
+    empty prompt; see F33.
 
 ## Open — non-interactive reachability
 
@@ -430,11 +480,15 @@ O26. **`-m <image-model> "prompt"` and `--image` validate the same flags differe
 
 ## Open — test-suite hygiene
 
-O27. **Node 26.8.2 reporter quirk**: 4 tests in `test/one-shot.test.js` execute but their
+O27. ~~**Node 26.8.2 reporter quirk**: 4 tests in `test/one-shot.test.js` execute but their
     pass-result lines are not listed or counted by the spec and TAP reporters (pre-existing:
     25 declared vs 21 reported at HEAD; re-count with `grep -c '^test(' test/one-shot.test.js`).
     Failures are still counted and named, so a regression stays loud — but a silent pass count is
-    a trap for future audits.
+    a trap for future audits.~~ **Closed — diagnosed**: the runner bug affects the same four tests
+    regardless of names, position, reporter destination, concurrency, hooks or file splitting (all
+    verified); all four callbacks execute, a failure still reds the run but only at file level, and
+    the isolating `--test-name-pattern` run is the diagnostic. The item's order-dependence is fixed
+    (the image-model test now seeds the sessions dir); see F34.
 O28. ~~**Untested paths**: the `--debug` → interactive-chat wiring has no CLI-level test (only the
     one-shot path and the unit-level ctx flag are covered), and `--export <unique-id>` on a
     non-TTY is unverifiable while the blanket gate fires first.~~ **Fixed (first half)** — a CLI-level

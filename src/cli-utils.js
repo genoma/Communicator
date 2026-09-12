@@ -16,7 +16,11 @@ export async function readStdin({ maxBytes = MAX_STDIN_BYTES } = {}) {
     }
     chunks.push(chunk)
   }
-  return Buffer.concat(chunks).toString('utf-8').trim()
+  const text = Buffer.concat(chunks).toString('utf-8')
+  // Piped text is prompt content: keep its whitespace (a diff's indentation is
+  // meaningful) and drop only the trailing newline a shell appends.
+  if (text.trim() === '') return ''
+  return text.replace(/\r?\n$/, '')
 }
 
 export function resolveFlagOrExit(resolve, value) {

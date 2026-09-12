@@ -19,12 +19,28 @@ test('MAX_STDIN_BYTES is 10MB', () => {
   assert.equal(MAX_STDIN_BYTES, 10 * 1024 * 1024)
 })
 
-test('readStdin reads piped input and trims it', async (t) => {
+test('readStdin preserves piped whitespace and drops only the trailing newline', async (t) => {
   mockStdin(t, Readable.from([Buffer.from('  hello '), Buffer.from(' world\n')]))
 
   const text = await readStdin()
 
-  assert.equal(text, 'hello  world')
+  assert.equal(text, '  hello  world')
+})
+
+test('readStdin keeps a diff\'s indentation and blank lines intact', async (t) => {
+  mockStdin(t, Readable.from([Buffer.from('@@ -1 +1 @@\n-  old\n+  new\n\n')]))
+
+  const text = await readStdin()
+
+  assert.equal(text, '@@ -1 +1 @@\n-  old\n+  new\n')
+})
+
+test('readStdin treats whitespace-only input as empty', async (t) => {
+  mockStdin(t, Readable.from([Buffer.from('  \n\t\n')]))
+
+  const text = await readStdin()
+
+  assert.equal(text, '')
 })
 
 test('readStdin returns an empty string for empty input', async (t) => {

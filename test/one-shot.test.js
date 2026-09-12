@@ -25,7 +25,7 @@ mock.module('@inquirer/prompts', {
 
 // Loaded after the @inquirer mock so the picker graph never loads the real
 // module (a static import would bind it before mock.module applies).
-const { saveSession } = await import('../src/sessions.js')
+const { saveSession, ensureSessionsDir } = await import('../src/sessions.js')
 const { ensureRpgSessionsDir } = await import('../src/rpg.js')
 // Loaded after the node:os mock so constants.js resolves the temp home.
 const { resetModelCaches: resetOpenRouterModelCaches } = await import('../src/providers/openrouter.js')
@@ -1021,6 +1021,7 @@ test('-m with an image model id routes to one-shot image generation', async (t) 
   t.mock.method(console, 'log', () => {})
 
   const sessionsDir = join(tempHome, '.communicator', 'sessions')
+  await ensureSessionsDir()
   const before = new Set((await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.')))
 
   const { oneShotCmd } = await import('../src/commands/one-shot.js')
