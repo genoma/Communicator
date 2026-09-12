@@ -316,7 +316,7 @@ F33. O23: piped stdin is prompt content, not a shell word. `readStdin` (`src/cli
     as "preserves piped whitespace and drops only the trailing newline" plus a diff-shaped case and
     a whitespace-only case; `MEMORY.md` documents the contract in the one-shot entry.
 
-F34. O27's four unreported tests are a Node 26.8.2 test-runner bug, not a test-file fault. All 25
+F34. ~~O27's four unreported tests are a Node 26.8.2 test-runner bug, not a test-file fault.~~ **Fixed in 4.2.1**: they were the per-file frame channel losing the tail of the result stream, and the wrapper no longer uses one — `npm test` now runs every `test/*.test.js` in its own process with `--experimental-test-isolation=none`, so no v8 result frames exist: `test/one-shot.test.js` reports all 30 of its tests and the suite counts 1968 identically on Node 22, 24 and 26 (previously 1966 / 1963 / 1963, with that file at 28 / 25 / 25). The rest of this entry — renaming, reordering, splitting, `--test-concurrency=1`, reporter destinations and the `after()` hook making no difference — is the history of that exposure, kept for provenance; the underlying upstream parser bug is F42. All 25
     top-level `test()` callbacks in `test/one-shot.test.js` execute (verified by injecting
     `console.error` markers: every one fired) yet the runner emits events for only 21, always
     dropping the same four (`-m` image-model pair, Ctrl+C picker test, piped mandatory-reasoning
