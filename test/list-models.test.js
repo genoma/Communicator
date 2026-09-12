@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { listModelsCmd, listImageModelsCmd } from '../src/commands/list-models.js'
+import * as venice from '../src/providers/venice.js'
 import * as openrouter from '../src/providers/openrouter.js'
 import { resetMetadataCaches } from '../src/providers/openrouter-meta.js'
 
@@ -75,6 +76,23 @@ test('listImageModelsCmd prints name, id, per-image price and sizing constraints
   assert.ok(lines[0].includes('[anonymized]'))
   assert.ok(lines[1].includes('from $0.01 per image'))
   assert.ok(lines[1].includes('[offline]'))
+})
+
+test('listImageModelsCmd omits the Venice utility model from the listing', async (t) => {
+  const consoleSpy = mockConsole(t)
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({
+    data: [
+      { id: 'flux-2-pro', model_spec: { name: 'Flux 2 Pro', constraints: { aspectRatios: ['1:1', '16:9'], widthHeightDivisor: null }, pricing: { generation: { usd: 0.03 } } } },
+      { id: 'bria-bg-remover', model_spec: { name: 'Background Remover', constraints: { widthHeightDivisor: 1 }, pricing: { generation: { usd: 0.03 } } } },
+    ],
+  }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+  await listImageModelsCmd(venice, 'key')
+
+  const lines = consoleSpy.allLogs()
+  assert.equal(lines.length, 1)
+  assert.ok(lines[0].includes('flux-2-pro'))
+  assert.ok(lines.every((line) => !line.includes('bria-bg-remover')))
 })
 
 test('listImageModelsCmd prints token-billed prices per 1M tokens', async (t) => {

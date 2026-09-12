@@ -61,6 +61,27 @@ test('fetchImageModels requests ?type=image and normalizes constraints', async (
   assert.ok(m.description.includes('Fast diffusion model'))
 })
 
+test('fetchImageModels drops the non-generative utility model and keeps every generator', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => jsonResponse({
+    data: [
+      IMAGE_MODEL,
+      { id: 'venice-sd35', model_spec: { name: 'Venice SD35', constraints: { aspectRatios: null, widthHeightDivisor: 8 } } },
+      {
+        id: 'bria-bg-remover',
+        model_spec: {
+          name: 'Background Remover',
+          constraints: { widthHeightDivisor: 1 },
+          pricing: { generation: { usd: 0.03 }, upscale: { '2x': { usd: 0.02 }, '4x': { usd: 0.08 } } },
+        },
+      },
+    ],
+  }))
+
+  const models = await venice.fetchImageModels('key')
+
+  assert.deepEqual(models.map((m) => m.id), ['flux-1-1', 'venice-sd35'])
+})
+
 test('fetchImageModels falls back to the id for the name and defaults optional fields', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => jsonResponse({
     data: [{ id: 'no-name-model', model_spec: { constraints: {} } }],

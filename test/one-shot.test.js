@@ -1032,14 +1032,24 @@ function mockVeniceImageFetch(t, fetchCalls = []) {
       return jsonResponse({ data: [] })
     }
     if (u.includes('/models?type=image')) {
-      return jsonResponse({ data: [{
-        id: 'venice-sd35',
-        model_spec: {
-          name: 'SD 3.5',
-          constraints: {},
-          pricing: { generation: { usd: 0.02 } },
+      return jsonResponse({ data: [
+        {
+          id: 'venice-sd35',
+          model_spec: {
+            name: 'SD 3.5',
+            constraints: {},
+            pricing: { generation: { usd: 0.02 } },
+          },
         },
-      }] })
+        {
+          id: 'bria-bg-remover',
+          model_spec: {
+            name: 'Background Remover',
+            constraints: { widthHeightDivisor: 1 },
+            pricing: { generation: { usd: 0.03 }, upscale: { '2x': { usd: 0.02 }, '4x': { usd: 0.08 } } },
+          },
+        },
+      ] })
     }
     if (u.includes('/image/generate')) {
       bodies.push(JSON.parse(opts.body))
@@ -1146,6 +1156,18 @@ test('-m with an image model rejects --attach before any generation', async (t) 
   )
   assert.equal(bodies.length, 0)
   assert.ok(fetchCalls.every((u) => !u.includes('/image/generate')))
+})
+
+test('-m with the Venice utility model id fails on the not-found path without a generation call', async (t) => {
+  const { bodies, fetchCalls } = mockVeniceImageFetch(t)
+
+  const { oneShotCmd } = await import('../src/commands/one-shot.js')
+  await assert.rejects(
+    oneShotCmd({ apiKey: 'venice-key', opts: opts({ model: 'bria-bg-remover' }), prefs: {}, systemPrompt: null, providerType: 'venice', prompt: 'a red cat' }),
+    (e) => e instanceof CliError && e.message === 'Error: model bria-bg-remover not found. Use --list-models to see available models.'
+  )
+  assert.equal(bodies.length, 0)
+  assert.ok(fetchCalls.every((u) => !u.includes('/image/generate')), fetchCalls.join('\n'))
 })
 
 test('Ctrl+C at the picker in one-shot (TTY, no -m) propagates ExitPromptError', async (t) => {

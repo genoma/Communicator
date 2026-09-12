@@ -17,7 +17,7 @@ This file tracks **defects**, not planned feature or flag-surface work. The surf
 removed those flags and the dispatch (and kept `--export-format` with a persisted default) is
 recorded in `SURFACE-CLEANUP.md`; it was never a defect item.
 
-Reference convention: the fixed entries are `F1`–`F40` and the open-list items `O1`–`O41`
+Reference convention: the fixed entries are `F1`–`F41` and the open-list items `O1`–`O41`
 (struck items stay in place, so both ranges keep growing). Every
 reference carries its prefix, so the two lists cannot be confused — do not renumber an
 existing entry, and do not cite a bare number.
@@ -386,6 +386,36 @@ F40. O22: `--no-save` gives headless runs a way to leave no global state behind.
    `test/cli-validation.test.js`, `test/cli-main-success.test.js`, `test/one-shot.test.js` and
    `test/image-gen-cmd.test.js`.
 
+## Fixed on `fix/venice-utility-image-models` (kept for provenance)
+
+F41. O39: a non-generative Venice utility model no longer enters the image surface.
+   `isGenerativeImageModel` (`src/image-sizing.js:22-25`) keeps a model that advertises an
+   aspect-ratio list or anything else, and drops only the positively identified utility shape —
+   `constraints.aspectRatios === null && constraints.widthHeightDivisor === 1` — because the model
+   advertises neither an aspect-ratio list nor a real pixel divisor and therefore needs an input
+   image, not a text prompt. `fetchImageModels` (`src/providers/venice.js:166-193`) filters the
+   mapped list with it, so the filtered model never reaches the picker, `--list-image-models`,
+   `--image --image-model <id>` or `-m <image-model>`; the mapping is otherwise unchanged, and no
+   CLI message was added or reworded (an explicit id now fails on the existing not-found path with
+   no request issued). Live shape on 2026-09-12: Venice `/models?type=image` returned 41 models —
+   33 advertising an aspect-ratio list, 7 advertising none but a real pixel divisor (8 or 16), and
+   exactly one utility model, `bria-bg-remover` (`aspectRatios` null, `widthHeightDivisor` 1,
+   "Background Remover", $0.03/image, plus 2x/4x upscale pricing); before the fix it was offered as
+   a generator and a text-only prompt failed at the API — `communicator -p venice -m
+   bria-bg-remover "a red cat"` exited 1 with `Error: Venice request failed (400): Invalid request
+   parameters`, unbilled and with nothing saved. The drop predicate is deliberately narrow rather
+   than a `(divisor ?? 0) > 1` keep-rule: OpenRouter's mapped catalog (52 models) contains one
+   generator with no advertised constraint at all (`meta/muse-image`, `aspectRatios` null and
+   `widthHeightDivisor` null), which must stay listed. Removed capability kept on record:
+   `bria-bg-remover` (background removal and 2x/4x upscale) has no route in the CLI today — the
+   input-image path for edits and upscales is the future fix, documented as unimplemented in
+   `docs/images.md`. Pinned by `test/image-sizing.test.js` (the five-shape predicate matrix),
+   `test/venice-image-models.test.js` (a stubbed catalog with the utility model plus a ratio-list and
+   a pixel generator: only the utility one is dropped), `test/list-models.test.js` (the real Venice
+   mapper behind `--list-image-models`), `test/image-gen-cmd.test.js` (picker choices and the
+   explicit `--image-model` id) and `test/one-shot.test.js` (`-m <id>` fails before any generation
+   call).
+
 ## Open — piped-output purity
 
 The contract (`MEMORY.md` §Display consistency): a piped one-shot writes **only** the answer
@@ -492,7 +522,7 @@ O15. ~~**`--width` / `--height` precedence trap.** A saved `imageDefaults.<provi
 
 ## Open — image surface
 
-O39. **`bria-bg-remover` is offered as an image generator.** Venice's `/models?type=image` returns it
+O39. ~~**`bria-bg-remover` is offered as an image generator.** Venice's `/models?type=image` returns it
     as an `image` model whose `model_spec.constraints` carries only `widthHeightDivisor: 1` and no
     `aspectRatios`, so `isPixelModel` is true (`src/image-sizing.js:13-14`) and `fetchImageModels`
     maps it like any generator (`src/providers/venice.js:165-190`): it appears in
@@ -503,7 +533,8 @@ O39. **`bria-bg-remover` is offered as an image generator.** Venice's `/models?t
     `Error: Venice request failed (400): Invalid request parameters` and saves nothing (it failed
     before any generation, so the 400 was not billed). Fix direction: filter non-generative utility
     models out of the generation surface (picker, `--list-image-models`, `--image`/`-m`), or gate
-    them behind an input-image path. No behavior change until decided.
+    them behind an input-image path. No behavior change until decided.~~ **Fixed** — the utility
+    shape is filtered out of the Venice image catalog; see F41.
 
 O40. ~~**A resumed session can silently clear a standing `webResults` default.** The resume branch
     (`src/session-setup.js:172`) never reads `prefs.webResults`, although the comment above it

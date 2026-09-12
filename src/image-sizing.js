@@ -14,6 +14,16 @@ export function isPixelModel(model) {
   return model?.constraints?.aspectRatios === null && model.constraints.widthHeightDivisor != null
 }
 
+// A utility model advertises neither an aspect-ratio list nor a real pixel
+// divisor (Venice's bria-bg-remover: aspectRatios null, widthHeightDivisor 1)
+// and needs an input image, not a text prompt. Only that exact shape is
+// dropped: a model advertising nothing at all (OpenRouter's meta/muse-image)
+// stays listed, because hiding a real generator on a guess is the worse miss.
+export function isGenerativeImageModel(model) {
+  const c = model?.constraints
+  return !(c?.aspectRatios === null && c?.widthHeightDivisor === 1)
+}
+
 export function computePixelSize(ratio, divisor) {
   const [w, h] = ratio.split(':').map(Number)
   if (!Number.isFinite(w) || w <= 0 || !Number.isFinite(h) || h <= 0) {

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { computePixelSize, isPixelModel, sizePresets, formatSize, sizeLabel, SIZE_PRESET_RATIOS } from '../src/image-sizing.js'
+import { computePixelSize, isGenerativeImageModel, isPixelModel, sizePresets, formatSize, sizeLabel, SIZE_PRESET_RATIOS } from '../src/image-sizing.js'
 
 const pixelModel = (divisor) => ({
   id: 'z-image-turbo',
@@ -51,6 +51,16 @@ test('isPixelModel only matches models with a null aspect-ratio list and a divis
   assert.equal(isPixelModel({ id: 'x', constraints: { aspectRatios: null, widthHeightDivisor: null } }), false)
   assert.equal(isPixelModel({ id: 'x', constraints: {} }), false)
   assert.equal(isPixelModel(null), false)
+})
+
+test('isGenerativeImageModel keeps generators and drops only the utility shape', () => {
+  assert.equal(isGenerativeImageModel(aspectModel), true)
+  assert.equal(isGenerativeImageModel(pixelModel(8)), true)
+  assert.equal(isGenerativeImageModel({ id: 'bria-bg-remover', constraints: { aspectRatios: null, widthHeightDivisor: 1 } }), false)
+  // Nothing advertised at all is kept: dropping a real generator on a guess is
+  // the worse miss (OpenRouter's meta/muse-image has this shape).
+  assert.equal(isGenerativeImageModel({ id: 'meta/muse-image', constraints: { aspectRatios: null, widthHeightDivisor: null } }), true)
+  assert.equal(isGenerativeImageModel({ id: 'no-constraints' }), true)
 })
 
 test('sizePresets returns the 8 presets in order with the model divisor applied', () => {

@@ -72,6 +72,16 @@ const IMAGE_MODELS = [
   },
 ]
 
+const BRIA_MODEL = {
+  id: 'bria-bg-remover',
+  model_spec: {
+    name: 'Background Remover',
+    privacy: 'anonymized',
+    constraints: { widthHeightDivisor: 1 },
+    pricing: { generation: { usd: 0.03, diem: 0.03 }, upscale: { '2x': { usd: 0.02 }, '4x': { usd: 0.08 } } },
+  },
+}
+
 const IMG1 = Buffer.from('hello image')
 const IMG2 = Buffer.from('second image')
 const B64_1 = IMG1.toString('base64')
@@ -81,7 +91,7 @@ function hash(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
 }
 
-function mockVeniceFetch(t, { onGenerate } = {}) {
+function mockVeniceFetch(t, { onGenerate, catalog = IMAGE_MODELS } = {}) {
   const bodies = []
   const calls = []
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
@@ -92,7 +102,7 @@ function mockVeniceFetch(t, { onGenerate } = {}) {
       return jsonResponse({ id: 'gen-1', images: [B64_1, B64_2], timing: {} })
     }
     if (String(url).includes('/models?type=image')) {
-      return jsonResponse({ data: IMAGE_MODELS })
+      return jsonResponse({ data: catalog })
     }
     throw new Error(`unexpected fetch: ${url}`)
   })
@@ -463,6 +473,37 @@ test('--image with an unknown --image-model errors before any generation call', 
   assert.equal(exited, true)
   assert.equal(message, 'Error: image model unknown-model not found. Use --list-image-models to see available models.')
   assert.equal(calls.length, 1)
+  assert.equal(bodies.length, 0)
+})
+
+test('--image never offers the Venice utility model in the image picker', async (t) => {
+  const catalog = [...IMAGE_MODELS, BRIA_MODEL]
+  mockVeniceFetch(t, { catalog })
+  withApiKey(t)
+  mockConsole(t)
+  setStdoutTTY(t, true)
+  setStdinTTY(t, true)
+  searchCalls = []
+
+  const { exited } = await runImageGen(t, { overrides: { imageModel: undefined } })
+
+  assert.equal(exited, false)
+  const choices = await searchCalls[0].source('')
+  assert.deepEqual(choices.map((c) => c.value.id), ['flux-1-1', 'z-image-turbo'])
+})
+
+test('--image --image-model bria-bg-remover fails on the not-found path without a generation call', async (t) => {
+  const catalog = [...IMAGE_MODELS, BRIA_MODEL]
+  const { bodies, calls } = mockVeniceFetch(t, { catalog })
+  withApiKey(t)
+  mockConsole(t)
+
+  const { exited, message } = await runImageGen(t, { overrides: { imageModel: 'bria-bg-remover' } })
+
+  assert.equal(exited, true)
+  assert.equal(message, 'Error: image model bria-bg-remover not found. Use --list-image-models to see available models.')
+  assert.equal(calls.length, 1)
+  assert.ok(calls[0].includes('/models?type=image'), calls[0])
   assert.equal(bodies.length, 0)
 })
 

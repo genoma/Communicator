@@ -5,6 +5,7 @@ import { formatPricePerM, formatImagePrice, imageUnitPrice } from '../ui/format.
 import { IMAGE_GEN_RESPONSE_LIMIT_BYTES, IMAGE_GEN_TIMEOUT_MS, VENICE_BASE } from '../constants.js'
 import { mimeForExt, extForMime } from '../attachments.js'
 import { encryptMessages, decryptToken } from '../e2ee.js'
+import { isGenerativeImageModel } from '../image-sizing.js'
 
 
 export const meta = {
@@ -164,6 +165,8 @@ export async function fetchModels(apiKey) {
 
 export async function fetchImageModels(apiKey) {
   const { data } = await fetchModelsByType(apiKey, 'image')
+  // The catalog also carries utility models (a background remover that needs
+  // an input image); only generative models belong on the image surface.
   return (data || []).map((m) => {
     const spec = m.model_spec || {}
     const constraints = spec.constraints || {}
@@ -187,7 +190,7 @@ export async function fetchImageModels(apiKey) {
       },
       offline: spec.offline === true,
     }
-  })
+  }).filter(isGenerativeImageModel)
 }
 
 export async function generateImage({ apiKey, model, prompt, format = 'webp', variants = 1, safeMode = true, hideWatermark = false, aspectRatio, resolution, quality, seed, width, height, pricing, signal, timeoutMs = IMAGE_GEN_TIMEOUT_MS }) {

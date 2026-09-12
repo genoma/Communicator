@@ -58,6 +58,8 @@ communicator -p openrouter --list-image-models
 
 Prints each image model's name, id, per-image price, and its sizing options (`[aspect: …]`, `[resolution: …]`, `[quality: …]`, `[privacy]`, `[offline]`). No API key is needed to list models; on OpenRouter the price column fetches per-model endpoint pricing (`from $X per image` across billable output-image entries).
 
+Venice's catalog also contains **utility models** that are not generators: a background remover takes an input image instead of a text prompt, so it announces no aspect ratio and no real pixel divisor. Those are filtered out of the image surface — the picker, `--list-image-models` and `--image-model`/`-m` selection never show or accept Venice's Background Remover (`bria-bg-remover`), and its id fails at model selection like any unknown id. An input-image path for edits and upscales is a documented future feature, not implemented.
+
 ## Sizing defaults
 
 Choices are remembered as **global per-provider defaults** (`venice` and `openrouter` are separate) in the preferences file:
