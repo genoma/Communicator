@@ -435,7 +435,8 @@ F42. O42: the file-level `not ok - test/chat-loop.test.js` with `failureType: 'u
     default) a test child streams its v8-serialized results on fd 1 and the parent's
     `FileTest#processRawBuffer` (`node:internal/test_runner/runner`) parses that stream as frames, so text
     that ends up in the buffer head is read as a header plus a 4-byte size. **Version matrix** (read from
-    the shipped `internal/test_runner/runner` source): Node **22.23.2** — what CI runs — has no
+    the shipped `internal/test_runner/runner` source): Node **22.23.2** — the `engines` floor and the line
+    where the failure reproduces; CI runs 22 and 24 — has no
     no-progress guard in `#drainRawBuffer`, no flush-as-stdout recovery, a `parseMessage` that pushes a
     stray trailing `0xFF` as a one-byte buffer and concatenates into any buffer head shorter than
     `kSerializedSizeHeader`, and a size assembled with signed `<< 24` shifts, so text whose 3rd byte is
@@ -499,8 +500,8 @@ F42. O42: the file-level `not ok - test/chat-loop.test.js` with `failureType: 'u
     name was collected and run as a phantom test file of its own in every suite (dropping that phantom
     file is why the totals stayed put while the guard's own pin gained a test).
     **Do not remove the guard while `engines` allows Node 22, and note that a bare
-    `node --test` bypasses the whole wrapper.** CI runs the guard only through `npm test`; widening the
-    CI matrix to Node 24 is a separate change.
+    `node --test` bypasses the whole wrapper.** CI runs the guard only through `npm test`, on Node 22
+    and 24.
 
 ## Open — piped-output purity
 
