@@ -499,7 +499,6 @@ test('idle SIGINT flushes preference updates before exiting', async (t) => {
     reasoningEffort: 'high',
     temperature: 1.1,
     topP: undefined,
-    webResults: null,
   })
   assert.deepEqual(harness.exitCodes, [130])
 })
@@ -518,6 +517,40 @@ test('idle SIGINT persists webSearch when the session set it explicitly', async 
   assert.equal(harness.prefsCalls.length, 1)
   assert.equal(harness.prefsCalls[0].modelId, 'org/model')
   assert.equal(harness.prefsCalls[0].webSearch, 'auto')
+  assert.deepEqual(harness.exitCodes, [130])
+})
+
+test('idle SIGINT persists webResults only when the session set it explicitly', async (t) => {
+  mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['hi', neverResolving()]) })
+
+  runChatSession(baseCtx(provider, { webResults: 5, webResultsExplicit: true }), harness.deps)
+  await tick()
+  harness.signalHandlers.sigint()
+  await tick()
+  await tick()
+
+  assert.equal(harness.prefsCalls.length, 1)
+  assert.equal(harness.prefsCalls[0].webResults, 5)
+  assert.deepEqual(harness.exitCodes, [130])
+})
+
+test('idle SIGINT does not write a restored webResults snapshot over the pref', async (t) => {
+  mockConsole(t)
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: scriptedInput(['hi', neverResolving()]) })
+
+  // A resumed session resolves its snapshot (here null) without the run
+  // choosing a count; the exit writer must leave the standing pref alone.
+  runChatSession(baseCtx(provider, { webResults: null, webResultsExplicit: false }), harness.deps)
+  await tick()
+  harness.signalHandlers.sigint()
+  await tick()
+  await tick()
+
+  assert.equal(harness.prefsCalls.length, 1)
+  assert.ok(!('webResults' in harness.prefsCalls[0]), 'a restored snapshot must not clear the pref')
   assert.deepEqual(harness.exitCodes, [130])
 })
 

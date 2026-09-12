@@ -139,8 +139,23 @@ test('listEndpointsCmd still resolves text ids when the image catalog fails', as
 
   assert.deepEqual(requested, ['openai/gpt-4o'])
   assert.match(consoleSpy.allLogs().join('\n'), /1 provider\(s\) for openai\/gpt-4o/)
-  assert.match(consoleSpy.allLogs().join('\n'), /Warning: could not load image models; showing text models only\./)
-  assert.match(consoleSpy.allLogs().join('\n'), /image catalog unavailable/)
+  assert.ok(!consoleSpy.allLogs().join('\n').includes('could not load image models'), 'a resolved text id needs no image-catalog warning')
+})
+
+test('listEndpointsCmd warns about the failed image catalog only when the id is missing', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { provider } = endpointProvider({
+    textModels: [{ id: 'openai/gpt-4o' }],
+    imageError: new Error('image catalog unavailable'),
+  })
+
+  await assert.rejects(
+    listEndpointsCmd(provider, 'key', 'flux-1-1', {}),
+    (err) => /Model "flux-1-1" not found/.test(err.message)
+  )
+  const logs = consoleSpy.allLogs().join('\n')
+  assert.match(logs, /Warning: could not load image models; showing text models only\./)
+  assert.match(logs, /image catalog unavailable/)
 })
 
 test('listEndpointsCmd names both catalogs in the not-found hint', async () => {

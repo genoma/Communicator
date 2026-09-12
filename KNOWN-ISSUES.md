@@ -9,7 +9,7 @@ surface cleanup (removing `--export-format`, `--variants`, `--resolution`, `--qu
 `--width`/`--height`, and the bare "set a preference and exit" dispatch) is tracked in
 `MEMORY.md` §Pending surface cleanup and is not listed here.
 
-Reference convention: the fixed entries are `F1`–`F34` and the open-list items `O1`–`O39`
+Reference convention: the fixed entries are `F1`–`F36` and the open-list items `O1`–`O41`
 (struck items stay in place, so both ranges keep growing). Every
 reference carries its prefix, so the two lists cannot be confused — do not renumber an
 existing entry, and do not cite a bare number.
@@ -420,7 +420,7 @@ O39. **`bria-bg-remover` is offered as an image generator.** Venice's `/models?t
     models out of the generation surface (picker, `--list-image-models`, `--image`/`-m`), or gate
     them behind an input-image path. No behavior change until decided.
 
-O40. **A resumed session can silently clear a standing `webResults` default.** The resume branch
+O40. ~~**A resumed session can silently clear a standing `webResults` default.** The resume branch
     (`src/session-setup.js:172`) never reads `prefs.webResults`, although the comment above it
     claims parity with the `webSearch` line, which does read the pref first (`:169`); the session
     snapshot therefore wins, and the interactive exit writer then persists that resolved value
@@ -431,15 +431,35 @@ O40. **A resumed session can silently clear a standing `webResults` default.** T
     (not a branch regression), but the branch's own versioning note in `MEMORY.md` claimed such
     values "keep working", which this contradicts. Fix: read the pref first on resume and gate
     the exit write like `webSearch` (an explicit marker, or reuse `webSearchExplicit`);
-    `/web-results` still persists itself, so gating the generic write loses nothing.
+    `/web-results` still persists itself, so gating the generic write loses nothing.~~ **Fixed** —
+    both halves landed: the resume resolves flag > prefs > snapshot, and the exit writer persists
+    only an explicit choice (`ChatState.webResultsExplicit`); see F35.
 
-O41. **The image-catalog warning also fires for text-only `--list-endpoints` lookups.**
+O41. ~~**The image-catalog warning also fires for text-only `--list-endpoints` lookups.**
     `resolutionCatalog` runs for every explicit-id lookup (`src/commands/list-endpoints.js:53-59`),
     so when `/images/models` fails while `/models` works, `--list-endpoints openai/gpt-4o` prints
     `Warning: could not load image models; showing text models only. (…)` even though no image
     model was ever needed. F27 only justifies the warning for an image-id lookup, and the current
     test (`test/list-endpoints.test.js:142`) pins the eager behavior. Fix: remember the failure
-    and emit the warning only in the not-found branch.
+    and emit the warning only in the not-found branch.~~ **Fixed** — `resolutionCatalog` returns the
+    failure and the warning moved into the not-found branch, where the missing catalog can
+    actually explain the miss; see F36.
+
+F35. O40: a resumed session could clear a standing `webResults` default. `resumeSessionContext` now
+    resolves the count as flag > prefs > session snapshot, so an old snapshot cannot resurrect a
+    stale value over a later default, and the interactive exit writer persists `webResults` only
+    for an explicit choice — `ChatState.webResultsExplicit` (set by `--web-results` and
+    `/web-results`, false for e2ee) rides through `toFinalState` and replaces the unconditional
+    `webResults: finalState.webResults` (`src/chat.js`) that wrote the resolved snapshot value —
+    including `null` — on every exit. `/web-results` still persists itself immediately, so the
+    generic write was never its only home. Pinned by two `test/chat-loop.test.js` cases (an
+    explicit choice writes the count; a restored snapshot leaves the key off the delta).
+
+F36. O41: the image-catalog warning no longer fires for a text-only `--list-endpoints` lookup.
+    `resolutionCatalog` returns the image-fetch failure instead of warning inline, and
+    `listEndpointsCmd` warns only in its not-found branch — where the missing catalog can actually
+    explain the miss. A resolved text id stays silent; a miss still names both catalogs and still
+    warns. `test/list-endpoints.test.js` re-pinned both directions.
 
 ## Open — docs and comment drift
 

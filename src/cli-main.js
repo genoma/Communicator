@@ -41,6 +41,31 @@ async function scrapeForSession({ provider, apiKey, url }) {
   return { url, content: text }
 }
 
+// Persists and announces the --aspect-ratio/--image-format per-provider
+// defaults. Shared by the chat/one-shot path and the --image branch so both
+// announce the same thing; the generation path alone would save them silently
+// and only after a successful run.
+async function applyImageDefaults({ prefs, config, providerType, aspectRatio, imageFormat }) {
+  if (aspectRatio === undefined && imageFormat === undefined) return
+  const merged = mergeImageDefaults(prefs, providerType, { aspectRatio, format: imageFormat })
+  prefs.imageDefaults = merged.imageDefaults
+  try {
+    await savePreferences(prefs, config)
+  } catch (err) {
+    fail(`Error: could not save the image defaults preference: ${err.message}`)
+  }
+  if (aspectRatio !== undefined) {
+    const notice = `Aspect ratio set to ${aspectRatio} (${providerType} image defaults)`
+    if (process.stdout.isTTY === true) console.log(notice)
+    else console.error(notice)
+  }
+  if (imageFormat !== undefined) {
+    const notice = `Image format set to ${imageFormat} (${providerType} image defaults)`
+    if (process.stdout.isTTY === true) console.log(notice)
+    else console.error(notice)
+  }
+}
+
 export async function runCli(opts, promptArg) {
   try {
     await main(opts, promptArg)
@@ -309,6 +334,10 @@ async function main(opts, promptArg) {
       if (process.stdout.isTTY === true) console.log('Venice watermark disabled')
       else console.error('Venice watermark disabled')
     }
+    // The image-generation path persists these only after a successful run;
+    // save and announce them here like safe mode and the watermark so an
+    // --image run matches a chat run (same notice wording).
+    await applyImageDefaults({ prefs, config: opts.config, providerType, aspectRatio, imageFormat })
     const { imageGenCmd } = await import('./commands/image-gen.js')
     await imageGenCmd({ apiKey, opts, prefs, providerType, prompt: promptArg })
     process.exit(0)
@@ -398,25 +427,7 @@ async function main(opts, promptArg) {
   // --aspect-ratio/--image-format keep their documented setter meaning next to
   // a chat run: the set-and-exit dispatch (their other writer) is not reached,
   // so persist them here instead of dropping the flags.
-  if (aspectRatio !== undefined || imageFormat !== undefined) {
-    const merged = mergeImageDefaults(prefs, providerType, { aspectRatio, format: imageFormat })
-    prefs.imageDefaults = merged.imageDefaults
-    try {
-      await savePreferences(prefs, opts.config)
-    } catch (err) {
-      fail(`Error: could not save the image defaults preference: ${err.message}`)
-    }
-    if (aspectRatio !== undefined) {
-      const notice = `Aspect ratio set to ${aspectRatio} (${providerType} image defaults)`
-      if (process.stdout.isTTY === true) console.log(notice)
-      else console.error(notice)
-    }
-    if (imageFormat !== undefined) {
-      const notice = `Image format set to ${imageFormat} (${providerType} image defaults)`
-      if (process.stdout.isTTY === true) console.log(notice)
-      else console.error(notice)
-    }
-  }
+  await applyImageDefaults({ prefs, config: opts.config, providerType, aspectRatio, imageFormat })
 
   if (promptArg || !process.stdin.isTTY) {
     const { oneShotCmd } = await import('./commands/one-shot.js')

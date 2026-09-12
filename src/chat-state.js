@@ -2,7 +2,7 @@ import { DEFAULT_SYSTEM_PROMPT } from './constants.js'
 import { normalizeSmoothSpeed, normalizeWebSearchMode } from './flags.js'
 
 export class ChatState {
-  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, topP, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, webSearchExplicit = false, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, updatedAt = null, modelReasoning, reasoningMandatory, markdown = true, smoothStreaming = true, smoothSpeed, compactThinking = false, messages, systemContent, scrapes = 0, costSummary = null }) {
+  constructor({ modelId, endpointProviderName, reasoningEffort, temperature, topP, budget, pricing, contextLength, supportsReasoning, webSearch, webResults, webSearchExplicit = false, webResultsExplicit = false, zdr = false, e2ee = false, e2eeContext = null, webSearchSupported, visionSupported, fileSupported, imageOutputSupported, sessionId, createdAt, updatedAt = null, modelReasoning, reasoningMandatory, markdown = true, smoothStreaming = true, smoothSpeed, compactThinking = false, messages, systemContent, scrapes = 0, costSummary = null }) {
     this.modelId = modelId
     this.endpointProviderName = endpointProviderName
     this.reasoningEffort = reasoningEffort
@@ -18,6 +18,10 @@ export class ChatState {
     // 'off' must never overwrite a user's per-model pref.
     this.webSearchExplicit = e2ee ? false : webSearchExplicit === true
     this.webResults = e2ee ? null : webResults
+    // Only exit prefs writers persist webResults when the session explicitly
+    // set it (via /web-results or --web-results); a value restored from a
+    // resumed session's own snapshot must never overwrite a standing default.
+    this.webResultsExplicit = e2ee ? false : webResultsExplicit === true
     this.zdr = zdr === true
     this.e2ee = e2ee === true
     // Session-scoped E2EE crypto state: client key pair plus the attested
@@ -69,6 +73,7 @@ export class ChatState {
       budget: this.budget,
       webSearch: this.webSearch,
       webSearchExplicit: this.webSearchExplicit,
+      webResultsExplicit: this.webResultsExplicit,
       webResults: this.webResults,
       pricing: this.pricing,
       contextLength: this.contextLength,
@@ -116,6 +121,7 @@ export class ChatState {
 
   setWebResults(value) {
     this.webResults = value
+    this.webResultsExplicit = true
   }
 
   setReasoningEffort(value) {

@@ -92,6 +92,7 @@ export async function buildSessionContext({ provider, apiKey, opts, prefs, force
     topP: samplingPrefValue(forcedTopP, prefs.topP?.[selection.modelId], prefs, 'topP', selection.modelId),
     webSearch,
     webSearchExplicit,
+    webResultsExplicit: opts.webResults !== undefined,
     webResults: e2ee ? null : forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), prefs.webResults) ?? null,
   }
 }
@@ -168,8 +169,11 @@ export async function resumeSessionContext({ result, opts, prefs, forcedEffort, 
     budget: forcedBudget ?? resolvePrefOrNull(resolveBudget, result.budget) ?? null,
     webSearch: e2ee ? 'off' : resolveWebSearchFlag({ webSearch: opts.webSearch, webResults: forcedWebResults, prefValue: prefs.webSearch?.[selection.modelId] ?? (result.webSearchSnapshot != null ? result.webSearch : undefined) }),
     webSearchExplicit: !e2ee && (opts.webSearch !== undefined || forcedWebResults != null),
-    // The session's own snapshot is the last fallback, like the prefs above.
-    webResults: e2ee ? null : forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), result.webResults) ?? null,
+    webResultsExplicit: opts.webResults !== undefined,
+    // The standing pref steps in before the session's own snapshot, like the
+    // webSearch precedence above: an old snapshot must not resurrect a count
+    // over a default the user set later.
+    webResults: e2ee ? null : forcedWebResults ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), prefs.webResults) ?? resolvePrefOrNull((v) => resolveWebResultsFlag({ webResults: v }), result.webResults) ?? null,
   }
 }
 

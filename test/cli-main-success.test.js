@@ -923,6 +923,25 @@ test('--aspect-ratio notices print on stdout on a terminal', async (t) => {
   assert.ok(!err.join('\n').includes('Aspect ratio set to'))
 })
 
+test('--image --aspect-ratio persists the default and prints the notice', async (t) => {
+  withTTY(t, false)
+  withStdoutTTY(t, false)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  )
+
+  const { out, err } = await runAndExit(t, { provider: 'venice', config: configFile, image: true, imageModel: 'flux-1-1', aspectRatio: '16:9', imageFormat: 'png' }, 'a red cat', 1)
+
+  assert.ok(!out.join('\n').includes('Aspect ratio set to'), 'the image-path notices must stay off piped stdout')
+  assert.match(err.join('\n'), /^Aspect ratio set to 16:9 \(venice image defaults\)$/m)
+  assert.match(err.join('\n'), /^Image format set to png \(venice image defaults\)$/m)
+  const saved = JSON.parse(await readFile(configFile, 'utf-8'))
+  assert.equal(saved.imageDefaults.venice.aspectRatio, '16:9')
+  assert.equal(saved.imageDefaults.venice.format, 'png')
+})
+
 test('--aspect-ratio with a bad value fails loudly instead of being persisted', async (t) => {
   withTTY(t, true)
   withVeniceApiKey(t)

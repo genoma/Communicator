@@ -45,21 +45,22 @@ async function printEndpoints(provider, apiKey, modelId) {
 
 // Image-only models live in a separate catalog, so an explicit id is resolved
 // against both: a listing must not fail because the image catalog is
-// unavailable, and the text entries stay authoritative on an id collision.
+// unavailable, and the text entries stay authoritative on an id collision. The
+// failure is returned instead of warned here — the caller warns only when the
+// lookup actually misses, so a text id still resolves silently.
 async function resolutionCatalog(provider, apiKey) {
   const models = await provider.fetchModels(apiKey)
-  if (typeof provider.fetchImageModels !== 'function') return models
+  if (typeof provider.fetchImageModels !== 'function') return { models, imageError: null }
   let imageModels = []
+  let imageError = null
   try {
     imageModels = await provider.fetchImageModels(apiKey)
   } catch (err) {
-    // Mirrors the picker's warning: the catalog covers image models, so a
-    // silent failure would turn an image id into a misleading "not found".
-    console.error(`Warning: could not load image models; showing text models only. (${formatError(err)})`)
+    imageError = err
   }
-  if (imageModels.length === 0) return models
+  if (imageModels.length === 0) return { models, imageError }
   const seen = new Set(models.map((m) => m.id))
-  return [...models, ...imageModels.filter((m) => !seen.has(m.id))]
+  return { models: [...models, ...imageModels.filter((m) => !seen.has(m.id))], imageError }
 }
 
 export async function listEndpointsCmd(provider, apiKey, modelArg, prefs) {
@@ -72,9 +73,14 @@ export async function listEndpointsCmd(provider, apiKey, modelArg, prefs) {
     const selected = await selectModel(models, prefs?.lastModel)
     modelId = selected.id
   } else if (typeof modelArg === 'string' && modelArg.trim()) {
-    const models = await resolutionCatalog(provider, apiKey)
+    const { models, imageError } = await resolutionCatalog(provider, apiKey)
     const { model, candidates } = matchModelId(models, modelArg.trim())
     if (!model) {
+      // Mirrors the picker's warning: the catalog covers image models, so a
+      // silent failure would turn an image id into a misleading "not found".
+      if (imageError) {
+        console.error(`Warning: could not load image models; showing text models only. (${formatError(imageError)})`)
+      }
       if (!candidates.length) {
         throw new CliError(`Error: Model "${modelArg}" not found. Use --list-models for text models or --list-image-models for image models.`)
       }

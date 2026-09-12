@@ -25,7 +25,7 @@ test('constructor keeps parity with the old state literal fields', () => {
   const s = makeState()
   assert.deepEqual(
     Object.keys(s).sort(),
-    ['budget', 'compactThinking', 'contextLength', 'costSummary', 'createdAt', 'e2ee', 'e2eeContext', 'endpointProviderName', 'fileSupported', 'imageOutputSupported', 'lastError', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'reasoningMandatory', 'retryTurn', 'scrapes', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'topP', 'updatedAt', 'visionSupported', 'webResults', 'webSearch', 'webSearchExplicit', 'webSearchSupported', 'zdr']
+    ['budget', 'compactThinking', 'contextLength', 'costSummary', 'createdAt', 'e2ee', 'e2eeContext', 'endpointProviderName', 'fileSupported', 'imageOutputSupported', 'lastError', 'markdown', 'messages', 'modelId', 'modelReasoning', 'pendingAttachments', 'pricing', 'reasoningEffort', 'reasoningMandatory', 'retryTurn', 'scrapes', 'sessionId', 'smoothSpeed', 'smoothStreaming', 'supportsReasoning', 'systemContent', 'temperature', 'topP', 'updatedAt', 'visionSupported', 'webResults', 'webResultsExplicit', 'webSearch', 'webSearchExplicit', 'webSearchSupported', 'zdr']
   )
   assert.equal(s.modelId, 'org/model')
   assert.equal(s.endpointProviderName, 'Provider')
@@ -100,6 +100,7 @@ test('toFinalState returns exactly the finalState field list', () => {
     'updatedAt',
     'visionSupported',
     'webResults',
+    'webResultsExplicit',
     'webSearch',
     'webSearchExplicit',
     'webSearchSupported',

@@ -69,6 +69,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     webSearch = 'off',
     webSearchExplicit = false,
     webResults = null,
+    webResultsExplicit = false,
     zdr = false,
     e2ee = false,
     webSearchSupported = undefined,
@@ -137,6 +138,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     webSearch,
     webSearchExplicit,
     webResults,
+    webResultsExplicit,
     zdr,
     e2ee,
     e2eeContext,
@@ -304,7 +306,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
         // Only persist webSearch for an explicit session choice; a forced
         // 'off' must not overwrite the user's per-model pref.
         ...(finalState.webSearchExplicit ? { webSearch: finalState.webSearch } : {}),
-        webResults: finalState.webResults,
+        // Same rule for webResults: a value restored from a resumed session's
+        // snapshot must not overwrite the standing default.
+        ...(finalState.webResultsExplicit ? { webResults: finalState.webResults } : {}),
       }),
     ])
   }

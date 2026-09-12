@@ -70,7 +70,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
 
     // Settings precedence is shared with the one-shot resume path: flags win,
     // then the per-model prefs, then the persisted session snapshot.
-    const { selection, reasoningEffort, temperature, topP, budget, webSearch, webSearchExplicit, webResults } = await resumeSessionContext({
+    const { selection, reasoningEffort, temperature, topP, budget, webSearch, webSearchExplicit, webResults, webResultsExplicit } = await resumeSessionContext({
       result,
       opts,
       prefs,
@@ -95,6 +95,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
       webSearch,
       webSearchExplicit,
       webResults,
+      webResultsExplicit,
       zdr,
       e2ee,
       smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
@@ -137,7 +138,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
 
   const provider = getProvider(providerType)
 
-  const { selection, temperature, topP, webSearch, webSearchExplicit, webResults } = await buildSessionContext({
+  const { selection, temperature, topP, webSearch, webSearchExplicit, webResults, webResultsExplicit } = await buildSessionContext({
     provider,
     apiKey,
     opts,
@@ -178,6 +179,7 @@ async function createSessionContext({ apiKey, opts, prefs, providerType, systemP
     webSearch,
     webSearchExplicit,
     webResults,
+    webResultsExplicit,
     zdr,
     e2ee,
     smoothStreaming: opts.smoothStreaming !== false && prefs.smoothStreaming !== false,
@@ -242,6 +244,7 @@ async function runChatToEnd(ctx, { systemPrompt, opts, prefs }) {
     webSearch: ctx.webSearch,
     webSearchExplicit: ctx.webSearchExplicit,
     webResults: ctx.webResults,
+    webResultsExplicit: ctx.webResultsExplicit,
     zdr: ctx.zdr,
     e2ee: ctx.e2ee,
     contextLength: ctx.contextLength,
