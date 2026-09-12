@@ -9,7 +9,7 @@ surface cleanup (removing `--variants`, `--resolution`, `--quality`, `--width`/`
 `--budget` and the bare "set a preference and exit" dispatch; `--export-format` stays and gains a
 persisted default) is tracked in `SURFACE-CLEANUP.md` and is not listed here.
 
-Reference convention: the fixed entries are `F1`–`F36` and the open-list items `O1`–`O41`
+Reference convention: the fixed entries are `F1`–`F37` and the open-list items `O1`–`O41`
 (struck items stay in place, so both ranges keep growing). Every
 reference carries its prefix, so the two lists cannot be confused — do not renumber an
 existing entry, and do not cite a bare number.
@@ -260,14 +260,15 @@ F28. A rejected `--e2ee` resume still printed the at-rest warning first — and 
 F29. The documentation and comment drift items O14, O16, O17 and O20 were closed together:
     `README.md`'s budget bullet now reads "refuses further turns at 100% in interactive sessions
     (one-shot runs never pre-check the cap)", the piped `--budget` example in `docs/commands.md`
-    says "budget tracked and persisted; one-shot never refuses", `docs/chat.md` scopes picker
+    says "budget tracked and persisted; one-shot never refuses" (since 4.0.0 the example points at
+    `/budget` in chat), `docs/chat.md` scopes picker
     skipping to `-m <id>` with a prompt and documents the bare form as validate-save-exit, the
     Venice web-search example puts the prompt before the bare flag, the flags table gained a
     positional-order note for all seven optional-value flags (`--web-search`, `--config`, `--resume`,
     `--export`,
     `--list-endpoints`, `--delete`, `--delete-all-sessions`), and `src/config.js`'s
     `syncPreferenceUpdates` comment dropped `/budget` from its caller list and states where the cap
-    lives (session payload; the global `prefs.budget` remains the bare setter's). No behavior
+    lives (session payload; the global `prefs.budget` was the bare setter's, removed in 4.0.0 — the key is inert). No behavior
     changed; the O14 evidence that one-shot persists the cap (`src/commands/one-shot.js:293`) and
     prints the bar on a TTY (`:275-276`) is folded into the entry.
 
@@ -320,10 +321,11 @@ The contract (`MEMORY.md` §Display consistency): a piped one-shot writes **only
 to stdout; artifacts and notices go to stderr. Violations are any notice written with
 `console.log` on a path reachable while stdout is piped.
 
-O1. **`src/commands/config-set.js:111-114`** — `Venice safe mode disabled` and `Saved to <path>`
+O1. ~~**`src/commands/config-set.js:111-114`** — `Venice safe mode disabled` and `Saved to <path>`
    go to stdout regardless of TTY. Reachable as `echo hi | communicator --no-safe-mode`.
    *Fenced:* this file is the bare set-and-exit dispatch scheduled for removal, so it is fixed
-   by that cleanup rather than here.
+   by that cleanup rather than here.~~ **Closed — surface removed** in 4.0.0 (`config-set.js` and
+   the dispatch are gone; see F37).
 O2. ~~**`src/commands/chat/index.js:467-469`** — the interactive `/scrape` notice uses `console.log`
    with no TTY gate. Reachable only with a TTY stdin and a piped stdout (e.g. `communicator | cat`
    then `/scrape`; a positional prompt takes the one-shot branch at `src/cli-main.js:342`, so
@@ -409,12 +411,13 @@ O14. ~~**`--budget` is inert on a piped one-shot** (no pre-check, no metrics, no
     `README.md` scopes the 100% refusal to interactive sessions; see F29. The entry's "not persisted"
     half was stale: one-shot carries the cap in the session payload (`src/commands/one-shot.js:293`)
     and prints the bar on a TTY (`:275-276`).
-O15. **`--width` / `--height` precedence trap.** A saved `imageDefaults.<provider>.aspectRatio`
+O15. ~~**`--width` / `--height` precedence trap.** A saved `imageDefaults.<provider>.aspectRatio`
     is applied whenever `opts.aspectRatio === undefined`, with no width/height guard
-    (`src/commands/image-gen.js:191-198`); on aspect-list models the explicit pixels are then
-    dropped with no note, and the comment at `:235-238` is scoped to pixel models,
-    where the explicit pair does win). On pixel
-    models the explicit pair does win. Moot if those flags are removed by the surface cleanup.
+    (`src/commands/image-gen.js:191-198`); on aspect-list models the explicit pixels were then
+    dropped with no note (the comment at `:235-238` was scoped to pixel models, where the explicit
+    pair did win). On pixel models the explicit pair did win. Moot if those flags are removed by
+    the surface cleanup.~~ **Closed — moot**: `--width`/`--height` were removed in 4.0.0 (F37);
+    the ratio is the only sizing knob and pixels are always derived from it.
 
 ## Open — image surface
 
@@ -472,6 +475,18 @@ F36. O41: the image-catalog warning no longer fires for a text-only `--list-endp
     explain the miss. A resolved text id stays silent; a miss still names both catalogs and still
     warns. `test/list-endpoints.test.js` re-pinned both directions.
 
+F37. The 4.0.0 surface cleanup closed the fenced/mooted backlog items. `src/commands/config-set.js`,
+    both dispatch branches and the four predicates (`isConfigSetDispatch`/`isPureConfigSetter`/
+    `hasConfigSetterFlags`/`isConfigSetter`) were deleted; `--budget`, `--variants`, `--resolution`,
+    `--quality`, `--width` and `--height` are gone; `--output-dir` requires `--export` or `--image`;
+    the bare flag forms now shape a run (E1/E2), pinned by a spawn-level unknown-option guard and a
+    mock-chat test for `-m <id>`. `--export-format` stays and persists (D3), the image REPL keeps
+    its sizing commands and their persisted defaults, and the new `/safe-mode` (D6) and
+    `/export-format` (D3) commands are the in-app setters. Original items: O1 and O31 (their
+    surface deleted), O15 (moot — the flags are gone, the ratio is the only sizing knob), O26
+    (closed as documented behavior: `--seed` stays `--image`-only). `SURFACE-CLEANUP.md` holds the
+    staged plan and the parity matrix.
+
 ## Open — docs and comment drift
 
 O16. ~~**`src/config.js:116-117`** claims a mid-session `/budget` change is "preserved by the
@@ -480,7 +495,8 @@ O16. ~~**`src/config.js:116-117`** claims a mid-session `/budget` change is "pre
     `--budget` setter as its only writer. Adding a `savePrefs` call to `/budget` would make
     the two agree and let the CLI setter be dropped.~~ **Fixed** — the comment no longer lists
     `/budget` among the `syncPreferenceUpdates` callers and now says where the cap lives (session
-    payload; the global `prefs.budget` stays the bare setter's); see F29. The tier-2 alternative
+    payload; the global `prefs.budget` stayed the bare setter's (removed in 4.0.0, the key is
+    inert now); see F29. The tier-2 alternative
     (a `/budget` prefs write, which would let the bare setter be dropped) is dropped by decision:
     the cap is session state, restored from the session file on resume, so it does not belong in
     the end-of-session prefs save.
@@ -537,10 +553,13 @@ O24. **`-x/--export`, `--delete` and any `-r/--resume` with an id are rejected w
 O25. **Partial-id ambiguity silently opens an interactive picker** instead of failing fast
     (`src/sessions.js:54-67`). For `--delete` that means a scripted caller could block on a
     prompt; a non-interactive mode should prefer an ambiguity error.
-O26. **`-m <image-model> "prompt"` and `--image` validate the same flags differently** — the
+O26. ~~**`-m <image-model> "prompt"` and `--image` validate the same flags differently** — the
     `-m` path hard-rejects `--variants`/`--resolution`/`--quality`/`--seed`/`--width`/`--height`
     (`src/cli-validation.js:326-331`) while both route into the identical
-    `runImageCommand`. Consolidation candidate.
+    `runImageCommand`. Consolidation candidate.~~ **Closed — documented behavior**: four of the six
+    flags are gone in 4.0.0; `--seed` stays `--image`-only because CLI validation cannot know
+    whether `-m <id>` is an image model, and the image REPL `/seed` remains the session-level
+    control (F37).
 
 ## Open — test-suite hygiene
 
@@ -595,13 +614,14 @@ O30. ~~**The gap F8 fixed has the same shape next to the other exit paths.** `--
     a rule that names only the flags actually passed, next to the F8 rule, with the resume
     exception kept explicit.~~ **Fixed** — see the matching entry in "Fixed on
     `fix/one-shot-bugs`" above.
-O31. **The config-set exit path still accepts `--zdr`/`--e2ee` with any setter flag.** The F11
+O31. ~~**The config-set exit path still accepts `--zdr`/`--e2ee` with any setter flag.** The F11
     rule covers the list/export/delete exits but not the set-and-exit dispatches
     (`src/cli-main.js:243-262`), so `communicator -p venice -m <model> --e2ee` (or
     `-p venice --e2ee --no-watermark`) still prints the E2EE session-file warning
     (`src/cli-main.js:170`) before saving and exiting 0, and `communicator -m <id> --zdr`
     drops the flag the same way. *Fenced:* this is the bare "set a preference and exit" dispatch
-    the approved cleanup removes, so the surface goes away rather than getting a rule.
+    the approved cleanup removes, so the surface goes away rather than getting a rule.~~
+    **Closed — surface removed** in 4.0.0 (F37).
 O32. ~~**Two provider gates still ignore a resumed session's provider.** `-p openrouter -r
     <venice-session> --e2ee` and `--scrape <url>` are refused by their provider gates
     (`src/cli-validation.js:139-141`, `:195-196`) although the run would execute on a provider

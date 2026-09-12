@@ -4,7 +4,7 @@ The approved direction for the "too many one-shots" complaint: remove the bare "
 and exit" dispatch and the generation/export knobs that duplicate the image REPL, replacing every
 lost capability with an in-app setter **before** anything is removed.
 
-**Status: in progress — Stage 4 landed, Stage 5 next.** Branch: `feat/surface-cleanup`, cut from
+**Status: in progress — Stage 5 landed, Stage 6 next.** Branch: `feat/surface-cleanup`, cut from
 `main` at tag `3.49.2`.
 How to use: stages are ordered and each ends with a green gate plus one commit. Tick the boxes as
 they land. Do not start a stage before the previous one is green.
@@ -22,7 +22,8 @@ resolver/constraint errors that only the image session can trigger lost their fl
 owner-approved naming fix) — gate 1850/1850, lint and knip clean. Stage 4 (the set-and-exit
 `config-set.js` dispatch, its two call sites, the four predicates and the `--output-dir` bare form
 are gone; `budget` left `applyPreferenceUpdates`; docs/backlog swept) — gate 1821/1821, lint and
-knip clean.
+knip clean. Stage 5 (the O1/O31/O15/O26 strikes with provenance F37, the F29/O16 clause refresh,
+MEMORY's completed status and the `exportFormat` contract) — gate 1822/1822, lint and knip clean.
 
 Baseline at plan time: `npm test` 1842/1842, `npm run lint`, `npx knip` clean, CI green on
 macOS/Ubuntu/Windows for `3.49.2`.
@@ -244,17 +245,17 @@ Commit `feat!: remove the bare set-and-exit config dispatch`.
 
 Commit `docs: close the surface-cleanup backlog items`.
 
-- [ ] `grep -rn "config-set\|set-and-exit\|Bare use saves\|isConfigSetDispatch" src docs README.md
+- [x] `grep -rn "config-set\|set-and-exit\|Bare use saves\|isConfigSetDispatch" src docs README.md
       MEMORY.md AGENTS.md index.js` → expect nothing stale.
-- [ ] KNOWN-ISSUES: strike `O1`, `O31` (surface removed) and `O15` (moot); close `O26` as documented
+- [x] KNOWN-ISSUES: strike `O1`, `O31` (surface removed) and `O15` (moot); close `O26` as documented
       behavior — `--seed` stays `--image`-only because validation cannot know whether `-m <id>` is
       an image model; the image REPL `/seed` remains the session-level control. Record provenance
       entries for each.
-- [ ] MEMORY: move the new contracts to their homes (Text vs Image for `/safe-mode`; Web search
+- [x] MEMORY: move the new contracts to their homes (Text vs Image for `/safe-mode`; Web search
       semantics for the export-format pref if related; command registry count), mark
       `§Pending surface cleanup` completed with a pointer to this file's final state.
-- [ ] AGENTS: sources-of-truth list mentions `SURFACE-CLEANUP.md` (added when the file landed).
-- [ ] Verify: gate green; `npx knip` clean (it will flag every leftover export).
+- [x] AGENTS: sources-of-truth list mentions `SURFACE-CLEANUP.md` (added when the file landed).
+- [x] Verify: gate green; `npx knip` clean (it will flag every leftover export).
 
 ### Stage 6 — release 4.0.0
 

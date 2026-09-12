@@ -26,7 +26,7 @@
 - `src/commands/list-models.js`, `list-endpoints.js` — exit-mode listings. `--list-models` asks for ZDR tags when the provider has a ZDR index (`meta.supportsZdr`), so OpenRouter rows carry `[zdr]`; `--list-endpoints <id>` resolves an explicit id against the text catalog plus the image catalog (image-only models are absent from the text one), deduped and text-first, with a failed image fetch falling back to text-only and warning like the picker (`Warning: could not load image models; showing text models only.`); the not-found hint names both catalog commands and a Venice image id prints the Venice-direct line. The interactive picker stays text-only.
 - `src/clipboard.js` — probe `pbcopy`/`clip`/`wl-copy`/`xclip`/`xsel`; testable platform override.
 - `src/ui/` — style, format, io, stream, markdown, md-it, wrap.
-- `src/config.js` — API key lookup, preferences persistence, `savePrefsBestEffort` (never throws), `applyPreferenceUpdates`/`syncPreferenceUpdates` (single merge helpers), `mergePreferenceState` (in-place merge skipping `__proto__`/`constructor`/`prototype` keys; used by every prefs writer), `getImageDefaults`/`mergeImageDefaults`, corrupt-prefs quarantine. `loadPreferences` strips prototype-polluting keys from JSON-parsed files on load.
+- `src/config.js` — API key lookup, preferences persistence, `savePrefsBestEffort` (never throws), `applyPreferenceUpdates`/`syncPreferenceUpdates` (single merge helpers), `mergePreferenceState` (in-place merge skipping `__proto__`/`constructor`/`prototype` keys; used by every prefs writer), `getImageDefaults`/`mergeImageDefaults`, corrupt-prefs quarantine. `loadPreferences` strips prototype-polluting keys from JSON-parsed files on load. `applyPreferenceUpdates` also carries `exportFormat` (the `--export-format` default set by `/export-format` or an `--export --export-format` run; later bare `--export` runs read it).
 - `src/model-selection.js` — interactive/non-interactive selection; `capabilityFlags`; image selection helpers.
 - `src/providers/` — OpenRouter/Venice chatCompletion contract, image APIs, scrape. OpenRouter endpoint URLs percent-encode each model-id path segment (the slash stays a separator) and reject `..` dot segments, so catalog-derived ids cannot reshape the request path.
 - `src/http.js` — `fetchWithTimeout`/`fetchWithRetry` (2 retries; 30s), SSRF-pinned transport (`resolveSafeUrl`, `pinnedFetch`, `fetchWithRedirects`, `readBodyWithDeadline`). Manual redirect hops are re-validated per hop and an https→http scheme downgrade is rejected outright. Every non-streaming provider response body is read through `readJsonBounded` (8 MiB cap + `readBodyWithDeadline` idle deadline; `IMAGE_GEN_RESPONSE_LIMIT_BYTES` = 128 MiB and `IMAGE_GEN_TIMEOUT_MS` idle at the two image-generation endpoints, whose JSON embeds base64 image bytes up to 4 variants × 20 MiB × 4/3): `fetchWithTimeout`'s timer only covers the header phase, so a slow-dribbling or unbounded body would otherwise hang the caller forever; the error body in `fetchWithRetry` is capped at 512 KiB with its idle deadline capped at the default 30s (a stalled or oversized error body still drives the retry decision from the status alone). The deliberate contract stays "slow-but-progressing survives" — an idle deadline resets per chunk, so a sub-deadline dribble is bounded by the byte cap, not by wall clock.
@@ -297,11 +297,11 @@ Half the rule set self-updates (`\p{Emoji_Presentation}` reads the runtime's ICU
 Approved-direction workstream for the 4.0.0 release: remove the bare "set a preference and exit"
 dispatch and the generation/export knobs that duplicate the image REPL. **The execution plan is
 `SURFACE-CLEANUP.md`** — scope, parity matrix, owner decisions D1–D7, staged checklist and
-verification; do not duplicate it here. Status: in progress — Stages 1-4 landed on
-`feat/surface-cleanup` (cut from `3.49.2`).
+verification; do not duplicate it here. Status: completed in 4.0.0 — Stages 1-4 landed on
+`feat/surface-cleanup` (cut from `3.49.2`) and the fenced/mooted backlog items are struck (F37).
 
-Pointers that stay here: the backlog fences `O1`/`O31` behind it and marks `O15` moot; `O26`'s
-`--seed` half is closed as documented behavior by the plan. `--config` stays a family-1 inspector
+Pointers that stay here: the backlog's `O1`/`O31` (their surface deleted), `O15` (moot) and
+`O26` (closed as documented behavior) are recorded in F37. `--config` stays a family-1 inspector
 (D7). Every other pref keeps an in-app setter (the plan's parity matrix).
 
 ## Tests, CI and platform notes
