@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, stat, writeFile, readdir } from 'node:fs/
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CliError } from '../src/errors.js'
-import { buildRpgSystemPrompt, expandRpgVariables, isPlaceholderName, loadRpgContext, loadRpgHistory, logRpgPrompt, parseRpgName, ensureRpgSessionsDir, importLegacyRpgHistory } from '../src/rpg.js'
+import { buildRpgSystemPrompt, expandRpgVariables, isPlaceholderName, loadRpgContext, loadRpgHistory, logRpgPrompt, flushRpgPromptLog, parseRpgName, ensureRpgSessionsDir, importLegacyRpgHistory } from '../src/rpg.js'
 import { saveSession } from '../src/sessions.js'
 
 async function tempDir(t) {
@@ -349,6 +349,24 @@ test('logRpgPrompt warns without throwing when the write fails', async (t) => {
 
   await logRpgPrompt(join(dir, 'missing'), { request: {} })
   assert.ok(warnings.some((w) => w.includes('could not log prompt') && w.includes('prompt-log.jsonl')))
+})
+
+test('flushRpgPromptLog waits for the issued appends and never rejects', async (t) => {
+  const dir = await tempDir(t)
+  t.mock.method(console, 'error', () => {})
+  t.mock.method(console, 'warn', () => {})
+
+  // Unawaited on purpose: this is the shape the callers use (they drop the
+  // chain), so the flush is the only thing that can wait for it.
+  logRpgPrompt(dir, { request: { messages: [{ role: 'user', content: 'hi' }] } })
+  logRpgPrompt(dir, { request: { messages: [{ role: 'user', content: 'again' }] } })
+  await flushRpgPromptLog()
+  const lines = (await readFile(join(dir, 'prompt-log.jsonl'), 'utf-8')).trim().split('\n')
+  assert.equal(lines.length, 2)
+
+  // A failed append only warns, so an exit path can flush unconditionally.
+  logRpgPrompt(join(dir, 'missing'), { request: {} })
+  await flushRpgPromptLog()
 })
 
 test('loadRpgContext returns the saved history alongside the rebuilt prompt', async (t) => {

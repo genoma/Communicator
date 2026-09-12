@@ -10,7 +10,7 @@ import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { loadAttachments, buildContent } from '../attachments.js'
 import { resolveArtifacts, printArtifactsSummary } from '../artifacts.js'
 import { resolveSessionFlags, attachGateOptions, persistSession, buildSessionContext, resumeSessionContext, assertResumeFlags } from '../session-setup.js'
-import { logRpgPrompt, ensureRpgSessionsDir, rpgSessionsDir } from '../rpg.js'
+import { logRpgPrompt, flushRpgPromptLog, ensureRpgSessionsDir, rpgSessionsDir } from '../rpg.js'
 import { getApiKey } from '../config.js'
 import { createE2eeSession } from '../e2ee.js'
 import { resumeCmd } from './resume.js'
@@ -262,6 +262,8 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     }
   } catch (err) {
     await removeEmptySessionClaim(dir, sessionId)
+    // A failed or aborted request has still issued its prompt-log append.
+    await flushRpgPromptLog()
     if (controller.signal.aborted) {
       console.error('\nInterrupted.')
       process.exit(130)
@@ -349,6 +351,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   // must stay untouched.
   if (opts.save === false) {
     if (!resumed) await removeEmptySessionClaim(dir, sessionId)
+    await flushRpgPromptLog()
     return
   }
 
@@ -357,4 +360,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   const finalState = state.toFinalState(provider.meta.name)
 
   await persistSession({ finalState, prefs, config: opts.config, rpgDir: opts.rpg, rpgCharName, rpgUserName, rpgFirstMessage })
+  // The caller exits the process as soon as this returns, so what the run
+  // issued has to be on disk first (see flushRpgPromptLog).
+  await flushRpgPromptLog()
 }

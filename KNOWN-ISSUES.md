@@ -17,10 +17,14 @@ This file tracks **defects**, not planned feature or flag-surface work. The surf
 removed those flags and the dispatch (and kept `--export-format` with a persisted default) is
 recorded in `SURFACE-CLEANUP.md`; it was never a defect item.
 
-Reference convention: the fixed entries are `F1`–`F42` and the open-list items `O1`–`O43`
+Reference convention: the fixed entries are `F1`–`F43` and the open-list items `O1`–`O43`
 (struck items stay in place, so both ranges keep growing). Every
 reference carries its prefix, so the two lists cannot be confused — do not renumber an
 existing entry, and do not cite a bare number.
+
+The open list is empty as of F43: every `O<n>` entry below is struck, and the `## Open —`
+sections stay in place as the audit trail of how each one closed (fixed, closed by decision, or
+moot) — none of them holds an actionable item any more.
 
 When an item is fixed: strike it in the same commit as the fix, and per
 `AGENTS.md` §Documentation & memory update `MEMORY.md` when behaviour changes.
@@ -503,6 +507,39 @@ F42. O42: the file-level `not ok - test/chat-loop.test.js` with `failureType: 'u
     `node --test` bypasses the whole wrapper.** CI runs the guard only through `npm test`, on Node 22
     and 24.
 
+## Fixed on `fix/rpg-prompt-log-flush` (kept for provenance)
+
+F43. O43: a `--rpg --debug` run no longer drops its prompt-log line when the process exits right
+after the request. The append chain `logRpgPrompt` (`src/rpg.js:331`) already maintained is now
+returned by the exported `flushRpgPromptLog` (`src/rpg.js:327-329`), and every deliberate exit path
+awaits it. One-shot: the request `catch` flushes before both the interrupt `process.exit(130)` and
+the rethrow (`src/commands/one-shot.js:354`), the `--no-save` return flushes at `:266` and the
+normal return at `:365` — so `src/cli-main.js:421`'s `process.exit(0)` can no longer race the write.
+Chat: `exitCleanly` flushes before it returns the final state (`src/chat.js:346`, the `/quit` and
+exit-outcome path) and the idle-SIGINT chain flushes alongside the exit save
+(`exitSavePromise ??= Promise.all([bestEffortExitSave(), flushRpgPromptLog()]).finally(() =>
+exit(130))`, `src/chat.js:327`). The append itself is unchanged: same serialized chain, same
+plain (non-atomic) write, same `Warning: could not log prompt to …` wording, same
+`[debug] prompt logged: …` notice, and the flush never rejects (each append catches its own
+failure), so awaiting it unconditionally is safe and total. Still exposed, all with the same narrow
+window (the append is usually already on disk by the time the path runs): the mid-stream Ctrl+C exit
+(`interruptedExit` in `src/turn-runner.js:93-105` saves via the injected `interruptSave` and then
+`exit(130)` without the flush), and the interactive `uncaughtException`/`beforeExit` handlers
+(`src/chat.js:329-338`), which are error/natural-exit paths rather than deliberate exits.
+Pin (the load-bearing part): the prompt log is written through `appendFile`, so
+`test/one-shot.test.js` mocks `node:fs/promises` (spread of the real module, before the src imports)
+to hold that single append open for 200 ms while everything else runs normally — a run that returned
+without flushing finds no file at all rather than one a poll eventually sees
+(`one-shot --rpg --debug does not return before the prompt log has landed`, `:679`; the two
+`--rpg --debug` tests lose their 1 s notice polls and read the file directly). The same technique
+pins the chat exits in `test/chat-prompt-log-flush.test.js` (`:110` `/quit`, `:129` idle SIGINT,
+which records what was on disk at the instant `exit(130)` runs) and `test/rpg.test.js:354` pins the
+export itself (two unawaited appends land after one flush, and a failed append still leaves the
+flush resolving). Fail-before evidence: with the flush removed from `src/commands/one-shot.js` all
+three one-shot tests red with `ENOENT` at ~2 ms against the 200 ms append, and with it removed from
+`src/chat.js` both chat tests red (the `/quit` read gives `ENOENT`, the SIGINT exit records
+`logAtExit: null`) — verified on this branch.
+
 ## Open — piped-output purity
 
 The contract (`MEMORY.md` §Display consistency): a piped one-shot writes **only** the answer
@@ -733,7 +770,7 @@ O23. ~~**Piped prompts are `.trim()`ed** (`src/cli-utils.js:19`), so a piped dif
     spaces); only one trailing shell newline is dropped, and whitespace-only input is still the
     empty prompt; see F33.
 
-O43. **A one-shot RPG run can drop its `--debug` prompt-log line when it exits right after the
+O43. ~~**A one-shot RPG run can drop its `--debug` prompt-log line when it exits right after the
     request.** `logRpgPrompt` (`src/rpg.js:322-335`) chains the append and both call sites drop the
     promise (`void logRpgPrompt(...)` at `src/commands/one-shot.js:195` and `src/chat.js:348`), while
     `src/cli-main.js:421` calls `process.exit(0)` as soon as `oneShotCmd` returns — an exit discards
@@ -743,7 +780,8 @@ O43. **A one-shot RPG run can drop its `--debug` prompt-log line when it exits r
     window is narrow but real. Test-side answer only so far (both `--rpg --debug` tests in
     `test/one-shot.test.js` poll up to 1 s for the `prompt logged:` notice and still fail loudly on a
     missing file, which neither hides nor fixes this): awaiting the append (or flushing the chain) on
-    the exit path is a separate change.
+    the exit path is a separate change.~~ **Fixed** — the run flushes the log chain on every
+    deliberate exit path before it returns or exits; see F43.
 
 ## Open — non-interactive reachability
 

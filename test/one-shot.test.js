@@ -1,5 +1,6 @@
 import { test, mock, after } from 'node:test'
 import assert from 'node:assert/strict'
+import * as realFs from 'node:fs/promises'
 import { mkdtemp, rm, readFile, readdir, writeFile } from 'node:fs/promises'
 import { Readable } from 'node:stream'
 import { tmpdir } from 'node:os'
@@ -20,6 +21,22 @@ mock.module('@inquirer/prompts', {
     search: async () => { throw new ExitPromptError() },
     select: async () => { throw new ExitPromptError() },
     checkbox: async () => { throw new ExitPromptError() },
+  },
+})
+
+// Only `appendFile` is intercepted, and only while a test asks for it: the
+// prompt log is written through it (src/rpg.js), and holding that one write open
+// is what makes "the log is already there when the run returns" a deterministic
+// assertion instead of a lucky timing. Everything else delegates to the real
+// module.
+let appendFileDelayMs = 0
+mock.module('node:fs/promises', {
+  namedExports: {
+    ...realFs,
+    appendFile: async (...args) => {
+      if (appendFileDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, appendFileDelayMs))
+      return realFs.appendFile(...args)
+    },
   },
 })
 
@@ -653,6 +670,37 @@ test('one-shot sends no post-history message when none is provided', async (t) =
   assert.deepEqual(bodies[0].messages[2], { role: 'user', content: 'Hello' })
 })
 
+// The prompt log is an artifact the run was asked for, so the run must not
+// return — and the process must not exit — before the append has landed: every
+// exit path awaits the log chain (src/rpg.js `flushRpgPromptLog`). Holding that
+// one append open past the whole run makes the assertion deterministic: a run
+// that returned without flushing finds no file at all, not a file that a poll
+// eventually sees.
+test('one-shot --rpg --debug does not return before the prompt log has landed', async (t) => {
+  const bodies = []
+  mockOpenRouterStream(t, [], bodies)
+  withApiKey(t)
+  const file = await tempConfig(t)
+  const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(rpgDir, { recursive: true, force: true }))
+  mockPipedStdout(t)
+  t.mock.method(console, 'error', () => {})
+  mockExit(t)
+  appendFileDelayMs = 200
+  t.after(() => { appendFileDelayMs = 0 })
+
+  const { exited } = await runOneShot(t, {
+    overrides: { config: file, rpg: rpgDir, debug: true },
+    systemPrompt: 'RPG system prompt',
+    rpgFirstMessage: 'The gate creaks open.',
+  })
+
+  assert.equal(exited, false)
+  const lines = (await readFile(join(rpgDir, 'prompt-log.jsonl'), 'utf-8')).trim().split('\n')
+  assert.equal(lines.length, 1)
+  assert.deepEqual(JSON.parse(lines[0]).request, bodies[0])
+})
+
 test('one-shot with --rpg --debug logs the request body to prompt-log.jsonl', async (t) => {
   const bodies = []
   mockOpenRouterStream(t, [], bodies)
@@ -664,6 +712,8 @@ test('one-shot with --rpg --debug logs the request body to prompt-log.jsonl', as
   const errors = []
   t.mock.method(console, 'error', (msg) => errors.push(String(msg)))
   mockExit(t)
+  appendFileDelayMs = 200
+  t.after(() => { appendFileDelayMs = 0 })
 
   const { exited } = await runOneShot(t, {
     overrides: { config: file, rpg: rpgDir, debug: true },
@@ -675,11 +725,8 @@ test('one-shot with --rpg --debug logs the request body to prompt-log.jsonl', as
   assert.equal(bodies.length, 1)
   assert.equal(bodies[0].messages[0].content, 'RPG system prompt')
 
-  // The run appends the prompt with a fire-and-forget logRpgPrompt (src/rpg.js),
-  // so both the file and its debug notice can land a tick after the run returns.
-  for (let tries = 0; tries < 200 && !errors.some((line) => line.includes('prompt logged:')); tries++) {
-    await new Promise((resolve) => setTimeout(resolve, 5))
-  }
+  // The append is held open (see the pin above), and the run still returns with
+  // both the file and its debug notice in place.
   const raw = await readFile(join(rpgDir, 'prompt-log.jsonl'), 'utf-8')
   const lines = raw.trim().split('\n')
   assert.equal(lines.length, 1)
@@ -753,6 +800,8 @@ test('one-shot --no-save still writes the prompt log --debug asked for', async (
   const errors = []
   t.mock.method(console, 'error', (msg) => errors.push(String(msg)))
   mockExit(t)
+  appendFileDelayMs = 200
+  t.after(() => { appendFileDelayMs = 0 })
 
   const { exited } = await runOneShot(t, {
     overrides: { config: file, rpg: rpgDir, save: false, debug: true },
@@ -762,12 +811,9 @@ test('one-shot --no-save still writes the prompt log --debug asked for', async (
   assert.equal(exited, false)
   // --debug is an explicit request for a log, so --no-save still writes it: the
   // flag governs the saved session state (session file, chapter, prefs), not
-  // the artifacts the run was asked to produce.
-  // The run appends the prompt with a fire-and-forget logRpgPrompt (src/rpg.js),
-  // so both the file and its debug notice can land a tick after the run returns.
-  for (let tries = 0; tries < 200 && !errors.some((line) => line.includes('prompt logged:')); tries++) {
-    await new Promise((resolve) => setTimeout(resolve, 5))
-  }
+  // the artifacts the run was asked to produce. This return path flushes the
+  // log chain too, so the read below needs no wait even with the append held
+  // open (see the pin above).
   const logged = (await readFile(join(rpgDir, 'prompt-log.jsonl'), 'utf-8')).trim().split('\n')
   assert.equal(logged.length, 1)
   assert.deepEqual(JSON.parse(logged[0]).request, bodies[0])

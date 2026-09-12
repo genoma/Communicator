@@ -319,7 +319,15 @@ export async function importLegacyRpgHistory({ rpgDir, history, historyUpdatedAt
 // A module-level promise chain serializes the appends so fast consecutive
 // turns can never land out of order. Failures warn without throwing, like
 // the removed legacy writer.
+// The append is issued while the request body is built (the caller drops the
+// returned chain), so an exit right after a failed or aborted request would
+// discard it: every deliberate exit path awaits `flushRpgPromptLog` first, and
+// that call is safe to make unconditionally — the chain never rejects.
 let logChain = Promise.resolve()
+export function flushRpgPromptLog() {
+  return logChain
+}
+
 export function logRpgPrompt(dir, entry) {
   const line = JSON.stringify(entry) + '\n'
   logChain = logChain

@@ -9,7 +9,7 @@ import { createLoader } from './ui/loader.js'
 import { dim, sep, you, char } from './ui/style.js'
 import { out } from './ui/io.js'
 import { ensureSessionsDir, generateSessionId, persistSessionFile, persistSessionFileTo, buildSessionPayload, removeEmptySessionClaim } from './sessions.js'
-import { logRpgPrompt, rpgSessionsDir, ensureRpgSessionsDir } from './rpg.js'
+import { logRpgPrompt, flushRpgPromptLog, rpgSessionsDir, ensureRpgSessionsDir } from './rpg.js'
 import { savePreferences, syncPreferenceUpdates, savePrefsBestEffort } from './config.js'
 import { copyText } from './clipboard.js'
 import { ChatState } from './chat-state.js'
@@ -322,8 +322,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
       }
       // A second Ctrl+C while the exit save is in flight must not call
       // exit(130) early and truncate the write; the first press chains the
-      // exit onto the save, so repeat presses are no-ops.
-      exitSavePromise ??= bestEffortExitSave().finally(() => exit(130))
+      // exit onto the save, so repeat presses are no-ops. The exit waits for a
+      // pending prompt-log append too (see flushRpgPromptLog).
+      exitSavePromise ??= Promise.all([bestEffortExitSave(), flushRpgPromptLog()]).finally(() => exit(130))
     },
     beforeExit: () => {
       void bestEffortSave()
@@ -340,6 +341,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
   const exitCleanly = async () => {
     cleanupSignals()
     await bestEffortSave()
+    // The caller exits the process as soon as this returns, so what the run
+    // issued has to be on disk first (see flushRpgPromptLog).
+    await flushRpgPromptLog()
     return state.toFinalState(provider.meta.name)
   }
 
