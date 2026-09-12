@@ -13,12 +13,15 @@ test('npm test routes through the color-deterministic wrapper', async () => {
   assert.equal(packageJson.scripts['test:coverage'], 'node scripts/run-tests.js --experimental-test-coverage')
 })
 
-test('the wrapper forces plain styleText output before spawning the runner', async () => {
+test('the wrapper clears the ambient color, key and debug environment before spawning the runner', async () => {
   const source = await readFile(join(ROOT, 'scripts', 'run-tests.js'), 'utf8')
   assert.match(source, /process\.env\.NO_COLOR = '1'/)
   assert.match(source, /delete process\.env\.FORCE_COLOR/)
   assert.match(source, /delete process\.env\.OPENROUTER_API_KEY/)
   assert.match(source, /delete process\.env\.VENICE_API_KEY/)
+  // COMMUNICATOR_DEBUG makes debug() print error stacks, which would break the
+  // tests asserting a run's exact stderr on a developer shell that exports it.
+  assert.match(source, /delete process\.env\.COMMUNICATOR_DEBUG/)
   assert.match(source, /'--test'/)
   assert.match(source, /--experimental-test-module-mocks/)
 })

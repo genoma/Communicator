@@ -39,9 +39,10 @@ const exclusionError = (prefix, forbidden) =>
   `Error: ${prefix} and the session flags (${SESSION_FLAGS_LIST}) cannot be combined with ${forbidden}.`
 
 // Commander keeps an explicitly empty optional value (`--delete ''`, `--delete=`)
-// as `''` instead of `true`: no id was given either way, so it is the picker
-// form and is gated exactly like the bare flag.
-const isBarePickerValue = (value) => value === true || value === ''
+// as `''` instead of `true`: no id was given either way, so it takes the bare
+// flag's no-id form — the picker for --resume/--export/--delete, the chapter
+// fallback for --rpg --resume — and is gated exactly like it.
+export const isBarePickerValue = (value) => value === true || value === ''
 
 // Flags an exit path (--list-*, --export, --delete, --delete-all-sessions)
 // exits before honoring: --zdr/--e2ee shape a chat session, and the pure prefs
@@ -160,7 +161,9 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --debug requires --rpg.')
   }
 
-  if (opts.rpg !== undefined && opts.resume !== undefined && opts.resume !== true) {
+  // An explicitly empty value (`--rpg <dir> --resume=`) names no id either, so
+  // it takes the bare flag's chapter fallback instead of tripping this rule.
+  if (opts.rpg !== undefined && opts.resume !== undefined && !isBarePickerValue(opts.resume)) {
     errors.push("Error: --rpg --resume does not take a session id (the story resumes from the RPG directory's chapter sessions, or its history.json for stories saved before that layout).")
   }
 

@@ -608,7 +608,7 @@ O22. ~~**Every one-shot run rewrites global state**: it claims a session file an
     are atomic but unsynchronised, so concurrent agent/CI invocations are read-modify-write on
     the same prefs file and can lose updates. An opt-in no-save switch for headless runs is the
     candidate fix.~~ **Fixed** — `--no-save` gives headless runs exactly that switch: no session
-    file (the claim is removed), no prefs write, nothing in the `--rpg` dir; see F40.
+    file (the claim is removed), no prefs write, no chapter in the `--rpg` dir; see F40.
 O23. ~~**Piped prompts are `.trim()`ed** (`src/cli-utils.js:19`), so a piped diff or code block
     loses its leading indentation and trailing newline before reaching the model.~~ **Fixed** —
     piped input is preserved as prompt content (indentation, internal blank lines, trailing

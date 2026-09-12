@@ -16,20 +16,22 @@ automatically from the session files.
 
 `--no-save` runs a headless one-shot (a prompt argument or piped stdin) without
 saving the session state it would otherwise rewrite: no session file — and no
-empty session claim — is written, no `.index.json` entry is added or changed,
-no preference is saved, and no chapter file lands in the `--rpg` directory. The
-sessions directory and `~/.communicator.json` are exactly as they were, which is
-the point for smoke tests, scripted runs and CI. An interactive session always
-saves (so `--no-save` rejects a run with neither a prompt argument nor piped
-stdin) and `--resume <id>` reads the session and answers without rewriting its
-file. Artifacts the run was asked for are still written: `--image` writes the
-generated images (and `--output-dir` copies), downloaded artifacts are stored as
-attachment blobs under the sessions dir (`attachments/<session id>/`),
-`--rpg <dir> --debug` writes `prompt-log.jsonl` into the story directory, and a
-`--rpg` directory that has no story files yet gets its fill-in templates — that
-launch stops at the setup notice without generating, exactly as it does without
-`--no-save`. A run also reserves its session id in `<dir>/sessions/` and removes
-the claim again, so that directory is created when it did not exist.
+empty session claim — is written, no `.index.json` entry is added or changed for
+this run (a missing or stale index is rebuilt exactly as any listing rebuilds
+one), no preference is saved, and no chapter file lands in the `--rpg`
+directory. The sessions directory and `~/.communicator.json` are exactly as
+they were, which is the point for smoke tests, scripted runs and CI. An
+interactive session always saves (so `--no-save` rejects a run with neither a
+prompt argument nor piped stdin) and `--resume <id>` reads the session and
+answers without rewriting its file. Artifacts the run was asked for are still
+written: `--image` writes the generated images (and `--output-dir` copies),
+downloaded artifacts are stored as attachment blobs under the sessions dir
+(`attachments/<session id>/`), `--rpg <dir> --debug` writes `prompt-log.jsonl`
+into the story directory, and a `--rpg` directory that has no story files yet
+gets its fill-in templates — that launch stops at the setup notice without
+generating, exactly as it does without `--no-save`. A run also reserves its
+session id in `<dir>/sessions/` and removes the claim again, so that directory
+is created when it did not exist.
 
 ## Listing sessions
 

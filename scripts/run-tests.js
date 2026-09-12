@@ -13,6 +13,12 @@ delete process.env.FORCE_COLOR
 delete process.env.OPENROUTER_API_KEY
 delete process.env.VENICE_API_KEY
 
+// COMMUNICATOR_DEBUG makes src/ui/io.js's debug() print the stack of every
+// error a run reports, so a developer shell exporting it would fail the tests
+// that assert a run's exact stderr. CI never sets it; clearing it here keeps
+// the suite's output identical either way.
+delete process.env.COMMUNICATOR_DEBUG
+
 // src/constants.js resolves DATA_DIR and DEFAULT_CONFIG_FILE from the home
 // directory at module load, so every unhomed test file would read and write
 // the developer's real ~/.communicator.json and ~/.communicator/. Pointing

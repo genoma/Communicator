@@ -1341,6 +1341,17 @@ test('--e2ee resuming an OpenRouter session reports the provider before the miss
   assert.ok(!err.some((l) => /not created with --e2ee/.test(l)))
 })
 
+// The five story files of a filled-in --rpg directory (no chapter: a story
+// directory that has never been played, whether fresh or holding only a legacy
+// history.json).
+async function writeRpgStoryFiles(dir) {
+  await writeFile(join(dir, 'char.md'), '# Zara\n\n## Personality\nSharp and warm.\n')
+  await writeFile(join(dir, 'user.md'), '# Alex\n\n## Description\nThe operator.\n')
+  await writeFile(join(dir, 'prompt.md'), '## Tone\nNoir.\n')
+  await writeFile(join(dir, 'scenario.md'), '## Current scene\nA rainy street.\n')
+  await writeFile(join(dir, 'first-message.md'), 'The rain had stopped by the time she arrived.\n')
+}
+
 // --scrape's deferred path reaches scrapeForSession (src/cli-main.js), which
 // rejects a provider with no scrapePage; the resolved-provider guard runs
 // earlier still, so a refused run never bills the page. Both RPG resume routes
@@ -1350,11 +1361,7 @@ test('--e2ee resuming an OpenRouter session reports the provider before the miss
 async function seedRpgChapter(t, { providerType = 'venice', providerName = 'Venice', model = 'venice/model', e2ee = false } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
-  await writeFile(join(dir, 'char.md'), '# Zara\n\n## Personality\nSharp and warm.\n')
-  await writeFile(join(dir, 'user.md'), '# Alex\n\n## Description\nThe operator.\n')
-  await writeFile(join(dir, 'prompt.md'), '## Tone\nNoir.\n')
-  await writeFile(join(dir, 'scenario.md'), '## Current scene\nA rainy street.\n')
-  await writeFile(join(dir, 'first-message.md'), 'The rain had stopped by the time she arrived.\n')
+  await writeRpgStoryFiles(dir)
   const { ensureRpgSessionsDir, rpgSessionsDir } = await import('../src/rpg.js')
   const { saveSession } = await import('../src/sessions.js')
   await ensureRpgSessionsDir(dir)
@@ -1521,6 +1528,89 @@ test('--rpg setup exit does not warn about e2ee at rest', async (t) => {
 
   assert.match(out.join('\n'), /RPG mode setup: created/)
   assert.deepEqual(warnings, [])
+})
+
+test('--no-save --rpg on a fresh directory writes the templates and stops at the setup notice', async (t) => {
+  // The templates are an artifact the run was asked for, so --no-save writes
+  // them and stops at the setup notice like any other fresh --rpg launch.
+  withTTY(t, false)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+
+  const { out } = await runAndExit(t, { rpg: dir, save: false }, 'Hello', 0)
+
+  assert.match(out.join('\n'), /RPG mode setup: created/)
+  for (const file of ['char.md', 'user.md', 'prompt.md', 'scenario.md', 'first-message.md']) {
+    assert.match(await readFile(join(dir, file), 'utf-8'), /RPG_TEMPLATE/, `${file} must be a fill-in template`)
+  }
+  assert.equal(await readFile(join(dir, 'post-history-instruction.md'), 'utf-8'), '')
+  // The launch exited before generating, so no chapter session was claimed.
+  const chapters = await readdir(join(dir, 'sessions')).catch(() => [])
+  assert.deepEqual(chapters.filter((f) => f.endsWith('.json')), [])
+})
+
+test('--no-save skips the legacy RPG import: the answer lands, no chapter and no notice', async (t) => {
+  // The import writes a chapter, so --no-save leaves it for a run that may
+  // save; the story directory keeps its legacy history.json and gains no
+  // chapter, while the run itself answers exactly as it would otherwise.
+  withTTY(t, false)
+  withStdoutTTY(t, false)
+  withVeniceApiKey(t)
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  await writeRpgStoryFiles(dir)
+  await writeFile(join(dir, 'history.json'), JSON.stringify({
+    updatedAt: new Date().toISOString(),
+    messages: [
+      { role: 'assistant', content: 'The gate creaks open.' },
+      { role: 'user', content: 'I step through.' },
+    ],
+  }, null, 2) + '\n')
+  const configFile = await tempConfig(t)
+  // The Venice text catalog is process-cached: a listing mocked empty by an
+  // earlier test would leak into this model lookup.
+  const { resetModelCaches } = await import('../src/providers/venice.js')
+  resetModelCaches()
+  t.after(resetModelCaches)
+  mockVeniceScrapeFetch(t)
+  const writes = []
+  t.mock.method(process.stdout, 'write', (chunk) => { writes.push(String(chunk)); return true })
+
+  const { out, err } = await runAndExit(t, {
+    provider: 'venice',
+    model: 'venice-model',
+    config: configFile,
+    rpg: dir,
+    save: false,
+  }, 'Explain this', 0)
+
+  assert.ok(writes.join('').includes('Summary'), 'the run still answers')
+  assert.ok([...out, ...err].every((line) => !line.includes('Migrated')), `no migration notice: ${JSON.stringify([...out, ...err])}`)
+  // The legacy story still counts as the one earlier session, exactly as
+  // without --no-save.
+  assert.ok(err.some((line) => line.includes(`Starting a new story in ${dir} (1 earlier session available`)), `errors: ${JSON.stringify(err)}`)
+  // The 0-byte chapter claim this run made is removed again: nothing to resume.
+  const chapters = await readdir(join(dir, 'sessions')).catch(() => [])
+  assert.deepEqual(chapters.filter((f) => f.endsWith('.json')), [])
+})
+
+test('an explicitly empty --rpg --resume= continues the story like the bare flag', async (t) => {
+  // Commander keeps --resume= as '': no id was given, so it is the bare flag's
+  // chapter fallback rather than a new story in the same directory.
+  withTTY(t, false)
+  withStdoutTTY(t, false)
+  withVeniceApiKey(t)
+  const dir = await seedRpgChapter(t, { providerType: 'venice', providerName: 'Venice', model: 'venice/model' })
+  const configFile = await tempConfig(t)
+  mockVeniceScrapeFetch(t)
+  const writes = []
+  t.mock.method(process.stdout, 'write', (chunk) => { writes.push(String(chunk)); return true })
+
+  const { err } = await runAndExit(t, { provider: 'venice', config: configFile, rpg: dir, resume: '' }, 'Hello', 0)
+
+  assert.ok(writes.join('').includes('Summary'))
+  assert.ok(err.some((line) => line.includes(`Resumed RPG conversation from ${dir}/sessions/`)), `errors: ${JSON.stringify(err)}`)
+  assert.ok(err.every((line) => !line.includes('Starting a new story')))
 })
 
 test('--rpg --resume --scrape of an OpenRouter chapter fails loudly, never silently', async (t) => {

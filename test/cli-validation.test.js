@@ -159,6 +159,10 @@ test('--rpg rejects --system-prompt and a session-id --resume', () => {
     ["Error: --rpg --resume does not take a session id (the story resumes from the RPG directory's chapter sessions, or its history.json for stories saved before that layout)."]
   )
   assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg', resume: true }), TTY), [])
+  // An explicitly empty value (--rpg <dir> --resume=) names no id either, so it
+  // is the bare flag's chapter fallback instead of tripping this rule.
+  assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg', resume: '' }), TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg', resume: '' }), NO_TTY), [])
   assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg', resume: true }), NO_TTY), [])
   assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg', resume: true }), { ...TTY, ...PROMPT() }), [])
   assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg' }), TTY), [])
@@ -369,6 +373,7 @@ test('bare --rpg --resume stays exempt from the TTY gate', () => {
   // A piped chapter resume falls back to the most recent chapter instead of
   // opening the picker (src/commands/rpg-resume.js).
   assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg', resume: true }), NO_TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg', resume: '' }), NO_TTY), [])
   assert.deepEqual(validateCliFlags(opts({ rpg: '/tmp/rpg', resume: 'x' }), NO_TTY), [
     "Error: --rpg --resume does not take a session id (the story resumes from the RPG directory's chapter sessions, or its history.json for stories saved before that layout).",
   ])

@@ -344,7 +344,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     // survive exactly like the interactive resume path.
     scrapes: (resumed?.scrapes ?? 0) + (scraped ? 1 : 0),
   })
-  // --no-save leaves no file behind: the claim this run created is removed
+  // --no-save saves no session state: the claim this run created is removed
   // instead of filled in. A resumed run never claimed one, and its own file
   // must stay untouched.
   if (opts.save === false) {

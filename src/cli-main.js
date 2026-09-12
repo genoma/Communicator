@@ -6,7 +6,7 @@ import { sanitizeAnsi } from './ui/hyperlink.js'
 import { err, debug } from './ui/io.js'
 import { resolveSmoothSpeed, resolveTemperatureFlag, resolveTopPFlag, resolveWebResultsFlag, resolveReasoningFlag, resolveAspectRatio, resolveImageFormat, resolveExportFormat } from './flags.js'
 import { resolveFlagOrExit, fail } from './cli-utils.js'
-import { validateCliFlags } from './cli-validation.js'
+import { validateCliFlags, isBarePickerValue } from './cli-validation.js'
 import { parseScrapeUrl, scrapeContext } from './scrape.js'
 import { seedModelFetch } from './model-selection.js'
 import { loadRpgContext, rpgSessionsDir } from './rpg.js'
@@ -104,8 +104,13 @@ export async function runCli(opts, promptArg) {
 
 async function main(opts, promptArg) {
   const providerType = opts.provider || 'openrouter'
-  // --no-save runs read and generate normally but must leave no file behind.
+  // --no-save runs read and generate normally but must leave no saved session
+  // state behind: no session file, no preferences write, no chapter.
   const noSave = opts.save === false
+  // A bare --resume, or an explicitly empty --resume= that Commander keeps as
+  // '': no session id was given, so an RPG run continues the story (chapter
+  // fallback) instead of starting a new one.
+  const rpgResumeNoId = opts.rpg !== undefined && isBarePickerValue(opts.resume)
 
   // Numeric session flags are validated up front so an invalid value errors
   // with its own message regardless of the path (exit modes, image runs,
@@ -159,8 +164,8 @@ async function main(opts, promptArg) {
     // A story dir that only holds the legacy history.json log gets it
     // imported once as chapter #1; afterwards history.json is read-only
     // (and no longer written), and every run saves one chapter session.
-    // --no-save writes nothing to the --rpg dir, so the import waits for a run
-    // that may save (nothing was migrated, and nothing is announced).
+    // --no-save saves no chapter, so the import waits for a run that may save
+    // (nothing was migrated, and nothing is announced).
     const { importLegacyRpgHistory } = await import('./rpg.js')
     const migrated = noSave ? null : await importLegacyRpgHistory({
       rpgDir: rpgContext.dir,
@@ -180,7 +185,7 @@ async function main(opts, promptArg) {
     }
     // A bare --resume (no session id) is the only way to continue a story;
     // without it the same directory starts a brand-new one.
-    if (opts.resume === true) {
+    if (rpgResumeNoId) {
       // Chapter sessions take precedence over the legacy history.json: the
       // only chapter resumes directly, more than one opens the same picker
       // a normal -r uses (piped one-shots fall back to the most recent
@@ -364,7 +369,7 @@ async function main(opts, promptArg) {
 
   // Accepted: a resumed RPG run announces itself only now (its notes were held
   // back so a refused resume stays silent). Fresh runs already printed theirs.
-  if (opts.rpg !== undefined && opts.resume === true) printRpgOutput()
+  if (rpgResumeNoId) printRpgOutput()
 
   const scrapeProvider = opts.scrape !== undefined
     ? (rpgResume ? getProvider(rpgResume.providerType ?? providerType) : provider)
@@ -380,7 +385,7 @@ async function main(opts, promptArg) {
   const rpgFirstMessage = rpgContext?.firstMessage ?? null
   const rpgCharName = rpgContext?.charName ?? null
   const rpgUserName = rpgContext?.userName ?? null
-  const rpgHistory = opts.rpg !== undefined && opts.resume === true ? (rpgResume?.turns ?? rpgContext?.history ?? null) : null
+  const rpgHistory = rpgResumeNoId ? (rpgResume?.turns ?? rpgContext?.history ?? null) : null
   const rpgPostHistoryInstruction = rpgContext?.postHistoryInstruction ?? null
 
   const scraped = opts.scrape !== undefined
