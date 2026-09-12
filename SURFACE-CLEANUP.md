@@ -42,8 +42,10 @@ macOS/Ubuntu/Windows for `3.49.2`.
   `prefs.exportFormat`, later `--export` runs read it, and `/export-format markdown|jsonl` sets it
   in chat (parity rule: every pref needs an in-app setter).
 - **D4 — explicit pixels: dropped.** `--width`/`--height` go with no `/size` replacement. Sizing
-  is capability-driven (aspect list or pixel-model divisor; verified live against all 41 Venice
-  image models: 34 aspect-list, 8 pixel — divisors 8/16 plus `bria-bg-remover`'s 1).
+  is capability-driven (aspect list or pixel-model divisor; the 4.0.0-era snapshot read roughly
+  34 aspect-list + 8 pixel across the then-41 Venice image models, divisors 8/16 plus
+  `bria-bg-remover`'s 1 — live on 2026-09-12 the catalog was 41: 33 aspect-list, 7 pixel-divisor
+  (8 or 16), 1 utility).
 - **D5 — budget flag: removed entirely.** "Budget goes and stays in chat": the `--budget` flag and
   the `prefs.budget` fallback in `resolveSessionFlags` both go; `/budget <usd>` is the single cap
   path; a resume still restores the session's own cap from its payload.
