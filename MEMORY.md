@@ -294,120 +294,15 @@ Half the rule set self-updates (`\p{Emoji_Presentation}` reads the runtime's ICU
 
 ## Pending surface cleanup
 
-Approved-direction workstream, not a defect list. **This section is the approval document**: the
-direction is approved, the plan below is not started — confirm before touching code. The backlog
-fences `O1` and `O31` behind it (their surface disappears rather than getting a rule) and marks
-`O15` moot pending it; `O18` is already closed by decision (D7), and `O26` keeps its `--seed` half
-(the `--image`-only rule is not part of this cleanup).
+Approved-direction workstream for the 4.0.0 release: remove the bare "set a preference and exit"
+dispatch and the generation/export knobs that duplicate the image REPL. **The execution plan is
+`SURFACE-CLEANUP.md`** — scope, parity matrix, owner decisions D1–D7, staged checklist and
+verification; do not duplicate it here. Status: approved, not started (branch
+`feat/surface-cleanup` cut from `3.49.2`).
 
-**Scope — removed outright.** Image sizing knobs that duplicate a REPL command or a surviving
-default: `--variants`, `--resolution`, `--quality`, `--width`, `--height`. The image REPL's
-`/variants`, `/resolution` and `/quality` keep persisting per-provider defaults; `--width` and
-`--height` have no REPL equivalent today, which is decision D4. `--export-format` stays and gains
-a persisted default (D3): the flag only ever existed with `--export` (validation requires it), so
-an export run writes `prefs.exportFormat` and later exports read it, plus `/export-format
-markdown|jsonl` in text chat sets it in-app.
-
-**Scope — the bare "set a preference and exit" dispatch.** `src/commands/config-set.js` (whole
-file), its two call sites in `src/cli-main.js` (TTY and piped setter branches), and
-`isConfigSetDispatch` / `isPureConfigSetter` / `hasConfigSetterFlags` / `isConfigSetter` in
-`src/cli-validation.js` (validation used them only for the `--web-results` deferral, which becomes
-a resume-only deferral again). Affected flags keep their run forms: `-m`, `--temperature`, `--top-p`, `--reasoning-effort`,
-`--web-search`, `--web-results`, `--smooth-speed`, `--no-smooth-streaming`, `--compact-thinking`,
-`--no-watermark`, `--no-safe-mode`, `--aspect-ratio`, `--image-format`, `--output-dir`. `--budget`
-is removed entirely rather than kept bare-only (D5). Removing the dispatch also
-removes the last place a provider-only flag is accepted with no request, and drops
-`config-set.js`'s unconditional stdout notices (`KNOWN-ISSUES` O1) with it.
-
-**Parity requirement (approved): every pref the bare setters wrote must stay settable in-app.**
-Coverage today:
-
-| pref | bare form | in-app setter | after cleanup |
-|------|-----------|---------------|---------------|
-| `lastModel` / `lastProvider` | `-m <id>` alone | picker, `/model` | ok |
-| `temperature[model]` | `--temperature` | `/temp` (run flag persists too) | ok |
-| `topP[model]` | `--top-p` | `/top-p` (run flag persists too) | ok |
-| `reasoningEffort[model]` | `--reasoning-effort` | `/reasoning` (run flag persists too) | ok |
-| `webSearch[model]` | `--web-search` | `/web-search` (run flag persists too) | ok |
-| `webResults` | `--web-results` | `/web-results` (interactive run persists too) | ok |
-| `smoothSpeed`, `smoothStreaming` | `--smooth-speed`, `--no-smooth-streaming` | `/smooth` | ok (command; the flag itself never persisted on a run) |
-| `compactThinking` | `--compact-thinking` | `/compact-thinking` | ok (command; same) |
-| `hideWatermark` | `--no-watermark` | image REPL `/watermark`; run flag persists | ok |
-| `safeMode` | `--no-safe-mode` | run flag persists; no command today | ok |
-| `imageDefaults[].aspectRatio` | `--aspect-ratio` | image REPL `/aspect`; run flag persists | ok |
-| `imageDefaults[].format` | `--image-format` | image REPL `/format`; run flag persists | ok |
-| **`budget`** | `--budget` | `/budget` (session-only, O16) | flag and standing pref both removed (D5); `/budget` is the only cap path |
-| `outputDir` | `--output-dir` | `--export --output-dir` persists (`src/cli-main.js:212`, `:217-223`) | ok (D2) |
-| `exportFormat` (new) | — (`--export-format` already requires `--export`) | `/export-format markdown\|jsonl` (D3); an `--export --export-format` run persists | ok (D3) |
-
-Image prefs keep living in the image REPL per the command-separation contract; no image command
-moves into text chat.
-
-**Decisions (owner calls).**
-- D1 — stood down: `/budget` stays session-only and there is no standing-budget command; the
-  standing `prefs.budget` default goes with `--budget` (D5), so a cap is always per-session.
-- D2 — resolved without a command: `--export --output-dir <path>` already persists
-  `prefs.outputDir` (`src/cli-main.js:212` reads it, `:217-223` writes it back), so the export
-  one-shot the owner uses is the setter; the bare `--output-dir` form goes and the validation rule
-  becomes "--output-dir requires --export or --image".
-- D3 — resolved: `--export-format` stays AND becomes a persisted preference. It never had a bare
-  setter (validation requires `--export`), so the write happens on an export run, mirroring
-  `--output-dir`: `--export --export-format jsonl` persists `prefs.exportFormat = 'jsonl'`, later
-  `--export` runs default to it, and `/export-format markdown|jsonl` in text chat sets it without
-  running an export (parity rule: every pref needs an in-app setter).
-- D4 — resolved: drop explicit pixel sizing with the flags; no `/size` command. Sizing stays
-  capability-driven — aspect models validate against their advertised `aspect_ratio` list (live:
-  Venice lists e.g. `1:1, 3:2, 16:9, 21:9, 9:16, 2:3, 3:4, 4:5`), pixel models derive the pixels
-  from the model's `widthHeightDivisor` over the same hardcoded ratio presets
-  (`src/image-sizing.js`, whose comment records the live API facts: the 1280 cap per side and the
-  API divisor winning over the web UI's rounding), and resolution/quality tiers are advertised
-  lists validated per model. Live check of all 41 Venice image models: 34 advertise an aspect list
-  (several also resolutions/qualities) and 8 are pixel models (divisors 8 or 16, plus
-  `bria-bg-remover`'s divisor 1); the derived
-  presets verify — 2:3 → 848x1272 at div 8 and 848x1264 at div 16, every preset within the 1280
-  cap. `--width`/`--height` only added arbitrary in-range pixels, which no other interface offers.
-- D5 — resolved by the owner ("budget goes and stays in chat"): `--budget` is removed entirely
-  and the `prefs.budget` fallback in `resolveSessionFlags` (`src/session-setup.js:17`) is dropped
-  with it — a legacy standing cap must not keep applying invisibly with no way to set or clear it,
-  so the key becomes inert. A resume still restores the session's own cap from its payload
-  (`:168`); one-shot runs lose only the never-enforced cap and the TTY-only 80% bar; `/budget
-  <usd>` is the single cap path.
-- D6 — approved: add `/safe-mode on|off` to the image REPL (Venice-only, mirroring `/watermark`),
-  persisting `prefs.safeMode` on every change (`on` writes `true`, `off` writes `false`) through
-  the shared prefs saver.
-- D7 — resolved: keep the `--config` view. It is a family-1 inspector (bare flag prints the
-  default config; `--config <path>` selects a preferences file for the run), not part of the
-  setter dispatch, and the cleanup does not remove it; O18 closes by decision rather than by
-  making the path required.
-
-**Implementation outline.** `index.js` drops the removed flags (`--variants`, `--resolution`,
-`--quality`, `--width`, `--height`, `--budget`) and the bare-only forms; `src/cli-main.js` deletes
-both `configSetRun` branches and the `--output-dir`/no-prompt rules become ordinary run
-validation; `src/cli-validation.js` loses the four predicates, keeps the `--export-format` rules
-(the flag survives) and now requires `--export`/`--image` for `--output-dir`;
-`src/session-setup.js` drops the `prefs.budget` fallback (D5) and `applyPreferenceUpdates` gains
-`exportFormat`; `src/commands/config-set.js` and
-`test/config-set.test.js`, `test/config-set-command.test.js` are deleted, and
-`test/cli-validation.test.js`, `test/cli-validation-image.test.js`, `test/cli-main.test.js`,
-`test/cli-main-success.test.js`, `test/docs-consistency.test.js` are updated; `/export-format`
-(D3) and `/safe-mode` (D6) are added to text chat / the image REPL with
-`COMMAND_DESCRIPTIONS`/`COMMAND_USAGE` rows, `ctx.savePrefs` persistence and help/count tests,
-plus the `cli-main` export dispatch reading `prefs.exportFormat`; docs `docs/commands.md` (flag rows, examples, the "Bare use
-saves the default" phrases), `docs/images.md`, `docs/chat.md`, `README.md` and the MEMORY sections
-that name the dispatch (`src/cli-main.js`, `src/cli-validation.js`, Budget semantics, Web search
-semantics, Text vs Image) are updated; `KNOWN-ISSUES.md` closes O1/O31 (surface removed) and O15
-(moot) and records O18 as already closed by decision; O26's `--seed` half survives unless the
-`--image`-only rule is extended. Gate:
-`npm test`, `npm run lint`, `npx knip`.
-
-**Versioning / migration.** Removing flags is breaking: the next tag is MAJOR (`4.0.0`, with the
-changelog commit enumerating every removal). No prefs migration: every key a reader survives on
-stays live (`outputDir`, `imageDefaults`, `temperature`, `topP`, `webSearch`,
-`reasoningEffort`, `smoothSpeed`, `smoothStreaming`, `compactThinking`, `hideWatermark`,
-`safeMode`, `exportFormat`), so values written by a bare setter keep working; `prefs.budget`
-becomes inert
-(ignored, left in the file); the removed forms simply error, and the docs point at the
-replacements.
+Pointers that stay here: the backlog fences `O1`/`O31` behind it and marks `O15` moot; `O26`'s
+`--seed` half is closed as documented behavior by the plan. `--config` stays a family-1 inspector
+(D7). Every other pref keeps an in-app setter (the plan's parity matrix).
 
 ## Tests, CI and platform notes
 
