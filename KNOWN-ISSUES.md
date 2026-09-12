@@ -320,7 +320,7 @@ F34. O27's four unreported tests are a Node 26.8.2 test-runner bug, not a test-f
     file, `--test-concurrency=1`, deleting the file-level `after()` hook and splitting the file all
     leave the drop unchanged — not stdout mocking, the reporter, ordering or nesting (on this
     26.8.2 line: Node 22's separate 28-declared/26-reported drop does have stdout mocking as one
-    measured cause — see the `MEMORY.md` §Tests, CI and platform notes note). A failure in
+    measured cause — see the `MEMORY.md` §Tests, CI and platform notes). A failure in
     one of them still reds the run (injected `assert.fail` → `fail 1`) but surfaces only as
     `not ok - test/one-shot.test.js`, with the assertion message lost; the working diagnostic is
     `node --test --experimental-test-module-mocks --test-name-pattern="<name>" test/one-shot.test.js`.
