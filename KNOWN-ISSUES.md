@@ -948,3 +948,20 @@ O38. ~~**`--list-endpoints`' not-found hint names only `--list-models`.** Now th
     picker's `Warning: could not load image models; showing text models only.`. Any wording change
     is user-visible, so it needs approval.~~ **Fixed** — the hint names both catalogs and the fetch
     failure warns; see F27 above.
+
+## Open — compiled macOS spelling helper (phase 4, `feat/spelling-helper`)
+
+F44. Two accepted residuals of the compiled helper, both recorded in MEMORY §Compiled helper:
+    **(1) `helper.m` ↔ `jxa.js` parity is not pinned by any test.** The suite must never compile or
+    spawn a real backend, so the only parity evidence is the manual macOS smoke (`/usr/bin/cc -O2
+    -fobjc-arc -framework AppKit -o <tmp> src/spelling/helper.m`, then the four ops on one stdin
+    stream, compared with the live osascript backend on the same inputs): all six headline probes
+    are identical once the protocol's `id` echo is ignored, and a wider 17-request sweep differs
+    only in error-message TEXT on deliberately malformed requests. Any future edit to `helper.m`
+    must keep it in semantic lockstep with `jxa.js` and be verified with that smoke — nothing in CI
+    can catch a divergence.
+    **(2) The cache never evicts.** A source or toolchain change makes a new
+    `~/.communicator/spelling-helper-<hash>` and the old file stays behind: measured, one ~54 KB
+    binary per change (two existed after phase-4 development). A suspect binary IS dropped when the
+    helper latches the compiled path off, so the residue is accumulation only, in a directory that
+    belongs to Communicator.

@@ -73,6 +73,8 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 │   ├── index.js           — spelling provider composition + the darwin platform gate
 │   ├── jxa.js             — JXA program text for osascript (NSSpellChecker)
 │   ├── osascript.js       — osascript backend (one child per call, hard timeout)
+│   ├── helper.m           — Objective-C spelling daemon source (compiled into ~/.communicator)
+│   ├── helper-backend.js  — compiled-helper backend (build/cache/spawn/watchdog, osascript fallback)
 │   ├── provider.js        — platform-free spelling core (cache, debounce, failure policy)
 │   └── mask.js            — prose masking (which words may be underlined)
 ├── input.js              — chat input via the frame-diffing editor (with command suggestions)

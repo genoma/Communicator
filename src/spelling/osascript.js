@@ -4,14 +4,18 @@
 import { spawn } from 'node:child_process'
 import { JXA_PROGRAM, JXA_REQUEST_ENV } from './jxa.js'
 
-const SPELLING_TIMEOUT_MS = 1500
+// Hard per-request bound shared by both backends (see helper-backend.js).
+export const SPELLING_TIMEOUT_MS = 1500
+
+// Hard output bound shared by both backends (see helper-backend.js).
+export const SPELLING_MAX_OUTPUT_BYTES = 1024 * 1024
 
 const OSASCRIPT = '/usr/bin/osascript'
-const MAX_OUTPUT_BYTES = 1024 * 1024
 
 export const SPELLING_ABORTED = 'SPELLING_ABORTED'
 
-function abortedError() {
+/** The rejection every backend answers a call its caller no longer waits for */
+export function spellingAbortedError() {
   const error = new Error('spelling backend call aborted')
   error.code = SPELLING_ABORTED
   return error
@@ -24,7 +28,7 @@ function abortedError() {
  */
 export function createOsascriptBackend({
   timeoutMs = SPELLING_TIMEOUT_MS,
-  maxBuffer = MAX_OUTPUT_BYTES,
+  maxBuffer = SPELLING_MAX_OUTPUT_BYTES,
   spawnFn = spawn,
 } = {}) {
   return {
@@ -66,7 +70,7 @@ export function createOsascriptBackend({
 
         const onAbort = () => {
           kill()
-          finish(true, abortedError())
+          finish(true, spellingAbortedError())
         }
 
         timer = setTimeout(() => {

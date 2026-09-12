@@ -406,6 +406,10 @@ export function createSpellingProvider({
       dropQueued()
       inFlight?.controller.abort()
       inFlight = null
+      // A backend holding a long-lived resource (the compiled helper child)
+      // releases it here; the abort above already covers osascript's per-call
+      // child.
+      backend.dispose?.()
       // The editor is gone: a late result must not repaint a dead block.
       provider.onUpdate = null
     },
