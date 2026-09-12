@@ -40,6 +40,25 @@ const MALFORMED = [
 
 const settle = (promise) => promise.then((reply) => ({ reply }), (error) => ({ error }))
 
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const runBoth = (backend, osascript, request) =>
+  Promise.all([settle(backend.run(request)), settle(osascript.run(request))])
+
+// A fresh osascript process can answer a cold guess/completion list as empty
+// while the long-lived helper — warmed by the requests before it — answers
+// words: observed on a loaded macOS CI runner, `completions recon` gave 20 words
+// from the helper and [] from osascript. That is the system checker's own state,
+// not a port divergence, so an empty-vs-words mismatch is retried; any other
+// difference (a changed range, a different non-empty set, a changed correction)
+// fails immediately.
+const coldWordsMismatch = ([helper, jxa]) =>
+  !helper.error &&
+  !jxa.error &&
+  Array.isArray(helper.reply?.words) &&
+  Array.isArray(jxa.reply?.words) &&
+  (helper.reply.words.length === 0) !== (jxa.reply.words.length === 0)
+
 const describe = ({ reply, error }) => (error ? `rejected with ${error.message}` : `answered ${JSON.stringify(reply)}`)
 
 // The compiled helper echoes the request id and the JXA program writes no id at
@@ -81,7 +100,12 @@ test('the compiled helper replies to the corpus exactly like the osascript backe
   assert.equal(await backend.whenReady(), true, 'the helper compiled through the real build path')
 
   for (const { name, request } of CORPUS) {
-    const [helper, jxa] = await Promise.all([settle(backend.run(request)), settle(osascript.run(request))])
+    let pair = await runBoth(backend, osascript, request)
+    for (let attempt = 0; attempt < 2 && coldWordsMismatch(pair); attempt += 1) {
+      await delay(250)
+      pair = await runBoth(backend, osascript, request)
+    }
+    const [helper, jxa] = pair
     const evidence = `${name} (${JSON.stringify(request)}): helper.m ${describe(helper)}, osascript ${describe(jxa)}`
     if (helper.error || jxa.error) assert.fail(`both backends must answer — ${evidence}`)
     // The id echo proves the compiled helper answered: the JXA program writes
@@ -91,7 +115,7 @@ test('the compiled helper replies to the corpus exactly like the osascript backe
   }
 
   for (const { name, request } of MALFORMED) {
-    const [helper, jxa] = await Promise.all([settle(backend.run(request)), settle(osascript.run(request))])
+    const [helper, jxa] = await runBoth(backend, osascript, request)
     assert.ok(helper.error, `${name} (${JSON.stringify(request)}): the helper must reject, got ${describe(helper)}`)
     assert.ok(jxa.error, `${name} (${JSON.stringify(request)}): osascript must reject, got ${describe(jxa)}`)
   }
