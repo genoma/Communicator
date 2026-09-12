@@ -262,6 +262,31 @@ test('bare interactive flags require a TTY', async (t) => {
   assert.match(err[0], /bare --export needs a TTY/)
 })
 
+test('an explicitly empty session selector needs a TTY exactly like the bare flag', async (t) => {
+  // Commander keeps an empty value (--export '' / --export=) as '': no id was
+  // given, so the picker form's message must fire on a pipe instead of the run
+  // reaching a prompt (or, for -r, the piped-stdin one-shot).
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+  const home = await mkdtemp(join(tmpdir(), 'communicator-cli-spawn-'))
+  t.after(() => rm(home, { recursive: true, force: true }))
+  for (const [flag, message] of [
+    ['--resume', 'Error: bare --resume needs a TTY (pass a session id to select non-interactively).'],
+    ['--export', 'Error: bare --export needs a TTY (pass a session id to select non-interactively).'],
+    ['--delete', 'Error: bare --delete needs a TTY (pass a session id to select non-interactively).'],
+  ]) {
+    for (const args of [[`${flag}=`], [flag, '']]) {
+      const res = spawnSync(process.execPath, [join(root, 'index.js'), ...args], {
+        cwd: root,
+        env: { ...process.env, HOME: home, USERPROFILE: home },
+        encoding: 'utf-8',
+        timeout: 20000,
+      })
+      assert.equal(res.status, 1, `${args.join(' ')}: ${res.stdout}${res.stderr}`)
+      assert.equal(res.stderr.trim(), message, `${args.join(' ')} stderr: ${res.stderr}`)
+    }
+  }
+})
+
 test('session flags cannot be combined with --list-* flags', async (t) => {
   const { err } = await runAndExit(t, { listModels: true, temperature: '0.5' }, undefined, 1)
   assert.match(err[0], /cannot be combined with --list-\* flags/)

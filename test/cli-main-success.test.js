@@ -359,6 +359,24 @@ test('--delete with an ambiguous prefix and piped stdin fails fast and removes n
   assert.ok(ids.includes('2026-09-02T00-00-00'))
 })
 
+test('deleteCmd forwards its interactive override to the resolver', async (t) => {
+  // A caller that passes { interactive: false } while stdin is a TTY must get
+  // the fail-fast ambiguity error, not a picker: the override is forwarded, so
+  // the resolver never falls back to process.stdin.isTTY on its own.
+  withTTY(t, true)
+  const dir = await seedSession('2026-10-01T00-00-00')
+  await seedSession('2026-10-02T00-00-00')
+  checkboxImpl = async () => { throw new Error('unexpected picker') }
+
+  const { deleteCmd } = await import('../src/commands/delete-cmd.js')
+  await assert.rejects(deleteCmd('2026-10-0', { interactive: false }), /Error: "2026-10-0" matches 2 sessions: .*Use a longer id to select one\./)
+
+  const { listSessions } = await import('../src/sessions.js')
+  const ids = (await listSessions(dir)).map((s) => s.id)
+  assert.ok(ids.includes('2026-10-01T00-00-00'))
+  assert.ok(ids.includes('2026-10-02T00-00-00'))
+})
+
 test('--delete bare lists exactly the chosen sessions and deletes only those', async (t) => {
   withTTY(t, true)
   const dir = await seedSession('2026-01-04T00-00-00', { model: 'test/model-chosen' })

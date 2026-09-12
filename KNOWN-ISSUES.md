@@ -293,8 +293,9 @@ F31. The two untested paths O28 and O29 gained CLI-level coverage in
     `test/cli-main-success.test.js`: a `--rpg <dir> --resume --debug` launch now pins that `--debug`
     reaches the interactive chat as `rpgDebug: true` (the unflagged run pins `false`), and a bare
     `--delete` checkbox run pins that the printed list is exactly the confirmed set — the unselected
-    session is neither listed nor removed. `--export <unique-id>` stays non-TTY unreachable behind
-    the blanket gate, as O28 recorded.
+    session is neither listed nor removed. `--export <unique-id>` was non-TTY unreachable behind the
+    blanket gate at the time, as O28 recorded; that gate was later removed and the path opened
+    headlessly, so this sentence is historical (see F38).
 
 F32. O9's documentation half: `docs/commands.md`'s `--no-safe-mode` row now says "(Venice only; adult
     content returned unblurred)", matching `docs/images.md`'s caveat. The behavior is kept by
@@ -334,7 +335,9 @@ F38. O24: `-r/--resume`, `-x/--export` and `--delete` are no longer gated on a T
    them): bare `--resume` (exempt next to `--rpg`, whose piped form continues the most recent
    chapter from `src/commands/rpg-resume.js`), bare `--export` and bare `--delete` each error with
    `Error: bare --export needs a TTY (pass a session id to select non-interactively).`, while the
-   id/partial-id form is legal with piped stdin. The one-shot path
+   id/partial-id form is legal with piped stdin. An explicitly empty value (`--delete ''`,
+   `--delete=`) counts as that picker form too — Commander keeps `''` instead of turning it into
+   `true` — so it is gated by the same three rules instead of reaching a prompt on a pipe. The one-shot path
    (`src/commands/one-shot.js`) gained the plain-session resume it was missing: it loads the session
    with `resumeCmd`, resolves provider and key FROM the session, answers `assertResumeFlags` before
    the key lookup and any request (the at-rest warning prints only once that guard passes), takes
@@ -357,7 +360,9 @@ F39. O25: an ambiguous partial id fails fast instead of opening a picker without
    unchanged. `deleteCmd` (`src/commands/delete-cmd.js`) takes `{ interactive = process.stdin.isTTY
    }` as well: its inquirer confirm runs on a TTY only, so a piped `--delete <id>` deletes the
    resolved (necessarily unique) session without a prompt while still printing the matched session
-   line and the success line. `--export` needed no confirm change, only the resolver.
+   line and the success line, and it forwards its `interactive` override to the resolver so an
+   injected `false` never falls back to the picker on a TTY. `--export` needed no confirm change,
+   only the resolver.
 
 F40. O22: `--no-save` gives headless runs a way to leave no global state behind. It is declared in
    `index.js` (Commander's negation sets `opts.save === false`) and rejected by
@@ -365,8 +370,14 @@ F40. O22: `--no-save` gives headless runs a way to leave no global state behind.
    `--image-format` on a text run (there they only persist an image default), and it joins
    `exitIgnoredFlags`/`hasBareConfigOtherFlags` so the established `--list-*`/`--export`/
    `--delete`/`--delete-all-sessions`/bare `--config` rules reject it with their own wording.
-   `persistSession` (`src/session-setup.js`) returns before both writes; `src/commands/one-shot.js`
-   removes the empty claim instead of filling it in (a resumed run's own file stays untouched);
+   `src/commands/one-shot.js` returns before `persistSession`, so neither the session file nor the
+   prefs write happens, and removes the empty claim instead of filling it in (a resumed run's own
+   file stays untouched); no chapter lands in the `--rpg` dir (the legacy import is skipped), while
+   the artifacts the run was explicitly asked for are still written — the `--debug` prompt log
+   (`prompt-log.jsonl` is a request, not saved state), the fill-in templates of a `--rpg` directory
+   with no story files yet (that launch stops at the setup notice without generating, exactly as
+   without `--no-save`), generated images and downloaded artifacts — and the id reservation still
+   creates `<dir>/sessions/` when it was missing (the claim is removed again);
    `finalizeImageSession` (`src/commands/image-gen.js`) skips the image-session file and the prefs
    write while still printing the outcome; `src/cli-main.js` routes the shared and image-branch
    safe-mode/watermark writes plus `applyImageDefaults` through one `persistPreference` helper
@@ -637,11 +648,11 @@ O27. ~~**Node 26.8.2 reporter quirk**: 4 tests in `test/one-shot.test.js` execut
     (the image-model test now seeds the sessions dir); see F34.
 O28. ~~**Untested paths**: the `--debug` → interactive-chat wiring has no CLI-level test (only the
     one-shot path and the unit-level ctx flag are covered), and `--export <unique-id>` on a
-    non-TTY is unverifiable while the blanket gate fires first.~~ **Fixed (first half)** — a CLI-level
+    non-TTY is unverifiable while the blanket gate fires first.~~ **Fixed** — a CLI-level
     test now drives `--rpg <dir> --resume --debug` and pins `rpgDebug: true` on the chat launch
-    (`false` without the flag); see F31. The `--export <unique-id>` half stays as recorded: the
-    blanket gate (`src/cli-validation.js:270-271`) fires before the id resolves, so it is unreachable
-    headlessly by design.
+    (`false` without the flag); see F31. The `--export <unique-id>` half is tested too now
+    (`test/cli-main-success.test.js:277`): the blanket gate (`src/cli-validation.js:270-271` at the
+    time) was removed, so the id form runs headless; see F38.
 O29. ~~**The multi-select `--delete` confirmation has no test pinning that the printed session
     list matches the confirmed set** (`src/commands/delete-cmd.js:16-22`). `--delete-all-sessions`
     was originally named here too, but it prints no list — it confirms a whole-directory delete

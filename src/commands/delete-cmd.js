@@ -5,7 +5,7 @@ import { CliError } from '../errors.js'
 
 export async function deleteCmd(partialId, { interactive = process.stdin.isTTY } = {}) {
   const dir = await ensureSessionsDir()
-  const matchedIds = await resolveSessionsInteractive(dir, partialId, { message: 'Select a session to delete' })
+  const matchedIds = await resolveSessionsInteractive(dir, partialId, { message: 'Select a session to delete', interactive })
   if (!matchedIds.length) {
     console.log('Deletion cancelled.')
     return

@@ -720,6 +720,42 @@ test('one-shot --no-save leaves the sessions dir, the prefs file and the RPG dir
   assert.equal(await readFile(file, 'utf-8'), prefsBefore)
 })
 
+test('one-shot --no-save still writes the prompt log --debug asked for', async (t) => {
+  const bodies = []
+  mockOpenRouterStream(t, [], bodies)
+  withApiKey(t)
+  withStdoutTTY(t, false)
+  const file = await tempConfig(t)
+  await writeFile(file, JSON.stringify({ budget: 5 }, null, 2) + '\n')
+  const prefsBefore = await readFile(file, 'utf-8')
+  const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(rpgDir, { recursive: true, force: true }))
+  const rpgSessions = await ensureRpgSessionsDir(rpgDir)
+  const globalSessions = await ensureSessionsDir()
+  const sessionsBefore = await listFiles(globalSessions)
+  t.mock.method(process.stdout, 'write', () => true)
+  const errors = []
+  t.mock.method(console, 'error', (msg) => errors.push(String(msg)))
+  mockExit(t)
+
+  const { exited } = await runOneShot(t, {
+    overrides: { config: file, rpg: rpgDir, save: false, debug: true },
+    rpgHistory: [{ role: 'user', content: 'Hello' }],
+  })
+
+  assert.equal(exited, false)
+  // --debug is an explicit request for a log, so --no-save still writes it: the
+  // flag governs the saved session state (session file, chapter, prefs), not
+  // the artifacts the run was asked to produce.
+  const logged = (await readFile(join(rpgDir, 'prompt-log.jsonl'), 'utf-8')).trim().split('\n')
+  assert.equal(logged.length, 1)
+  assert.deepEqual(JSON.parse(logged[0]).request, bodies[0])
+  assert.ok(errors.some((line) => line.includes('prompt logged:')))
+  assert.deepEqual(await listFiles(globalSessions), sessionsBefore)
+  assert.ok(!(await listFiles(rpgSessions)).some((f) => f.endsWith('.json')))
+  assert.equal(await readFile(file, 'utf-8'), prefsBefore)
+})
+
 test('one-shot ignores a legacy prefs.budget entirely', async (t) => {
   const fetchCalls = []
   mockOpenRouterStream(t, fetchCalls)

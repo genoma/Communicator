@@ -38,6 +38,11 @@ export function isSessionOnly(opts) {
 const exclusionError = (prefix, forbidden) =>
   `Error: ${prefix} and the session flags (${SESSION_FLAGS_LIST}) cannot be combined with ${forbidden}.`
 
+// Commander keeps an explicitly empty optional value (`--delete ''`, `--delete=`)
+// as `''` instead of `true`: no id was given either way, so it is the picker
+// form and is gated exactly like the bare flag.
+const isBarePickerValue = (value) => value === true || value === ''
+
 // Flags an exit path (--list-*, --export, --delete, --delete-all-sessions)
 // exits before honoring: --zdr/--e2ee shape a chat session, and the pure prefs
 // are persisted by writers that every exit dispatch returns before. Only flags
@@ -222,15 +227,15 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
   // --delete-all-sessions above. Bare --rpg --resume stays exempt: a piped
   // chapter resume falls back to the most recent chapter
   // (src/commands/rpg-resume.js).
-  if (opts.resume === true && opts.rpg === undefined && !isTTY) {
+  if (isBarePickerValue(opts.resume) && opts.rpg === undefined && !isTTY) {
     errors.push('Error: bare --resume needs a TTY (pass a session id to select non-interactively).')
   }
 
-  if (opts.export === true && !isTTY) {
+  if (isBarePickerValue(opts.export) && !isTTY) {
     errors.push('Error: bare --export needs a TTY (pass a session id to select non-interactively).')
   }
 
-  if (opts.delete === true && !isTTY) {
+  if (isBarePickerValue(opts.delete) && !isTTY) {
     errors.push('Error: bare --delete needs a TTY (pass a session id to select non-interactively).')
   }
 

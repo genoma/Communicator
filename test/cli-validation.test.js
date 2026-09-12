@@ -355,6 +355,10 @@ test('bare --resume, --export and --delete need a TTY; a session id does not', (
   for (const [flag, message] of gates) {
     assert.deepEqual(validateCliFlags(opts({ [flag]: true }), NO_TTY), [message])
     assert.deepEqual(validateCliFlags(opts({ [flag]: true }), TTY), [])
+    // Commander keeps an explicitly empty value (--delete '' / --delete=) as
+    // '': no id was given, so it is the picker form and needs the same TTY.
+    assert.deepEqual(validateCliFlags(opts({ [flag]: '' }), NO_TTY), [message])
+    assert.deepEqual(validateCliFlags(opts({ [flag]: '' }), TTY), [])
     // Only the picker form needs a TTY: an id selects without one, so a
     // scripted/CI caller can drive all three flags headless.
     assert.deepEqual(validateCliFlags(opts({ [flag]: '2026-01-01T00-00-00' }), NO_TTY), [])

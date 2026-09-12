@@ -15,15 +15,21 @@ automatically from the session files.
 ## Running without saving
 
 `--no-save` runs a headless one-shot (a prompt argument or piped stdin) without
-leaving anything behind: the prompt is sent and the answer prints on stdout (or
-the image is generated), but no session file — and no empty session claim — is
-written, no `.index.json` entry changes, no preference is saved, and nothing is
-written to the `--rpg` directory. The sessions directory, `~/.communicator.json`
-and the story directory are exactly as they were, which is the point for smoke
-tests, scripted runs and CI. An interactive session always saves (so `--no-save`
-rejects a run with neither a prompt argument nor piped stdin), `--resume <id>`
-reads the session and answers without rewriting its file, and `--image` still
-writes the generated images — those files are the run's output.
+saving the session state it would otherwise rewrite: no session file — and no
+empty session claim — is written, no `.index.json` entry is added or changed,
+no preference is saved, and no chapter file lands in the `--rpg` directory. The
+sessions directory and `~/.communicator.json` are exactly as they were, which is
+the point for smoke tests, scripted runs and CI. An interactive session always
+saves (so `--no-save` rejects a run with neither a prompt argument nor piped
+stdin) and `--resume <id>` reads the session and answers without rewriting its
+file. Artifacts the run was asked for are still written: `--image` writes the
+generated images (and `--output-dir` copies), downloaded artifacts are stored as
+attachment blobs under the sessions dir (`attachments/<session id>/`),
+`--rpg <dir> --debug` writes `prompt-log.jsonl` into the story directory, and a
+`--rpg` directory that has no story files yet gets its fill-in templates — that
+launch stops at the setup notice without generating, exactly as it does without
+`--no-save`. A run also reserves its session id in `<dir>/sessions/` and removes
+the claim again, so that directory is created when it did not exist.
 
 ## Listing sessions
 
@@ -68,11 +74,11 @@ an error. An ambiguous prefix (matching more than one session) opens an
 interactive picker on a terminal; with piped stdin it fails with `Error:
 "<prefix>" matches <N> sessions: <ids>. Use a longer id to select one.`
 (the first five matches, then `, ...`) — so a script can pick a session by id
-without a TTY. Resuming without a prompt is an interactive chat; piped stdin
-(or a prompt argument) makes it a one-shot that extends the same session file
-in place (same id and creation time, cumulative cost and scrape summary) and
-prints its answer to stdout. The bare `--resume` picker needs a TTY; the
-`--rpg` chapter fallback (`--rpg <dir> --resume`) does not, because a piped run
+without a TTY. Resuming without piped stdin is an interactive chat; piped stdin
+makes it a one-shot that extends the same session file in place (same id and
+creation time, cumulative cost and scrape summary) and prints its answer to
+stdout. The bare `--resume` picker needs a TTY; the `--rpg` chapter fallback
+(`--rpg <dir> --resume`) does not, because a piped run
 continues the most recent chapter.
 
 Older sessions saved without a `providerType` field default to OpenRouter for
