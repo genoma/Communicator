@@ -3,20 +3,52 @@ import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-// The guard keeps application console output off the child's fd 1, where the
-// parent runner parses that channel as v8 frames; the fixture emits output
-// shaped like a frame boundary plus a size of 0, which the parent deserializes
-// as a message and rejects ("Unable to deserialize cloned data due to invalid
-// or unsupported version"). See scripts/test-child-console-guard.js.
+// The guard keeps application console output off the child's fd 1, the channel
+// the runner frames its v8-serialized results on: text that reaches the parent
+// in the same buffer as a message is parsed as a header plus a size and
+// deserialized, which fails a whole file with "Unable to deserialize cloned
+// data due to invalid or unsupported version" (see
+// scripts/test-child-console-guard.js and KNOWN-ISSUES F42).
 const GUARD = fileURLToPath(new URL('../scripts/test-child-console-guard.js', import.meta.url))
 const FIXTURE = fileURLToPath(new URL('../scripts/fixtures/console-noise-child.js', import.meta.url))
-const DESERIALIZE_ERROR = 'Unable to deserialize cloned data due to invalid or unsupported version.'
 const MAX_OUTPUT = 64 * 1024 * 1024
 
 // This pin runs inside a test child itself, so it must not hand its own
 // NODE_TEST_CONTEXT to the runner it spawns: the runner picks its reporter from
 // that variable and would serialize its whole report instead of printing it.
 const PARENT_ENV = { ...process.env, NODE_TEST_CONTEXT: undefined }
+
+// The census the docs use: walk fd 1 for 2-byte serialization headers (FF 0F),
+// hop by the 4-byte big-endian size at offset 2, and count every byte outside a
+// well-framed message as application text.
+function censusProtocolStream(raw) {
+  let offset = 0
+  let frames = 0
+  let textBytes = 0
+  while (offset < raw.length) {
+    if (raw[offset] === 0xff && raw[offset + 1] === 0x0f) {
+      const end = offset + 6 + raw.readUInt32BE(offset + 2)
+      if (end > raw.length) break
+      frames++
+      offset = end
+    } else {
+      textBytes++
+      offset++
+    }
+  }
+  textBytes += raw.length - offset
+  return { frames, textBytes }
+}
+
+function runAsChild({ withGuard }) {
+  const args = ['--experimental-test-module-mocks']
+  if (withGuard) args.push('--import', GUARD)
+  args.push(FIXTURE)
+  return spawnSync(process.execPath, args, {
+    env: { ...PARENT_ENV, NODE_TEST_CONTEXT: 'child-v8' },
+    maxBuffer: MAX_OUTPUT,
+  })
+}
 
 test('the guard moves console output to stderr and leaves process.stdout alone', () => {
   const probe = "console.log('via-console'); process.stdout.write('via-stdout\\n')"
@@ -40,38 +72,22 @@ test('the guard moves console output to stderr and leaves process.stdout alone',
   assert.match(asParent.stdout, /via-stdout/)
 })
 
-test('the guard keeps the fixture output off the runner protocol channel', () => {
-  const guarded = spawnSync(
-    process.execPath,
-    ['--test', '--experimental-test-module-mocks', '--import', GUARD, FIXTURE],
-    { encoding: 'utf8', env: PARENT_ENV, maxBuffer: MAX_OUTPUT },
-  )
-  assert.equal(guarded.status, 0, guarded.stderr)
-  assert.doesNotMatch(guarded.stdout + guarded.stderr, /Unable to deserialize/)
-  // The output is redirected, not dropped: the child's stderr is surfaced.
-  assert.match(guarded.stdout, /zz/)
+test('a guarded test child writes no application byte to its fd 1', () => {
+  const child = runAsChild({ withGuard: true })
+  assert.equal(child.status, 0, child.stderr.toString())
+  const walk = censusProtocolStream(child.stdout)
+  assert.ok(walk.frames > 0, 'the child framed its results on fd 1')
+  assert.equal(walk.textBytes, 0, 'fd 1 carries runner frames only')
+  // Redirected, not dropped: the same lines are surfaced as the child's stderr.
+  assert.match(child.stderr.toString(), /Connected to Provider/)
+  assert.match(child.stderr.toString(), /Hello world/)
 })
 
-// Whether the parent's reads glue a frame and a text block together is a race
-// between the child's writes and the parent's reads, so the unguarded failure
-// is measured over several runs instead of one: 20 out of 20 single runs fail
-// on Node 22 and on Node 26, and the pin needs one hit out of these attempts.
-test('without the guard the fixture output fails the runner', (t) => {
-  const attempts = []
-  let failed = null
-  for (let i = 0; i < 8 && failed === null; i++) {
-    const raw = spawnSync(
-      process.execPath,
-      ['--test', '--experimental-test-module-mocks', FIXTURE],
-      { encoding: 'utf8', env: PARENT_ENV, maxBuffer: MAX_OUTPUT },
-    )
-    attempts.push(raw.status)
-    if ((raw.stdout + raw.stderr).includes(DESERIALIZE_ERROR)) failed = raw
-  }
-  t.diagnostic(`unguarded fixture runs: ${attempts.join(', ')} (exit codes; 1 = the reported failure)`)
-  assert.notEqual(failed, null, `no run of ${FIXTURE} failed with ${DESERIALIZE_ERROR}`)
-  assert.equal(failed.status, 1)
-  const output = failed.stdout + failed.stderr
-  assert.match(output, /console-noise-child\.js/)
-  assert.match(output, /#processRawBuffer/)
+test('the same child without the guard leaks application bytes onto fd 1', () => {
+  const child = runAsChild({ withGuard: false })
+  assert.equal(child.status, 0, child.stderr.toString())
+  const walk = censusProtocolStream(child.stdout)
+  assert.ok(walk.frames > 0, 'the child framed its results on fd 1')
+  assert.ok(walk.textBytes > 0, 'unguarded console output stays on fd 1')
+  assert.match(child.stdout.toString(), /Connected to Provider/)
 })
