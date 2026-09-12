@@ -397,16 +397,22 @@ F41. O39: a non-generative Venice utility model no longer enters the image surfa
    mapped list with it, so the filtered model never reaches the picker, `--list-image-models`,
    `--image --image-model <id>` or `-m <image-model>`; the mapping is otherwise unchanged, and no
    CLI message was added or reworded (an explicit id now fails on the existing not-found path with
-   no request issued). Live shape on 2026-09-12: Venice `/models?type=image` returned 41 models —
-   33 advertising an aspect-ratio list, 7 advertising none but a real pixel divisor (8 or 16), and
-   exactly one utility model, `bria-bg-remover` (`aspectRatios` null, `widthHeightDivisor` 1,
-   "Background Remover", $0.03/image, plus 2x/4x upscale pricing); before the fix it was offered as
-   a generator and a text-only prompt failed at the API — `communicator -p venice -m
-   bria-bg-remover "a red cat"` exited 1 with `Error: Venice request failed (400): Invalid request
-   parameters`, unbilled and with nothing saved. The drop predicate is deliberately narrow rather
-   than a `(divisor ?? 0) > 1` keep-rule: OpenRouter's mapped catalog (52 models) contains one
-   generator with no advertised constraint at all (`meta/muse-image`, `aspectRatios` null and
-   `widthHeightDivisor` null), which must stay listed. Removed capability kept on record:
+   no generation request issued; the catalog GET itself still happens). That refusal covers the
+   selection surfaces only: a marker-less legacy payload that stored the utility id now resumes as
+   a text run, because `findImageModel` no longer resolves it (`src/commands/one-shot.js:64-65`,
+   `src/commands/chat-start.js:45-48`) — unreachable today, since an image session always writes
+   the marker (`src/commands/image-gen.js:331`) and the id fails before anything is persisted. Live
+   shape on 2026-09-12: Venice `/models?type=image` returned 41 models — 33 advertising an
+   aspect-ratio list, 7 advertising none but a real pixel divisor (8 or 16), and exactly one
+   utility model, `bria-bg-remover` (`aspectRatios` null, `widthHeightDivisor` 1, "Background
+   Remover", $0.03/image, plus 2x/4x upscale pricing); before the fix it was offered as a generator
+   and a text-only prompt failed at the API — `communicator -p venice -m bria-bg-remover "a red
+   cat"` exited 1 with `Error: Venice request failed (400): Invalid request parameters`, unbilled
+   and with nothing saved. After the fix the same catalog lists 40 rows and no `bria-bg-remover`
+   (`communicator -p venice --list-image-models`, live on 2026-09-12). The drop predicate is
+   deliberately narrow rather than a `(divisor ?? 0) > 1` keep-rule: OpenRouter's mapped catalog
+   (52 models) contains one generator with no advertised constraint at all (`meta/muse-image`,
+   `aspectRatios` null and `widthHeightDivisor` null), which must stay listed. Removed capability kept on record:
    `bria-bg-remover` (background removal and 2x/4x upscale) has no route in the CLI today — the
    input-image path for edits and upscales is the future fix, documented as unimplemented in
    `docs/images.md`. Pinned by `test/image-sizing.test.js` (the five-shape predicate matrix),
