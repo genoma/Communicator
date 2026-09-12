@@ -377,6 +377,27 @@ export async function handleWatermarkCommand({ providerName, args, prefs, savePr
   errOut('Error: /watermark expects "on" or "off".\n')
 }
 
+// /safe-mode handler for the image-session REPL: toggles the global Venice safe
+// mode preference that every generation reads per call.
+export async function handleSafeModeCommand({ providerName, args, prefs, savePrefs, out = console.log, errOut = console.error }) {
+  if (providerName !== 'venice') {
+    errOut('Error: /safe-mode is only supported on Venice sessions.\n')
+    return
+  }
+  if (!args) {
+    out(`Venice safe mode is ${prefs.safeMode === false ? 'off' : 'on'}.\n`)
+    return
+  }
+  if (args === 'on' || args === 'off') {
+    const next = args === 'on'
+    prefs.safeMode = next
+    await savePrefs({ safeMode: next })
+    out(`Venice safe mode ${next ? 'enabled' : 'disabled'}.\n`)
+    return
+  }
+  errOut('Error: /safe-mode expects "on" or "off".\n')
+}
+
 // Shared image one-shot flow: claim a session, run a generation (the model
 // picker runs when `model` is null), clean the claim on failure, and persist
 // the three-message session + prefs. Used by --image and the -m one-shot

@@ -103,6 +103,7 @@ Venice blurs adult-content results unless `safe_mode: false` is sent. This CLI e
 - `--no-safe-mode` disables it for the current `--image`/`-m <image-model>` one-shot and persists `safeMode: false` in the preferences file.
 - Launching the chat with the flag (`communicator -p venice --no-safe-mode`) opens the session and persists the setting in the same run.
 - The persisted `safeMode` pref applies to all Venice image generation; removing the pref from the preferences file re-enables safe mode.
+- `/safe-mode off` disables it for this and future generations; `/safe-mode on` re-enables it. Works inside a Venice image session (bare `/safe-mode` shows the current state). OpenRouter sessions do not offer `/safe-mode`.
 - OpenRouter image generation has no safe-mode parameter, so the setting only affects Venice.
 
 ## Provider differences

@@ -10,7 +10,7 @@ import { sanitizeSingleLine } from '../ui/hyperlink.js'
 import { CliError, commandErrorLine, formatError, isExitPromptError } from '../errors.js'
 import { resolveAspectRatio, resolveImageFormat, resolveQuality, resolveResolution, resolveSeed, resolveVariants } from '../flags.js'
 import { computePixelSize, formatSize, isPixelModel, sizePresets, SIZE_PRESET_RATIOS } from '../image-sizing.js'
-import { runImageGeneration, printImageOutcome, buildImageSessionPayload, handleWatermarkCommand } from './image-gen.js'
+import { runImageGeneration, printImageOutcome, buildImageSessionPayload, handleWatermarkCommand, handleSafeModeCommand } from './image-gen.js'
 
 // Help lines keyed by command; the /help body iterates the same visibility
 // list (imageSessionCommands) so the two can never drift. The argument-form
@@ -21,6 +21,7 @@ const IMAGE_COMMAND_HELP = {
   '/model': { first: 'switch image model, or pick a text model to continue in chat' },
   '/quit': { first: 'leave the session' },
   '/watermark': { first: 'hide the Venice watermark on generated images (on|off)' },
+  '/safe-mode': { first: 'show or set Venice safe mode (on|off)' },
   '/aspect': { first: 'show the supported aspect ratios and the session one', extra: ['/aspect <x:y>    set the aspect ratio for this session (clear to unset)'] },
   '/format': { first: 'show the supported output formats and the session one', extra: ['/format <fmt>    set the output format for this session (clear to unset)'] },
   '/resolution': { first: 'show the supported resolutions and the session one', extra: ['/resolution <t>  set the resolution tier for this session (clear to unset)'] },
@@ -29,14 +30,15 @@ const IMAGE_COMMAND_HELP = {
   '/seed': { first: 'show the session seed', extra: ['/seed <int>      set the random seed for this session (clear to unset)'] },
 }
 
-// /watermark is Venice-only: OpenRouter image models have no watermark
-// parameter, so the command is only offered on Venice sessions.
+// /watermark and /safe-mode are Venice-only: OpenRouter image models have no
+// watermark or safe-mode parameter, so the commands are only offered on Venice
+// sessions.
 function imageSessionCommands(providerName, model) {
   const c = model?.constraints
   const showAspect = Array.isArray(c?.aspectRatios) || isPixelModel(model)
   const showVariants = c?.maxN == null || c?.maxN > 1
   const cmds = ['/help', '/status', '/model', '/quit']
-  if (providerName === 'venice') cmds.push('/watermark')
+  if (providerName === 'venice') cmds.push('/watermark', '/safe-mode')
   // The sizing group order matches the help table and docs/images.md.
   if (showAspect) cmds.push('/aspect')
   if (Array.isArray(c?.formats)) cmds.push('/format')
@@ -249,6 +251,16 @@ export async function startImageSession({ provider, apiKey, prefs, imageModelId,
       await handleWatermarkCommand({
         providerName: provider.meta.name,
         args: input.slice('/watermark'.length).trim(),
+        prefs,
+        savePrefs: (updates) => savePrefs(syncPreferenceUpdates(prefs, updates)),
+      })
+      continue
+    }
+
+    if (provider.meta.name === 'venice' && (input === '/safe-mode' || input.startsWith('/safe-mode '))) {
+      await handleSafeModeCommand({
+        providerName: provider.meta.name,
+        args: input.slice('/safe-mode'.length).trim(),
         prefs,
         savePrefs: (updates) => savePrefs(syncPreferenceUpdates(prefs, updates)),
       })

@@ -32,7 +32,7 @@ mock.module('@inquirer/prompts', {
   },
 })
 
-const { imageGenCmd, runImageGeneration } = await import('../src/commands/image-gen.js')
+const { imageGenCmd, runImageGeneration, handleSafeModeCommand } = await import('../src/commands/image-gen.js')
 
 function jsonResponse(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } })
@@ -1091,4 +1091,47 @@ test('--image --aspect-ratio on a pixel model persists the ratio default via the
   assert.equal(exited, false)
   const prefs = JSON.parse(await readFile(file, 'utf-8'))
   assert.deepEqual(prefs.imageDefaults, { venice: { aspectRatio: '16:9' } })
+})
+
+test('handleSafeModeCommand shows, toggles and persists the global safe-mode pref', async () => {
+  const out = []
+  const errOut = []
+  const saved = []
+  const prefs = {}
+  const run = (providerName, args) => handleSafeModeCommand({
+    providerName,
+    args,
+    prefs,
+    savePrefs: async (updates) => {
+      saved.push(updates)
+      Object.assign(prefs, updates)
+    },
+    out: (line) => out.push(line),
+    errOut: (line) => errOut.push(line),
+  })
+
+  await run('venice', '')
+  assert.deepEqual(out, ['Venice safe mode is on.\n'])
+  assert.deepEqual(saved, [])
+
+  await run('venice', 'off')
+  assert.equal(prefs.safeMode, false)
+  assert.deepEqual(saved, [{ safeMode: false }])
+  assert.deepEqual(out.at(-1), 'Venice safe mode disabled.\n')
+
+  out.length = 0
+  await run('venice', '')
+  assert.deepEqual(out, ['Venice safe mode is off.\n'])
+
+  await run('venice', 'on')
+  assert.equal(prefs.safeMode, true)
+  assert.deepEqual(saved.at(-1), { safeMode: true })
+  assert.deepEqual(out.at(-1), 'Venice safe mode enabled.\n')
+
+  await run('venice', 'sometimes')
+  assert.deepEqual(errOut, ['Error: /safe-mode expects "on" or "off".\n'])
+
+  await run('openrouter', 'off')
+  assert.deepEqual(errOut.at(-1), 'Error: /safe-mode is only supported on Venice sessions.\n')
+  assert.equal(prefs.safeMode, true)
 })

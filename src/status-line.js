@@ -78,6 +78,7 @@ export function buildImageStatusLine({ model, imageModelId, endpointProviderName
   const badges = []
   const current = (sessionKey, defaultKey) => sessionValues[sessionKey] ?? saved[defaultKey]
   if (providerName === 'venice' && prefs?.hideWatermark === true) badges.push(kv('watermark', 'off'))
+  if (providerName === 'venice' && prefs?.safeMode === false) badges.push(kv('safe mode', 'off'))
   if (Array.isArray(c?.aspectRatios) || isPixelModel(model)) {
     const value = current('aspectRatio', 'aspectRatio')
     if (value) badges.push(kv('aspect', value))

@@ -13,6 +13,7 @@ mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 
 const genCalls = []
 const genPrefs = []
+const genSafeMode = []
 const genOpts = []
 const genModels = []
 const printed = []
@@ -22,6 +23,7 @@ mock.module(new URL('../src/commands/image-gen.js', import.meta.url).href, {
     runImageGeneration: async ({ prompt, model, prefs, opts, sizingInteractive }) => {
       genCalls.push(prompt)
       genPrefs.push(prefs?.hideWatermark)
+      genSafeMode.push(prefs?.safeMode)
       genModels.push(model?.id)
       genOpts.push({ aspectRatio: opts?.aspectRatio, imageFormat: opts?.imageFormat, resolution: opts?.resolution, quality: opts?.quality, variants: opts?.variants, seed: opts?.seed, sizingInteractive })
       if (prompt === 'boom') throw new CliError('Error: venice exploded.')
@@ -62,6 +64,24 @@ mock.module(new URL('../src/commands/image-gen.js', import.meta.url).href, {
         return
       }
       errOut('Error: /watermark expects "on" or "off".\n')
+    },
+    handleSafeModeCommand: async ({ providerName, args, prefs, savePrefs, out = console.log, errOut = console.error }) => {
+      if (providerName !== 'venice') {
+        errOut('Error: /safe-mode is only supported on Venice sessions.\n')
+        return
+      }
+      if (!args) {
+        out(`Venice safe mode is ${prefs.safeMode === false ? 'off' : 'on'}.\n`)
+        return
+      }
+      if (args === 'on' || args === 'off') {
+        const next = args === 'on'
+        prefs.safeMode = next
+        await savePrefs({ safeMode: next })
+        out(`Venice safe mode ${next ? 'enabled' : 'disabled'}.\n`)
+        return
+      }
+      errOut('Error: /safe-mode expects "on" or "off".\n')
     },
   },
 })
@@ -382,6 +402,7 @@ test('/help lists the commands and does not generate', async (t) => {
   assert.ok(logs.some((l) => l.includes('/help')))
   assert.ok(logs.some((l) => l.includes('/quit')))
   assert.ok(logs.some((l) => l.includes('/watermark')))
+  assert.ok(logs.some((l) => l.includes('/safe-mode')))
   assert.ok(logs.some((l) => l.includes('/resolution')))
   assert.ok(logs.some((l) => l.includes('/quality')))
   assert.ok(logs.some((l) => l.includes('/variants')))
@@ -496,6 +517,65 @@ test('/watermark on re-enables the watermark and persists', async (t) => {
   assert.deepEqual(genPrefs, [])
 })
 
+test('/safe-mode off disables safe mode for subsequent generations and persists', async (t) => {
+  genCalls.length = 0
+  genSafeMode.length = 0
+  printed.length = 0
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    readInput: scriptedInput(['/safe-mode off', 'a cat', '/safe-mode', '/quit']),
+  }))
+
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.safeMode, false)
+  assert.deepEqual(genCalls, ['a cat'])
+  assert.deepEqual(genSafeMode, [false])
+  assert.ok(logs.some((l) => l.includes('safe mode disabled')))
+  assert.ok(logs.some((l) => l.includes('safe mode is off')))
+})
+
+test('/safe-mode on re-enables safe mode and persists', async (t) => {
+  genCalls.length = 0
+  genSafeMode.length = 0
+  printed.length = 0
+  mockConsole(t)
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    prefs: { safeMode: false },
+    readInput: scriptedInput(['/safe-mode on', '/safe-mode', '/quit']),
+  }))
+
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.safeMode, true)
+  assert.deepEqual(genCalls, [])
+})
+
+test('/safe-mode with an invalid argument errors and continues', async (t) => {
+  genCalls.length = 0
+  printed.length = 0
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+  const file = await tempConfig(t)
+
+  await startImageSession(baseOpts({
+    configPath: file,
+    readInput: scriptedInput(['/safe-mode sometimes', 'a cat', '/quit']),
+  }))
+
+  assert.ok(errors.some((e) => e.includes('/safe-mode expects "on" or "off"')))
+  assert.deepEqual(genCalls, ['a cat'])
+  const prefs = JSON.parse(await readFile(file, 'utf-8'))
+  assert.equal(prefs.safeMode, undefined)
+})
+
 test('/watermark with an invalid argument errors and continues', async (t) => {
   genCalls.length = 0
   genPrefs.length = 0
@@ -563,6 +643,7 @@ test('/watermark is not offered or listed on an openrouter image session', async
   assert.deepEqual(genCalls, [])
   for (const commands of commandsSeen) {
     assert.ok(!commands.includes('/watermark'))
+    assert.ok(!commands.includes('/safe-mode'))
   }
   assert.ok(!logs.some((l) => l.includes('Venice watermark')))
   assert.ok(logs.some((l) => l.startsWith('Unknown command "/watermark"')))
@@ -1438,6 +1519,19 @@ test('/status badges the seed and watermark state', async (t) => {
   }))
 
   assert.ok(logs.some((l) => l.includes('Current settings: venice-sd35  [image]  [watermark: off]  [seed: 7]')))
+})
+
+test('/status badges safe mode when the pref is off', async (t) => {
+  const logs = []
+  t.mock.method(console, 'log', (line) => { logs.push(String(line)) })
+  t.mock.method(console, 'error', () => {})
+
+  await startImageSession(baseOpts({
+    prefs: { safeMode: false },
+    readInput: scriptedInput(['/status', '/quit']),
+  }))
+
+  assert.ok(logs.some((l) => l.includes('[safe mode: off]')))
 })
 
 test('/status on a model without sizing lists shows no sizing badges', async (t) => {
