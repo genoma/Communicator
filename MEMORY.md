@@ -296,7 +296,8 @@ Half the rule set self-updates (`\p{Emoji_Presentation}` reads the runtime's ICU
 Approved-direction workstream, not a defect list. **This section is the approval document**: the
 direction is approved, the plan below is not started — confirm before touching code. The backlog
 fences `O1` and `O31` behind it (their surface disappears rather than getting a rule) and marks
-`O15`, `O18` and `O26` moot pending it.
+`O15` moot pending it; `O18` is already closed by decision (D7), and `O26` keeps its `--seed` half
+(the `--image`-only rule is not part of this cleanup).
 
 **Scope — removed outright.** Image sizing knobs that duplicate a REPL command or a surviving
 default: `--variants`, `--resolution`, `--quality`, `--width`, `--height`. The image REPL's
@@ -335,7 +336,7 @@ Coverage today:
 | `imageDefaults[].aspectRatio` | `--aspect-ratio` | image REPL `/aspect`; run flag persists | ok |
 | `imageDefaults[].format` | `--image-format` | image REPL `/format`; run flag persists | ok |
 | **`budget`** | `--budget` | `/budget` (session-only, O16) | flag and standing pref both removed (D5); `/budget` is the only cap path |
-| `outputDir` | `--output-dir` | `--export --output-dir` persists (`src/cli-main.js:213`, `:218-224`) | ok (D2) |
+| `outputDir` | `--output-dir` | `--export --output-dir` persists (`src/cli-main.js:212`, `:217-223`) | ok (D2) |
 | `exportFormat` (new) | — (`--export-format` already requires `--export`) | `/export-format markdown\|jsonl` (D3); an `--export --export-format` run persists | ok (D3) |
 
 Image prefs keep living in the image REPL per the command-separation contract; no image command
@@ -345,7 +346,7 @@ moves into text chat.
 - D1 — stood down: `/budget` stays session-only and there is no standing-budget command; the
   standing `prefs.budget` default goes with `--budget` (D5), so a cap is always per-session.
 - D2 — resolved without a command: `--export --output-dir <path>` already persists
-  `prefs.outputDir` (`src/cli-main.js:213` reads it, `:218-224` writes it back), so the export
+  `prefs.outputDir` (`src/cli-main.js:212` reads it, `:217-223` writes it back), so the export
   one-shot the owner uses is the setter; the bare `--output-dir` form goes and the validation rule
   becomes "--output-dir requires --export or --image".
 - D3 — resolved: `--export-format` stays AND becomes a persisted preference. It never had a bare
@@ -360,7 +361,8 @@ moves into text chat.
   (`src/image-sizing.js`, whose comment records the live API facts: the 1280 cap per side and the
   API divisor winning over the web UI's rounding), and resolution/quality tiers are advertised
   lists validated per model. Live check of all 41 Venice image models: 34 advertise an aspect list
-  (several also resolutions/qualities) and 7 are pixel models (divisors 8 or 16); the derived
+  (several also resolutions/qualities) and 8 are pixel models (divisors 8 or 16, plus
+  `bria-bg-remover`'s divisor 1); the derived
   presets verify — 2:3 → 848x1272 at div 8 and 848x1264 at div 16, every preset within the 1280
   cap. `--width`/`--height` only added arbitrary in-range pixels, which no other interface offers.
 - D5 — resolved by the owner ("budget goes and stays in chat"): `--budget` is removed entirely
@@ -392,14 +394,18 @@ validation; `src/cli-validation.js` loses the four predicates, keeps the `--expo
 plus the `cli-main` export dispatch reading `prefs.exportFormat`; docs `docs/commands.md` (flag rows, examples, the "Bare use
 saves the default" phrases), `docs/images.md`, `docs/chat.md`, `README.md` and the MEMORY sections
 that name the dispatch (`src/cli-main.js`, `src/cli-validation.js`, Budget semantics, Web search
-semantics, Text vs Image) are updated; `KNOWN-ISSUES.md` closes O1/O31/O15/O26 and O18 by decision (the `--config` view stays). Gate:
+semantics, Text vs Image) are updated; `KNOWN-ISSUES.md` closes O1/O31 (surface removed) and O15
+(moot) and records O18 as already closed by decision; O26's `--seed` half survives unless the
+`--image`-only rule is extended. Gate:
 `npm test`, `npm run lint`, `npx knip`.
 
 **Versioning / migration.** Removing flags is breaking: the next tag is MAJOR (`4.0.0`, with the
 changelog commit enumerating every removal). No prefs migration: every key a reader survives on
-stays live (`outputDir`, `imageDefaults`, `temperature`, `topP`, `webSearch`, `webResults`,
+stays live (`outputDir`, `imageDefaults`, `temperature`, `topP`, `webSearch`,
 `reasoningEffort`, `smoothSpeed`, `smoothStreaming`, `compactThinking`, `hideWatermark`,
-`safeMode`, `exportFormat`), so values written by a bare setter keep working; `prefs.budget`
+`safeMode`, `exportFormat`), so values written by a bare setter keep working — except the
+standing `webResults` default, which a resumed session can clear (`KNOWN-ISSUES` O40);
+`prefs.budget`
 becomes inert
 (ignored, left in the file); the removed forms simply error, and the docs point at the
 replacements.

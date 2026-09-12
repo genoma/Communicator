@@ -55,8 +55,9 @@ export function hasConfigSetterFlags(opts) {
   )
 }
 
-// Flags that are ONLY config setters (never session flags): piped stdin can
-// never be a prompt for them, so the config-set path may run without a TTY.
+// Flags with no session meaning (a run path may still persist them, but they
+// never shape a request): piped stdin can never be a prompt for them, so the
+// config-set path may run without a TTY.
 export function isPureConfigSetter(opts) {
   return (
     opts.aspectRatio !== undefined ||
@@ -92,8 +93,8 @@ const exclusionError = (prefix, forbidden) =>
 
 // Flags an exit path (--list-*, --export, --delete, --delete-all-sessions)
 // exits before honoring: --zdr/--e2ee shape a chat session, and the pure prefs
-// are only written by the set-and-exit dispatch. Only flags actually passed
-// are named.
+// are persisted by writers that every exit dispatch returns before. Only flags
+// actually passed are named.
 function exitIgnoredFlags(opts) {
   const flags = ['zdr', 'e2ee'].filter((flag) => opts[flag] === true).map((flag) => `--${flag}`)
   if (opts.watermark === false) flags.push('--no-watermark')

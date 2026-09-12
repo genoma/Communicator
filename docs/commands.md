@@ -11,7 +11,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--reasoning-effort`  | `<level>`| Force reasoning effort: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none`. `none` disables reasoning. With `--model` alone, saves the per-model default |
 |       | `--temperature`       | `<0-2\|default>`  | Temperature override for the session (`default`: provider default, clears the persisted per-model value; unset: per-model preference, else the provider's own default). With `--model` alone, saves the per-model default |
 |       | `--top-p`             | `<0-1\|default>`  | Top-p (nucleus sampling) override for the session (`default`: provider default, clears the persisted per-model value; unset: per-model preference, else the provider's own default). With `--model` alone, saves the per-model default |
-|       | `--budget`            | `<usd>`  | Per-session budget cap in USD. At 80% used it prints the budget bar (interactive and one-shot); at 100% interactive sessions refuse further turns, while one-shot runs never pre-check the cap. Bare use saves the default |
+|       | `--budget`            | `<usd>`  | Per-session budget cap in USD. At 80% used it prints the budget bar (interactive; one-shot on a terminal); at 100% interactive sessions refuse further turns, while one-shot runs never pre-check the cap. Bare use saves the default |
 |       | `--web-search`        | `[mode]` | Web search mode: `auto`, `always`, `on`, `off` (`on` = `auto`; bare flag = `auto`). Per-model default is persisted in preferences |
 |       | `--web-results`       | `<n>`    | Number of web search results, 1–20 (OpenRouter only, default 10). Implies `auto` mode. Bare use saves the default |
 |       | `--zdr`               | —        | Force zero-data-retention routing (OpenRouter only). Filters model/provider selection to ZDR-capable endpoints; errors at selection if a model has none |
@@ -50,7 +50,7 @@ Complete reference for the `communicator` CLI: the flag table, usage examples, a
 |       | `--no-watermark`      | —        | Hide the Venice watermark on generated images. Persisted as the global `hideWatermark` pref on every launch path, announced with `Venice watermark disabled` (bare use saves it and exits) |
 |       | `--list-image-models` | —        | List image models (name, id, per-image price, sizing options) and exit |
 
-Flags with an optional value (`--web-search`, `--config`, `--resume`, `--list-endpoints`, `--delete`, `--delete-all-sessions`) consume the next argument when it is not another flag: a prompt written directly after one is parsed as that flag's value. Put the prompt before them, or bind the value with `=`, e.g. `--web-search=auto "Latest AI news"`.
+Flags with an optional value (`--web-search`, `--config`, `--resume`, `--export`, `--list-endpoints`, `--delete`, `--delete-all-sessions`) consume the next argument when it is not another flag: a prompt written directly after one is parsed as that flag's value. Put the prompt before them, or bind the value with `=`, e.g. `--web-search=auto "Latest AI news"`.
 
 ## Usage examples
 

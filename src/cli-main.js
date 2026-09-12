@@ -17,6 +17,12 @@ import { loadRpgContext, rpgSessionsDir } from './rpg.js'
 // cold start) out of exit-mode invocations like --version or --list-sessions.
 // chat-start (interactive chat) is the same pattern.
 
+function assertScrapeCapability(provider) {
+  if (typeof provider.scrapePage !== 'function') {
+    throw new CliError(`Error: --scrape is not supported by provider ${provider.meta.name}.`)
+  }
+}
+
 // Fetches a page via the Venice web scraping API and normalizes it for
 // injection into the session context (validated http(s) URL, truncated to
 // MAX_SCRAPE_CHARS). One flat $0.01 per page, tracked by the session.
@@ -24,9 +30,7 @@ async function scrapeForSession({ provider, apiKey, url }) {
   if (!parseScrapeUrl(url)) {
     throw new CliError('Error: --scrape expects a valid http(s) URL.')
   }
-  if (typeof provider.scrapePage !== 'function') {
-    throw new CliError(`Error: --scrape is not supported by provider ${provider.meta.name}.`)
-  }
+  assertScrapeCapability(provider)
   const result = await provider.scrapePage({ apiKey, url })
   const { text, sizeLabel } = scrapeContext(result.content)
   // Piped stdout carries the answer alone: a notice there would pollute the
@@ -80,6 +84,13 @@ async function main(opts, promptArg) {
   if (validationErrors.length > 0) {
     throw new CliError(validationErrors[0])
   }
+
+  // The image-default flags are resolved here — after flag validation, whose
+  // errors keep precedence, and before the billed scrape or any prefs write —
+  // so a bad or empty value fails for free and the persist/notice block below
+  // works on resolved values only.
+  const aspectRatio = resolveFlagOrExit(resolveAspectRatio, opts.aspectRatio)
+  const imageFormat = resolveFlagOrExit(resolveImageFormat, opts.imageFormat)
 
   let rpgContext = null
   let rpgResume = null
@@ -336,6 +347,13 @@ async function main(opts, promptArg) {
   // back so a refused resume stays silent). Fresh runs already printed theirs.
   if (opts.rpg !== undefined && opts.resume === true) printRpgOutput()
 
+  const scrapeProvider = opts.scrape !== undefined
+    ? (rpgResume ? getProvider(rpgResume.providerType ?? providerType) : provider)
+    : null
+  // The provider limitation must beat the key error, like the --zdr/--e2ee
+  // guards above (F17): a missing key is not the reason the run cannot scrape.
+  if (scrapeProvider) assertScrapeCapability(scrapeProvider)
+
   const apiKey = rpgResume
     ? getApiKey(rpgResume.providerType ?? providerType)
     : resumesSession ? '' : getApiKey(providerType)
@@ -347,7 +365,7 @@ async function main(opts, promptArg) {
   const rpgPostHistoryInstruction = rpgContext?.postHistoryInstruction ?? null
 
   const scraped = opts.scrape !== undefined
-    ? await scrapeForSession({ provider: rpgResume ? getProvider(rpgResume.providerType ?? providerType) : provider, apiKey, url: opts.scrape })
+    ? await scrapeForSession({ provider: scrapeProvider, apiKey, url: opts.scrape })
     : null
 
   // --no-safe-mode persists as a global Venice setting in every launch path
@@ -380,24 +398,21 @@ async function main(opts, promptArg) {
   // --aspect-ratio/--image-format keep their documented setter meaning next to
   // a chat run: the set-and-exit dispatch (their other writer) is not reached,
   // so persist them here instead of dropping the flags.
-  if (opts.aspectRatio !== undefined || opts.imageFormat !== undefined) {
-    const merged = mergeImageDefaults(prefs, providerType, {
-      aspectRatio: resolveFlagOrExit(resolveAspectRatio, opts.aspectRatio),
-      format: resolveFlagOrExit(resolveImageFormat, opts.imageFormat),
-    })
+  if (aspectRatio !== undefined || imageFormat !== undefined) {
+    const merged = mergeImageDefaults(prefs, providerType, { aspectRatio, format: imageFormat })
     prefs.imageDefaults = merged.imageDefaults
     try {
       await savePreferences(prefs, opts.config)
     } catch (err) {
       fail(`Error: could not save the image defaults preference: ${err.message}`)
     }
-    if (opts.aspectRatio !== undefined) {
-      const notice = `Aspect ratio set to ${prefs.imageDefaults[providerType].aspectRatio} (${providerType} image defaults)`
+    if (aspectRatio !== undefined) {
+      const notice = `Aspect ratio set to ${aspectRatio} (${providerType} image defaults)`
       if (process.stdout.isTTY === true) console.log(notice)
       else console.error(notice)
     }
-    if (opts.imageFormat !== undefined) {
-      const notice = `Image format set to ${prefs.imageDefaults[providerType].format} (${providerType} image defaults)`
+    if (imageFormat !== undefined) {
+      const notice = `Image format set to ${imageFormat} (${providerType} image defaults)`
       if (process.stdout.isTTY === true) console.log(notice)
       else console.error(notice)
     }

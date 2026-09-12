@@ -740,6 +740,9 @@ test('--no-safe-mode alone opens the chat and persists the pref', async (t) => {
   withStdoutTTY(t, true)
   withVeniceApiKey(t)
   const configFile = await tempConfig(t)
+  const { resetModelCaches } = await import('../src/providers/venice.js')
+  resetModelCaches()
+  t.after(resetModelCaches)
   const modelCalls = []
   t.mock.method(globalThis, 'fetch', async (url) => {
     const u = String(url)
@@ -753,9 +756,13 @@ test('--no-safe-mode alone opens the chat and persists the pref', async (t) => {
   assert.ok(out.join('\n').includes('Aborted.'))
   const saved = JSON.parse(await readFile(configFile, 'utf-8'))
   assert.equal(saved.safeMode, false)
-  // The seeded listing must be the one and only /models request: the
-  // selection path awaits it instead of fetching a second copy.
-  assert.equal(modelCalls.length, 1, `expected exactly one /models request, saw ${modelCalls.length}`)
+  // Cold caches: the launch seeds the text listing and the selection path adds
+  // the image catalog, so each catalog is fetched exactly once. The caches are
+  // reset here instead of relying on tests that ran before this one.
+  const textCalls = modelCalls.filter((u) => u.includes('type=text'))
+  const imageCalls = modelCalls.filter((u) => u.includes('type=image'))
+  assert.equal(textCalls.length, 1, `expected one text listing request, saw ${textCalls.length}`)
+  assert.equal(imageCalls.length, 1, `expected one image listing request, saw ${imageCalls.length}`)
 })
 
 test('--no-safe-mode notice goes to stderr when stdout is piped', async (t) => {
@@ -814,6 +821,21 @@ test('--image --no-watermark prints the notice and persists the pref before the 
   assert.match(err.join('\n'), /image model flux-1-1 not found/)
   const saved = JSON.parse(await readFile(configFile, 'utf-8'))
   assert.equal(saved.hideWatermark, true)
+})
+
+test('--image --no-watermark prints the notice on stdout when stdout is a terminal', async (t) => {
+  withTTY(t, true)
+  withStdoutTTY(t, true)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  )
+
+  const { out, err } = await runAndExit(t, { provider: 'venice', config: configFile, image: true, imageModel: 'flux-1-1', watermark: false }, 'a red cat', 1)
+
+  assert.match(out.join('\n'), /^Venice watermark disabled$/m)
+  assert.ok(!err.join('\n').includes('Venice watermark disabled'))
 })
 
 test('--no-watermark with a prompt persists the pref and prints the notice on stdout', async (t) => {
@@ -883,6 +905,24 @@ test('--aspect-ratio on a chat run persists the per-provider default instead of 
   assert.equal(saved.imageDefaults.venice.format, 'png')
 })
 
+test('--aspect-ratio notices print on stdout on a terminal', async (t) => {
+  withTTY(t, true)
+  withStdoutTTY(t, true)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  const { resetModelCaches } = await import('../src/providers/venice.js')
+  resetModelCaches()
+  t.after(resetModelCaches)
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  )
+
+  const { out, err } = await runAndExit(t, { provider: 'venice', model: 'venice-model', config: configFile, aspectRatio: '16:9' }, 'Hi', 1)
+
+  assert.match(out.join('\n'), /^Aspect ratio set to 16:9 \(venice image defaults\)$/m)
+  assert.ok(!err.join('\n').includes('Aspect ratio set to'))
+})
+
 test('--aspect-ratio with a bad value fails loudly instead of being persisted', async (t) => {
   withTTY(t, true)
   withVeniceApiKey(t)
@@ -893,6 +933,34 @@ test('--aspect-ratio with a bad value fails loudly instead of being persisted', 
 
   assert.match(err.join('\n'), /--aspect-ratio must be in the form W:H/)
   await assert.rejects(readFile(configFile, 'utf-8'), /ENOENT/)
+})
+
+test('an empty --aspect-ratio/--image-format value is ignored instead of crashing', async (t) => {
+  withTTY(t, true)
+  withStdoutTTY(t, false)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  )
+
+  const { out, err } = await runAndExit(t, { provider: 'venice', model: 'venice-model', config: configFile, aspectRatio: '', imageFormat: '' }, 'Hi', 1)
+
+  assert.ok(!`${out.join('\n')}\n${err.join('\n')}`.includes('image defaults'), 'an empty value gets no notice')
+  assert.ok(!err.join('\n').includes('TypeError'), 'an empty value must not crash')
+  await assert.rejects(readFile(configFile, 'utf-8'), /ENOENT/)
+})
+
+test('--scrape with a bad --aspect-ratio fails before the page is billed', async (t) => {
+  withTTY(t, true)
+  withVeniceApiKey(t)
+  const configFile = await tempConfig(t)
+  const calls = mockVeniceScrapeFetch(t)
+
+  const { err } = await runAndExit(t, { config: configFile, provider: 'venice', model: 'venice-model', scrape: 'https://example.com/article', aspectRatio: 'bogus' }, 'Hi', 1)
+
+  assert.match(err.join('\n'), /--aspect-ratio must be in the form W:H/)
+  assert.ok(!calls.some((u) => u.includes('/augment/scrape')), 'a bad flag must not bill a scrape')
 })
 
 test('Ctrl+C at the picker in one-shot (prompt arg) aborts cleanly with Aborted.', async (t) => {
@@ -1231,4 +1299,22 @@ test('--rpg --resume --scrape of an OpenRouter chapter fails loudly, never silen
     scrape: 'https://example.com/article',
   }, undefined, 1)
   assert.match(err.join('\n'), /Error: --scrape is not supported by provider openrouter\./)
+})
+
+test('--rpg --resume --scrape reports the chapter provider before the missing key', async (t) => {
+  withTTY(t, true)
+  withoutApiKey(t)
+  const dir = await seedRpgChapter(t, { providerType: 'openrouter', providerName: 'ProviderX', model: 'test/model' })
+  const configFile = await tempConfig(t)
+
+  const { err } = await runAndExit(t, {
+    config: configFile,
+    rpg: dir,
+    resume: true,
+    provider: 'venice',
+    scrape: 'https://example.com/article',
+  }, undefined, 1)
+
+  assert.match(err.join('\n'), /Error: --scrape is not supported by provider openrouter\./)
+  assert.ok(!err.join('\n').includes('OPENROUTER_API_KEY'), 'the provider limitation must beat the key error')
 })

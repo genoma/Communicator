@@ -46,13 +46,13 @@ F8. `--zdr` / `--e2ee` were silently accepted next to a `--list-*` exit mode and
    flags actually passed (`Error: --zdr cannot be combined with --list-* flags.` /
    `Error: --e2ee cannot be combined with --list-* flags.` — the single-flag form each case
    actually surfaces: `--zdr` on OpenRouter; with both flags the mutual/provider gates push
-   first and the rule is not the surfaced error, `src/cli-validation.js:264-266`); validation
+   first and the rule is not the surfaced error, `src/cli-validation.js:281-284`); validation
    throws (`src/cli-main.js:78-81`) before the warning site (`:160`), so the listing no longer
    starts.
 F9. Bare `--config` silently dropped `--zdr`: `hasBareConfigOtherFlags`
-   (`src/cli-validation.js:89-123`) listed `opts.e2ee` (`:119`) but not `opts.zdr`, so
+   (`src/cli-validation.js:89-123`) listed `opts.e2ee` (`:136`) but not `opts.zdr`, so
    `communicator --config --zdr` printed the config and exited 0 → `opts.zdr` is now in the
-   guard (`:119-120`, next to the pre-existing e2ee line) and the bare config view rejects it
+   guard (`:137`, next to the pre-existing e2ee line) and the bare config view rejects it
    exactly as it already rejected `--e2ee`
    (`Error: bare --config (config view) cannot be combined with other flags.`, exit 1).
 F10. The interactive `/scrape` notice (`src/commands/chat/index.js:467-469`) was printed with
@@ -65,21 +65,22 @@ F11. `--zdr` / `--e2ee` were silently accepted next to `--export`, `--delete` an
     covers those three paths too, still naming only the flags actually passed
     (`Error: --zdr cannot be combined with --delete-all-sessions.` etc.), while `--resume` stays
     exempt (`--resume --zdr` / `--resume --e2ee` are intended behavior). The rule sits after the
-    three exclusion rules (`src/cli-validation.js:281-289`), so no previously surfaced
+    three exclusion rules (`src/cli-validation.js:296-309`), so no previously surfaced
     `errors[0]` changes — the provider gate still wins for `-p venice --export --zdr` and the
     session-flags message still wins when a real session flag is also present.
 F12. `--web-results` on Venice flipped web search to `auto` — a search Venice bills — while
     dropping the count it cannot read → rejected by a provider gate
     (`Error: --web-results is only available with --provider openrouter.`,
-    `src/cli-validation.js:152-158`), matching the flag's documented "OpenRouter only" contract
+    `src/cli-validation.js:173-176`), matching the flag's documented "OpenRouter only" contract
     and the `--zdr` precedent. Two forms defer, because CLI validation only sees the flag's own
     `--provider`: a resumed session executes on the provider saved in its file, and a
     set-and-exit dispatch issues no request at all — the latter now shares
-    `isConfigSetDispatch` (`src/cli-validation.js:73-84`) with `src/cli-main.js`, so the
-    validator no longer re-derives the dispatch. Both forms are judged by
+    `isConfigSetDispatch` (`src/cli-validation.js:76-87`) with `src/cli-main.js`, so the
+    validator no longer re-derives the dispatch. The resume form is judged by
     `assertResolvedProviderFlags` against the resolved provider (`src/session-setup.js:43-55`,
     called at `:70` and `:124`), which also made `--zdr` defer on `--resume`
-    (`src/cli-validation.js:147`) and thereby closed the same hole for a resumed Venice session.
+    (`src/cli-validation.js:164-166`) and thereby closed the same hole for a resumed Venice session;
+    the set-and-exit form is deliberately unchecked because it issues no request.
     `/web-results` still stores a count Venice never reads (it does not change the mode, so it
     cannot bill); `docs/web-search.md` and `MEMORY.md` updated. Two review rounds folded in: the
     first cut keyed on `opts.provider` alone, leaving `--resume <venice-session> --web-results 5`
@@ -88,7 +89,7 @@ F12. `--web-results` on Venice flipped web search to `auto` — a search Venice 
 F13. A plain `--resume` demanded the *flag* provider's API key before the session loaded:
     `-p venice -r <openrouter-session>` died with `Error: VENICE_API_KEY environment variable is
     not set.` even though the run executes on the session's provider and key
-    (`src/commands/chat-start.js:35-37`). `src/cli-main.js:296-298` now resolves that key only
+    (`src/commands/chat-start.js:35-37`). `src/cli-main.js:339-341` now resolves that key only
     when the run does not resume (an RPG chapter already carried its own), so the lookup happens
     where the provider is known instead of being asked of `-p`; a resumed Venice session without
     `VENICE_API_KEY` still fails loudly, now naming the provider the run actually uses. Verified
@@ -110,7 +111,7 @@ F14. `--e2ee` and `--scrape` were still keyed on the flag's own `--provider`, so
     Venice fixture).
 
 F15. The resumed image-session `/model` handoff sent an empty API key — the F13 fix stopped
-    `src/cli-main.js` from resolving a key for a plain `--resume` (`src/cli-main.js:296-298`),
+    `src/cli-main.js` from resolving a key for a plain `--resume` (`src/cli-main.js:339-341`),
     but `chatStart`'s image branch handed its own `apiKey` *parameter* (now `''`) to the text
     handoff instead of the key the resume branch had already resolved from the session's
     provider, so `-r <image-session>` → `/model` → text model sent `Authorization: Bearer ` and
@@ -123,8 +124,8 @@ F16. A deferred provider gate could be answered only after a **billed** Venice s
     page before `chat-start`/`one-shot` rejected the run against the chapter's provider — a
     regression for the `-p venice` form, which the parent commit refused at validation for free.
     The provider-only flags are now answered against the provider that will serve the run
-    *before* the key lookup, the fetch and the `--no-safe-mode` persist (`src/cli-main.js:298-310`,
-    scrape at `:323`), via the exported `assertResolvedProviderFlags`
+    *before* the key lookup, the fetch and the `--no-safe-mode` persist (`src/cli-main.js:326-333`,
+    scrape at `:349-351`), via the exported `assertResolvedProviderFlags`
     (`src/session-setup.js:43-55`) when there is no chapter to resume (a legacy `history.json`
     story runs on the flag's provider like a fresh run) and `assertResumeFlags` for a chapter,
     which also answers the `--e2ee`-vs-session match before the page is bought. Both routes are
@@ -135,13 +136,17 @@ F17. The resolved-provider guard ran *after* the API-key lookup, so
     missing key instead of the provider limitation the F14 reorder exists to surface. Both
     lookups now follow the guard: the plain resume's in `chat-start`
     (`src/commands/chat-start.js:36-37`), a chapter's via the pre-fetch guard above
-    (`src/cli-main.js:298-310`, ahead of the chapter key at `:312-314`). Pinned with the key
+    (`src/cli-main.js:326-333`, ahead of the chapter key at `:339-341`). Pinned with the key
     absent on both routes (the one-shot half needed the same key deletion to discriminate).
+    Review follow-up: the `--scrape` capability check was hoisted ahead of the chapter key lookup
+    (`assertScrapeCapability` in `src/cli-main.js`), so a chapter whose provider has no
+    `scrapePage` reports `--scrape is not supported by provider …` even when the key is missing,
+    matching the provider-before-key rule this entry established.
 F18. A one-shot RPG chapter resume reset the chapter's persisted scrape count to this run's own
     while rewriting that same session file, contradicting `docs/web-scrape.md:30-31` and losing the
     flat $0.01s on the next resume — the unfixed half of the class F14 fixed for the chat path
     (`src/commands/chat-start.js:121`). The count now carries over
-    (`src/commands/one-shot.js:302`), pinned by the chapter-resume test.
+    (`src/commands/one-shot.js:307`), pinned by the chapter-resume test.
 
 F19. A one-shot RPG chapter resume overwrote the chapter's cumulative cost summary:
     `state.costSummary = trackerCostSummary(tracker)` ran off a tracker that was never seeded
@@ -203,7 +208,12 @@ F24. `--aspect-ratio`/`--image-format` — documented as persisted per-provider 
     `resolveAspectRatio`/`resolveImageFormat`, merged with `mergeImageDefaults`, TTY-gated
     `Aspect ratio set to … (<provider> image defaults)` / `Image format set to …` notices — so the
     flags keep their documented setter meaning next to a chat run. Pinned by persist/notice and
-    bad-value tests.
+    bad-value tests. Review follow-up: both values are resolved once, right after flag validation and
+    before the billed scrape or any prefs write — so `--scrape <url> --aspect-ratio bogus` fails
+    for free instead of paying for the page first — and the notices read the resolved values, so
+    an empty `--aspect-ratio=`/`--image-format=` (Commander passes `''`, the resolvers treat it as
+    unset) is ignored instead of crashing on `prefs.imageDefaults[providerType]`, and a value that
+    resolves to unset no longer prints a notice or writes prefs.
 F25. `--image --no-watermark` was the one persisting path without the notice its safe-mode twin
     prints (`Venice safe mode disabled`), and its writer (`finalizeImageSession`) ran only after a
     successful generation, so a failed image run kept silent and saved nothing. The image branch
@@ -222,7 +232,7 @@ F27. The `--list-endpoints` not-found hint pointed only at `--list-models`, whic
     id reported a plain "not found" with no sign the catalog had failed. The hint now names both
     catalog commands (`Use --list-models for text models or --list-image-models for image models.`)
     and the fetch failure warns like the picker (`Warning: could not load image models; showing
-    text models only. (<error>)`). The config-set twin (`src/commands/config-set.js:46`) keeps the
+    text models only. (<error>)`). The config-set twin (`src/commands/config-set.js:45`) keeps the
     text-only hint on purpose: that path cannot accept an image model at all. Pinned by hint and
     warning tests.
 F28. A rejected `--e2ee` resume still printed the at-rest warning first — and for an RPG chapter
@@ -242,7 +252,8 @@ F29. The documentation and comment drift items O14, O16, O17 and O20 were closed
     says "budget tracked and persisted; one-shot never refuses", `docs/chat.md` scopes picker
     skipping to `-m <id>` with a prompt and documents the bare form as validate-save-exit, the
     Venice web-search example puts the prompt before the bare flag, the flags table gained a
-    positional-order note for all six optional-value flags (`--web-search`, `--config`, `--resume`,
+    positional-order note for all seven optional-value flags (`--web-search`, `--config`, `--resume`,
+    `--export`,
     `--list-endpoints`, `--delete`, `--delete-all-sessions`), and `src/config.js`'s
     `syncPreferenceUpdates` comment dropped `/budget` from its caller list and states where the cap
     lives (session payload; the global `prefs.budget` remains the bare setter's). No behavior
@@ -355,7 +366,7 @@ O10. ~~**`--web-results` on Venice can turn billed search ON.** `src/flags.js:68
     limits: `--e2ee` is rejected alongside `--web-results` (`src/cli-validation.js:163-164`), and
     billing needs a model with `capabilities.supportsWebSearch`, else `src/session-setup.js:82-83`
     exits. A bare `communicator --web-results 5` no longer bites — it is the config setter
-    (`src/cli-main.js:233-257`), which only persists the count. Billing path when it does:
+    (`src/cli-main.js:243-262`), which only persists the count. Billing path when it does:
     `src/providers/venice.js:289-296` (`enable_web_search: 'auto'`).~~ **Fixed** — see the
     matching entry in "Fixed on `fix/one-shot-bugs`" above.
 O11. ~~**`--list-endpoints` needed an API key on OpenRouter** (`fetchEndpoints` sent
@@ -390,7 +401,8 @@ O14. ~~**`--budget` is inert on a piped one-shot** (no pre-check, no metrics, no
 O15. **`--width` / `--height` precedence trap.** A saved `imageDefaults.<provider>.aspectRatio`
     is applied whenever `opts.aspectRatio === undefined`, with no width/height guard
     (`src/commands/image-gen.js:191-198`); on aspect-list models the explicit pixels are then
-    dropped with no note, and the code comment at `:235-238` claims the opposite. On pixel
+    dropped with no note, and the comment at `:235-238` is scoped to pixel models,
+    where the explicit pair does win). On pixel
     models the explicit pair does win. Moot if those flags are removed by the surface cleanup.
 
 ## Open — image surface
@@ -407,6 +419,27 @@ O39. **`bria-bg-remover` is offered as an image generator.** Venice's `/models?t
     before any generation, so the 400 was not billed). Fix direction: filter non-generative utility
     models out of the generation surface (picker, `--list-image-models`, `--image`/`-m`), or gate
     them behind an input-image path. No behavior change until decided.
+
+O40. **A resumed session can silently clear a standing `webResults` default.** The resume branch
+    (`src/session-setup.js:172`) never reads `prefs.webResults`, although the comment above it
+    claims parity with the `webSearch` line, which does read the pref first (`:169`); the session
+    snapshot therefore wins, and the interactive exit writer then persists that resolved value
+    unconditionally (`src/chat.js:307`, `webResults: finalState.webResults`, with no explicitness
+    guard like the neighbouring `webSearch` key). Repro: `communicator --web-results 5` writes
+    `"webResults": 5`; `communicator -r <session saved without the flag>` resolves `null` and
+    writes `"webResults": null` on exit; every later run loses the 5-result default. Pre-existing
+    (not a branch regression), but the branch's own versioning note in `MEMORY.md` claimed such
+    values "keep working", which this contradicts. Fix: read the pref first on resume and gate
+    the exit write like `webSearch` (an explicit marker, or reuse `webSearchExplicit`);
+    `/web-results` still persists itself, so gating the generic write loses nothing.
+
+O41. **The image-catalog warning also fires for text-only `--list-endpoints` lookups.**
+    `resolutionCatalog` runs for every explicit-id lookup (`src/commands/list-endpoints.js:53-59`),
+    so when `/images/models` fails while `/models` works, `--list-endpoints openai/gpt-4o` prints
+    `Warning: could not load image models; showing text models only. (…)` even though no image
+    model was ever needed. F27 only justifies the warning for an image-id lookup, and the current
+    test (`test/list-endpoints.test.js:142`) pins the eager behavior. Fix: remember the failure
+    and emit the warning only in the not-found branch.
 
 ## Open — docs and comment drift
 
@@ -466,7 +499,7 @@ O23. ~~**Piped prompts are `.trim()`ed** (`src/cli-utils.js:19`), so a piped dif
 ## Open — non-interactive reachability
 
 O24. **`-x/--export`, `--delete` and any `-r/--resume` with an id are rejected without a TTY in
-    every form**, including picker-free single-id paths (`src/cli-validation.js:253-254`), so
+    every form**, including picker-free single-id paths (`src/cli-validation.js:270-271`), so
     "keep it for scripts/CI/agents" is aspirational for those three. Only `--list-sessions` and
     `--delete-all-sessions y` genuinely work headless today. Either open the gate on the
     picker-free paths or stop citing automation as their rationale.
@@ -475,7 +508,7 @@ O25. **Partial-id ambiguity silently opens an interactive picker** instead of fa
     prompt; a non-interactive mode should prefer an ambiguity error.
 O26. **`-m <image-model> "prompt"` and `--image` validate the same flags differently** — the
     `-m` path hard-rejects `--variants`/`--resolution`/`--quality`/`--seed`/`--width`/`--height`
-    (`src/cli-validation.js:310-313`) while both route into the identical
+    (`src/cli-validation.js:326-331`) while both route into the identical
     `runImageCommand`. Consolidation candidate.
 
 ## Open — test-suite hygiene
@@ -533,9 +566,9 @@ O30. ~~**The gap F8 fixed has the same shape next to the other exit paths.** `--
     `fix/one-shot-bugs`" above.
 O31. **The config-set exit path still accepts `--zdr`/`--e2ee` with any setter flag.** The F11
     rule covers the list/export/delete exits but not the set-and-exit dispatches
-    (`src/cli-main.js:233-257`), so `communicator -p venice -m <model> --e2ee` (or
+    (`src/cli-main.js:243-262`), so `communicator -p venice -m <model> --e2ee` (or
     `-p venice --e2ee --no-watermark`) still prints the E2EE session-file warning
-    (`src/cli-main.js:156-161`) before saving and exiting 0, and `communicator -m <id> --zdr`
+    (`src/cli-main.js:170`) before saving and exiting 0, and `communicator -m <id> --zdr`
     drops the flag the same way. *Fenced:* this is the bare "set a preference and exit" dispatch
     the approved cleanup removes, so the surface goes away rather than getting a rule.
 O32. ~~**Two provider gates still ignore a resumed session's provider.** `-p openrouter -r

@@ -41,7 +41,7 @@ The description is the positional prompt; piped stdin works too (`echo "a red ca
 | `--image-format`     | Output format: `png`, `jpeg`, `webp` (default: `webp` on Venice, `png` on OpenRouter; only sent when the model supports it) |
 | `--variants <n>`     | Number of images to generate, 1–4 (default 1; values above the model's advertised `maxN` are rejected — OpenRouter accepts more upstream but the CLI contract stays 1–4) |
 | `--aspect-ratio <x:y>` | Aspect ratio (model-dependent, e.g. `16:9`, `1:1`, `auto`; decimal ratios like `9:19.5` are accepted) |
-| `--resolution <tier>` | Resolution tier (model-dependent): `1K`, `2K`, `4K` (only values the model advertises are accepted, OpenRouter included) |
+| `--resolution <tier>` | Resolution tier (model-dependent): `1K`, `2K`, `4K`. The flag accepts only those four values, so a model advertising another resolution (e.g. OpenRouter's `512`) cannot be sized through it, in the CLI or the image session |
 | `--quality <level>`  | Quality tier (model-dependent): `low`, `medium`, `high`                    |
 | `--width <px>` / `--height <px>` | Exact pixel dimensions, 1–1280, multiples of the model's divisor (pixel-based models; cannot be combined with `--aspect-ratio` or `--resolution`) |
 | `--seed <int>`       | Random seed for reproducible generations (between -999999999 and 999999999) |
@@ -75,7 +75,7 @@ Choices are remembered as **global per-provider defaults** (`venice` and `openro
 }
 ```
 
-- A non-default picker choice becomes the provider default for future generations. From the CLI, only `--aspect-ratio` and `--image-format` are promoted to a persisted default; `--variants`, `--resolution` and `--quality` apply to that one generation only — set those as lasting defaults with `/aspect`, `/format`, `/resolution`, `/quality` and `/variants` in an image session, or with the config-setter (which accepts `--aspect-ratio`/`--image-format`). Aspect ratios are stored; pixel sizes are always derived from the ratio and the model's divisor, never persisted.
+- A non-default picker choice becomes the provider default for future generations. From the CLI, `--aspect-ratio` and `--image-format` are promoted to a persisted per-provider default — on the bare config-setter form and on any chat/one-shot/image run that carries them; `--variants`, `--resolution` and `--quality` apply to that one generation only — set those as lasting defaults with `/aspect`, `/format`, `/resolution`, `/quality` and `/variants` in an image session. Aspect ratios are stored; pixel sizes are always derived from the ratio and the model's divisor, never persisted.
 - Save them directly with the config-setter (no `--image` needed):
   ```bash
   communicator -p venice --aspect-ratio 16:9 --image-format png
@@ -91,7 +91,7 @@ Choices are remembered as **global per-provider defaults** (`venice` and `openro
 
 Venice stamps generated images with a watermark unless `hide_watermark: true` is sent. This CLI exposes it as a **global setting** (not per model):
 
-- `--no-watermark` disables it for the current `--image`/`-m <image-model>` one-shot and persists `hideWatermark: true` in the preferences file.
+- `--no-watermark` disables it and persists `hideWatermark: true` in the preferences file on every launch path (`--image`/`-m <image-model>` runs and plain chat/one-shot runs alike), announcing `Venice watermark disabled` (stdout on a terminal, stderr when piped).
 - `/watermark off` disables the watermark for this and future generations; `/watermark on` re-enables it. Works inside a Venice image session (bare `/watermark` shows the current state). OpenRouter sessions do not offer `/watermark`.
 - The persisted `hideWatermark` pref applies to all Venice image generation; `/watermark on` (or removing the pref) re-enables the watermark.
 - Venice may ignore the request for some content or models.

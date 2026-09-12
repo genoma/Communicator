@@ -43,6 +43,14 @@ test('readStdin treats whitespace-only input as empty', async (t) => {
   assert.equal(text, '')
 })
 
+test('readStdin drops a trailing CRLF and keeps the rest of the line', async (t) => {
+  mockStdin(t, Readable.from([Buffer.from('line one\r\nline two\r\n')]))
+
+  const text = await readStdin()
+
+  assert.equal(text, 'line one\r\nline two')
+})
+
 test('readStdin returns an empty string for empty input', async (t) => {
   mockStdin(t, Readable.from([]))
 

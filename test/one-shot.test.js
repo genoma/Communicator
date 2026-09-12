@@ -157,10 +157,10 @@ function mockExit(t) {
   return () => exitCode
 }
 
-async function runOneShot(t, { overrides = {}, prefs = {}, prompt = 'Hello', systemPrompt = null, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, rpgResume = null } = {}) {
+async function runOneShot(t, { overrides = {}, prefs = {}, prompt = 'Hello', systemPrompt = null, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, rpgResume = null, scraped = null } = {}) {
   const { oneShotCmd } = await import('../src/commands/one-shot.js')
   try {
-    await oneShotCmd({ apiKey: 'test-key', opts: opts(overrides), prefs, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, providerType: 'openrouter', prompt, rpgResume })
+    await oneShotCmd({ apiKey: 'test-key', opts: opts(overrides), prefs, systemPrompt, rpgFirstMessage, rpgHistory, rpgPostHistoryInstruction, providerType: 'openrouter', prompt, rpgResume, scraped })
     return { exited: false }
   } catch (e) {
     if (e instanceof CliError) return { exited: true, exitCode: e.exitCode, message: e.message }
@@ -554,6 +554,9 @@ test('one-shot chapter resume keeps the chapter cumulative cost summary', async 
       turns: [{ role: 'user', content: 'Hello' }, storedTurn],
       rpgDir,
     },
+    // This run also scrapes a page: the chapter's two flat $0.01s must survive
+    // the rewrite and the new one must be added on top.
+    scraped: { url: 'https://example.com/article', content: '# Article body' },
   })
 
   assert.equal(exited, false)
@@ -564,9 +567,9 @@ test('one-shot chapter resume keeps the chapter cumulative cost summary', async 
   assert.equal(saved.costSummary.promptTokens, 1010)
   assert.equal(saved.costSummary.completionTokens, 505)
   assert.equal(saved.costSummary.totalTokens, 1515)
-  assert.equal(saved.costSummary.scrapes, 2)
-  // 0.002 stored + 0.00002 this turn + 0.02 for the two scrapes.
-  assert.ok(Math.abs(saved.costSummary.cost - 0.02202) < 1e-9, `saw ${saved.costSummary.cost}`)
+  assert.equal(saved.costSummary.scrapes, 3)
+  // 0.002 stored + 0.00002 this turn + 0.03 for the three scrapes.
+  assert.ok(Math.abs(saved.costSummary.cost - 0.03202) < 1e-9, `saw ${saved.costSummary.cost}`)
   // The flat count and its summary must agree: the divergence this fix removes.
   assert.equal(saved.scrapes, saved.costSummary.scrapes)
 })
