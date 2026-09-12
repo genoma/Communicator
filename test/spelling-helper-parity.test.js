@@ -59,8 +59,17 @@ const settle = (promise) => promise.then((reply) => ({ reply }), (error) => ({ e
 const describe = ({ reply, error }) => (error ? `rejected with ${error.message}` : `answered ${JSON.stringify(reply)}`)
 
 // The compiled helper echoes the request id and the JXA program writes no id at
-// all: the echo belongs to the protocol, not to the answer.
-const compare = (reply) => JSON.stringify({ ...reply, id: undefined })
+// all: the echo belongs to the protocol, not to the answer. The checker answers
+// the same guess/completion words in an order that depends on the calling
+// process and the machine's dictionary state (observed on the macOS CI runner:
+// identical word sets, different order), so word lists are compared as sets;
+// ranges and corrections stay exact.
+const compare = (reply) =>
+  JSON.stringify({
+    ...reply,
+    id: undefined,
+    words: Array.isArray(reply.words) ? [...reply.words].sort() : reply.words,
+  })
 
 test('the compiled helper replies to the corpus exactly like the osascript backend', async (t) => {
   if (process.platform !== 'darwin') return t.skip('macOS only')
