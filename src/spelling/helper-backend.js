@@ -16,8 +16,8 @@
 import { spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { constants as fsConstants } from 'node:fs'
-import { access, mkdir, readFile, readlink, rename, rm, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { access, mkdir, readFile, readdir, readlink, rename, rm, stat } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { fileURLToPath } from 'node:url'
 import { DATA_DIR } from '../constants.js'
@@ -43,6 +43,12 @@ const DEVELOPER_DIRS = ['/Library/Developer/CommandLineTools', '/Applications/Xc
 
 const BUILD_TIMEOUT_MS = 30_000
 const MAX_HELPER_RESTARTS = 1
+const HEALTHY_REPLIES_BEFORE_REARM = 20
+
+// A published cached binary is exactly `spelling-helper-<16 hex>`; the anchored
+// pattern keeps every other cache entry (notably a concurrent compile's
+// `<target>.<pid>.<random>.tmp` scratch) out of the sweep.
+const CACHED_HELPER_PATTERN = /^spelling-helper-[0-9a-f]{16}$/
 
 // The OS release enters the cache key through `process.getBuiltinModule` rather
 // than an import: several test files mock `node:os` down to `homedir` alone, and
@@ -97,6 +103,7 @@ export function createHelperBackend({
   timeoutMs = SPELLING_TIMEOUT_MS,
   buildTimeoutMs = BUILD_TIMEOUT_MS,
   maxBuffer = SPELLING_MAX_OUTPUT_BYTES,
+  healthyBeforeRearm = HEALTHY_REPLIES_BEFORE_REARM,
   toolchainDirs = [DEVELOPER_LINK, ...DEVELOPER_DIRS],
 } = {}) {
   const pending = new Map()
@@ -106,8 +113,10 @@ export function createHelperBackend({
   let running = null
   let compiled = false
   let restartsLeft = MAX_HELPER_RESTARTS
+  let healthyReplies = 0
   let nextId = 0
   let disposed = false
+  let swept = false
 
   /**
    * The first helper failure spends the session's one restart, the next latches
@@ -123,6 +132,21 @@ export function createHelperBackend({
     }
     compiled = false
     if (binary !== null) void rm(binary, { force: true }).catch(() => {})
+  }
+
+  /**
+   * A child that keeps answering on the protocol has proven healthy: once it has
+   * answered `healthyBeforeRearm` requests the restart budget is whole again, so
+   * one transient hiccup no longer costs the fast path for the rest of the
+   * session. An id-matched `{ error }` reply counts — it proves the child alive
+   * and speaking the protocol. The latch stays terminal either way: once two
+   * failures have taken the compiled path off, nothing ever arms it again.
+   */
+  const noteHealthyReply = () => {
+    healthyReplies += 1
+    if (healthyReplies < healthyBeforeRearm) return
+    healthyReplies = 0
+    restartsLeft = MAX_HELPER_RESTARTS
   }
 
   /**
@@ -163,6 +187,7 @@ export function createHelperBackend({
       if (!Number.isInteger(reply.id)) abandon()
       return
     }
+    noteHealthyReply()
     if (reply.error !== undefined) {
       entry.finish(true, new Error(String(reply.error)))
       return
@@ -194,6 +219,7 @@ export function createHelperBackend({
     }
     const record = { child, buffer: '', decoder: new StringDecoder('utf8') }
     running = record
+    healthyReplies = 0
     // The helper outlives every request, so its handles are unref'ed: dispose()
     // kills it, and until then it can never hold the REPL open past a prompt.
     child.unref?.()
@@ -271,6 +297,29 @@ export function createHelperBackend({
       child.on('close', (code) => finish(code === 0))
     })
 
+  /**
+   * Remove cached binaries this process is not using: a source or toolchain
+   * change makes a NEW name, and the old file would otherwise stay in the cache
+   * forever. Unlinking a binary another session is RUNNING is safe — POSIX keeps
+   * the inode alive until that process exits — and a compile scratch is never
+   * touched, because a concurrent session may be writing one right now. Errors
+   * are swallowed and nothing is printed: a cache sweep must never fail a
+   * request.
+   */
+  const sweepStaleBinaries = async () => {
+    if (swept) return
+    swept = true
+    const keep = basename(binary)
+    try {
+      for (const entry of await readdir(cacheDir)) {
+        if (entry === keep || !CACHED_HELPER_PATTERN.test(entry)) continue
+        await rm(join(cacheDir, entry), { force: true }).catch(() => {})
+      }
+    } catch {
+      // A cache that cannot be listed keeps its stale binaries; nothing else.
+    }
+  }
+
   const buildHelper = async () => {
     try {
       if (disposed) return false
@@ -287,11 +336,13 @@ export function createHelperBackend({
       )
       if (cached) {
         compiled = true
+        await sweepStaleBinaries()
         return true
       }
       await mkdir(cacheDir, { recursive: true, mode: 0o700 })
       if (disposed) return false
       compiled = await compile(binary)
+      if (compiled) await sweepStaleBinaries()
     } catch {
       compiled = false
     }

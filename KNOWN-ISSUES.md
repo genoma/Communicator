@@ -554,6 +554,30 @@ five one-shot tests that read the log red with `ENOENT` (1–2 ms against the 20
 the four flushes removed from `src/chat.js` all four chat tests red (the `/quit` read gives
 `ENOENT`, the three exits record `logAtExit: null`) — verified on this branch.
 
+## Fixed on `fix/spelling-hardening` (kept for provenance)
+
+F45. F44: the two compiled-helper residuals are closed, and the red ubuntu/windows CI behind them
+is fixed. `test/spelling-helper-parity.test.js` now pins `helper.m` ↔ `jxa.js` parity on macOS CI:
+on darwin with a filesystem-probed toolchain it compiles the helper through the real build path
+(`createHelperBackend({ cacheDir: mkdtemp, timeoutMs: 5000 })`, `whenReady() === true`), drives
+both real backends over a 17-request corpus and requires identical replies once the protocol's
+`id` echo is stripped, plus an integer `id` on every helper reply so a silent osascript fallback
+cannot pass for a match; malformed requests must reject on both backends. It skips with
+`t.skip('macOS only')` / `t.skip('no Command Line Tools')` before constructing anything, so
+Linux/Windows never compile. `sweepStaleBinaries()` evicts superseded
+`<DATA_DIR>/spelling-helper-<16 hex>` files once the compiled path is usable — never a `*.tmp`
+compile scratch, never the current binary, all errors swallowed, nothing printed, once per backend
+instance — so a source or toolchain change no longer leaves a ~54 KB binary behind. The restart
+budget re-arms after `healthyBeforeRearm` (default 20) id-matched replies while the two-failure
+latch stays terminal for the session, and the counter resets per child, so one transient hiccup no
+longer costs the fast path for the rest of the session. `test/spelling-helper-backend.test.js` also
+no longer builds its warm-cache backend on the host toolchain: that test was the single failure in
+every ubuntu/windows job since 8649895 (macos was green), confirmed from the Actions logs for
+34716223265 and from a local no-toolchain reproduction (21/22 before, 25/25 after). Node 22's test
+process does not keep the event loop alive for a pending test promise and the backends unref every
+child, so the parity file holds a referenced anchor timer for its duration (Node 22/24/26 all report
+1994 tests).
+
 ## Open — piped-output purity
 
 The contract (`MEMORY.md` §Display consistency): a piped one-shot writes **only** the answer
@@ -952,16 +976,20 @@ O38. ~~**`--list-endpoints`' not-found hint names only `--list-models`.** Now th
 ## Open — compiled macOS spelling helper (phase 4, `feat/spelling-helper`)
 
 F44. Two accepted residuals of the compiled helper, both recorded in MEMORY §Compiled helper:
-    **(1) `helper.m` ↔ `jxa.js` parity is not pinned by any test.** The suite must never compile or
+    **(1) `helper.m` ↔ `jxa.js` parity is not pinned by any test.** ~~The suite must never compile or
     spawn a real backend, so the only parity evidence is the manual macOS smoke (`/usr/bin/cc -O2
     -fobjc-arc -framework AppKit -o <tmp> src/spelling/helper.m`, then the four ops on one stdin
     stream, compared with the live osascript backend on the same inputs): all six headline probes
     are identical once the protocol's `id` echo is ignored, and a wider 17-request sweep differs
     only in error-message TEXT on deliberately malformed requests. Any future edit to `helper.m`
     must keep it in semantic lockstep with `jxa.js` and be verified with that smoke — nothing in CI
-    can catch a divergence.
-    **(2) The cache never evicts.** A source or toolchain change makes a new
+    can catch a divergence.~~
+    **(2) The cache never evicts.** ~~A source or toolchain change makes a new
     `~/.communicator/spelling-helper-<hash>` and the old file stays behind: measured, one ~54 KB
     binary per change (two existed after phase-4 development). A suspect binary IS dropped when the
     helper latches the compiled path off, so the residue is accumulation only, in a directory that
-    belongs to Communicator.
+    belongs to Communicator.~~
+    **Fixed** — parity is CI-pinned by `test/spelling-helper-parity.test.js` and the cache sweeps
+    superseded binaries; see F45 above. The remaining scope of that gate is deliberate: it runs
+    only where a Darwin toolchain exists (it skips before constructing anything elsewhere), so
+    parity is checked on macOS CI, not on every platform.

@@ -98,7 +98,7 @@ async function createHarnessBackend(overrides = {}, harnessOptions = {}) {
     toolchainDirs: [toolchain],
     ...overrides,
   })
-  return { dir, harness, fallback, backend }
+  return { dir, toolchain, harness, fallback, backend }
 }
 
 /** Drive a backend to the point where its compiled helper serves the requests */
@@ -193,7 +193,7 @@ test('a build that never finishes is killed and left on the fallback', async () 
 })
 
 test('a cached binary is reused, so the helper is compiled once', async () => {
-  const { dir, harness, backend } = await createHarnessBackend()
+  const { dir, toolchain, harness, backend } = await createHarnessBackend()
   await buildHelper(harness, backend)
   const built = harness.children.length
   backend.dispose()
@@ -203,9 +203,43 @@ test('a cached binary is reused, so the helper is compiled once', async () => {
     fallback: createFallback(),
     sourcePath: SOURCE,
     cacheDir: dir,
+    // The same fake toolchain: the warm-cache path must be provable on any host.
+    toolchainDirs: [toolchain],
   })
   assert.equal(await second.whenReady(), true)
   assert.equal(harness.children.length, built, 'a warm cache compiles nothing')
+  second.dispose()
+  await rm(dir, { recursive: true, force: true })
+})
+
+test('a usable helper sweeps superseded cached binaries and leaves a compile scratch alone', async () => {
+  const { dir, toolchain, harness, backend } = await createHarnessBackend()
+  const stale = join(dir, 'spelling-helper-0000000000000000')
+  const scratch = join(dir, 'spelling-helper-ffffffffffffffff.tmp')
+  await writeFile(stale, 'superseded helper binary', { mode: 0o755 })
+  await writeFile(scratch, 'a compile another session is writing', { mode: 0o755 })
+
+  const ready = backend.whenReady()
+  const compiler = await harness.waitForCompiler()
+  const binary = compiler.args[compiler.args.indexOf('-o') + 1].replace(/\.\d+\.[0-9a-f]{8}\.tmp$/, '')
+  await harness.finishBuild()
+  assert.equal(await ready, true)
+
+  assert.equal(await access(stale).then(() => true, () => false), false, 'a superseded binary is swept')
+  assert.equal(await access(scratch).then(() => true, () => false), true, 'a compile scratch is never touched')
+  assert.equal(await access(binary).then(() => true, () => false), true, 'the current binary is kept')
+
+  const second = createHelperBackend({
+    spawnFn: harness.spawnFn,
+    fallback: createFallback(),
+    sourcePath: SOURCE,
+    cacheDir: dir,
+    toolchainDirs: [toolchain],
+  })
+  assert.equal(await second.whenReady(), true, 'the swept cache still starts a helper')
+  assert.equal(harness.children.length, 1, 'the warm cache compiles nothing')
+
+  backend.dispose()
   second.dispose()
   await rm(dir, { recursive: true, force: true })
 })
@@ -231,6 +265,80 @@ test('the watchdog kills a hanging helper, falls back and latches off after one 
   assert.deepEqual(
     fallback.calls.map((call) => call.text),
     ['a', 'b', 'c']
+  )
+
+  backend.dispose()
+  await rm(dir, { recursive: true, force: true })
+})
+
+test('a proven-healthy helper re-arms the restart budget before the next failure', async () => {
+  const { dir, harness, fallback, backend } = await createHarnessBackend({ timeoutMs: 5, healthyBeforeRearm: 2 })
+  await buildHelper(harness, backend)
+
+  assert.deepEqual(await backend.run({ op: 'check', text: 'a' }), FALLBACK_REPLY, 'the first failure spends the restart')
+  assert.equal(harness.helpers().length, 1)
+
+  // The restarted child proves itself: two answered requests are the threshold.
+  const healthy = []
+  for (const text of ['b', 'c']) {
+    const pending = backend.run({ op: 'check', text })
+    const helper = harness.helpers()[1]
+    const id = JSON.parse(helper.writes.at(-1)).id
+    helper.stdout.emit('data', `${JSON.stringify({ id, ranges: [] })}\n`)
+    healthy.push(await pending)
+  }
+  assert.deepEqual(healthy, [
+    { id: 2, ranges: [] },
+    { id: 3, ranges: [] },
+  ])
+
+  assert.deepEqual(await backend.run({ op: 'check', text: 'd' }), FALLBACK_REPLY, 'the second failure spends the re-armed restart')
+  assert.deepEqual(harness.helpers()[1].killSignals, ['SIGKILL'])
+  assert.equal(await backend.whenReady(), true, 'the re-arm kept the compiled path alive')
+
+  const restarted = backend.run({ op: 'check', text: 'e' })
+  const third = harness.helpers()[2]
+  assert.notEqual(third, undefined, 'a healthy helper gets a fresh restart after the next failure')
+  third.stdout.emit('data', `${JSON.stringify({ id: JSON.parse(third.writes[0]).id, ranges: [] })}\n`)
+  assert.deepEqual(await restarted, { id: 5, ranges: [] })
+  assert.deepEqual(
+    fallback.calls.map((call) => call.text),
+    ['a', 'd'],
+    'only the failed requests reached osascript'
+  )
+
+  backend.dispose()
+  await rm(dir, { recursive: true, force: true })
+})
+
+test('the healthy counter does not survive a helper restart', async () => {
+  const { dir, harness, fallback, backend } = await createHarnessBackend({ timeoutMs: 5, healthyBeforeRearm: 2 })
+  await buildHelper(harness, backend)
+
+  const first = backend.run({ op: 'check', text: 'a' })
+  const firstHelper = harness.helpers()[0]
+  firstHelper.stdout.emit('data', '{"id":1,"ranges":[]}\n')
+  assert.deepEqual(await first, { id: 1, ranges: [] })
+
+  // The child dies with that one answered request on its count.
+  assert.deepEqual(await backend.run({ op: 'check', text: 'b' }), FALLBACK_REPLY, 'the first failure spends the restart')
+  assert.deepEqual(firstHelper.killSignals, ['SIGKILL'])
+
+  // One reply from the restarted child must not inherit that count: on its own it
+  // is below the threshold, so the next failure still latches instead of spawning.
+  const second = backend.run({ op: 'check', text: 'c' })
+  const secondHelper = harness.helpers()[1]
+  assert.notEqual(secondHelper, undefined, 'the first failure restarted the helper')
+  secondHelper.stdout.emit('data', '{"id":3,"ranges":[]}\n')
+  assert.deepEqual(await second, { id: 3, ranges: [] })
+
+  assert.deepEqual(await backend.run({ op: 'check', text: 'd' }), FALLBACK_REPLY, 'the second failure latches')
+  assert.equal(await backend.whenReady(), false, 'an inherited count did not re-arm the budget')
+  assert.deepEqual(await backend.run({ op: 'check', text: 'e' }), FALLBACK_REPLY)
+  assert.equal(harness.helpers().length, 2, 'no third helper is spawned')
+  assert.deepEqual(
+    fallback.calls.map((call) => call.text),
+    ['b', 'd', 'e']
   )
 
   backend.dispose()
