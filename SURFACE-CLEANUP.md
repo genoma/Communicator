@@ -102,38 +102,38 @@ macOS/Ubuntu/Windows for `3.49.2`.
 ### Stage 1 — parity first (nothing removed yet)
 
 **1.1 — `/safe-mode on|off` (image REPL, Venice only)** — commit `feat: add /safe-mode to the Venice image session`
-- [ ] `src/commands/image-session.js`: add `'/safe-mode'` to `IMAGE_COMMAND_HELP` (first + `extra`
+- [x] `src/commands/image-session.js`: add `'/safe-mode'` to `IMAGE_COMMAND_HELP` (first + `extra`
       usage line), push it in `imageSessionCommands()` next to `/watermark` under the
       `providerName === 'venice'` gate, and mirror the `/watermark` dispatch branch (`:248-256`).
-- [ ] `src/commands/image-gen.js`: add `handleSafeModeCommand` mirroring `handleWatermarkCommand`
+- [x] `src/commands/image-gen.js`: add `handleSafeModeCommand` mirroring `handleWatermarkCommand`
       (no args → print `Venice safe mode is on|off.`; `on`/`off` → `savePrefs({ safeMode })` +
       confirmation; non-Venice → the same provider error shape as `/watermark`).
-- [ ] `src/status-line.js`: optional badge `safe mode off` beside `watermark off` when the pref is
+- [x] `src/status-line.js`: optional badge `safe mode off` beside `watermark off` when the pref is
       false (keeps the image status line symmetric).
-- [ ] Tests: `test/image-session.test.js` — help visibility (Venice yes, OpenRouter no), show
+- [x] Tests: `test/image-session.test.js` — help visibility (Venice yes, OpenRouter no), show
       state, `on`/`off` persist `prefs.safeMode`, the next generation in the same session uses the
       new value (`runImageGeneration` reads the pref per call), non-Venice refusal.
-- [ ] Docs: `docs/images.md` safe-mode section (command line), `MEMORY.md` §Text vs Image command
+- [x] Docs: `docs/images.md` safe-mode section (command line), `MEMORY.md` §Text vs Image command
       separation (image REPL owns it).
-- [ ] Verify: PTY smoke on a Venice image session — `/safe-mode` shows state, `/safe-mode off`
+- [x] Verify: PTY smoke on a Venice image session — `/safe-mode` shows state, `/safe-mode off`
       persists and the next generation request carries `safe_mode: false`; gate green.
 
 **1.2 — export format: persist + `/export-format`** — commit `feat: persist the export format and add /export-format`
-- [ ] `src/flags.js`: add `resolveExportFormat(value)` (markdown|jsonl, same message as today:
+- [x] `src/flags.js`: add `resolveExportFormat(value)` (markdown|jsonl, same message as today:
       `--export-format expects "markdown" or "jsonl".`); use it in `src/cli-validation.js:222-227`.
-- [ ] `src/config.js`: `applyPreferenceUpdates` accepts `exportFormat` (assign when defined).
-- [ ] `src/cli-main.js` export block (`:246-261`): `const exportFormat = opts.exportFormat ||
+- [x] `src/config.js`: `applyPreferenceUpdates` accepts `exportFormat` (assign when defined).
+- [x] `src/cli-main.js` export block (`:246-261`): `const exportFormat = opts.exportFormat ||
       prefs.exportFormat || 'markdown'`; persist `exportFormat` (and `outputDir`) in one
       `savePreferences` call when the flag differs from the pref.
-- [ ] `src/commands/chat/index.js`: `COMMAND_DESCRIPTIONS['/export-format']` + `COMMAND_USAGE`
+- [x] `src/commands/chat/index.js`: `COMMAND_DESCRIPTIONS['/export-format']` + `COMMAND_USAGE`
       (`/export-format <markdown|jsonl>`) + handler (no args → show current + default; arg →
       resolve, `ctx.savePrefs({ exportFormat })`, confirmation, `showStatus`).
-- [ ] Counts: `test/suggest.test.js` 24 → 25; MEMORY §command registry `24 commands` → `25`.
-- [ ] Tests: command handler (persist/show/bad value), export dispatch (`--export --export-format
+- [x] Counts: `test/suggest.test.js` 24 → 25; MEMORY §command registry `24 commands` → `25`.
+- [x] Tests: command handler (persist/show/bad value), export dispatch (`--export --export-format
       jsonl` persists and the next `--export` uses jsonl), resolver unit test.
-- [ ] Docs: `docs/commands.md` (`--export-format` row + chat-commands table row + examples),
+- [x] Docs: `docs/commands.md` (`--export-format` row + chat-commands table row + examples),
       `docs/chat.md` if it lists chat commands.
-- [ ] Verify: `communicator --export --export-format jsonl` writes `exportFormat`; `/export-format
+- [x] Verify: `communicator --export --export-format jsonl` writes `exportFormat`; `/export-format
       jsonl` in chat does the same; a bare `--export` then emits JSONL; gate green.
 
 ### Stage 2 — remove the image sizing flags
