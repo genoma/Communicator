@@ -32,7 +32,7 @@ The preferences file (`~/.communicator.json`, customizable with `--config`), per
 }
 ```
 
-- `lastModel` / `lastProvider` — become the defaults in the interactive pickers.
+- `lastModel` — becomes the default in the interactive model picker (`lastProvider` is persisted but not read back by any picker).
 - `lastImageModel` — becomes the default in the interactive image model picker.
 - `reasoningEffort` / `temperature` / `topP` / `webSearch` — saved per model ID and restored automatically.
 - `smoothStreaming` / `smoothSpeed` — global defaults; the speed is stored as a chars-per-second number, e.g. `2000`.
@@ -45,4 +45,4 @@ The preferences file (`~/.communicator.json`, customizable with `--config`), per
 - `imageDefaults` — per-provider image sizing defaults (`venice`/`openrouter`, each `{ aspectRatio, format, resolution, quality, variants }`), saved by a run carrying `--aspect-ratio`/`--image-format`, by any explicit flag or non-default picker choice, and by `/aspect`/`/format`/`/resolution`/`/quality`/`/variants` in image sessions. `/seed` is never persisted.
 - Legacy `webSearch: true` values are read as `auto`.
 
-Preferences are currently scoped across both API backends — your last OpenRouter model shows as the favorite even when using Venice (this will be improved in a future release).
+Preferences are currently shared across both API backends — your last OpenRouter model shows as the favorite even when using Venice (a known limitation).

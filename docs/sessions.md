@@ -8,7 +8,7 @@ when longer than 50 chars the title is the first 50 chars plus `...`). Sessions 
 when you switch models or start a new session, and on interrupt during streaming
 (including the partial response). A metadata index at
 `~/.communicator/sessions/.index.json` powers `--list-sessions` and the
-resume/export/delete pickers so listing never has to parse full session files — the only exception is a legacy entry without a stored cost summary, which is parsed once to fill in its cost.
+resume/export/delete pickers so listing never has to parse a covered, up-to-date session file — a legacy entry without a stored cost summary, an entry whose file is newer than the index's recorded mtime, and a file missing from the index are parsed to refresh it.
 If the index is missing or stale (e.g. from an older version), it is rebuilt
 automatically from the session files.
 
@@ -39,7 +39,7 @@ is created when it did not exist.
 communicator --list-sessions
 ```
 
-Output shows each session's ID, last-activity timestamp, model, message count, an optional `· $cost` column (present when the session has tracked usage cost), and the session title. Sessions are listed most-recently-used first: the timestamp is `updatedAt`, bumped when new content is saved (a new message or an image generation) — merely resuming an old conversation does not bump it, so it keeps its place until you actually use it again. Legacy sessions without `updatedAt` fall back to `createdAt`, then to the creation-time id:
+Output shows each session's ID, last-activity timestamp, model, message count, an optional `· $cost` column (present when the session's tracked cost is greater than zero), and the session title. Sessions are listed most-recently-used first: the timestamp is `updatedAt`, bumped when new content is saved (a new message or an image generation) — merely resuming an old conversation does not bump it, so it keeps its place until you actually use it again. Legacy sessions without `updatedAt` fall back to `createdAt`, then to the creation-time id:
 
 ```
 3 saved session(s):
@@ -108,7 +108,7 @@ printed and the session is deleted. That is why the bare flag (the
 multi-select checkbox) needs a TTY, and why an ambiguous prefix with piped
 stdin fails instead of asking: `Error: "<prefix>" matches <N> sessions: <ids>.
 Use a longer id to select one.` Selecting multiple
-sessions shows a single `Delete N sessions?` confirmation and removes them all;
+sessions shows a single `Delete these N sessions?` confirmation and removes them all;
 selecting none prints `Deletion cancelled.` and exits without changes. It
 cannot be combined with `--resume`, `--export`, or a prompt argument. Removal is best-effort per session: an entry
 that cannot be removed (a locked file, a stray directory named like a session)
@@ -174,7 +174,7 @@ used for all future exports until you override it again.
 - **Header** — timestamp, title, model, provider, message count, reasoning effort, and accumulated cost
 - **User messages** — blockquoted under a `## You` heading
 - **Assistant responses** — reasoning shown under `### thinking`, final answer under `### Answer`
-- **Attachments** — user-attached images/pdf/office files and assistant-produced artifacts are materialized as real files in `session-{id}/attachments/` and referenced from the markdown by portable relative links (`> **Attachment:**` lines whose `attachments/image.png`-style target resolves to the written file). Filenames are sanitized and deduplicated within the session. Remote artifact URLs (a generation-time download failure) and text-file attachments stay as they are — clickable links / inline text
+- **Attachments** — user-attached images/pdf/office files and assistant-produced artifacts are materialized as real files in `session-{id}/attachments/` and referenced from the markdown by portable relative links. User attachments render `> **Attachment:** [<filename>](attachments/<filename>)`; assistant-produced parts render `> **Image:**` / `> **File:**` with the same link shape. Filenames are sanitized and deduplicated within the session. Remote artifact URLs (a generation-time download failure) and text-file attachments stay as they are — clickable links / inline text
 - **Sources** — when web search was used, a `**Sources:**` markdown list follows each answer, with inline `^n^` citations converted to `[n](url)` links
 - **Cost** — from the persisted per-session cost summary (the flat scrape fee included); legacy sessions without a summary fall back to replaying per-message usage, and "N/A" shows when pricing is unavailable
 
@@ -183,7 +183,7 @@ Example output:
 ```markdown
 # Chat Session — 2026-07-30 19:11:45 UTC
 **Title:** What is the capital of France?
-**Model:** `openai/gpt-4o` | **Provider:** OpenAI | **Messages:** 4 | **Cost:** $0.000124
+**Model:** `openai/gpt-4o` | **Provider:** OpenAI | **Messages:** 2 | **Cost:** $0.000124
 
 ---
 
@@ -234,7 +234,7 @@ Each session is stored as a JSON file:
 
 - `providerName` is the endpoint provider (e.g., `"OpenAI"` for OpenRouter, `"venice"` for Venice)
 - `providerType` is the API backend (`"openrouter"` or `"venice"`). Older sessions without this field default to `"openrouter"` on resume
-- `reasoningEffort` is `"auto"` when the model reasons without effort control, `null` when reasoning is explicitly disabled, and a level string (`"low"`, `"medium"`, ...) otherwise. Older sessions without the field or with `null` restore as disabled
+- `reasoningEffort` is `"auto"` when the model reasons without effort control, `null` when reasoning is explicitly disabled, and a level string (`"low"`, `"medium"`, ...) otherwise. A session with no stored field restores as `"auto"` (the model default); a stored `null` restores as disabled
 - `reasoningMandatory` is `true` when the model's reasoning cannot be disabled (e.g. DeepSeek R1) — `false` for legacy sessions; used to avoid sending a disable the provider rejects
 - `temperature` is the resolved session temperature (0–2); `topP` is the resolved session top-p (0–1) — both present only when explicitly set; when unset the parameters are omitted from the request and the provider applies its own default; `budget` is the per-session cap in USD (`null` when unset)
 - `pricing` is the endpoint's per-token USD rates (`null` when unknown); `contextLength` is the endpoint's advertised context window (`null` when undisclosed, e.g. some Venice models) — used by the CTX indicator on resume

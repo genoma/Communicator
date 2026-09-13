@@ -6,7 +6,7 @@ Communicator is written in pure Node.js ESM with no native dependencies, so the 
 
 | Platform | Status | Notes |
 |----------|--------|-------|
-| macOS    | Primary — developed and tested locally and in CI | Clipboard via built-in `pbcopy` |
+| macOS    | Primary — developed and tested locally and in CI | Clipboard via built-in `pbcopy`; prompt-editor spelling assistance (system spell checker, optional compiled helper — see Data locations) |
 | Linux    | Expected to work, CI-verified | Clipboard tools probed at runtime: `wl-copy` (Wayland) → `xclip` → `xsel` (X11) |
 | Windows  | Expected to work, CI-verified | Clipboard via built-in `clip`; multi-line input normalizes CRLF |
 
@@ -30,10 +30,10 @@ When none is available, `/copy` reports `Copy failed: No clipboard tool found. I
 The full experience requires a modern terminal emulator:
 
 - **ANSI colors and styling** — all modern terminals
-- **OSC 8 clickable links** (web sources, inline citations) — iTerm2, Terminal.app, Warp, WezTerm, kitty, GNOME Terminal, Windows Terminal, and most others
+- **OSC 8 clickable links** (web sources, inline citations) — iTerm2, Warp, WezTerm, kitty, GNOME Terminal, Windows Terminal, and most others; support varies by terminal and version
 - **Braille spinner, markdown tables, smooth streaming** — degrade gracefully elsewhere
 
-Terminals without ANSI support get plain-text fallbacks: OSC 8 escapes are stripped automatically and streaming text is written as-is. On Windows, use **Windows Terminal** (or another modern emulator) — legacy `conhost`/`cmd` renders plain text without styling, colors, or clickable links.
+Terminals without ANSI support get plain-text fallbacks: link labels render as plain text (the app emits OSC 8 escapes for http(s) links, and terminals that do not understand them ignore the escape) and streaming text is written as-is. On Windows, use **Windows Terminal** (or another modern emulator) — legacy `conhost`/`cmd` renders plain text without styling, colors, or clickable links.
 
 ## Data locations
 
@@ -46,6 +46,9 @@ All persistent data is resolved from `os.homedir()` at runtime, so the paths are
 | `~/.communicator.json` | Preferences |
 | `~/.communicator-system-prompt.md` | Optional custom system prompt |
 | `~/.communicator/history.json` | Prompt input history (max 200 entries) |
+| `~/.communicator/spelling-helper-<hash>` | Compiled macOS spelling helper (macOS only; built on first use, never without Command Line Tools) |
+
+On macOS the prompt editor uses the system spell checker; on first use Communicator compiles a small helper into `~/.communicator/spelling-helper-<16-hex>` when Command Line Tools (or Xcode) are present. Without a toolchain nothing is compiled and every request goes through a per-call `osascript` process instead; the feature is inert on Linux and Windows.
 
 ## Install & environment on Linux/Windows
 

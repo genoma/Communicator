@@ -10,8 +10,8 @@ The interactive model picker shows **text models and image models together**: im
 
 ```text
 Select a model
-❯ venice/llama-3.3-70b
-  flux-1-1  (flux-1-1)  [image]
+  venice/llama-3.3-70b
+  openai/gpt-4o
   ...
 ──────────────────────────
 Image models
@@ -33,7 +33,7 @@ communicator -p venice --image "a red cat in a spacesuit"
 communicator -p openrouter --image "a red cat in a spacesuit"
 ```
 
-The description is the positional prompt; piped stdin works too (`echo "a red cat" | communicator -p venice --image`). Flags:
+The description is the positional prompt; piped stdin works too, but because the image model picker needs a TTY it must name the model (`echo "a red cat" | communicator -p venice --image --image-model flux-1-1`). Flags:
 
 | Flag                 | Description                                                               |
 |----------------------|---------------------------------------------------------------------------|
@@ -45,9 +45,9 @@ The description is the positional prompt; piped stdin works too (`echo "a red ca
 | `--no-watermark`     | Hide the Venice watermark on the generated images (persisted as the global `hideWatermark` pref) |
 | `--output-dir <path>`| Also copy the generated images to this directory (saved as the default for later runs) |
 
-Explicit run flags (`--aspect-ratio`, `--image-format`, `--seed`) are validated against the chosen model's supported options when the model is known; an unsupported value errors with the supported list, and a model that advertises no list at all for a parameter rejects the flag outright (`Error: --aspect-ratio 21:9 is not supported by flux-1-1. Supported: 1:1, 16:9.`). Resolution, quality and variants are image-session commands: their persisted per-provider defaults are applied to a run when the model supports them and dropped with a visible note otherwise. An unknown `--image-model` id is rejected at selection (`image model <id> not found. Use --list-image-models to see available models.`) — the API is never reached.
+Explicit run flags (`--aspect-ratio`, `--image-format`, `--seed`) are validated against the chosen model's supported options when the model is known; an unsupported value errors with the supported list, and a model that advertises no list at all for a parameter rejects the flag outright (`Error: --aspect-ratio 21:9 is not supported by flux-1-1. Supported: 1:1, 16:9.`). Resolution, quality and variants are image-session commands: their persisted per-provider defaults are applied to a run when the model supports them and dropped with a visible note otherwise. An unknown `--image-model` id is rejected at selection (`image model <id> not found. Use --list-image-models to see available models.`) — the generation endpoint is never reached.
 
-On a TTY, `--image` (and `-m <image-model>`) without the sizing flags asks for the aspect ratio and output format with compact pickers — the saved default is preselected, so pressing Enter accepts it. Pixel-based models get the same ratio picker over their hardcoded preset list, with each ratio labeled with its computed pixel size (`2:3 · 848x1272`) and the saved ratio preselected (falling back to 1:1). Flags skip the pickers. Piped input uses the saved defaults directly.
+On a TTY, `--image` (and `-m <image-model>`) without the sizing flags asks for the aspect ratio and output format with compact pickers — the saved default is preselected, so pressing Enter accepts it. Pixel-based models get the same ratio picker over their hardcoded preset list, with each ratio labeled with its computed pixel size (`2:3 · 848x1272`) and the saved ratio preselected (falling back to 1:1). Each flag skips its own picker (`--image-format` alone still opens the aspect picker). Piped input uses the saved defaults directly.
 
 ## Listing models
 
@@ -56,7 +56,7 @@ communicator -p venice --list-image-models
 communicator -p openrouter --list-image-models
 ```
 
-Prints each image model's name, id, per-image price, and its sizing options (`[aspect: …]`, `[resolution: …]`, `[quality: …]`, `[privacy]`, `[offline]`). No API key is needed to list models; on OpenRouter the price column fetches per-model endpoint pricing (`from $X per image` across billable output-image entries).
+Prints each image model's name, id, per-image price, and its sizing options (`[aspect: …]`, `[resolution: …]`, `[quality: …]`, `[private]`/`[anonymized]`, `[offline]`). No API key is needed to list models; on OpenRouter the price column fetches per-model endpoint pricing (the cheapest endpoint's `$X per image`, or `$X per 1M tokens` when billed per token; `from $X` appears only for tier/matrix pricing).
 
 Venice's catalog also contains **utility models** that are not generators: a background remover takes an input image instead of a text prompt, so it announces no aspect ratio and no real pixel divisor. Those are filtered out of the image surface — the picker, `--list-image-models` and `--image-model`/`-m` selection never show or accept Venice's Background Remover (`bria-bg-remover`), and its id fails at model selection like any unknown id. An input-image path for edits and upscales is a documented future feature, not implemented.
 
@@ -79,7 +79,7 @@ Choices are remembered as **global per-provider defaults** (`venice` and `openro
   communicator -p venice --aspect-ratio 16:9 --image-format png
   communicator -p openrouter --aspect-ratio 1:1
   ```
-- Image sessions apply the saved defaults automatically on start; `/aspect <x:y>`, `/format <fmt>`, `/resolution <tier>`, `/quality <level>` and `/variants <n>` override them for the rest of the session. Bare `/aspect`/`/format`/`/resolution`/`/quality` show the model's full supported list with the current value marked in brackets (`Aspect ratios: 1:1 [16:9] 3:2.`, `Formats: [png] jpeg webp.`, `Resolutions: 1K [2K] 4K.`, `Qualities: low [medium] high.`); bare `/variants` shows the session count (`Variants: 1-4 (current: 2).`) and bare `/seed` the session seed (`Seed: 123.` / `Seed: not set.`). A stored value outside the supported list is reported as such, and a model that cannot take the parameter at all says so. `clear` unsets the value so the parameter is no longer sent — use it to override a saved default for one session. Only advertised values are accepted for list-based options; `/variants` accepts 1–4 and `/seed` any integer between -999999999 and 999999999. The advertised lists are model-dependent: resolution tiers are `1K`, `2K`, `4K` and quality levels are `low`, `medium`, `high` (e.g. `Resolutions: 1K [2K] 4K.`, `Qualities: low [medium] high.`).
+- Image sessions apply the saved defaults automatically on start; `/aspect <x:y>`, `/format <fmt>`, `/resolution <tier>`, `/quality <level>` and `/variants <n>` override them for the rest of the session. Bare `/aspect`/`/format`/`/resolution`/`/quality` show the model's full supported list with the current value marked in brackets (`Aspect ratios: 1:1 [16:9] 3:2.`, `Formats: [png] jpeg webp.`, `Resolutions: 1K [2K] 4K.`, `Qualities: low [medium] high.`); bare `/variants` shows the session count (`Variants: 1-4 (current: 2).`) and bare `/seed` the session seed (`Seed: 123.` / `Seed: not set.`). A stored value outside the supported list is reported as such, and a model that cannot take the parameter at all says so. `clear` unsets the value so the parameter is no longer sent and also deletes the saved per-provider default, so later runs start from nothing again (`/seed` is the exception: it clears only for the current session). Only advertised values are accepted for list-based options; `/variants` accepts 1–4 and `/seed` any integer between -999999999 and 999999999. The advertised lists are model-dependent: resolution tiers are `1K`, `2K`, `4K` and quality levels are `low`, `medium`, `high` (e.g. `Resolutions: 1K [2K] 4K.`, `Qualities: low [medium] high.`).
 - `/seed` is **session-only**: it is never persisted, because a stored seed would silently reproduce the same image on every run. `clear` only resets it for the rest of the session.
 - **Pixel-based models behave like aspect models with a hardcoded ratio list** (`1:1, 3:2, 16:9, 21:9, 9:16, 2:3, 3:4, 4:5`): `/aspect <x:y>`, `--aspect-ratio` and the pickers accept exactly these ratios, and the pixel size is computed from the ratio and the model's `widthHeightDivisor` — `aspect_ratio` itself is never sent (those models ignore it and return a square default). Bare `/aspect` shows each preset with its computed size and the current ratio marked: `Aspect ratios: 1:1 1280x1280 · 3:2 1272x848 · 16:9 1280x720 · 21:9 1264x544 · 9:16 720x1280 · [2:3 848x1272] · 3:4 960x1280 · 4:5 1024x1280.`
 - **Unsupported defaults are never sent silently**: if a saved default is not supported by the chosen model (or the model cannot take the parameter at all, e.g. GPT-Image models without `output_format`), the CLI drops it and prints a one-line note (`note: saved aspect ratio 21:9 is not supported by <model>; it was not sent.`). Explicit flags always error client-side with the supported list instead. The CLI makes the drop visible because the providers' API silently ignores unsupported values and still bills them (Venice pixel-based models ignore `aspect_ratio` and return a square default).
@@ -107,7 +107,7 @@ Venice blurs adult-content results unless `safe_mode: false` is sent. This CLI e
 ## Provider differences
 
 - **Venice** (`POST /image/generate`): per-image pricing (`$X per image`, sometimes a resolution/quality matrix); every model accepts `png|jpeg|webp`; safe mode + watermark options; `auto` aspect ratio only on some models.
-- **OpenRouter** (`POST /api/v1/images`): pricing is per model+endpoint (`from $X per image`); models advertise exactly which `aspect_ratio`/`output_format`/`resolution`/`quality` values they accept (including extended ratios like `9:19.5` and `auto`); no safe-mode or watermark parameters. The generation response's `media_type` decides the saved file type, not the requested format.
+- **OpenRouter** (`POST /api/v1/images`): pricing is per model+endpoint (the cheapest endpoint's `$X per image`, or `$X per 1M tokens` when billed per token); models advertise exactly which `aspect_ratio`/`output_format`/`resolution`/`quality` values they accept (including extended ratios like `9:19.5` and `auto`); no safe-mode or watermark parameters. The generation response's `media_type` decides the saved file type, not the requested format.
 - OpenRouter **chat-completion** image-output models (the artifact flow) are unaffected — sizing control only exists for the dedicated image API models listed by `--list-image-models`.
 
 ## Storage & costs

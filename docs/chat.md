@@ -10,6 +10,8 @@ The interactive chat experience: the selection flow, one-shot mode, terminal ren
 
 Passing `-m <id>` with a prompt skips **all** pickers: the reasoning effort is restored from your saved per-model preference (or the model default), and the OpenRouter endpoint is auto-selected (cheapest provider with pricing, otherwise the first one). Venice always goes straight to chat. A bare `-m <id>` with no prompt opens an interactive chat with that model (with piped stdin it is one-shot input and fails with the no-prompt error) — see [commands](commands.md). `--reasoning-effort` still overrides the effort when given; `--reasoning-effort none` disables reasoning. Models that are disabled by default (`default_enabled: false`) restore as disabled.
 
+While the chat prompt is open, the editor suggests matching `/` commands as you type, and on macOS it also runs system spelling assistance: misspelled prose is underlined (Ctrl+. lists replacements), a dictionary completion can be accepted with Tab, and optional autocorrect fixes a word as you finish typing it. The full behavior, gating and settings are in [commands](commands.md#slash-commands).
+
 ## One-shot mode
 
 Pass a prompt as a positional argument, or pipe input via stdin, to get a single answer without entering the chat loop:
@@ -22,7 +24,7 @@ cat notes.md | communicator -m "openai/gpt-4o" --system-prompt ~/reviewer.md
 
 - Without `-m`, the model pickers run first (they need a TTY), then the one-shot answer is sent.
 - Piped stdin is read up to a 10MB sanity limit. Piping input without `-m` is an error — pickers can't run without a TTY.
-- Output is TTY-aware: on a terminal you get the streaming response with reasoning labels and the usage/cost footer; when stdout is piped you get **only** the plain answer text (no banners, no usage) — ideal for scripting: `communicator -m ... "hi" | jq`.
+- Output is TTY-aware: on a terminal you get the streaming response with reasoning labels and the usage/cost footer; when stdout is piped you get **only** the plain answer text (no banners, no usage) — plain text, ideal for scripting.
 - The answer is saved as a regular session (title, temperature, top-p, budget, usage) and the model/temperature/top-p preferences are persisted, exactly like an interactive chat.
 - Exit codes: `0` success, `1` API/validation error (message on stderr), `130` interrupted with `Ctrl+C`.
 - A prompt *argument* cannot be combined with `--resume`, `--export`, `--delete`, or `--list-*` flags (error + exit 1), and `--resume`/`--export`/`--delete` cannot be combined with `--list-*` flags either. Piped stdin has no such conflict: `--list-models`, `--list-sessions`, and `--list-endpoints <model>` work with piped stdin, and so do `--resume`, `--export` and `--delete` when they select by session ID instead of opening a picker. The interactive pickers (bare `--resume`/`--export`/`--delete`, and bare `--list-endpoints`) need a TTY.
@@ -44,24 +46,24 @@ The user is asking about the capital of France...
 
 The capital of France is Paris.
 
-───────────────────────────────────────
-  Tokens  ↑ 12 prompt  ↓ 28 completion  = 40 total
-  Cost    $0.000034 this turn  |  $0.000124 session
-───────────────────────────────────────
+────────────────────────────────────────
+  Tokens ↑ 12 prompt  ↓ 28 completion  = 40 total
+  Cost   $0.000034 this turn  |  $0.000124 session
+────────────────────────────────────────
 ```
 
 The last footer row holds the **CTX indicator**: the session's peak context usage — the most context a single turn has occupied (`prompt + completion` divided by the endpoint's advertised context length). It never decreases as the conversation grows, even when web search results transiently inflate a turn's prompt.
 
-The row appears only when the context window is known and at least 5% occupied (`CTX    ██████░░░░ 60%`; with a 1M-token model like DeepSeek V4 Flash, ordinary chats rarely show it). The bar turns yellow at 80% and red at 95%. When the budget warning fires (see below), the budget bar joins the same row instead of adding a line.
+The row appears only when the context window is known and at least 5% occupied (`CTX    ██████░░░░ 60%`; with a 1M-token context window, ordinary chats rarely show it). The bar turns yellow at 80% and red at 95%. When the budget warning fires (see below), the budget bar joins the same row instead of adding a line.
 
-The `Cache ⚡` line appears only when OpenRouter serves a cached response — on a cache miss it is omitted entirely. The session cost accumulates across turns within the same chat, and Venice pricing is normalized from per-1M-token rates to per-token for a consistent cost display.
+The `Cache ⚡` line appears only when the provider reports a cached response — on a cache miss it is omitted entirely. The session cost accumulates across turns within the same chat, and Venice pricing is normalized from per-1M-token rates to per-token for a consistent cost display.
 
 ## Current settings line
 
 On connect, the banner and `/status` print the **same** snapshot line — model identity, context window, pricing, and every setting badge — so entering a model and checking status can never drift apart. On a TTY the bracket labels (`[thinking:`, `[top-p:`, …) and the `Connected to` / `Current settings:` prefixes are dimmed so the values read as the headline; piped output is plain:
 
 ```
-Connected to OpenRouter / deepseek/deepseek-chat  [131,072 context]  [in $0.10 / out $0.20/M]  [thinking: High]  [temp: 0.3]  [top-p: 0.8]  [web: auto: 5]  [budget: $2.000000]  [smooth: on (normal, ~2000 chars/s)]
+Connected to DeepInfra / deepseek/deepseek-chat  [131,072 context]  [in $0.10 / out $0.20/M]  [thinking: High]  [temp: 0.3]  [top-p: 0.8]  [web: auto: 5]  [budget: $2.000000]  [smooth: on (normal, ~2000 chars/s)]
 ```
 
 - The context and pricing segments appear only when known; the pricing format is `in $X.XX / out $Y.YY/M`.
@@ -137,9 +139,9 @@ If `post-history-instruction.md` contains anything (Markdown comments stripped, 
 
 The conversation is saved as a **chapter session** in the RPG directory's `sessions/` folder — on `/quit`, `/new`, `/model`, Ctrl+C (including interrupted responses), and after one-shot runs. A chapter uses the same `*.json` + `.index.json` + `attachments/` layout as `~/.communicator/sessions/`, so chapters are self-contained in the RPG folder and the global sessions directory holds only ordinary chats.
 
-A plain `--rpg <dir>` run always starts a **new** chapter: the greeting from `first-message.md` opens the chat, and a notice counts the earlier chapters available — `Starting a new story in <dir> (N earlier session(s) available…)`. Resuming is opt-in: `communicator --rpg <dir> --resume` (bare `--resume`, no session id) continues a chapter — the only chapter resumes directly, and with more than one the same picker a normal `-r` uses lets you choose, printing `Resumed RPG conversation from <dir>/sessions/<id>.json (N messages).` (piped one-shots fall back to the most recent chapter); if there is nothing to resume it simply starts a new story. The resumed chapter restores its session settings — model, provider, temperature, `top-p`, reasoning effort, budget and web-search flags — with the run's flags (`-m`, `--temperature`, …) taking precedence, and keeps writing to its own chapter file. An e2ee mismatch is refused, exactly like a normal `-r` (an e2ee chapter needs `--e2ee` and vice versa).
+A plain `--rpg <dir>` run always starts a **new** chapter: the greeting from `first-message.md` opens the chat, and a notice counts the earlier chapters available — `Starting a new story in <dir> (N earlier session(s) available…)`. Resuming is opt-in: `communicator --rpg <dir> --resume` (bare `--resume`, no session id) continues a chapter — the only chapter resumes directly, and with more than one the same picker a normal `-r` uses lets you choose, printing `Resumed RPG conversation from <dir>/sessions/<id>.json (N messages, saved <YYYY-MM-DD>).` (piped one-shots fall back to the most recent chapter); if there is nothing to resume it simply starts a new story. The resumed chapter restores its session settings — model, provider, temperature, `top-p`, reasoning effort, budget and web-search flags — with the run's flags (`-m`, `--temperature`, …) taking precedence, and keeps writing to its own chapter file. An e2ee mismatch is refused, exactly like a normal `-r` (an e2ee chapter needs `--e2ee` and vice versa).
 
-**Legacy stories:** the old dir-local `history.json` log is legacy — it is no longer written by any run. On the first run against a story directory that only holds a `history.json`, the saved story is imported once as a chapter session (`Migrated the saved story (N messages) into <dir>/sessions/<id>.json…`) and everything continues as a chapter; the file itself is left untouched. If no `-m` is given the import is skipped (nothing else can be stamped faithfully) and the legacy `history.json` fallback keeps working. Support for this legacy layout is temporary and will be removed in a future release.
+**Legacy stories:** the old dir-local `history.json` log is legacy — it is no longer written by any run. On the first run against a story directory that only holds a `history.json`, the saved story is imported once as a chapter session (`Migrated the saved story (N messages) into <dir>/sessions/<id>.json…`) and everything continues as a chapter; the file itself is left untouched. If no `-m` is given the import is skipped (nothing else can be stamped faithfully) and the legacy `history.json` fallback keeps working. Support for this legacy layout may be removed in a future release.
 
 `/new` in RPG mode saves the current chapter and restarts the story **with the first message** — the opening greeting from `first-message.md` is rendered and seeded again instead of a blank page (in non-RPG chat `/new` still clears to an empty conversation as usual).
 
@@ -147,6 +149,6 @@ RPG transcripts use named speaker markers: replayed user turns are shown under `
 
 ### Inspecting the prompt
 
-`--rpg <dir> --debug` logs every request to `prompt-log.jsonl` in the RPG directory: one JSON object per turn, each holding a timestamp, the model, the provider, and the full `request` body exactly as sent (system prompt, history, user turn, temperature, top_p, web search tools, and any other provider parameters). A short `[debug] prompt logged: …` notice is printed to stderr after each turn. The file is created on the first request (never on a turnless launch), grows one line per turn, and stores the plaintext messages even with `--e2ee` — like the chapter sessions, it is a local, unencrypted artifact. `--no-save` still writes it: the log is an artifact the run was asked for, while the chapter session it would otherwise save is what `--no-save` skips.
+`--rpg <dir> --debug` logs every request to `prompt-log.jsonl` in the RPG directory: one JSON object per turn, each holding a timestamp, the model, the provider, and the full `request` body exactly as sent (system prompt, history, user turn, temperature, top_p, web search tools, and any other provider parameters). A short `[debug] prompt logged: …` notice is printed to stderr as each request goes out. The file is created on the first request (never on a turnless launch), grows one line per turn, and stores the plaintext messages even with `--e2ee` — like the chapter sessions, it is a local, unencrypted artifact. `--no-save` still writes it: the log is an artifact the run was asked for, while the chapter session it would otherwise save is what `--no-save` skips.
 
 Note that the chapter session files store messages unencrypted even under `--e2ee` (encryption only applies to messages sent to the API).

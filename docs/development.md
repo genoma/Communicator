@@ -53,7 +53,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 ├── sessions.js           — session persistence: save, load, list, title generation, delete, sidecar index, resolve
 ├── session-sidecar.js    — sessions .index.json storage layer (read/write, staleness, entry maintenance)
 ├── session-picker.js     — interactive session selector for --resume, --export, and --delete
-├── export.js             — markdown exporter: format session data, write to file
+├── export.js             — session exporter: markdown + JSONL formatting, write to file
 ├── tracker.js            — per-turn + cumulative token/cost accounting with cache detection, budget status helpers
 ├── status-line.js        — session-setting badges and the live chat status line
 ├── scrape.js             — web-scraping context normalization (--scrape)
@@ -103,7 +103,7 @@ The chat flow is built around four pieces:
 - **`runChatSession(ctx, deps)` (`src/chat.js`)** — the chat loop is dependency-injected: `deps = { readInput, renderer, stdout, exit, saveSession, savePrefs, onSignal, newSessionId }`, each defaulting to the real implementation, so production behavior is unchanged while the whole loop is drivable with fakes (`test/chat-loop.test.js`). Signal handling (idle/streaming SIGINT, `beforeExit`, `uncaughtException`) is registered through `onSignal` (`src/signals.js`); per-turn orchestration — stream rendering, abort, interrupt salvage, usage tracking — lives in `src/turn-runner.js` on a shared `sessionState` object.
 - **`src/flags.js`** — CLI flag parsing helpers (`resolveTemperatureFlag`, `resolveTopPFlag`, `resolveWebResultsFlag`, `resolveWebSearchFlag`, `resolveReasoningFlag`, `resolveBudget`) shared by the chat loop, one-shot mode, and chat-start.
 
-`src/reasoning.js` holds the two model-capability helpers: `resolveEffortDefault` (forced flag → auto-reasoning → saved pref → model default, `'none'` normalized to `null`) and `isWebSearchSupported` (provider-wide or per-model capability).
+`src/reasoning.js` holds the model-capability helpers: `resolveEffortDefault` (forced flag → auto-reasoning → saved pref → model default, `'none'` normalized to `null`), `isWebSearchSupported` (provider-wide or per-model capability) and `endpointSupportsReasoning` (endpoint-level `supportedParameters`/`supportsReasoningEffort` probe).
 
 ## Provider contract
 
@@ -119,7 +119,7 @@ export function handleHttpError(status, body) → throws ApiError
 ```
 
 - `pricing` is `{ prompt, completion }` USD per token (or `null`) — use `normalizePricing` and the helpers in `src/ui/format.js` for display
-- `chatCompletion` receives `signal` (AbortController) for SIGINT cancellation, `sessionId` for server-side prompt caching (OpenRouter currently ignores it; Venice maps it to `prompt_cache_key`), `temperature` and `topP` (both optional; when `undefined` the request omits `temperature` / `top_p` entirely so the provider applies its own default — send a number to override). `webSearch` is a mode string (`'off' | 'auto' | 'always'`); `webResults` is the OpenRouter result count — providers may ignore options they do not support (see the contract doc in `src/providers/index.js`). It also receives `onSources(sources)` and returns `sources: [{ title, url }]` (empty when web search is off or the provider returned no citations)
+- `chatCompletion` receives `signal` (AbortController) for SIGINT cancellation, `sessionId` for provider-side routing/caching (OpenRouter forwards it as `session_id` on unpinned requests; Venice maps it to `prompt_cache_key`), `temperature` and `topP` (both optional; when `undefined` the request omits `temperature` / `top_p` entirely so the provider applies its own default — send a number to override). `webSearch` is a mode string (`'off' | 'auto' | 'always'`); `webResults` is the OpenRouter result count — providers may ignore options they do not support (see the contract doc in `src/providers/index.js`). It also receives `onSources(sources)` and returns `sources: [{ title, url }]` (empty when web search is off or the provider returned no citations)
 - HTTP calls should go through `fetchWithRetry` from `src/http.js`; errors must be thrown as `ApiError`, never `process.exit`
 
 See `src/providers/openrouter.js` and `src/providers/venice.js` for reference implementations.

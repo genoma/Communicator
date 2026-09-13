@@ -12,7 +12,7 @@ The provider is saved in each session, so resuming a Venice session automaticall
 
 ## Zero data retention (ZDR)
 
-OpenRouter lets you force **zero data retention** per request: no caching, no logging, no training on your prompts or responses. Pass `--zdr` (OpenRouter only — other providers reject it up front: `--zdr is only available with --provider openrouter`) and every request in the session carries `provider.zdr: true`.
+OpenRouter lets you force **zero data retention** per request: no logging, no training, and no retained data. OpenRouter's ZDR policy treats ephemeral provider-side prompt caching as non-retention, so `--zdr` does not disable caching and a served cache hit still shows in the footer. Pass `--zdr` (OpenRouter only — other providers reject it up front: `--zdr is only available with --provider openrouter`) and every request in the session carries `provider.zdr: true`.
 
 Selection is **filtered to ZDR-capable entries**: the model picker shows only models with a zero-retention endpoint, the provider picker shows only `[zero retention]` endpoints, and a non-interactive `-m <model>` fails at selection — before any request — if the model has no ZDR endpoints. The runtime error is kept as a safety net for paths that bypass selection (`--resume`, mid-chat model switches, index drift). Without `--zdr` nothing changes — normal (non-ZDR) routing applies.
 
@@ -21,7 +21,7 @@ Privacy metadata comes from OpenRouter's own public endpoints and is fetched liv
 - **`[zero retention]` tag** — the provider picker marks endpoints listed in OpenRouter's ZDR index; `--list-endpoints` shows a `zdr yes/no` column; `--list-models` marks models that have at least one ZDR-capable endpoint as `[zdr]`
 - **Privacy policy links** — each provider row in `--list-endpoints` prints its `privacy policy` URL, and the picker's description line shows a clickable `privacy policy` OSC 8 hyperlink (plain text in terminals without hyperlink support)
 
-Caveats: `--zdr` is a per-invocation flag, not persisted. ZDR-capable providers may not support web search — combining `--zdr` with `--web-search` is allowed, but the request can be rejected by the API depending on the provider. If OpenRouter's ZDR index can't be fetched, `--zdr` prints a warning and skips filtering, relying on the runtime error instead. `--resume` keeps the session's model/effort/temperature/top-p but ZDR must be re-passed with `--zdr` on the resuming invocation.
+Caveats: `--zdr` is a per-invocation flag, not persisted. ZDR-capable providers may not support web search — combining `--zdr` with `--web-search` is allowed, but the request can be rejected by the API depending on the provider. Provider-side prompt caching is not disabled by `--zdr` (OpenRouter treats the ephemeral KV cache as compatible with ZDR; the footer's `Cache ⚡` line reports a served cache). If OpenRouter's ZDR index can't be fetched, `--zdr` prints a warning and skips filtering, relying on the runtime error instead. `--resume` keeps the session's model/effort/temperature/top-p but ZDR must be re-passed with `--zdr` on the resuming invocation.
 
 ## End-to-end encryption (E2EE)
 
