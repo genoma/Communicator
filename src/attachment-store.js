@@ -161,7 +161,7 @@ export async function hydrateAttachments(messages, dir) {
 // success. Inline data URLs pass through untouched. Returns
 // { part, dataUrl?, savedTo? } on success and { part, error } on failure —
 // the original URL stays in the part when download fails.
-export async function downloadRemotePart(part, sessionId, { requestFn, sessionsDir = null } = {}) {
+export async function downloadRemotePart(part, sessionId, { requestFn, sessionsDir = null, signal } = {}) {
   const url = partUrl(part)
   if (!url || typeof url !== 'string') return { part, error: 'no URL' }
   if (url.startsWith('data:')) return { part }
@@ -172,7 +172,7 @@ export async function downloadRemotePart(part, sessionId, { requestFn, sessionsD
 
   // Redirects are followed manually so every hop is SSRF-checked and the
   // DNS is pinned to the validated addresses (rebinding-safe).
-  const { res, error, url: finalUrl } = await fetchWithRedirects(url, { timeoutMs: 30_000, requestFn })
+  const { res, error, url: finalUrl } = await fetchWithRedirects(url, { timeoutMs: 30_000, requestFn, signal })
   if (!res) return { part, error: error || 'could not fetch URL' }
   if (res.status >= 400) {
     await res.body?.cancel?.()

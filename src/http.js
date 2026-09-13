@@ -127,6 +127,13 @@ function defaultRequestFn(parsed, options) {
 export function pinnedFetch(url, { addresses, family = 0, timeoutMs = DEFAULT_TIMEOUT_MS, signal, requestFn = defaultRequestFn } = {}) {
   const parsed = new URL(url)
   return new Promise((resolve, reject) => {
+    // A signal that is already aborted must reject before the transport starts:
+    // an unaware transport would otherwise leave the request running until the
+    // (much later) timeout, long after the caller gave up.
+    if (signal?.aborted) {
+      reject(signal.reason || new Error('Aborted'))
+      return
+    }
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(new TimeoutError(`Request timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs)
     let settled = false
@@ -256,8 +263,8 @@ export async function readBodyWithDeadline(res, { limit = Infinity, timeoutMs = 
 // Fetches a URL with the SSRF guard and a hard byte cap. Follows redirects
 // manually so every hop is re-validated. Returns null on any unsafe/invalid/
 // oversized outcome and throws only on unexpected body-read errors.
-export async function fetchSafeBytes(url, { maxBytes, timeoutMs = 30_000, requestFn } = {}) {
-  const { res } = await fetchWithRedirects(url, { timeoutMs, requestFn })
+export async function fetchSafeBytes(url, { maxBytes, timeoutMs = 30_000, requestFn, signal } = {}) {
+  const { res } = await fetchWithRedirects(url, { timeoutMs, requestFn, signal })
   if (!res) return null
   if (res.status >= 400) {
     await res.body?.cancel?.()

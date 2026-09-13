@@ -278,6 +278,7 @@ export async function chatStart({ apiKey, opts, prefs, systemPrompt, rpgFirstMes
       imageModelId: ctx.imageModelId,
       sessionId: ctx.sessionId,
       createdAt: ctx.createdAt,
+      updatedAt: ctx.updatedAt,
       initialMessages: ctx.initialMessages,
       configPath: ctx.configPath,
       imageProviderName: ctx.imageProviderName,

@@ -283,6 +283,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     sessionId,
     imageOutputSupported: selection.imageOutputSupported,
     sessionsDir: dir,
+    signal: controller.signal,
   })
 
   // Artifact lines go to stderr when piped so stdout stays pure content;

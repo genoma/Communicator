@@ -292,7 +292,11 @@ export async function generateImage({ apiKey, model, prompt, format, variants = 
     if (!b64 && typeof d.url === 'string') {
       // URL-only responses (no base64 payload) are downloaded the same way
       // produced artifacts are: SSRF-checked, redirect re-validated, size-capped.
-      const fetched = await fetchSafeBytes(d.url, { maxBytes: MAX_IMAGE_ATTACHMENT_BYTES, requestFn })
+      const fetched = await fetchSafeBytes(d.url, { maxBytes: MAX_IMAGE_ATTACHMENT_BYTES, requestFn, signal })
+      // A caller abort cancels the download leg and must surface as the abort
+      // itself, not as the null result fetchSafeBytes returns for an unsafe or
+      // oversized URL (which would mask it as "no base64 data").
+      if (signal?.aborted) throw signal.reason || new Error('Aborted')
       if (fetched) b64 = fetched.toString('base64')
     }
     if (!b64) {

@@ -275,6 +275,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         stdout,
         requestFn,
         sessionsDir,
+        signal: sessionState.streamController.signal,
       })
 
       if (sessionState.interrupted) {

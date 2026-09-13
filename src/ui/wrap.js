@@ -170,8 +170,12 @@ export function wrapWords(styled, cols) {
       if (inLink) {
         if (linkStart > lineStart) cut = linkStart
         else {
-          const close = styled.indexOf('\x1b]8;;\x1b\\', i)
-          if (close !== -1) cut = Math.max(cut, close + 7)
+          // The close carries either terminator: ST (`\x1b\`) or BEL. Take
+          // the nearest close and advance by its own length.
+          const stClose = styled.indexOf('\x1b]8;;\x1b\\', i)
+          const belClose = styled.indexOf('\x1b]8;;\x07', i)
+          const close = stClose === -1 || (belClose !== -1 && belClose < stClose) ? belClose : stClose
+          if (close !== -1) cut = Math.max(cut, close + (close === belClose ? 6 : 7))
         }
       } else if (linkEnd !== -1 && cut > linkStart && cut < linkEnd) {
         cut = linkStart > lineStart ? linkStart : linkEnd

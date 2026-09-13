@@ -27,15 +27,19 @@ export async function loadPreferences(customPath) {
   }
   try {
     const parsed = JSON.parse(data)
+    // Valid JSON that is not an object (null, array, scalar) cannot hold
+    // preferences; it takes the corrupt-file path below instead of being
+    // returned as-is.
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('not a JSON object')
+    }
     // An own `__proto__` key survives JSON.parse and would swap the prefs
     // object's prototype when assigned via [[Set]] (Object.assign or
     // `target[key] =`); `constructor`/`prototype` are equally never legit
     // prefs keys. Drop them on load so a hand-edited file cannot poison the
     // shared state or get re-persisted.
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      for (const key of Object.keys(parsed)) {
-        if (UNSAFE_PREF_KEYS.has(key)) delete parsed[key]
-      }
+    for (const key of Object.keys(parsed)) {
+      if (UNSAFE_PREF_KEYS.has(key)) delete parsed[key]
     }
     return parsed
   } catch (err) {
