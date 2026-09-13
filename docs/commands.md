@@ -156,7 +156,7 @@ communicator -p venice --aspect-ratio 16:9 --image-format png          # open a 
 | `/markdown`    | Toggle terminal markdown rendering (default on)                                     |
 | `/smooth`      | Show smooth streaming state and speed, or set them with `/smooth on|off|<level>|<cps>` (a speed value implies on) |
 | `/compact-thinking` | Show whether the reasoning text streams or a `Thinking` meter replaces it, or set it with `/compact-thinking on|off` (persisted) |
-| `/spelling`     | Show the macOS spelling assistance settings, or set one with `/spelling typo\|autocomplete\|autocorrect on\|off` (persisted). Listed only on macOS: misspelled prose in the prompt input is underlined while typing, Ctrl+. lists replacements and autocorrect (off by default) fixes a misspelled word when the character that closes it is typed. Typed on a platform without the feature, the line ends with `(inactive on this platform)` |
+| `/spelling`     | Show the macOS spelling assistance settings, or set one with `/spelling typo\|autocomplete\|autocorrect on\|off` (persisted). Listed only on macOS: misspelled prose in the prompt input is underlined while typing, Ctrl+. lists replacements and autocorrect (off by default) fixes a misspelled word when the character that closes it is typed. Typed with no arguments on a platform without the feature, the listing ends with `(inactive on this platform)` |
 | `/cost`        | Print the running session cost/token totals and current reasoning effort            |
 | `Cmd+C` / `Ctrl+C` | During streaming: abort, save the partial response, and exit. At the prompt: cancel and exit |
 

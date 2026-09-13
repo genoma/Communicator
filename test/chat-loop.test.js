@@ -773,7 +773,7 @@ test('unknown command list omits /attach and /attachments when the model lacks v
   )
 })
 
-test('unknown command list lists /spelling only with a spelling provider', async (t) => {
+test('unknown command list lists /spelling with a spelling provider', async (t) => {
   const consoleSpy = mockConsole(t)
   const { provider, calls } = fakeProvider()
   const spelling = { onUpdate: null, setFeatures() {}, getTypoRanges: () => undefined, dispose() {} }

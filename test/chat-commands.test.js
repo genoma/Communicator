@@ -154,6 +154,10 @@ test('/help lists /spelling when a spelling provider is present', async (t) => {
     lines.push(String(line))
   }
   assert.ok(lines.some((l) => l.includes('/spelling')), '/spelling is listed with a provider')
+  assert.ok(
+    lines.some((l) => l.startsWith('/spelling') && l.includes('/spelling [typo|autocomplete|autocorrect] [on|off]')),
+    '/help prints the /spelling argument form'
+  )
 })
 
 test('/new saves the session, requests a fresh id, resets state', async (t) => {
