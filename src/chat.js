@@ -288,7 +288,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
   const savePrefs = savePrefsBestEffort((updates) => savePrefsFile(updates))
 
   // macOS spelling assistance: one provider per session, holding the debounce
-  // timer and at most one osascript child (see src/spelling/). `/settings`
+  // timer and at most one osascript child (see src/spelling/). `/spelling`
   // mutates the shared settings object and the provider follows it.
   const spellingSettings = resolveSpellingSettings(prefs)
   const spelling = createSpelling(spellingSettings) ?? null
@@ -459,7 +459,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
   while (true) {
     console.log(sep())
     const result = await readInput({
-      commands: visibleChatCommands({ visionSupported: state.visionSupported, e2ee: state.e2ee, providerName: provider.meta.name }),
+      commands: visibleChatCommands({ visionSupported: state.visionSupported, e2ee: state.e2ee, providerName: provider.meta.name, spellingSupported: spelling != null }),
       // Resize reflow: the caller owns the transcript, so it must rebuild it.
       // The editor clears the screen first, then the hook restores everything
       // above the prompt (session-start layout), then the editor redraws its
@@ -510,7 +510,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
       const cmd = spaceIdx === -1 ? firstLine : firstLine.slice(0, spaceIdx)
       const handler = chatCommands[cmd]
       if (!handler || (spaceIdx !== -1 && !commandAcceptsArgs(cmd))) {
-        console.log(`Unknown command "${firstLine}". Available: ${visibleChatCommands({ visionSupported: state.visionSupported, e2ee: state.e2ee, providerName: provider.meta.name }).join(', ')}\n`)
+        console.log(`Unknown command "${firstLine}". Available: ${visibleChatCommands({ visionSupported: state.visionSupported, e2ee: state.e2ee, providerName: provider.meta.name, spellingSupported: spelling != null }).join(', ')}\n`)
         continue
       }
       // A failing command must not take the whole session down: picker

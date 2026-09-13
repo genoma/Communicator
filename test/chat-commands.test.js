@@ -139,6 +139,21 @@ test('/help lists the commands and the quit aliases without repeating an alias r
   // Aliases appear only in the footer note, not as their own command rows.
   assert.ok(!lines.some((l) => l.trim().startsWith('/exit ')))
   assert.ok(!lines.some((l) => l.trim().startsWith('/q ')))
+  // Without a spelling provider the macOS-only command is not listed.
+  assert.ok(!lines.some((l) => l.includes('/spelling')))
+})
+
+test('/help lists /spelling when a spelling provider is present', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({ spelling: fakeSpelling() })
+  await chatCommands['/help'](ctx)
+  const lines = []
+  for (let i = 0; i < 60; i++) {
+    const line = consoleSpy.log(i)
+    if (line == null) break
+    lines.push(String(line))
+  }
+  assert.ok(lines.some((l) => l.includes('/spelling')), '/spelling is listed with a provider')
 })
 
 test('/new saves the session, requests a fresh id, resets state', async (t) => {
@@ -1226,15 +1241,16 @@ test('/exit and /q are not arg commands', () => {
   assert.equal(commandAcceptsArgs('/q'), false)
 })
 
-test('/settings is a visible arg command in every session shape', () => {
-  assert.ok(CHAT_COMMANDS.includes('/settings'))
-  assert.equal(commandAcceptsArgs('/settings'), true)
+test('/spelling is an arg command, listed only with a spelling provider', () => {
+  assert.ok(CHAT_COMMANDS.includes('/spelling'))
+  assert.equal(commandAcceptsArgs('/spelling'), true)
+  assert.ok(visibleChatCommands({ visionSupported: true, providerName: 'openrouter', spellingSupported: true }).includes('/spelling'))
   for (const visible of [
     visibleChatCommands({ visionSupported: true, providerName: 'openrouter' }),
     visibleChatCommands({ visionSupported: false, providerName: 'venice' }),
     visibleChatCommands({ visionSupported: true, e2ee: true, providerName: 'venice' }),
   ]) {
-    assert.ok(visible.includes('/settings'), 'the command is never hidden')
+    assert.ok(!visible.includes('/spelling'), 'no spelling provider hides the command')
   }
 })
 
@@ -1444,31 +1460,31 @@ function spellingSettings(overrides = {}) {
   return { typoDetection: true, autocomplete: true, autocorrect: false, ...overrides }
 }
 
-test('/settings lists the spelling settings and persists nothing', async (t) => {
+test('/spelling lists the spelling settings and persists nothing', async (t) => {
   const consoleSpy = mockConsole(t)
   const harness = makeCtx({ spelling: fakeSpelling(), spellingSettings: spellingSettings() })
-  await chatCommands['/settings'](harness.ctx)
+  await chatCommands['/spelling'](harness.ctx)
   assert.equal(consoleSpy.log(0), 'Spelling (macOS): typo detection on, autocomplete on, autocorrect off.\n')
   assert.deepEqual(harness.prefsUpdates, [])
 })
 
-test('/settings lists the persisted values without a spelling provider (inactive platform)', async (t) => {
+test('/spelling lists the persisted values without a spelling provider (inactive platform)', async (t) => {
   const consoleSpy = mockConsole(t)
   const harness = makeCtx({
     prefs: { spellingTypoDetection: false, spellingAutocomplete: true, spellingAutocorrect: true },
   })
   assert.equal(harness.ctx.spelling, undefined)
-  await chatCommands['/settings'](harness.ctx)
+  await chatCommands['/spelling'](harness.ctx)
   assert.equal(consoleSpy.log(0), 'Spelling (macOS): typo detection off, autocomplete on, autocorrect on. (inactive on this platform)\n')
 })
 
-test('/settings typo off persists the pref and applies it to the provider', async (t) => {
+test('/spelling typo off persists the pref and applies it to the provider', async (t) => {
   const consoleSpy = mockConsole(t)
   const provider = fakeSpelling()
   const settings = spellingSettings()
   const harness = makeCtx({ spelling: provider, spellingSettings: settings })
 
-  await chatCommands['/settings']({ ...harness.ctx, args: 'typo off' })
+  await chatCommands['/spelling']({ ...harness.ctx, args: 'typo off' })
 
   assert.equal(settings.typoDetection, false)
   assert.equal(provider.features, settings)
@@ -1476,24 +1492,24 @@ test('/settings typo off persists the pref and applies it to the provider', asyn
   assert.equal(consoleSpy.log(0), 'Typo detection off.\n')
 })
 
-test('/settings autocomplete and autocorrect persist their own keys', async (t) => {
+test('/spelling autocomplete and autocorrect persist their own keys', async (t) => {
   const consoleSpy = mockConsole(t)
   const provider = fakeSpelling()
   const settings = spellingSettings({ autocorrect: true })
   const harness = makeCtx({ spelling: provider, spellingSettings: settings })
 
-  await chatCommands['/settings']({ ...harness.ctx, args: 'autocomplete off' })
+  await chatCommands['/spelling']({ ...harness.ctx, args: 'autocomplete off' })
   assert.equal(settings.autocomplete, false)
   assert.deepEqual(harness.prefsUpdates, [{ spellingAutocomplete: false }])
   assert.equal(consoleSpy.log(0), 'Autocomplete off.\n')
 
-  await chatCommands['/settings']({ ...harness.ctx, args: 'autocorrect off' })
+  await chatCommands['/spelling']({ ...harness.ctx, args: 'autocorrect off' })
   assert.equal(settings.autocorrect, false)
   assert.deepEqual(harness.prefsUpdates[1], { spellingAutocorrect: false })
   assert.equal(consoleSpy.log(1), 'Autocorrect off.\n')
 })
 
-test('/settings rejects anything but a known key and on|off, without persisting', async (t) => {
+test('/spelling rejects anything but a known key and on|off, without persisting', async (t) => {
   const consoleSpy = mockConsole(t)
   const provider = fakeSpelling()
   const settings = spellingSettings()
@@ -1501,20 +1517,20 @@ test('/settings rejects anything but a known key and on|off, without persisting'
 
   const args = ['nope on', 'typo maybe', 'typo', 'typo on extra', 'on', 'typo ON']
   for (let i = 0; i < args.length; i++) {
-    await chatCommands['/settings']({ ...harness.ctx, args: args[i] })
-    assert.equal(consoleSpy.error(i), 'Error: /settings expects typo|autocomplete|autocorrect and on|off.\n', args[i])
+    await chatCommands['/spelling']({ ...harness.ctx, args: args[i] })
+    assert.equal(consoleSpy.error(i), 'Error: /spelling expects typo|autocomplete|autocorrect and on|off.\n', args[i])
   }
   assert.deepEqual(harness.prefsUpdates, [])
   assert.deepEqual(settings, spellingSettings())
   assert.equal(provider.features, null)
 })
 
-test('/settings persists on a platform without a provider', async (t) => {
+test('/spelling persists on a platform without a provider', async (t) => {
   const consoleSpy = mockConsole(t)
   const settings = spellingSettings()
   const harness = makeCtx({ spellingSettings: settings })
 
-  await chatCommands['/settings']({ ...harness.ctx, args: 'autocorrect on' })
+  await chatCommands['/spelling']({ ...harness.ctx, args: 'autocorrect on' })
 
   assert.equal(settings.autocorrect, true)
   assert.deepEqual(harness.prefsUpdates, [{ spellingAutocorrect: true }])
@@ -1765,7 +1781,7 @@ test('CHAT_COMMANDS keeps the 26-command order', () => {
     '/markdown',
     '/smooth',
     '/compact-thinking',
-    '/settings',
+    '/spelling',
     '/export-format',
     '/cost',
     '/help',
@@ -1774,23 +1790,31 @@ test('CHAT_COMMANDS keeps the 26-command order', () => {
   ])
 })
 
+test('visibleChatCommands hides /spelling without a spelling provider', () => {
+  const hidden = visibleChatCommands({ visionSupported: true, providerName: 'venice' })
+  assert.ok(!hidden.includes('/spelling'))
+  assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => c !== '/spelling'))
+
+  assert.deepEqual(visibleChatCommands({ visionSupported: true, providerName: 'venice', spellingSupported: true }), CHAT_COMMANDS)
+})
+
 test('visibleChatCommands hides /attach and /attachments only when vision is known unsupported', () => {
-  const hidden = visibleChatCommands({ visionSupported: false, providerName: 'venice' })
+  const hidden = visibleChatCommands({ visionSupported: false, providerName: 'venice', spellingSupported: true })
   assert.ok(!hidden.includes('/attach'))
   assert.ok(!hidden.includes('/attachments'))
   assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => c !== '/attach' && c !== '/attachments'))
 
-  assert.deepEqual(visibleChatCommands({ visionSupported: true, providerName: 'venice' }), CHAT_COMMANDS)
-  assert.deepEqual(visibleChatCommands({ visionSupported: undefined, providerName: 'venice' }), CHAT_COMMANDS)
+  assert.deepEqual(visibleChatCommands({ visionSupported: true, providerName: 'venice', spellingSupported: true }), CHAT_COMMANDS)
+  assert.deepEqual(visibleChatCommands({ visionSupported: undefined, providerName: 'venice', spellingSupported: true }), CHAT_COMMANDS)
 })
 
 test('visibleChatCommands hides /scrape outside Venice', () => {
-  const hidden = visibleChatCommands({ visionSupported: true, providerName: 'openrouter' })
+  const hidden = visibleChatCommands({ visionSupported: true, providerName: 'openrouter', spellingSupported: true })
   assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => c !== '/scrape'))
 })
 
 test('visibleChatCommands hides attach and web commands under e2ee', () => {
-  const hidden = visibleChatCommands({ visionSupported: true, e2ee: true, providerName: 'venice' })
+  const hidden = visibleChatCommands({ visionSupported: true, e2ee: true, providerName: 'venice', spellingSupported: true })
   assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => !['/attach', '/attachments', '/web-search', '/web-results', '/scrape'].includes(c)))
   for (const cmd of ['/attach', '/attachments', '/web-search', '/web-results', '/scrape']) {
     assert.ok(!hidden.includes(cmd), `${cmd} must be hidden under e2ee`)

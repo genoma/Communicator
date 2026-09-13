@@ -60,6 +60,9 @@ function makeDeps(overrides = {}) {
     saveSession: async (id, payload) => saveCalls.push({ id, payload }),
     savePrefs: async (updates) => prefsCalls.push(updates),
     newSessionId: async () => '2026-01-02T00-00-00',
+    // Never construct the real platform provider: a stub keeps the command
+    // list deterministic across platforms (null = no provider, as off darwin).
+    createSpelling: () => null,
     onSignal: (handlers) => {
       signalHandlers = handlers
       return () => { cleaned = true }
@@ -699,7 +702,7 @@ test('unknown command is rejected with the exact message and the provider is not
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /status, /new, /model, /attach, /attachments, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /edit, /delete, /copy, /markdown, /smooth, /compact-thinking, /settings, /export-format, /cost, /help, /exit, /q\n'
+    'Unknown command "/nope". Available: /quit, /status, /new, /model, /attach, /attachments, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /edit, /delete, /copy, /markdown, /smooth, /compact-thinking, /export-format, /cost, /help, /exit, /q\n'
   )
 })
 
@@ -766,8 +769,21 @@ test('unknown command list omits /attach and /attachments when the model lacks v
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /status, /new, /model, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /edit, /delete, /copy, /markdown, /smooth, /compact-thinking, /settings, /export-format, /cost, /help, /exit, /q\n'
+    'Unknown command "/nope". Available: /quit, /status, /new, /model, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /edit, /delete, /copy, /markdown, /smooth, /compact-thinking, /export-format, /cost, /help, /exit, /q\n'
   )
+})
+
+test('unknown command list lists /spelling only with a spelling provider', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { provider, calls } = fakeProvider()
+  const spelling = { onUpdate: null, setFeatures() {}, getTypoRanges: () => undefined, dispose() {} }
+  const harness = makeDeps({ readInput: scriptedInput(['/nope', '/quit']), createSpelling: () => spelling })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  assert.equal(calls.length, 0)
+  const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
+  assert.ok(unknownLine.includes('/spelling'), 'a provider lists the macOS-only command')
 })
 
 test('autocomplete commands omit /attach and /attachments when the model lacks vision', async (t) => {
@@ -788,6 +804,27 @@ test('autocomplete commands omit /attach and /attachments when the model lacks v
     assert.ok(!commands.includes('/attach'))
     assert.ok(!commands.includes('/attachments'))
     assert.ok(!commands.includes('/watermark'))
+    assert.ok(!commands.includes('/spelling'), 'no provider hides the macOS-only command')
+  }
+})
+
+test('autocomplete commands list /spelling with a spelling provider', async (t) => {
+  mockConsole(t)
+  const commandsSeen = []
+  const inner = scriptedInput(['/quit'])
+  const capturing = async (opts) => {
+    commandsSeen.push(opts?.commands)
+    return inner()
+  }
+  const spelling = { onUpdate: null, setFeatures() {}, getTypoRanges: () => undefined, dispose() {} }
+  const { provider } = fakeProvider()
+  const harness = makeDeps({ readInput: capturing, createSpelling: () => spelling })
+
+  await runChatSession(baseCtx(provider), harness.deps)
+
+  assert.ok(commandsSeen.length > 0)
+  for (const commands of commandsSeen) {
+    assert.ok(commands.includes('/spelling'), '/spelling is suggested with a provider')
   }
 })
 

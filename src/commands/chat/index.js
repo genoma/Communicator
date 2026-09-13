@@ -14,7 +14,7 @@ import { fetchModelPubKey } from '../../e2ee.js'
 import { buildStatusLine, wrapStatusLine } from '../../status-line.js'
 import { resolveSpellingSettings } from '../../config.js'
 import { parseScrapeUrl, scrapeContext, scrapeMessage } from '../../scrape.js'
-const ARG_COMMANDS = new Set(['/temp', '/top-p', '/budget', '/web-search', '/web-results', '/smooth', '/compact-thinking', '/settings', '/attach', '/attachments', '/scrape', '/export-format'])
+const ARG_COMMANDS = new Set(['/temp', '/top-p', '/budget', '/web-search', '/web-results', '/smooth', '/compact-thinking', '/spelling', '/attach', '/attachments', '/scrape', '/export-format'])
 
 // Recompute the live usage tracker from the surviving messages exactly like a
 // resumed session, so /cost and the persisted cost summary (stamped by
@@ -50,7 +50,7 @@ const COMMAND_DESCRIPTIONS = {
   '/markdown': 'Toggle terminal markdown rendering',
   '/smooth': 'Show or set smooth streaming state and speed',
   '/compact-thinking': 'Show or set whether reasoning streams as a meter',
-  '/settings': 'Show or set the macOS spelling assistance settings',
+  '/spelling': 'Show or set the macOS spelling assistance settings',
   '/export-format': 'Show or set the export format for future exports',
   '/cost': 'Print the running session cost/token totals',
 }
@@ -63,7 +63,7 @@ const COMMAND_USAGE = {
   '/web-results': '/web-results <n>',
   '/smooth': '/smooth [on|off|<level>|<cps>]',
   '/compact-thinking': '/compact-thinking [on|off]',
-  '/settings': '/settings [typo|autocomplete|autocorrect] [on|off]',
+  '/spelling': '/spelling [typo|autocomplete|autocorrect] [on|off]',
   '/export-format': '/export-format <markdown|jsonl>',
   '/attach': '/attach <path>...',
   '/attachments': '/attachments [clear]',
@@ -72,7 +72,7 @@ const COMMAND_USAGE = {
 
 const QUIT_ALIASES = ['/exit', '/q']
 
-// /settings: the three macOS spelling settings, their preference keys and the
+// /spelling: the three macOS spelling settings, their preference keys and the
 // wording of their confirmation line.
 const SPELLING_SETTINGS = {
   typo: { feature: 'typoDetection', pref: 'spellingTypoDetection', label: 'Typo detection' },
@@ -695,7 +695,7 @@ const handlers = {
     showStatus(ctx)
   },
 
-  '/settings': async (ctx) => {
+  '/spelling': async (ctx) => {
     const settings = ctx.spellingSettings ?? resolveSpellingSettings(ctx.prefs ?? {})
     const value = ctx.args
     if (!value) {
@@ -708,7 +708,7 @@ const handlers = {
     const [key, mode, ...rest] = value.split(/\s+/)
     const setting = SPELLING_SETTINGS[key]
     if (!setting || (mode !== 'on' && mode !== 'off') || rest.length > 0) {
-      console.error('Error: /settings expects typo|autocomplete|autocorrect and on|off.\n')
+      console.error('Error: /spelling expects typo|autocomplete|autocorrect and on|off.\n')
       return
     }
     const next = mode === 'on'
@@ -745,7 +745,7 @@ const handlers = {
     // /exit and /q are aliases of /quit, not separate commands: list every
     // command (respecting the same visibility rules the suggestion list and
     // the Unknown-command hint use) but never repeat an alias entry.
-    const visible = visibleChatCommands({ visionSupported: ctx.state.visionSupported, e2ee: ctx.state.e2ee, providerName: ctx.provider.meta.name })
+    const visible = visibleChatCommands({ visionSupported: ctx.state.visionSupported, e2ee: ctx.state.e2ee, providerName: ctx.provider.meta.name, spellingSupported: ctx.spelling != null })
       .filter((cmd) => !QUIT_ALIASES.includes(cmd))
     const width = Math.max(...visible.map((cmd) => cmd.length), 0)
     console.log('Commands:')
@@ -765,13 +765,15 @@ export const chatCommands = handlers
 
 export const CHAT_COMMANDS = Object.keys(handlers)
 
-export function visibleChatCommands({ visionSupported, e2ee = false, providerName }) {
+export function visibleChatCommands({ visionSupported, e2ee = false, providerName, spellingSupported = false }) {
   const hidden = []
   if (visionSupported === false || e2ee) hidden.push('/attach', '/attachments')
   if (e2ee) hidden.push('/web-search', '/web-results')
-  // Web scraping is a Venice-only feature; the provider is fixed at session
-  // start (never switches mid-session), so the list is computed once.
+  // Web scraping is a Venice-only feature and spelling exists only where a
+  // spelling provider was constructed (darwin): both provider axes are fixed
+  // at session start (never switch mid-session), so the list is computed once.
   if (e2ee || providerName !== 'venice') hidden.push('/scrape')
+  if (!spellingSupported) hidden.push('/spelling')
   return CHAT_COMMANDS.filter((c) => !hidden.includes(c))
 }
 

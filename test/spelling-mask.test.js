@@ -37,7 +37,7 @@ test('lines that must never be checked', () => {
   assert.equal(isCheckableLine('   hello   '), true)
   assert.equal(isCheckableLine(''), false)
   assert.equal(isCheckableLine('   '), false)
-  assert.equal(isCheckableLine('/settings typo on'), false)
+  assert.equal(isCheckableLine('/spelling typo on'), false)
   assert.equal(isCheckableLine('  /quit'), false)
   assert.equal(isCheckableLine('a'.repeat(MAX_LINE_LENGTH)), true)
   assert.equal(isCheckableLine('a'.repeat(MAX_LINE_LENGTH + 1)), false)

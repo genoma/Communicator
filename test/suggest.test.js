@@ -35,7 +35,7 @@ test('CHAT_COMMANDS has 26 commands', () => {
     '/markdown',
     '/smooth',
     '/compact-thinking',
-    '/settings',
+    '/spelling',
     '/export-format',
     '/cost',
     '/help',
