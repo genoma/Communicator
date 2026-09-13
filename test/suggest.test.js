@@ -49,13 +49,14 @@ test('matchCommands exposes aliases in autocomplete', () => {
   assert.deepEqual(matchCommands('/ex', CHAT_COMMANDS), ['/export-format', '/exit'])
 })
 
-function sessionFor(value, previousSession) {
+function sessionFor(value, previousSession, lastEditType = '') {
   const state = {
     lines: [value],
     row: 0,
     col: value.length,
     suggest: ({ value: v }) => matchCommands(v, CHAT_COMMANDS),
     suggestSession: previousSession ?? null,
+    lastEditType,
   }
   updateSuggestionSession(state)
   return state.suggestSession
@@ -76,9 +77,15 @@ test('updateSuggestionSession: exact match typed by hand has no session', () => 
   assert.equal(sessionFor('/quit'), null)
 })
 
-test('updateSuggestionSession: exact match within an active session keeps it and tracks the index', () => {
+test('updateSuggestionSession: typing an exact match closes the open session', () => {
   const previous = sessionFor('/m')
-  const session = sessionFor('/markdown', previous)
+  assert.equal(sessionFor('/markdown', previous, 'insert'), null)
+  assert.equal(sessionFor('/model', previous, 'insert'), null)
+})
+
+test('updateSuggestionSession: a Tab-filled exact match keeps the session and tracks the index', () => {
+  const previous = sessionFor('/m')
+  const session = sessionFor('/markdown', previous, 'other')
   assert.deepEqual(session, { prefix: '/m', matches: ['/model', '/markdown'], index: 1 })
 })
 

@@ -158,6 +158,27 @@ test('the resolved-provider guard leaves OpenRouter and unflagged runs alone', a
   assert.equal(venice.webResults, null)
 })
 
+test('the --no-save image flags are answered against the resolved model', async () => {
+  const { buildSessionContext, resumeSessionContext } = await import('../src/session-setup.js')
+  const base = {
+    provider: { meta: { name: 'openrouter' } },
+    apiKey: 'k',
+    prefs: {},
+    opts: { model: 'org/model', save: false, aspectRatio: '16:9', imageFormat: 'png' },
+  }
+  const message = /--aspect-ratio and --image-format cannot be combined with --no-save on a text run/
+  await assert.rejects(buildSessionContext({ ...base }), message)
+  await assert.rejects(resumeSessionContext({ ...base, result: { modelId: 'org/model' } }), message)
+  // An image model still shapes its request with the flags, so the same run is
+  // legal there (the resolved-model half the pure validator cannot see).
+  sessionSelection.isImageModel = true
+  try {
+    assert.equal((await buildSessionContext({ ...base })).selection.isImageModel, true)
+  } finally {
+    sessionSelection.isImageModel = false
+  }
+})
+
 test('persistSession skips the session file for empty sessions but still saves prefs', async (t) => {
   const { persistSession } = await import('../src/session-setup.js')
   const file = await tempConfig(t)

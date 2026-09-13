@@ -154,6 +154,6 @@ export function formatSessionItem(s) {
   const previewText = preview ? `"${preview}${stringWidth(preview) >= 60 ? '...' : ''}"` : ''
   const costSummary = s.costSummary
   const costText = costSummary?.cost > 0 ? `  · ${formatCost(costSummary.cost)}` : ''
-  const line = `${time}  ${padDisplayWidth(modelText, 37)} ${padDisplayWidth(count, 12)} ${costText}${previewText}`
+  const line = `${time}  ${padDisplayWidth(modelText, 37)} ${padDisplayWidth(count, 12)} ${costText}${costText && previewText ? ' ' : ''}${previewText}`
   return { time, model: modelText, count, preview, costSummary: costSummary ?? null, line }
 }

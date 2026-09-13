@@ -65,6 +65,20 @@ function samplingPrefValue(forced, persisted, prefs, section, modelId) {
   return forced ?? persisted
 }
 
+// --no-save drops the image-default persistence these flags perform on a text
+// run, so they are refused there; an image run (--image or a -m image model)
+// still shapes its request with them. The rule needs the resolved model, which
+// pure CLI validation cannot see.
+function assertNoSaveImageFlags(opts, selection) {
+  if (opts.save !== false || selection.isImageModel === true) return
+  const imageOnly = []
+  if (opts.aspectRatio !== undefined) imageOnly.push('--aspect-ratio')
+  if (opts.imageFormat !== undefined) imageOnly.push('--image-format')
+  if (imageOnly.length > 0) {
+    throw new CliError(`Error: ${imageOnly.join(' and ')} cannot be combined with --no-save on a text run (they only persist image defaults there).`)
+  }
+}
+
 export async function buildSessionContext({ provider, apiKey, opts, prefs, forcedEffort, forcedTemperature, forcedTopP, forcedWebResults, zdr, e2ee = false, allowInteractive = true, modelsPromise = null }) {
   assertResolvedProviderFlags({ providerName: provider.meta.name, zdr, forcedWebResults, e2ee })
   let selection
@@ -84,6 +98,7 @@ export async function buildSessionContext({ provider, apiKey, opts, prefs, force
   if (opts.rpg !== undefined && selection.isImageModel === true) {
     throw new CliError('Error: --rpg is for text chat models only; the selected model is an image model.')
   }
+  assertNoSaveImageFlags(opts, selection)
 
   return {
     selection,
@@ -144,6 +159,7 @@ export async function resumeSessionContext({ result, opts, prefs, forcedEffort, 
   if (opts.rpg !== undefined && selection.isImageModel === true) {
     throw new CliError('Error: --rpg is for text chat models only; the selected model is an image model.')
   }
+  assertNoSaveImageFlags(opts, selection)
   // persisted 'auto' or a missing field (legacy files) means "model
   // default"; a stored null means an explicit "off" and stays null.
   const resumedEffort =

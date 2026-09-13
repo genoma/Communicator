@@ -323,17 +323,5 @@ export function validateCliFlags(opts, { promptArg, isTTY }) {
     errors.push('Error: --no-save requires a prompt argument or piped stdin (an interactive session always saves).')
   }
 
-  // On a text run those two flags only write the persisted image default, so
-  // next to --no-save they would do nothing at all; an --image run still
-  // shapes its request with them, so they stay legal there.
-  if (opts.save === false && opts.image !== true) {
-    const imageOnly = []
-    if (opts.aspectRatio !== undefined) imageOnly.push('--aspect-ratio')
-    if (opts.imageFormat !== undefined) imageOnly.push('--image-format')
-    if (imageOnly.length > 0) {
-      errors.push(`Error: ${imageOnly.join(' and ')} cannot be combined with --no-save on a text run (they only persist image defaults there).`)
-    }
-  }
-
   return errors
 }

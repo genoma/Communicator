@@ -143,6 +143,12 @@ export function updateSuggestionSession(model) {
   }
   const session = model.suggestSession
   if (session && session.matches.includes(value)) {
+    // A hand-typed exact match closes the list; a Tab/Shift+Tab-filled one
+    // keeps it so cycling through the matches still works.
+    if (model.lastEditType === 'insert') {
+      model.suggestSession = null
+      return
+    }
     model.suggestSession = { ...session, index: session.matches.indexOf(value) }
     return
   }

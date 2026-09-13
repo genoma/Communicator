@@ -457,6 +457,18 @@ test('sidecar stores title and formatSessionItem prefers it over preview', async
   assert.match(formatSessionItem(sessions[0]).line, /"My custom title"/)
 })
 
+test('formatSessionItem keeps a space between the cost column and the title', () => {
+  const session = {
+    updatedAt: '2026-01-01T00:00:00Z',
+    model: 'openai/gpt-4o',
+    messageCount: 3,
+    title: 'Hello',
+    costSummary: { cost: 0.5 },
+  }
+  assert.match(formatSessionItem(session).line, /3 msgs\s+· \$0\.500000 "Hello"$/)
+  assert.match(formatSessionItem({ ...session, costSummary: null }).line, /3 msgs\s+"Hello"$/)
+})
+
 test('legacy session files without title fall back to empty string', async (t) => {
   const dir = await tempDir(t)
   await writeFile(join(dir, 'legacy-1.json'), JSON.stringify(sessionData()))

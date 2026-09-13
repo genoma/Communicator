@@ -45,11 +45,11 @@ Output shows each session's ID, last-activity timestamp, model, message count, a
 3 saved session(s):
 
   ID: 2026-07-30T19-15-22
-     2026-08-02 14:31:08  openai/gpt-4o                        12 msgs · $0.000124  "Write a Python script that..."
+     2026-08-02 14:31:08  openai/gpt-4o                         12 msgs        · $0.000124 "Write a Python script that..."
   ID: 2026-07-30T18-42-10
      2026-07-30 18:42:10  deepseek-v4-flash                     5 msgs       "Explain how garbage collection..."
   ID: 2026-07-30T17-11-45
-     2026-07-30 17:11:45  google/gemini-2.5-pro                 23 msgs       "Compare Rust and Go for..."
+     2026-07-30 17:11:45  google/gemini-2.5-pro                 23 msgs      "Compare Rust and Go for..."
 ```
 
 ## Resuming a session

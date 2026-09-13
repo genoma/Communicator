@@ -601,19 +601,12 @@ test('--no-save is rejected next to every exit path', () => {
   }
 })
 
-test('--no-save rejects the image-default flags on a text run but not on --image', () => {
-  const both = 'Error: --aspect-ratio and --image-format cannot be combined with --no-save on a text run (they only persist image defaults there).'
-  assert.deepEqual(
-    validateCliFlags(opts({ save: false, aspectRatio: '16:9' }), NO_TTY),
-    ['Error: --aspect-ratio cannot be combined with --no-save on a text run (they only persist image defaults there).']
-  )
-  assert.deepEqual(
-    validateCliFlags(opts({ save: false, imageFormat: 'png' }), NO_TTY),
-    ['Error: --image-format cannot be combined with --no-save on a text run (they only persist image defaults there).']
-  )
-  assert.deepEqual(validateCliFlags(opts({ save: false, aspectRatio: '16:9', imageFormat: 'png' }), NO_TTY), [both])
-  // On an --image run both flags shape the request, so --no-save only means
-  // "do not persist the default they resolve".
+test('--no-save image flags defer to the resolved model', () => {
+  // The rule needs the selected model, so the pure validator leaves it to
+  // buildSessionContext/resumeSessionContext (see test/session-setup.test.js).
+  assert.deepEqual(validateCliFlags(opts({ save: false, aspectRatio: '16:9', imageFormat: 'png' }), NO_TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ save: false, aspectRatio: '16:9' }), NO_TTY), [])
+  assert.deepEqual(validateCliFlags(opts({ save: false, imageFormat: 'png' }), NO_TTY), [])
   assert.deepEqual(validateCliFlags(opts({ save: false, image: true, aspectRatio: '16:9', imageFormat: 'png' }), NO_TTY), [])
   assert.deepEqual(validateCliFlags(opts({ save: false, image: true, aspectRatio: '16:9' }), { ...TTY, ...PROMPT() }), [])
 })
