@@ -45,20 +45,6 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const runBoth = (backend, osascript, request) =>
   Promise.all([settle(backend.run(request)), settle(osascript.run(request))])
 
-// A fresh osascript process can answer a cold guess/completion list as empty
-// while the long-lived helper — warmed by the requests before it — answers
-// words: observed on a loaded macOS CI runner, `completions recon` gave 20 words
-// from the helper and [] from osascript. That is the system checker's own state,
-// not a port divergence, so an empty-vs-words mismatch is retried; any other
-// difference (a changed range, a different non-empty set, a changed correction)
-// fails immediately.
-const coldWordsMismatch = ([helper, jxa]) =>
-  !helper.error &&
-  !jxa.error &&
-  Array.isArray(helper.reply?.words) &&
-  Array.isArray(jxa.reply?.words) &&
-  (helper.reply.words.length === 0) !== (jxa.reply.words.length === 0)
-
 const describe = ({ reply, error }) => (error ? `rejected with ${error.message}` : `answered ${JSON.stringify(reply)}`)
 
 // The compiled helper echoes the request id and the JXA program writes no id at
@@ -73,6 +59,17 @@ const compare = (reply) =>
     id: undefined,
     words: Array.isArray(reply.words) ? [...reply.words].sort() : reply.words,
   })
+
+// A fresh osascript process can answer from a cold system checker while the
+// long-lived helper — warmed by the requests before it — answers the full
+// result: observed on a loaded macOS CI runner as an empty guess/completion
+// list (`completions recon`: 20 words from the helper, [] from osascript) and
+// as a `check` that missed one of two typos (helper [[20,5],[31,3]], osascript
+// [[20,5]]). That is the checker's own per-machine state, not a port
+// divergence, so any reply mismatch is retried; a rejection is never retried
+// and a real divergence is deterministic, so it still fails after the retries.
+const repliesDiffer = ([helper, jxa]) =>
+  !helper.error && !jxa.error && compare(helper.reply) !== compare(jxa.reply)
 
 test('the compiled helper replies to the corpus exactly like the osascript backend', async (t) => {
   if (process.platform !== 'darwin') return t.skip('macOS only')
@@ -101,7 +98,7 @@ test('the compiled helper replies to the corpus exactly like the osascript backe
 
   for (const { name, request } of CORPUS) {
     let pair = await runBoth(backend, osascript, request)
-    for (let attempt = 0; attempt < 2 && coldWordsMismatch(pair); attempt += 1) {
+    for (let attempt = 0; attempt < 2 && repliesDiffer(pair); attempt += 1) {
       await delay(250)
       pair = await runBoth(backend, osascript, request)
     }

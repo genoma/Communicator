@@ -604,6 +604,18 @@ Unexpected end of JSON input` — observed once, in the `ubuntu-latest`/Node 24 
 parses (`tryReadLog`), which also covers a partial line: a JSON prefix of the appended object is
 only ever complete at its closing brace, so any parse is the whole entry.
 
+F48. O46: `test/spelling-helper-parity.test.js` now retries on ANY reply mismatch
+(`repliesDiffer`, the same exact `compare()` the assertion uses) instead of only the empty-vs-words
+shape, because the cold system checker produced a second variant on the run that fixed O44/O45:
+`macos-latest`/Node 24 answered `check: two typos on one line` as helper `[[20,5],[31,3]]` (both
+typos) vs a fresh osascript process `[[20,5]]` (missed `teh`) while the same run's
+`macos-latest`/22 job passed that entry. Both implementations are the same nil-language substring
+walk over the whole active dictionary set, so the difference is per-process checker state, not the
+port. Rejections are still compared strictly with no retry and the final comparison is unchanged,
+so a deterministic divergence still fails: verified locally with a throwaway probe that forced the
+first check reply to `ranges: []` — the one-off mismatch was absorbed by exactly one retry, and the
+always-mismatching variant still failed with the corpus assertion.
+
 ## Open — piped-output purity
 
 The contract (`MEMORY.md` §Display consistency): a piped one-shot writes **only** the answer
@@ -917,6 +929,15 @@ O45. ~~**The prompt-log flush test can read the file between create and write.**
     the probe can pass on an empty file and `readLog` throws `SyntaxError: Unexpected end of JSON
     input` (observed once on `ubuntu-latest`/Node 24, tag `5.0.2`).~~ **Fixed** — the probe waits
     for a log line that parses; see F47.
+
+O46. ~~**The parity gate's cold-start retry covered only empty word lists.** The retry added for the
+    `completions recon` flake matched on `guesses`/`completions` replies whose `words` went
+    empty-vs-populated, so the same cold-system-checker variance on `check` still red the gate:
+    `macos-latest`/Node 24 answered `check: two typos on one line` as helper
+    `{"ranges":[[20,5],[31,3]]}` vs osascript `{"ranges":[[20,5]]}` — the fresh osascript process
+    missed `teh`, and both implementations are the same nil-language substring walk, so it was
+    per-process checker state, not the port.~~ **Fixed** — any reply mismatch is retried twice,
+    250 ms apart, with rejections and the final comparison still exact; see F48.
 
 ## Open — flag combinations (found while fixing F8)
 
