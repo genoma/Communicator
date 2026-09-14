@@ -1,8 +1,29 @@
 import { test, mock, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import * as realFs from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
+// POSIX permission bits cannot express an unwritable config on Windows: chmod
+// only toggles a file's read-only attribute there and does not stop writes into
+// a directory, so the failed preference write is injected at the atomic-write
+// seam for the config directory readonlyConfig hands out. Everything else
+// delegates to the real module.
+let readonlyDir = null
+mock.module('node:fs/promises', {
+  namedExports: {
+    ...realFs,
+    writeFile: async (filePath, ...rest) => {
+      if (readonlyDir && String(filePath).startsWith(readonlyDir)) {
+        const err = new Error(`EACCES: permission denied, open '${filePath}'`)
+        err.code = 'EACCES'
+        throw err
+      }
+      return realFs.writeFile(filePath, ...rest)
+    },
+  },
+})
 
 // Hermetic home: the sessions dir, the default config path and the session
 // claim files all resolve under this directory.
@@ -137,15 +158,16 @@ async function tempConfig(t) {
 }
 
 // A config file that loads normally but cannot be rewritten: savePreferences
-// mkdirs successfully, then the atomic temp write fails with EACCES. The
-// cleanup hook restores the mode before removing, so it owns the whole dir.
+// mkdirs successfully, then the atomic temp write fails with EACCES (injected
+// for this directory, above). The cleanup hook clears the injection before
+// removing, so it owns the whole dir.
 async function readonlyConfig(t, prefs = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-pref-ro-'))
   const file = join(dir, 'config.json')
-  await writeFile(file, `${JSON.stringify(prefs, null, 2)}\n`)
-  await chmod(dir, 0o500)
+  await realFs.writeFile(file, `${JSON.stringify(prefs, null, 2)}\n`)
+  readonlyDir = dir
   t.after(async () => {
-    await chmod(dir, 0o700)
+    readonlyDir = null
     await rm(dir, { recursive: true, force: true })
   })
   return file

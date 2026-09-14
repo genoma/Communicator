@@ -146,6 +146,16 @@ function readLog(dir) {
   return raw.trim().split('\n').map((line) => JSON.parse(line))
 }
 
+// appendFile creates the file at open(), before its write lands, so "the path
+// exists" is not a readiness signal: only a log line that parses is.
+function tryReadLog(dir) {
+  try {
+    return readLog(dir)
+  } catch {
+    return null
+  }
+}
+
 test('a late-reasoning burst turn wipes the frame and rebuilds the stored transcript', async (t) => {
   silenceConsole(t)
   const { writes, stdout } = capturingStdout()
@@ -250,7 +260,7 @@ test('beforeExit flushes a held prompt-log append with one best-effort save and 
   assert.equal(existsSync(logPath), false, 'the flush must wait for the held append, not write past it')
 
   releaseAppend()
-  await waitFor(() => existsSync(logPath))
+  await waitFor(() => tryReadLog(dir) !== null)
   assert.deepEqual(readLog(dir)[0].request.messages.map((m) => m.role), ['system', 'user'])
 
   releaseInput()

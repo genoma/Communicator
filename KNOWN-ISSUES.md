@@ -580,6 +580,30 @@ process does not keep the event loop alive for a pending test promise and the ba
 child, so the parity file holds a referenced anchor timer for its duration (Node 22/24/26 all report
 1994 tests).
 
+## Fixed on `fix/ci-test-portability` (kept for provenance)
+
+F46. O44: the six `cli-pref-write-failures` cases assert that a real failing `savePreferences` write
+is surfaced (`Error: could not save the … preference: EACCES`), which POSIX permission bits produce
+by chmodding the config directory to 0o500 so the atomic temp write fails. Windows has no directory
+write bit — `fs.chmod` there only toggles `FILE_ATTRIBUTE_READONLY`, and the attribute on a
+directory does not stop writes into it — so on `windows-latest` (both Node 22 and 24) the write
+succeeded, `persistPreference` never took its catch, and the run continued into the empty Venice
+catalog (`Error: model venice-model not found…`). The file now mocks `node:fs/promises` with every
+real export plus a `writeFile` that throws EACCES for paths under the directory `readonlyConfig`
+returns, so `savePreferences` still mkdirs successfully and still fails at the atomic temp write —
+the seam the cases pin — on all three platforms. Assertions are unchanged (`/^Error: could not save
+the … preference: EACCES/m`, no API call, the pre-existing config left untouched), and the injection
+is mutation-proven: flipping its code to EINVAL reds exactly those six tests. The chmod/restore
+dance is gone with it, so the cases no longer depend on the suite not running as root.
+
+F47. O45: the `beforeExit` flush case in `test/chat-lifecycle-gaps.test.js` released a gated
+`appendFile` and then waited for `existsSync(logPath)`. `fs.appendFile` creates the file at open()
+before its write lands, so that probe can observe an empty file and `readLog` threw `SyntaxError:
+Unexpected end of JSON input` — observed once, in the `ubuntu-latest`/Node 24 job of the tag run
+`5.0.2` (the same commit's concurrent `main` run passed that job). The probe now waits for content that
+parses (`tryReadLog`), which also covers a partial line: a JSON prefix of the appended object is
+only ever complete at its closing brace, so any parse is the whole entry.
+
 ## Open — piped-output purity
 
 The contract (`MEMORY.md` §Display consistency): a piped one-shot writes **only** the answer
@@ -878,6 +902,21 @@ O42. ~~**`test/chat-loop.test.js` intermittently reds as a whole file with a run
     fixes). `npm test` now loads `scripts/child-console-guard.js` through `--import` in every test
     child (console to stderr, the parent runner untouched), pinned by the fd-1 census in
     `test/runner-console-guard.test.js`; see F42.
+
+O44. ~~**The preference-write tests cannot make a config unwritable on Windows.** `readonlyConfig` in
+    `test/cli-pref-write-failures.test.js` chmods the config directory to 0o500, but Windows chmod
+    only toggles a file's read-only attribute and does not stop writes into a directory, so all six
+    EACCES-expecting tests red on `windows-latest` (Node 22 and 24, tag `5.0.2`): the write succeeds
+    and the run falls through to the empty-catalog error instead of the surfaced preference
+    failure.~~ **Fixed** — the failure is injected at the atomic-write seam on every platform; see
+    F46.
+
+O45. ~~**The prompt-log flush test can read the file between create and write.** The readiness probe
+    in `test/chat-lifecycle-gaps.test.js` (`beforeExit flushes a held prompt-log append …`) is
+    `existsSync(logPath)`, and `appendFile` creates the file at open() before its write lands, so
+    the probe can pass on an empty file and `readLog` throws `SyntaxError: Unexpected end of JSON
+    input` (observed once on `ubuntu-latest`/Node 24, tag `5.0.2`).~~ **Fixed** — the probe waits
+    for a log line that parses; see F47.
 
 ## Open — flag combinations (found while fixing F8)
 
