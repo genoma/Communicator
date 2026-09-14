@@ -1,6 +1,6 @@
 {
   "name": "communicator",
-  "version": "5.0.2",
+  "version": "5.0.3",
   "description": "Terminal-first AI chat client for OpenRouter and Venice.ai with streaming responses, session persistence, and cost tracking",
   "type": "module",
   "engines": {
