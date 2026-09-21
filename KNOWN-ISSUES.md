@@ -17,12 +17,12 @@ This file tracks **defects**, not planned feature or flag-surface work. The surf
 removed those flags and the dispatch (and kept `--export-format` with a persisted default) is
 recorded in `SURFACE-CLEANUP.md`; it was never a defect item.
 
-Reference convention: the fixed entries are `F1`–`F43` and the open-list items `O1`–`O43`
+Reference convention: the fixed entries are `F1`–`F48` and the open-list items `O1`–`O46`
 (struck items stay in place, so both ranges keep growing). Every
 reference carries its prefix, so the two lists cannot be confused — do not renumber an
 existing entry, and do not cite a bare number.
 
-The open list is empty as of F43: every `O<n>` entry below is struck, and the `## Open —`
+The open list is empty as of F48: every `O<n>` entry below is struck, and the `## Open —`
 sections stay in place as the audit trail of how each one closed (fixed, closed by decision, or
 moot) — none of them holds an actionable item any more.
 
@@ -476,8 +476,8 @@ F42. O42: the file-level `not ok - test/chat-loop.test.js` with `failureType: 'u
     the capture keeps forwarding buffers, and why the two pre-existing inline capture-only mocks left in
     `test/one-shot.test.js` (`t.mock.method(process.stdout, 'write', () => {})` in the mandatory-reasoning
     test, the one test of the two unreported ones that has such a mock) are left as they are: the
-    unreported-test pair coincides with `O27`/F34, which stays open separately and is unchanged by this
-    work (26 of 28 reported before and after).
+    unreported-test pair coincides with `O27`/F34, diagnosed separately and unchanged by this work
+    (26 of 28 reported before and after).
     Verification: 20 consecutive `npm test` runs green (1855 tests each on 26.8.2, 1858 on 22.23.2);
     30 consecutive guarded
     `test/chat-loop.test.js` runs green with 0 bytes on the child's fd 1 outside frames each time, and
@@ -514,16 +514,16 @@ after the request. The append chain `logRpgPrompt` (`src/rpg.js:331`) already ma
 returned by the exported `flushRpgPromptLog` (`src/rpg.js:327-329`), and every exit path awaits it
 before the run returns or leaves, so the process cannot leave with a prompt-log append still in
 flight. One-shot: the request `catch` flushes before both the interrupt `process.exit(130)` and
-the rethrow (`src/commands/one-shot.js:266`), the `--no-save` return flushes at `:354` and the
-normal return at `:365` — so `src/cli-main.js:421`'s `process.exit(0)` can no longer race the write.
-Chat: `exitCleanly` flushes before it returns the final state (`src/chat.js:348`, the `/quit` and
+the rethrow (`src/commands/one-shot.js:266`), the `--no-save` return flushes at `:355` and the
+normal return at `:366` — so `src/cli-main.js:421`'s `process.exit(0)` can no longer race the write.
+Chat: `exitCleanly` flushes before it returns the final state (`src/chat.js:369`, the `/quit` and
 exit-outcome path), the idle-SIGINT chain flushes alongside the exit save
 (`exitSavePromise ??= Promise.all([bestEffortExitSave(), flushRpgPromptLog()]).finally(() =>
-exit(130))`, `src/chat.js:327`), the streaming Ctrl+C/SIGTERM exit flushes through the injected
+exit(130))`, `src/chat.js:343`), the streaming Ctrl+C/SIGTERM exit flushes through the injected
 `interruptSave` (`() => Promise.all([bestEffortExitSave(), flushRpgPromptLog()])`,
-`src/chat.js:387`) that the runner's `interruptedExit` awaits before its `exit(130)`
+`src/chat.js:408`) that the runner's `interruptedExit` awaits before its `exit(130)`
 (`src/turn-runner.js:93-105`), and the `beforeExit`/`uncaughtException` handlers save and flush
-together (`src/chat.js:331-340`). The append itself is unchanged: same serialized chain, same
+together (`src/chat.js:346-357`). The append itself is unchanged: same serialized chain, same
 plain (non-atomic) write, same `Warning: could not log prompt to …` wording, same
 `[debug] prompt logged: …` notice, and the flush never rejects (each append catches its own
 failure), so awaiting it unconditionally is safe and total. With that, no deliberate exit path is
