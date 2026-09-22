@@ -27,6 +27,7 @@ const tempHome = await mkdtemp(join(tmpdir(), 'communicator-chat-home-'))
 mock.module('node:os', { namedExports: { homedir: () => tempHome } })
 
 const { runChatSession } = await import('../src/chat.js')
+const { createSpellingProvider } = await import('../src/spelling/provider.js')
 
 after(() => rm(tempHome, { recursive: true, force: true }))
 
@@ -60,7 +61,7 @@ function fakeProvider(overrides = {}) {
   }
 }
 
-function makeHarness({ readInput, onExit = () => {} }) {
+function makeHarness({ readInput, onExit = () => {}, ...overrides }) {
   let signalHandlers = null
   const deps = {
     readInput,
@@ -77,9 +78,11 @@ function makeHarness({ readInput, onExit = () => {} }) {
     savePrefs: async () => {},
     onSignal: (handlers) => {
       signalHandlers = handlers
-      return () => {}
+      // Mirror registerSignalHandlers: a removed listener can no longer fire.
+      return () => { signalHandlers = null }
     },
     newSessionId: async () => '2026-01-02T00-00-00',
+    ...overrides,
   }
   return { deps, signals: () => signalHandlers }
 }
@@ -235,4 +238,210 @@ test('uncaughtException exits 1 only after a pending prompt-log append has lande
 
   assert.deepEqual(exits.map((entry) => entry.code), [1])
   assert.equal(exits[0].logAtExit?.length, 1, 'the prompt-log line must already be on disk when the unhandled-error exit runs')
+})
+
+// --- clean-exit window: the signal handlers must stay live through the save
+// and the flush (src/chat.js exitCleanly), so a Ctrl+C landing there still
+// exits 130 once both writes are done instead of dying unflushed. -----------
+
+function countConsole(t) {
+  const lines = []
+  t.mock.method(console, 'log', (line) => { lines.push(String(line)) })
+  return lines
+}
+
+// The real provider (not a stub), driven through its backend seam: the window
+// disposes it from both the exit path and the signal handler, so the backend
+// must still see a single dispose.
+function countingSpelling(disposes) {
+  return () => createSpellingProvider({
+    backend: {
+      run: async () => ({ ranges: [] }),
+      dispose: () => { disposes.push('dispose') },
+    },
+    features: { typoDetection: true },
+  })
+}
+
+test('SIGINT during the clean-exit flush lands the prompt log and exits 130 once', async (t) => {
+  const logs = countConsole(t)
+  const errors = []
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+  const dir = await tempRpgDir(t)
+  const { provider, calls } = fakeProvider()
+  const disposes = []
+  let saves = 0
+  const logPath = join(dir, 'prompt-log.jsonl')
+  const exits = []
+  const { deps, signals } = makeHarness({
+    readInput: scriptedInput(['hello', '/quit']),
+    saveSession: async () => { saves += 1 },
+    createSpelling: countingSpelling(disposes),
+    // The exit itself reports what was on disk at that moment: cleanup runs
+    // before the process leaves, so an early exit loses the line silently.
+    onExit: (code) => exits.push({ code, logAtExit: existsSync(logPath) ? readLog(dir) : null }),
+  })
+  appendFileDelayMs = 200
+  t.after(() => { appendFileDelayMs = 0 })
+
+  const session = runChatSession(baseCtx(provider, dir), deps)
+  // The clean-exit save has run and the held append is still in flight, so the
+  // session sits exactly in the window.
+  await waitFor(() => saves === 1)
+  const handlers = signals()
+  assert.ok(handlers, 'the signal handlers must stay live through the clean-exit window')
+  const outputBefore = logs.length
+  handlers.sigint()
+  handlers.sigint()
+  await waitFor(() => exits.length === 1)
+  await session
+
+  assert.equal(calls.length, 1)
+  assert.deepEqual(exits.map((entry) => entry.code), [130])
+  assert.equal(exits[0].logAtExit?.length, 1, 'the exit must wait for the held append')
+  assert.equal(saves, 1, 'a repeat press must not start a second save')
+  assert.deepEqual(disposes, ['dispose'], 'the window disposes the provider twice; the backend is released once')
+  assert.equal(logs.length, outputBefore, 'the interrupt path adds no output lines')
+  assert.ok(!errors.some((line) => line.includes('Interrupted.')))
+})
+
+test('SIGINT during the clean-exit save waits for the in-flight write', async (t) => {
+  countConsole(t)
+  t.mock.method(console, 'error', () => {})
+  const dir = await tempRpgDir(t)
+  const { provider } = fakeProvider()
+  let saves = 0
+  let saved = false
+  let releaseSave
+  const saveGate = new Promise((resolve) => { releaseSave = resolve })
+  const logPath = join(dir, 'prompt-log.jsonl')
+  const exits = []
+  const { deps, signals } = makeHarness({
+    readInput: scriptedInput(['hello', '/quit']),
+    saveSession: async () => {
+      saves += 1
+      await saveGate
+      saved = true
+    },
+    createSpelling: () => null,
+    onExit: (code) => exits.push({ code, savedAtExit: saved, logAtExit: existsSync(logPath) ? readLog(dir) : null }),
+  })
+  appendFileDelayMs = 200
+  t.after(() => { appendFileDelayMs = 0; releaseSave() })
+
+  const session = runChatSession(baseCtx(provider, dir), deps)
+  await waitFor(() => saves === 1)
+  const handlers = signals()
+  assert.ok(handlers, 'the signal handlers must stay live through the clean-exit save')
+  handlers.sigint()
+  // The held append has landed, so only the in-flight save can still hold the
+  // exit: an exit chain that ignored it would already have fired here.
+  await waitFor(() => existsSync(logPath))
+  await delay(20)
+  assert.deepEqual(exits, [], 'the exit must wait for the in-flight save')
+  releaseSave()
+  await waitFor(() => exits.length === 1)
+  await session
+
+  assert.deepEqual(exits.map((entry) => entry.code), [130])
+  assert.equal(exits[0].savedAtExit, true, 'the exit must not truncate the in-flight save')
+  assert.equal(exits[0].logAtExit?.length, 1)
+  assert.equal(saves, 1)
+})
+
+test('uncaughtException during the clean-exit window still exits 1 after the log lands', async (t) => {
+  countConsole(t)
+  const errors = []
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+  const dir = await tempRpgDir(t)
+  const { provider } = fakeProvider()
+  let saves = 0
+  const logPath = join(dir, 'prompt-log.jsonl')
+  const exits = []
+  const { deps, signals } = makeHarness({
+    readInput: scriptedInput(['hello', '/quit']),
+    saveSession: async () => { saves += 1 },
+    createSpelling: () => null,
+    onExit: (code) => exits.push({ code, logAtExit: existsSync(logPath) ? readLog(dir) : null }),
+  })
+  appendFileDelayMs = 200
+  t.after(() => { appendFileDelayMs = 0 })
+
+  const session = runChatSession(baseCtx(provider, dir), deps)
+  await waitFor(() => saves === 1)
+  const handlers = signals()
+  assert.ok(handlers, 'the handlers must stay live through the clean-exit window')
+  handlers.uncaughtException(new Error('boom'))
+  await waitFor(() => exits.length === 1)
+  await session
+
+  assert.deepEqual(exits.map((entry) => entry.code), [1])
+  assert.equal(exits[0].logAtExit?.length, 1, 'the crash exit must wait for the held append')
+  assert.equal(saves, 1, 'the crash path joins the in-flight save, it does not start a second')
+  assert.ok(errors.some((line) => line.includes('Unhandled error: boom')))
+  assert.ok(!errors.some((line) => line.includes('Interrupted.')))
+})
+
+test('a clean /quit still saves once, flushes once and exits nothing', async (t) => {
+  const logs = countConsole(t)
+  const errors = []
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+  const dir = await tempRpgDir(t)
+  const { provider } = fakeProvider()
+  let saves = 0
+  const exits = []
+  const { deps, signals } = makeHarness({
+    readInput: scriptedInput(['hello', '/quit']),
+    saveSession: async () => { saves += 1 },
+    createSpelling: () => null,
+    onExit: (code) => exits.push(code),
+  })
+  appendFileDelayMs = 200
+  t.after(() => { appendFileDelayMs = 0 })
+
+  const session = runChatSession(baseCtx(provider, dir), deps)
+  // Everything printed up to the clean-exit save is the session's own output;
+  // the save+flush exit path must add nothing.
+  await waitFor(() => saves === 1)
+  const outputBefore = logs.length
+  const finalState = await session
+
+  assert.equal(saves, 1)
+  assert.equal(readLog(dir).length, 1)
+  assert.deepEqual(exits, [])
+  assert.equal(finalState.messages.length, 3)
+  assert.equal(logs.length, outputBefore, 'the clean exit prints nothing after the save starts')
+  assert.equal(signals(), null, 'the clean exit removes the signal handlers before returning')
+  assert.ok(![...logs, ...errors].some((line) => line.includes('Interrupted.')))
+})
+
+test('an EOF cancel still saves once, flushes once and exits nothing', async (t) => {
+  const logs = countConsole(t)
+  const errors = []
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+  const dir = await tempRpgDir(t)
+  const { provider } = fakeProvider()
+  let saves = 0
+  const exits = []
+  const { deps, signals } = makeHarness({
+    readInput: scriptedInput(['hello']),
+    saveSession: async () => { saves += 1 },
+    createSpelling: () => null,
+    onExit: (code) => exits.push(code),
+  })
+  appendFileDelayMs = 200
+  t.after(() => { appendFileDelayMs = 0 })
+
+  const session = runChatSession(baseCtx(provider, dir), deps)
+  await waitFor(() => saves === 1)
+  const outputBefore = logs.length
+  const finalState = await session
+
+  assert.equal(saves, 1)
+  assert.equal(readLog(dir).length, 1)
+  assert.deepEqual(exits, [])
+  assert.equal(finalState.messages.length, 3)
+  assert.equal(logs.length, outputBefore, 'the clean exit prints nothing after the save starts')
+  assert.equal(signals(), null, 'the cancel exit removes the signal handlers before returning')
+  assert.ok(![...logs, ...errors].some((line) => line.includes('Interrupted.')))
 })

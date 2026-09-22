@@ -1,7 +1,9 @@
 import { test, mock, after } from 'node:test'
 import assert from 'node:assert/strict'
 import * as realFs from 'node:fs/promises'
-import { mkdtemp, rm, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, readFile, readdir, writeFile } from 'node:fs/promises'
+import { existsSync, readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { Readable } from 'node:stream'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -186,6 +188,33 @@ function mockPipedStdout(t) {
     return true
   })
   return writes
+}
+
+// resolveArtifacts is the post-request tail's only awaited step whose failure is
+// not swallowed by its own callee, so it is the seam that holds or breaks the
+// tail (see the exit-window pins). Both hooks stay inert until a test sets them.
+let artifactGate = null
+let artifactEntered = null
+let artifactError = null
+const realArtifacts = await import('../src/artifacts.js')
+mock.module(new URL('../src/artifacts.js', import.meta.url).href, {
+  namedExports: {
+    ...realArtifacts,
+    resolveArtifacts: async (...args) => {
+      if (artifactGate) {
+        artifactEntered?.()
+        await artifactGate
+      }
+      if (artifactError) throw artifactError
+      return realArtifacts.resolveArtifacts(...args)
+    },
+  },
+})
+
+async function waitFor(condition) {
+  for (let tries = 0; tries < 400 && !condition(); tries++) {
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
 }
 
 async function runOneShot(t, { overrides = {}, prefs = {}, prompt = 'Hello', systemPrompt = null, rpgFirstMessage = null, rpgHistory = null, rpgPostHistoryInstruction = null, rpgResume = null, scraped = null } = {}) {
@@ -1078,6 +1107,204 @@ test('one-shot --rpg --debug flushes the prompt log before a failed request reth
   const logged = (await readFile(join(rpgDir, 'prompt-log.jsonl'), 'utf-8')).trim().split('\n')
   assert.equal(logged.length, 1)
   assert.deepEqual(JSON.parse(logged[0]).request, bodies[0])
+})
+
+// The post-request tail (artifact resolution, state building, persistSession) is
+// not exception-guarded on its own: the failure must still be preceded by the
+// flush of the append the request issued. The throw is injected at the tail's
+// only awaited seam (see the artifacts mock above) and the append is held open,
+// so "the line is on disk" cannot pass by luck.
+test('one-shot --rpg --debug flushes the prompt log when the post-request tail throws', async (t) => {
+  mockOpenRouterStream(t)
+  withApiKey(t)
+  mockPipedStdout(t)
+  const { errors } = captureConsole(t)
+  mockExit(t)
+  const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(rpgDir, { recursive: true, force: true }))
+  appendFileDelayMs = 200
+  artifactError = new CliError('Error: tail boom')
+  t.after(() => {
+    appendFileDelayMs = 0
+    artifactError = null
+  })
+
+  const { exited, exitCode, message } = await runOneShot(t, {
+    overrides: { rpg: rpgDir, debug: true },
+    systemPrompt: 'RPG system prompt',
+    rpgFirstMessage: 'The gate creaks open.',
+  })
+
+  // The tail failure reports exactly as it did before the guard: the caller
+  // prints this message and exits 1.
+  assert.equal(exited, true)
+  assert.equal(exitCode, 1)
+  assert.equal(message, 'Error: tail boom')
+  assert.ok(!errors.some((line) => line.includes('Interrupted.')), 'a tail failure is not an interrupt')
+  const logged = (await readFile(join(rpgDir, 'prompt-log.jsonl'), 'utf-8')).trim().split('\n')
+  assert.equal(logged.length, 1)
+})
+
+// The signal listeners outlive the request on purpose: a signal landing in the
+// tail must flush the pending append and exit 130 without the in-flight
+// `Interrupted.` line, and a repeat press must not exit twice.
+test('one-shot SIGINT in the post-request tail flushes the prompt log and exits 130 once', async (t) => {
+  mockOpenRouterStream(t)
+  withApiKey(t)
+  mockPipedStdout(t)
+  const { errors } = captureConsole(t)
+  const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(rpgDir, { recursive: true, force: true }))
+  const logPath = join(rpgDir, 'prompt-log.jsonl')
+  const exits = []
+  t.mock.method(process, 'exit', (code) => {
+    exits.push({ code, log: existsSync(logPath) ? readFileSync(logPath, 'utf-8').trim() : null })
+  })
+  appendFileDelayMs = 200
+  let releaseTail
+  let tailEntered
+  const tailReady = new Promise((resolve) => { tailEntered = resolve })
+  artifactGate = new Promise((resolve) => { releaseTail = resolve })
+  artifactEntered = tailEntered
+  t.after(() => {
+    appendFileDelayMs = 0
+    artifactGate = null
+    artifactEntered = null
+  })
+
+  let sigintHandler = null
+  const originalOn = process.on.bind(process)
+  t.mock.method(process, 'on', (event, fn) => {
+    if (event === 'SIGINT') sigintHandler = fn
+    return originalOn(event, fn)
+  })
+
+  const { oneShotCmd } = await import('../src/commands/one-shot.js')
+  const run = oneShotCmd({ apiKey: 'test-key', opts: opts({ rpg: rpgDir, debug: true }), prefs: {}, systemPrompt: 'RPG system prompt', rpgFirstMessage: 'The gate creaks open.', providerType: 'openrouter', prompt: 'Hello' })
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('the tail was never reached')), 5000))
+  await Promise.race([tailReady, timeout])
+  assert.ok(sigintHandler !== null)
+  sigintHandler()
+  sigintHandler()
+  await waitFor(() => exits.length === 1)
+  releaseTail()
+  await run
+
+  assert.deepEqual(exits.map((entry) => entry.code), [130])
+  assert.equal(exits[0].log?.split('\n').length, 1, 'the prompt-log line must already be on disk when the tail interrupt exits')
+  assert.ok(!errors.some((line) => line.includes('Interrupted.')), 'a settled request has nothing left to interrupt')
+})
+
+// An unhandled crash in a run that can log prompts takes the chat REPL's
+// treatment: the chat crash line, then the flush, then exit 1. The handler is
+// driven directly so the append can be observed landing before the exit; the
+// real crash wiring (exit code, stderr) is pinned by the child-process pins
+// below.
+test('one-shot --rpg --debug uncaughtException flushes the prompt log before exit(1)', async (t) => {
+  const bodies = []
+  mockOpenRouterStream(t, [], bodies)
+  withApiKey(t)
+  mockPipedStdout(t)
+  const { errors } = captureConsole(t)
+  const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(rpgDir, { recursive: true, force: true }))
+  const logPath = join(rpgDir, 'prompt-log.jsonl')
+  const exits = []
+  t.mock.method(process, 'exit', (code) => {
+    exits.push({ code, log: existsSync(logPath) ? readFileSync(logPath, 'utf-8').trim() : null })
+  })
+  appendFileDelayMs = 200
+  t.after(() => { appendFileDelayMs = 0 })
+
+  const uncaught = []
+  const originalOn = process.on.bind(process)
+  t.mock.method(process, 'on', (event, fn) => {
+    if (event === 'uncaughtException') uncaught.push(fn)
+    return originalOn(event, fn)
+  })
+
+  const { oneShotCmd } = await import('../src/commands/one-shot.js')
+  const run = oneShotCmd({ apiKey: 'test-key', opts: opts({ rpg: rpgDir, debug: true }), prefs: {}, systemPrompt: 'RPG system prompt', rpgFirstMessage: 'The gate creaks open.', providerType: 'openrouter', prompt: 'Hello' })
+  // The append is issued with the request body, before the fetch.
+  await waitFor(() => bodies.length === 1)
+  assert.equal(uncaught.length, 1, 'a run that logs prompts must install exactly one uncaughtException handler')
+  await uncaught[0](new Error('boom'))
+  await run
+
+  assert.deepEqual(exits.map((entry) => entry.code), [1])
+  assert.equal(exits[0].log?.split('\n').length, 1, 'the prompt-log line must already be on disk when the unhandled-error exit runs')
+  assert.ok(errors.includes('\nUnhandled error: boom'))
+  assert.ok(!errors.some((line) => line.includes('Interrupted.')))
+})
+
+// The crash-on-the-real-path harness runs in a child process: exit codes and
+// Node's own fatal rendering are observed unmediated (an in-process crash
+// without a handler would take the test runner down with it), and a never-ending
+// stream keeps the request open so the timer below is the only way the run ends.
+const CRASH_FIXTURE = `
+import { oneShotCmd } from ${JSON.stringify(new URL('../src/commands/one-shot.js', import.meta.url).href)}
+
+const models = [{ id: 'test/model-a', name: 'Model A', context_length: 1000, description: 'd', reasoning: null }]
+const endpoints = [{ provider_name: 'ProviderX', tag: 't', status: 'available', uptime_last_30m: null, pricing: { prompt: 1e-6, completion: 2e-6 }, context_length: 1000, max_completion_tokens: null, supported_parameters: {} }]
+const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+globalThis.fetch = async (url) => {
+  const target = String(url)
+  if (target.includes('/chat/completions')) {
+    setTimeout(() => { throw new Error('boom from timer') }, 30)
+    return new Response(new ReadableStream({ start() {} }), { status: 200, headers: { 'content-type': 'text/event-stream' } })
+  }
+  if (target.includes('/endpoints')) return json({ data: { endpoints } })
+  return json({ data: models })
+}
+const rpgDir = process.env.CRASH_FIXTURE_RPG_DIR || undefined
+await oneShotCmd({
+  apiKey: 'test-key',
+  opts: { model: 'test/model-a', temperature: undefined, reasoningEffort: undefined, webSearch: undefined, webResults: undefined, attach: [], smoothStreaming: true, smoothSpeed: undefined, config: undefined, rpg: rpgDir, debug: rpgDir ? true : undefined },
+  prefs: {},
+  systemPrompt: null,
+  providerType: 'openrouter',
+  prompt: 'Hello',
+})
+`
+
+async function runCrashFixture(t, { rpg }) {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-oneshot-crash-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const fixture = join(dir, 'crash-fixture.mjs')
+  await writeFile(fixture, CRASH_FIXTURE)
+  let rpgDir = null
+  if (rpg) {
+    rpgDir = join(dir, 'rpg')
+    await mkdir(rpgDir, { recursive: true })
+  }
+  const res = spawnSync(process.execPath, [fixture], {
+    cwd: dir,
+    // HOME stays the throwaway directory the whole run uses: the child must not
+    // read or write a developer's real session store.
+    env: { ...process.env, HOME: dir, USERPROFILE: dir, CRASH_FIXTURE_RPG_DIR: rpgDir ?? '' },
+    encoding: 'utf-8',
+    timeout: 20000,
+  })
+  return { res, rpgDir }
+}
+
+test('a crash in a --rpg --debug run reports the chat crash line, exits 1 and keeps the prompt log', async (t) => {
+  const { res, rpgDir } = await runCrashFixture(t, { rpg: true })
+
+  assert.equal(res.status, 1, res.stderr)
+  assert.match(res.stderr, /Unhandled error: boom from timer/)
+  assert.ok(!res.stderr.includes('Node.js v'), 'the chat treatment replaces Node\'s fatal report')
+  const logged = (await readFile(join(rpgDir, 'prompt-log.jsonl'), 'utf-8')).trim().split('\n')
+  assert.equal(logged.length, 1)
+})
+
+test('a crash in a run that cannot log prompts keeps Node\'s default fatal report', async (t) => {
+  const { res } = await runCrashFixture(t, { rpg: false })
+
+  assert.equal(res.status, 1, res.stderr)
+  assert.match(res.stderr, /boom from timer/)
+  assert.match(res.stderr, /Node\.js v/)
+  assert.ok(!res.stderr.includes('Unhandled error:'), 'only runs that can log prompts get the chat crash line')
 })
 
 

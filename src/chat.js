@@ -295,17 +295,19 @@ export async function runChatSession(ctx = {}, deps = {}) {
 
   let exitSaveDone = false
   let exitSavePromise = null
+  let exitSaveWork = null
   const bestEffortSave = async () => {
-    if (exitSaveDone) return
+    if (exitSaveDone) return exitSaveWork
     exitSaveDone = true
-    await saveCurrentSession()
+    exitSaveWork = saveCurrentSession()
+    await exitSaveWork
   }
 
   const bestEffortExitSave = async () => {
-    if (exitSaveDone) return
+    if (exitSaveDone) return exitSaveWork
     exitSaveDone = true
     const finalState = state.toFinalState(provider.meta.name)
-    await Promise.all([
+    exitSaveWork = Promise.all([
       saveCurrentSession(),
       savePrefs({
         modelId: finalState.modelId,
@@ -322,6 +324,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
         ...(finalState.webResultsExplicit ? { webResults: finalState.webResults } : {}),
       }),
     ])
+    await exitSaveWork
   }
 
   const cleanupSignals = onSignal({
@@ -359,7 +362,6 @@ export async function runChatSession(ctx = {}, deps = {}) {
   })
 
   const exitCleanly = async () => {
-    cleanupSignals()
     // No timer or osascript child may outlive the session: every exit path
     // that returns to the caller goes through here.
     spelling?.dispose()
@@ -367,6 +369,11 @@ export async function runChatSession(ctx = {}, deps = {}) {
     // The caller exits the process as soon as this returns, so what the run
     // issued has to be on disk first (see flushRpgPromptLog).
     await flushRpgPromptLog()
+    // The handlers stay live through the two awaits above: a Ctrl+C landing in
+    // that window still exits 130 (see sigint) once the in-flight save
+    // (bestEffortExitSave joins it) and this flush are done, instead of dying
+    // by default disposition and losing both writes.
+    cleanupSignals()
     return state.toFinalState(provider.meta.name)
   }
 

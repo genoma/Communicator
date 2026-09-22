@@ -17,12 +17,12 @@ This file tracks **defects**, not planned feature or flag-surface work. The surf
 removed those flags and the dispatch (and kept `--export-format` with a persisted default) is
 recorded in `SURFACE-CLEANUP.md`; it was never a defect item.
 
-Reference convention: the fixed entries are `F1`–`F48` and the open-list items `O1`–`O46`
+Reference convention: the fixed entries are `F1`–`F49` and the open-list items `O1`–`O46`
 (struck items stay in place, so both ranges keep growing). Every
 reference carries its prefix, so the two lists cannot be confused — do not renumber an
 existing entry, and do not cite a bare number.
 
-The open list is empty as of F48: every `O<n>` entry below is struck, and the `## Open —`
+The open list is empty as of F49: every `O<n>` entry below is struck, and the `## Open —`
 sections stay in place as the audit trail of how each one closed (fixed, closed by decision, or
 moot) — none of them holds an actionable item any more.
 
@@ -528,10 +528,12 @@ plain (non-atomic) write, same `Warning: could not log prompt to …` wording, s
 `[debug] prompt logged: …` notice, and the flush never rejects (each append catches its own
 failure), so awaiting it unconditionally is safe and total. With that, no deliberate exit path is
 left that can drop an append: the run returns or leaves only after everything it issued has landed.
-A crash in a run that installs no handler — a one-shot's uncaught exception, say; only the chat
+~~A crash in a run that installs no handler — a one-shot's uncaught exception, say; only the chat
 REPL registers `uncaughtException` — can still take a pending append with it, which is the same
 narrow window this entry started from and is left as is (a debug-log line is not worth a crash
-handler that would have to replace Node's own). The
+handler that would have to replace Node's own).~~ **Closed** — a `--rpg --debug` one-shot now
+installs the chat REPL's crash treatment, the post-request tail flushes in a `finally`, and the
+signal listeners stay live through it; see F49. The
 `beforeExit` flush is belt-and-braces — a pending append is a libuv request, so the loop cannot be
 empty (and the chain's continuation drains as a microtask) while one is still in flight — but it
 keeps the handlers uniform.
@@ -615,6 +617,42 @@ port. Rejections are still compared strictly with no retry and the final compari
 so a deterministic divergence still fails: verified locally with a throwaway probe that forced the
 first check reply to `ranges: []` — the one-off mismatch was absorbed by exactly one retry, and the
 always-mismatching variant still failed with the corpus assertion.
+
+## Fixed on `fix/prompt-log-exit-windows` (kept for provenance)
+
+F49. F43's remaining accepted windows are closed, so a `--rpg --debug` append can no longer be lost
+on any path out of the run. W1 (item 4): a `--rpg --debug` one-shot installs the chat REPL's
+`uncaughtException` treatment under the same predicate as the append hook — byte-identical
+`\nUnhandled error: <formatError(err)>`, `await flushRpgPromptLog()`, `process.exit(1)` — so a crash
+(or an unhandled rejection, which Node's default `--unhandled-rejections=throw` routes to the same
+handler) flushes before exiting; a run that cannot log prompts installs no listener and keeps Node's
+default fatal report, pinned in both directions with real child processes (`test/one-shot.test.js:1291`
+RPG, `:1301` non-RPG). W2 (R1): the whole post-request tail (artifact resolution, printing, state
+building, `persistSession`, the `--no-save` return) is wrapped in a `try/finally` whose `finally`
+awaits the flush and then removes the listeners, so a tail throw or an early return flushes first;
+the two explicit flushes it replaces are gone, and error text and exit codes are unchanged
+(`:1117`). W3 (R2): SIGINT/SIGTERM stay installed for the whole run. A `requestSettled` flag flips
+only after the request's catch body, so the in-flight path is byte-for-byte unchanged (`abort` →
+catch flush → `Interrupted.` → 130, the F43 pin still passes) and a tail signal flushes then
+`process.exit(130)` with no extra output, repeats inert via `signalExit ??=` (`:1151`; the handler
+registration itself is pinned at `:1203`). W4 (R3): `cleanupSignals()` moved after `exitCleanly`'s
+save+flush, and `bestEffortSave`/`bestEffortExitSave` now return the in-flight `exitSaveWork`
+instead of an early no-op, so a signal landing in that window joins the write that is actually
+pending instead of racing it — the reorder alone would let `exit(130)` truncate a save still in
+flight, which is exactly what the gated-save pin catches
+(`test/chat-prompt-log-flush.test.js:266` flush window, `:308` save window, `:352`
+uncaughtException in the window, `:385`/`:418` `/quit` and EOF regression pins);
+`spelling.dispose()` is idempotent through the real provider. Deliberate consequences: a tail-phase
+signal still truncates an in-flight `persistSession` (the append is what this protects), SIGTERM in
+the tail now surfaces as 130 rather than the shell's 143 (already the in-flight normalization), and
+on the failed-request rethrow path the listeners stay installed through `runCli`'s error print (same
+exit code, log already flushed). An independent reviewer's P2 hygiene finding — `cleanupSignals()`
+is only reachable when `exitCleanly`'s awaits resolve — was rejected with executed probes:
+`removeEmptySessionClaim` swallows everything (`src/sessions.js:348-356`), `saveCurrentSession`
+guards its write (`src/chat.js:269-285`), `savePrefsBestEffort` never rejects,
+and `provider.dispose()` is guarded while `AbortController.abort()` does not propagate a throwing
+listener. Verified on Node 26.9.0/24.21.0/22.23.2: full suite 2248/2248 on each, lint and knip
+clean, fail-before reproduced in a scratch copy.
 
 ## Open — piped-output purity
 

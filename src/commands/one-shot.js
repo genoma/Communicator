@@ -167,9 +167,32 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   // preserved exactly (a bare newline for an empty answer).
   let pipedLastChar = ''
   const controller = new AbortController()
-  const onSigint = () => controller.abort()
+  // Only while the request is out can a signal steer the run: once it has
+  // settled the default disposition would kill the process with the
+  // prompt-log append still in flight (see flushRpgPromptLog).
+  let requestSettled = false
+  let signalExit = null
+  const onSigint = () => {
+    if (!requestSettled) {
+      controller.abort()
+      return
+    }
+    signalExit ??= flushRpgPromptLog().finally(() => process.exit(130))
+  }
   process.on('SIGINT', onSigint)
   process.on('SIGTERM', onSigint)
+
+  let onUncaught = null
+  if (opts.rpg !== undefined && opts.debug === true) {
+    // The chat REPL's crash treatment: a run that can log prompts flushes the
+    // pending append before exiting instead of dying with it unflushed.
+    onUncaught = async (err) => {
+      console.error(`\nUnhandled error: ${formatError(err)}`)
+      await flushRpgPromptLog()
+      process.exit(1)
+    }
+    process.on('uncaughtException', onUncaught)
+  }
 
   let result
   try {
@@ -271,97 +294,101 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     if (err instanceof CliError) throw err
     throw new CliError(`Error: ${formatError(err)}`)
   } finally {
+    requestSettled = true
+  }
+
+  try {
+    if (ttyOut) {
+      process.stdout.write('\n\n')
+    }
+
+    const producedResults = await resolveArtifacts(result, {
+      sessionId,
+      imageOutputSupported: selection.imageOutputSupported,
+      sessionsDir: dir,
+      signal: controller.signal,
+    })
+
+    // Artifact lines go to stderr when piped so stdout stays pure content;
+    // sources and the malformed-chunk notice are TTY-only (same styling as chat).
+    printArtifactsSummary(producedResults, result, ttyOut ? process.stdout : process.stderr, {
+      withSources: ttyOut,
+      withSkipped: ttyOut,
+    })
+
+    if (result.content || result.parts?.length > 0) {
+      const msg = { role: 'assistant', content: result.content }
+      if (result.reasoning) {
+        msg.reasoning = result.reasoning
+        if (result.reasoningMs != null) msg.reasoningMs = result.reasoningMs
+      }
+      if (result.usage) msg.usage = result.usage
+      if (result.sources?.length > 0) msg.sources = result.sources
+      messages.push(msg)
+    }
+
+    // Record usage in both the TTY and piped paths so the persisted
+    // cost summary below is authoritative (the resume/list/export paths
+    // prefer it over replay); the turn metrics footer stays TTY-only.
+    if (result.usage) {
+      tracker.record(result.usage, selection.pricing)
+    }
+    if (ttyOut) {
+      if (result.usage) {
+        tracker.printTurn(result.usage, selection.pricing, selection.contextLength)
+        if (runBudget != null) {
+          const line = budgetLine(tracker.cost, runBudget)
+          if (line) console.log(`  ${line}`)
+        }
+      }
+    } else {
+      // The content was already streamed to stdout as the deltas arrived; only
+      // guarantee the trailing-newline contract (a bare newline for an empty
+      // answer, matching the pre-stream behavior).
+      if (pipedLastChar !== '\n') process.stdout.write('\n')
+    }
+
+    const state = new ChatState({
+      modelId: selection.modelId,
+      endpointProviderName: selection.endpointProviderName,
+      reasoningEffort: selection.reasoningEffort,
+      temperature,
+      topP,
+      budget: runBudget,
+      webSearch,
+      webSearchExplicit,
+      webResults,
+      zdr,
+      e2ee,
+      pricing: selection.pricing,
+      contextLength: selection.contextLength,
+      sessionId,
+      createdAt,
+      messages,
+      reasoningMandatory: selection.modelReasoning?.mandatory === true,
+      // A resumed session rewrites its own file, so the persisted count must
+      // survive exactly like the interactive resume path.
+      scrapes: (resumed?.scrapes ?? 0) + (scraped ? 1 : 0),
+    })
+    // --no-save saves no session state: the claim this run created is removed
+    // instead of filled in. A resumed run never claimed one, and its own file
+    // must stay untouched.
+    if (opts.save === false) {
+      if (!resumed) await removeEmptySessionClaim(dir, sessionId)
+      return
+    }
+
+    // Persist the authoritative cost summary with the session file.
+    state.costSummary = trackerCostSummary(tracker)
+    const finalState = state.toFinalState(provider.meta.name)
+
+    await persistSession({ finalState, prefs, config: opts.config, rpgDir: opts.rpg, rpgCharName, rpgUserName, rpgFirstMessage })
+  } finally {
+    // The caller exits the process as soon as this returns, so what the run
+    // issued has to be on disk first (see flushRpgPromptLog).
+    await flushRpgPromptLog()
     process.off('SIGINT', onSigint)
     process.off('SIGTERM', onSigint)
+    if (onUncaught) process.off('uncaughtException', onUncaught)
   }
-
-  if (ttyOut) {
-    process.stdout.write('\n\n')
-  }
-
-  const producedResults = await resolveArtifacts(result, {
-    sessionId,
-    imageOutputSupported: selection.imageOutputSupported,
-    sessionsDir: dir,
-    signal: controller.signal,
-  })
-
-  // Artifact lines go to stderr when piped so stdout stays pure content;
-  // sources and the malformed-chunk notice are TTY-only (same styling as chat).
-  printArtifactsSummary(producedResults, result, ttyOut ? process.stdout : process.stderr, {
-    withSources: ttyOut,
-    withSkipped: ttyOut,
-  })
-
-  if (result.content || result.parts?.length > 0) {
-    const msg = { role: 'assistant', content: result.content }
-    if (result.reasoning) {
-      msg.reasoning = result.reasoning
-      if (result.reasoningMs != null) msg.reasoningMs = result.reasoningMs
-    }
-    if (result.usage) msg.usage = result.usage
-    if (result.sources?.length > 0) msg.sources = result.sources
-    messages.push(msg)
-  }
-
-  // Record usage in both the TTY and piped paths so the persisted
-  // cost summary below is authoritative (the resume/list/export paths
-  // prefer it over replay); the turn metrics footer stays TTY-only.
-  if (result.usage) {
-    tracker.record(result.usage, selection.pricing)
-  }
-  if (ttyOut) {
-    if (result.usage) {
-      tracker.printTurn(result.usage, selection.pricing, selection.contextLength)
-      if (runBudget != null) {
-        const line = budgetLine(tracker.cost, runBudget)
-        if (line) console.log(`  ${line}`)
-      }
-    }
-  } else {
-    // The content was already streamed to stdout as the deltas arrived; only
-    // guarantee the trailing-newline contract (a bare newline for an empty
-    // answer, matching the pre-stream behavior).
-    if (pipedLastChar !== '\n') process.stdout.write('\n')
-  }
-
-  const state = new ChatState({
-    modelId: selection.modelId,
-    endpointProviderName: selection.endpointProviderName,
-    reasoningEffort: selection.reasoningEffort,
-    temperature,
-    topP,
-    budget: runBudget,
-    webSearch,
-    webSearchExplicit,
-    webResults,
-    zdr,
-    e2ee,
-    pricing: selection.pricing,
-    contextLength: selection.contextLength,
-    sessionId,
-    createdAt,
-    messages,
-    reasoningMandatory: selection.modelReasoning?.mandatory === true,
-    // A resumed session rewrites its own file, so the persisted count must
-    // survive exactly like the interactive resume path.
-    scrapes: (resumed?.scrapes ?? 0) + (scraped ? 1 : 0),
-  })
-  // --no-save saves no session state: the claim this run created is removed
-  // instead of filled in. A resumed run never claimed one, and its own file
-  // must stay untouched.
-  if (opts.save === false) {
-    if (!resumed) await removeEmptySessionClaim(dir, sessionId)
-    await flushRpgPromptLog()
-    return
-  }
-
-  // Persist the authoritative cost summary with the session file.
-  state.costSummary = trackerCostSummary(tracker)
-  const finalState = state.toFinalState(provider.meta.name)
-
-  await persistSession({ finalState, prefs, config: opts.config, rpgDir: opts.rpg, rpgCharName, rpgUserName, rpgFirstMessage })
-  // The caller exits the process as soon as this returns, so what the run
-  // issued has to be on disk first (see flushRpgPromptLog).
-  await flushRpgPromptLog()
 }
