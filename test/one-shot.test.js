@@ -74,7 +74,7 @@ function event(data) {
   return `data: ${JSON.stringify(data)}\n\n`
 }
 
-function mockOpenRouterStream(t, fetchCalls = [], bodies = []) {
+function mockOpenRouterStream(t, fetchCalls = [], bodies = [], streamChunks = null) {
   resetOpenRouterModelCaches()
   const models = [{ id: 'test/model-a', name: 'Model A', context_length: 1000, description: 'd', reasoning: null }]
   const endpoints = [{
@@ -89,7 +89,9 @@ function mockOpenRouterStream(t, fetchCalls = [], bodies = []) {
   }]
   // Usage is the top-level `parsed.usage` the SSE parser reads (matching the
   // real provider response); it must not be nested under choices/delta.
-  const stream = [
+  // The default streams 'Hello' + ' world' + usage + [DONE]; callers that need
+  // a different provider response (an empty answer) pass their own chunks.
+  const stream = streamChunks ?? [
     event({ choices: [{ delta: { content: 'Hello' } }] }),
     event({ choices: [{ delta: { content: ' world' } }] }),
     event({ usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }),
@@ -725,6 +727,41 @@ test('one-shot --rpg --debug does not return before the prompt log has landed', 
   })
 
   assert.equal(exited, false)
+  const lines = (await readFile(join(rpgDir, 'prompt-log.jsonl'), 'utf-8')).trim().split('\n')
+  assert.equal(lines.length, 1)
+  assert.deepEqual(JSON.parse(lines[0]).request, bodies[0])
+})
+
+// The same tail exit with an empty answer: the assistant-message branch is
+// skipped and the piped path only emits the bare newline, so the tail finally
+// is the only flush left to await before the run returns.
+test('one-shot --rpg --debug with an empty answer does not return before the prompt log has landed', async (t) => {
+  const bodies = []
+  mockOpenRouterStream(t, [], bodies, [
+    event({ usage: { prompt_tokens: 10, completion_tokens: 0, total_tokens: 10 } }),
+    'data: [DONE]\n\n',
+  ])
+  withApiKey(t)
+  const file = await tempConfig(t)
+  const rpgDir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  t.after(() => rm(rpgDir, { recursive: true, force: true }))
+  const writes = mockPipedStdout(t)
+  t.mock.method(console, 'error', () => {})
+  const getExitCode = mockExit(t)
+  appendFileDelayMs = 200
+  t.after(() => { appendFileDelayMs = 0 })
+
+  const { exited } = await runOneShot(t, {
+    overrides: { config: file, rpg: rpgDir, debug: true },
+    systemPrompt: 'RPG system prompt',
+    rpgFirstMessage: 'The gate creaks open.',
+  })
+
+  assert.equal(exited, false)
+  assert.equal(getExitCode(), null)
+  // An empty answer keeps the trailing-newline contract: one bare newline and
+  // nothing else on stdout.
+  assert.deepEqual(writes, ['\n'])
   const lines = (await readFile(join(rpgDir, 'prompt-log.jsonl'), 'utf-8')).trim().split('\n')
   assert.equal(lines.length, 1)
   assert.deepEqual(JSON.parse(lines[0]).request, bodies[0])
