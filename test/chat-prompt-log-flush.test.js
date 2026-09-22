@@ -445,3 +445,85 @@ test('an EOF cancel still saves once, flushes once and exits nothing', async (t)
   assert.equal(signals(), null, 'the cancel exit removes the signal handlers before returning')
   assert.ok(![...logs, ...errors].some((line) => line.includes('Interrupted.')))
 })
+
+// --- real registry: every test above substitutes the fake `onSignal`, and every
+// signal test calls the captured handlers by hand, so the SIGTERM listener
+// src/signals.js installs on the process is only ever proven in isolation
+// (test/signals.test.js). This is the one test that drives it end to end. ----
+
+// The four listeners src/signals.js installs: snapshotting them before the
+// session starts is what lets the test remove exactly the ones the session
+// added, whichever path the test takes out.
+const SIGNAL_EVENTS = ['SIGINT', 'SIGTERM', 'beforeExit', 'uncaughtException']
+
+test('a real SIGTERM on the process registry lands the prompt log before exiting 130', async (t) => {
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', () => {})
+  // Not tempRpgDir(t): the rm has to happen after the parked session is
+  // released, so it lives in the cleanup hook below instead.
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  const { provider, calls } = fakeProvider()
+  // The loop parks on this input, so the SIGTERM listener sees an idle session
+  // and takes the save+flush exit path.
+  let releaseInput
+  const parked = new Promise((resolve) => { releaseInput = () => resolve({ cancelled: true }) })
+  let inputCalls = 0
+  const readInput = async () => {
+    inputCalls += 1
+    return inputCalls === 1 ? { value: 'hello' } : parked
+  }
+  const logPath = join(dir, 'prompt-log.jsonl')
+  const exits = []
+  const baseline = new Map(SIGNAL_EVENTS.map((event) => [event, process.listeners(event)]))
+  const added = (event) => process.listeners(event).filter((listener) => !baseline.get(event).includes(listener))
+  const { deps } = makeHarness({
+    readInput,
+    // No `onSignal` fake: chat's real default (src/chat.js) is what registers
+    // the src/signals.js listeners on the process registry.
+    onSignal: undefined,
+    // The exit itself reports what was on disk at that moment: cleanup runs
+    // before the process leaves, so an early exit loses the line silently.
+    onExit: (code) => exits.push({ code, logAtExit: existsSync(logPath) ? readLog(dir) : null }),
+  })
+  // exit(130) is stubbed, so a failure before the loop is released would leave
+  // the real listeners installed for the rest of the file. Release the parked
+  // session and let it settle before removing the dir: after hooks run in
+  // registration order, so the rm belongs after the await in this same hook.
+  let session
+  t.after(async () => {
+    for (const event of SIGNAL_EVENTS) {
+      for (const listener of added(event)) process.off(event, listener)
+    }
+    releaseInput()
+    await session?.catch(() => {})
+    await rm(dir, { recursive: true, force: true })
+  })
+  appendFileDelayMs = 200
+  t.after(() => { appendFileDelayMs = 0 })
+
+  session = runChatSession(baseCtx(provider, dir), deps)
+  await waitFor(() => inputCalls === 2)
+  assert.equal(calls.length, 1)
+  assert.equal(added('SIGTERM').length, 1, 'the session registers the SIGTERM listener from src/signals.js')
+  // The runner installs its own SIGTERM listener (per-file runs use
+  // --experimental-test-isolation=none); its handler reports the run as
+  // interrupted, cancels the running test and exits the process, so the
+  // delivery happens with that listener detached.
+  for (const listener of baseline.get('SIGTERM')) process.off('SIGTERM', listener)
+  try {
+    assert.equal(process.emit('SIGTERM', 'SIGTERM', 15), true, 'the signal reaches the session listener')
+  } finally {
+    for (const listener of baseline.get('SIGTERM')) process.on('SIGTERM', listener)
+  }
+  await waitFor(() => exits.length === 1)
+  releaseInput()
+  await session
+
+  assert.deepEqual(exits.map((entry) => entry.code), [130])
+  assert.equal(exits[0].logAtExit?.length, 1, 'the SIGTERM exit must wait for the held append')
+  // The idle path returns through exitCleanly, which cleans the real listeners
+  // up; t.after already covers the paths that never get there.
+  for (const event of SIGNAL_EVENTS) {
+    assert.equal(added(event).length, 0, `the session removes its real ${event} listener`)
+  }
+})
