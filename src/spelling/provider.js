@@ -1,8 +1,9 @@
-// Platform-free spelling core. The macOS osascript backend is injected (see
-// osascript.js), so the core is testable on any platform and can never spawn a
-// child by itself. The feature object is shared with the caller: `setFeatures`
-// merges into the same object `/spelling` holds, so a toggle applies to the
-// next request without a second source of truth.
+// Platform-free spelling core. The backend is injected (the macOS
+// helper/osascript stack on darwin, nspell.js elsewhere), so the core is
+// testable on any platform and can never spawn a child by itself. The feature
+// object is shared with the caller: `setFeatures` merges into the same object
+// `/spelling` holds, so a toggle applies to the next request without a second
+// source of truth.
 import { MAX_BUFFER_LENGTH, isCheckableLine, isProseRange } from './mask.js'
 
 const SPELLING_DEBOUNCE_MS = 250

@@ -305,11 +305,13 @@ test('an osascript child whose kill throws still reports the abort', async () =>
   await assert.rejects(pending, (error) => error.code === SPELLING_ABORTED)
 })
 
-// --- the platform gate composes the helper backend ---
+// --- the platform gate composes the helper (darwin) or portable backend ---
 
-// index.js must be loaded after the mock so its `./helper-backend.js` import
-// binds the factory below; the real module stays bound to this file's static
-// import (see test/one-shot.test.js for the same pattern).
+// index.js must be loaded after the mocks so its `./helper-backend.js` and
+// `./nspell.js` imports bind the factories below; the real modules stay bound
+// to this file's static imports (see test/one-shot.test.js for the same
+// pattern). The portable backend is faked here too, so the gate cases never
+// load the real dictionary.
 const helperBackends = []
 mock.module(new URL('../src/spelling/helper-backend.js', import.meta.url).href, {
   namedExports: {
@@ -326,6 +328,23 @@ mock.module(new URL('../src/spelling/helper-backend.js', import.meta.url).href, 
         },
       }
       helperBackends.push(backend)
+      return backend
+    },
+  },
+})
+
+const portableBackends = []
+mock.module(new URL('../src/spelling/nspell.js', import.meta.url).href, {
+  namedExports: {
+    createNspellBackend: () => {
+      const backend = {
+        runs: [],
+        run(request) {
+          backend.runs.push(request)
+          return Promise.resolve({ ranges: [[0, 1]] })
+        },
+      }
+      portableBackends.push(backend)
       return backend
     },
   },
@@ -349,12 +368,22 @@ test('on darwin the platform provider is built on the compiled-helper backend', 
   assert.equal(backend.disposals, 1, 'dispose reaches the helper backend')
 })
 
-test('off darwin the platform gate builds no backend at all', () => {
-  const before = helperBackends.length
-  for (const platform of ['linux', 'win32', 'freebsd']) {
-    assert.equal(createPlatformSpellingProvider({ platform, features: {} }), null)
-  }
-  assert.equal(helperBackends.length, before, 'the gate never constructs a helper off darwin')
+test('off darwin the platform provider is built on the portable backend', async () => {
+  const beforeHelpers = helperBackends.length
+  const beforePortable = portableBackends.length
+  const provider = createPlatformSpellingProvider({ platform: 'linux', features: { typoDetection: true } })
+  assert.equal(portableBackends.length, beforePortable + 1, 'the gate constructs the portable backend off darwin')
+  assert.equal(helperBackends.length, beforeHelpers, 'the gate never constructs a helper off darwin')
+  assert.equal(provider.completionsSupported, false, 'the portable backend answers no dictionary completions')
+  const backend = portableBackends.at(-1)
+
+  assert.equal(provider.getTypoRanges('hello wrold'), undefined)
+  for (let i = 0; i < 100 && backend.runs.length === 0; i += 1) await delay(10)
+  assert.deepEqual(backend.runs, [{ op: 'check', text: 'hello wrold' }])
+  await delay(20)
+  assert.deepEqual(provider.getTypoRanges('hello wrold'), [[0, 1]], 'the portable reply is cached and painted')
+
+  provider.dispose()
 })
 
 // --- the provider's range, cache and dispose guards ---

@@ -10,7 +10,7 @@ The interactive chat experience: the selection flow, one-shot mode, terminal ren
 
 Passing `-m <id>` with a prompt skips **all** pickers: the reasoning effort is restored from your saved per-model preference (or the model default), and the OpenRouter endpoint is auto-selected (cheapest provider with pricing, otherwise the first one). Venice always goes straight to chat. A bare `-m <id>` with no prompt opens an interactive chat with that model (with piped stdin it is one-shot input and fails with the no-prompt error) — see [commands](commands.md). `--reasoning-effort` still overrides the effort when given; `--reasoning-effort none` disables reasoning. Models that are disabled by default (`default_enabled: false`) restore as disabled.
 
-While the chat prompt is open, the editor suggests matching `/` commands as you type, and on macOS it also runs system spelling assistance: misspelled prose is underlined (Ctrl+. lists replacements), a dictionary completion can be accepted with Tab, and optional autocorrect fixes a word as you finish typing it. The full behavior, gating and settings are in [commands](commands.md#slash-commands).
+While the chat prompt is open, the editor suggests matching `/` commands as you type, and it also runs spelling assistance: misspelled prose is underlined (Ctrl+. lists replacements), a dictionary completion can be accepted with Tab (macOS only), and optional autocorrect fixes a word as you finish typing it. The full behavior, gating and settings are in [commands](commands.md#slash-commands).
 
 ## One-shot mode
 

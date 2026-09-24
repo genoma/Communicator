@@ -11,7 +11,7 @@ function usableWidth(termWidth, prefixWidth) {
   return Math.max(1, termWidth - prefixWidth)
 }
 
-// Misspelled-prose decoration (macOS spelling assistance): red curly underline.
+// Misspelled-prose decoration (spelling assistance): red curly underline.
 // Escape-vt only — it renders no column of its own, so `stringWidth` and every
 // width oracle keep measuring exactly the text.
 const TYPO_UNDERLINE = '\x1b[4:3m\x1b[58:2::255:95:95m'
@@ -318,7 +318,7 @@ export function computeGrid(ctx) {
     }
     rows.push(statusRow)
   }
-  // Ghost completion (macOS spelling autocomplete): dim, after the caret and
+  // Ghost completion (spelling autocomplete): dim, after the caret and
   // clipped to the free columns, so the row still fits the terminal exactly and
   // neither the cursor column nor the row count moves. The grid carries the
   // text that was actually painted: Tab accepts exactly that, so a completion

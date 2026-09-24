@@ -139,7 +139,7 @@ test('/help lists the commands and the quit aliases without repeating an alias r
   // Aliases appear only in the footer note, not as their own command rows.
   assert.ok(!lines.some((l) => l.trim().startsWith('/exit ')))
   assert.ok(!lines.some((l) => l.trim().startsWith('/q ')))
-  // Without a spelling provider the macOS-only command is not listed.
+  // Without a spelling provider the provider-gated command is not listed.
   assert.ok(!lines.some((l) => l.includes('/spelling')))
 })
 
@@ -1480,6 +1480,15 @@ test('/spelling lists the persisted values without a spelling provider (inactive
   assert.equal(harness.ctx.spelling, undefined)
   await chatCommands['/spelling'](harness.ctx)
   assert.equal(consoleSpy.log(0), 'Spelling (macOS): typo detection off, autocomplete on, autocorrect on. (inactive on this platform)\n')
+})
+
+test('/spelling names the macOS-only completions on the portable provider', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const provider = Object.assign(fakeSpelling(), { completionsSupported: false })
+  const harness = makeCtx({ spelling: provider, spellingSettings: spellingSettings() })
+  await chatCommands['/spelling'](harness.ctx)
+  assert.equal(consoleSpy.log(0), 'Spelling: typo detection on, autocomplete on, autocorrect off. (dictionary completions are macOS-only)\n')
+  assert.deepEqual(harness.prefsUpdates, [])
 })
 
 test('/spelling typo off persists the pref and applies it to the provider', async (t) => {

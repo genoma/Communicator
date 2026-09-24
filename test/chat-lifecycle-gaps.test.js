@@ -100,7 +100,7 @@ function makeDeps(overrides = {}) {
     saveSession: async () => {},
     savePrefs: async () => {},
     // Never construct the real platform provider: a stub keeps the command
-    // list deterministic across platforms (null = no provider, as off darwin).
+    // list deterministic across platforms (null = no provider).
     createSpelling: () => null,
     onSignal: (handlers) => {
       signalHandlers = handlers

@@ -37,7 +37,7 @@ function makeDeps() {
     saveSession: async () => {},
     savePrefs: async () => {},
     newSessionId: async () => '2026-01-02T00-00-00',
-    // Never construct the real platform spelling provider (osascript on darwin).
+    // Never construct the real platform spelling provider (osascript or the English dictionary).
     createSpelling: () => null,
     onSignal: () => () => {},
   }

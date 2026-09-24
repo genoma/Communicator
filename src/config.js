@@ -132,7 +132,7 @@ export function getImageDefaults(prefs, providerName) {
 }
 
 /**
- * The three macOS spelling settings resolved at session creation (`?? default`,
+ * The three spelling settings resolved at session creation (`?? default`,
  * cf. `compactThinking`): typo underlines and word autocomplete default on,
  * autocorrect off. `/spelling` mutates the returned object in place and
  * persists the change through `applyPreferenceUpdates`.

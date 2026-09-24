@@ -101,9 +101,9 @@ export async function runChatSession(ctx = {}, deps = {}) {
     input = process.stdin,
     createStreamKeyMonitor,
     now = null,
-    // Spelling provider factory (darwin-only, injectable): the platform gate
-    // lives in src/spelling/index.js, so a non-macOS session never constructs
-    // the osascript backend.
+    // Spelling provider factory (injectable): the platform gate lives in
+    // src/spelling/index.js and picks the darwin system checker or the portable
+    // backend, so no caller branches on the platform itself.
     createSpelling = (features) => createPlatformSpellingProvider({ features }),
   } = deps
 
@@ -287,8 +287,8 @@ export async function runChatSession(ctx = {}, deps = {}) {
   // as the other persistence paths)
   const savePrefs = savePrefsBestEffort((updates) => savePrefsFile(updates))
 
-  // macOS spelling assistance: one provider per session, holding the debounce
-  // timer and at most one osascript child (see src/spelling/). `/spelling`
+  // Spelling assistance: one provider per session, holding the debounce timer
+  // and at most one backend request in flight (see src/spelling/). `/spelling`
   // mutates the shared settings object and the provider follows it.
   const spellingSettings = resolveSpellingSettings(prefs)
   const spelling = createSpelling(spellingSettings) ?? null

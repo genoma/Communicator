@@ -7,8 +7,8 @@ Communicator is written in Node.js ESM. Its one native piece is [`sharp`](https:
 | Platform | Status | Notes |
 |----------|--------|-------|
 | macOS    | Primary — developed and tested locally and in CI | Clipboard via built-in `pbcopy`; prompt-editor spelling assistance (system spell checker, optional compiled helper — see Data locations); `heic`/`heif` attachments decoded by the built-in `sips` converter |
-| Linux    | Expected to work, CI-verified | Clipboard tools probed at runtime: `wl-copy` (Wayland) → `xclip` → `xsel` (X11); `heic`/`heif` attachments rejected |
-| Windows  | Expected to work, CI-verified | Clipboard via built-in `clip`; multi-line input normalizes CRLF; `heic`/`heif` attachments rejected |
+| Linux    | Expected to work, CI-verified | Clipboard tools probed at runtime: `wl-copy` (Wayland) → `xclip` → `xsel` (X11); prompt-editor spelling assistance via the built-in English dictionary (`nspell`); `heic`/`heif` attachments rejected |
+| Windows  | Expected to work, CI-verified | Clipboard via built-in `clip`; multi-line input normalizes CRLF; prompt-editor spelling assistance via the built-in English dictionary (`nspell`); `heic`/`heif` attachments rejected |
 
 `heic`/`heif` attachments are macOS-only: the system `sips` converter decodes them there (converting the result to `jpeg`/`png` still needs the image codec), while Linux and Windows reject them before reading the file with `Unsupported file type: heic (HEIC/HEIF images are supported on macOS only — convert to JPEG or PNG)` (the `heif` spelling for a `.heif` file).
 
@@ -50,7 +50,7 @@ All persistent data is resolved from `os.homedir()` at runtime, so the paths are
 | `~/.communicator/history.json` | Prompt input history (max 200 entries) |
 | `~/.communicator/spelling-helper-<hash>` | Compiled macOS spelling helper (macOS only; built on first use, never without Command Line Tools) |
 
-On macOS the prompt editor uses the system spell checker; on first use Communicator compiles a small helper into `~/.communicator/spelling-helper-<16-hex>` when Command Line Tools (or Xcode) are present. Without a toolchain nothing is compiled and every request goes through a per-call `osascript` process instead; the feature is inert on Linux and Windows.
+On macOS the prompt editor uses the system spell checker; on first use Communicator compiles a small helper into `~/.communicator/spelling-helper-<16-hex>` when Command Line Tools (or Xcode) are present. Without a toolchain nothing is compiled and every request goes through a per-call `osascript` process instead. On Linux and Windows spelling assistance runs on a built-in pure-JS English dictionary (`nspell` + `dictionary-en`, shipped with the app — no system checker, nothing to compile): typo underlines, the Ctrl+. replacement list and autocorrect all work, while dictionary completions (the dim inline hint) are macOS-only.
 
 ## Install & environment on Linux/Windows
 

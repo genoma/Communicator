@@ -1,9 +1,9 @@
 # Compilation plan — allowing compiled artifacts
 
-**Status: S0 and S1 landed on `main` (`5.1.0`).** The policy lives in `AGENTS.md` §Compiled artifacts. S1
-(image preprocessing) shipped in `bb9e255` + `0d9cf0d`, was reviewed by six independent lanes and merged as
-`6b2f2e4`. D9's one open question was resolved by the owner on 2026-09-24: the `attached:` / `/attachments`
-size is the transformed payload actually sent. S2–S4 are open in §5.
+**Status: S0–S2 landed on `main` (`5.2.0`); S3 closed as a spike; S4 is complete on its branch, pending the
+owner's nod on the one new user-visible string.** The policy lives in `AGENTS.md` §Compiled artifacts. S2
+(avif/tiff/heic + the macOS HEIC bridge) shipped as `5.2.0`. S3 measured `js-tiktoken` against provider
+truth and shipped nothing. S4 (portable spelling on Linux/Windows) is described in §5.
 
 Baseline (re-run on this branch): `npm test` **2250/2250, 0 fail, 0 skipped** (119 suites, Node 26.9.0,
 macOS 27.0/M5), `npm run lint` and `npx knip` clean. CI runs the same gate on macOS/Ubuntu/Windows ×
@@ -113,7 +113,8 @@ Why: `/spelling` is a no-op off macOS (`src/spelling/index.js:10`) while the eng
 - **Change** `src/spelling/index.js:10-11` to select the backend by platform. No refactor, no registry, no
   constant relocation, no change to `helper.m`, `osascript.js` or the build machinery.
 - **Tests**: a backend suite (ops, ranges, quoting, empty/unloadable dictionary, abort-ignored) plus the
-  existing gate tests; the 130 current spelling tests stay untouched.
+  existing gate tests; the darwin gate tests are rewritten for the new selection and the darwin side stays
+  byte-identical.
 - **Docs**: `README.md:29`, `docs/platforms.md`, `docs/commands.md`, the `/spelling` block and the
   spelling section of `MEMORY.md`.
 - **UX gate**: the `/spelling` help text and the one-line note that completions are macOS-only.
@@ -182,7 +183,13 @@ Each stage is its own branch off `main`, one commit per logical step, gate befor
   answers identically across routes (Venice `e2ee-qwen-2-5-7b-p` with the system prompt off == OpenRouter
   `qwen-2.5-7b-instruct` on Phala: 30/490/447/452/267), and Venice's default system prompt costs ~1.7k
   tokens per request (the app disables it, see MEMORY.md §Known quirks).
-- **S4 — spelling non-macOS backend.** Gate: backend suite, gate tests, docs, UX approval for the note.
+- **S4 — done.** `src/spelling/nspell.js` (pure-JS nspell over `dictionary-en`, code-unit tokenizer,
+  lazy memoized dictionary, same `run()` contract) selected for every non-darwin platform; the macOS stack
+  is untouched. `completions` answers the empty list off darwin (documented degradation). Because nspell
+  ranks a one-character replacement above an adjacent transposition (`teh` → `ten`), the portable backend
+  autocorrects only a verified adjacent swap that the dictionary and the engine both accept, and leads the
+  replacement list with it; other typos stay user-picked. Six review lanes found the smart-quote (`’`) token
+  bug and nine bookkeeping notes, all applied.
 
 ## 6. Explicitly not doing
 

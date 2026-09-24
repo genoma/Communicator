@@ -50,7 +50,7 @@ const COMMAND_DESCRIPTIONS = {
   '/markdown': 'Toggle terminal markdown rendering',
   '/smooth': 'Show or set smooth streaming state and speed',
   '/compact-thinking': 'Show or set whether reasoning streams as a meter',
-  '/spelling': 'Show or set the macOS spelling assistance settings',
+  '/spelling': 'Show or set the spelling assistance settings',
   '/export-format': 'Show or set the export format for future exports',
   '/cost': 'Print the running session cost/token totals',
 }
@@ -72,7 +72,7 @@ const COMMAND_USAGE = {
 
 const QUIT_ALIASES = ['/exit', '/q']
 
-// /spelling: the three macOS spelling settings, their preference keys and the
+// /spelling: the three spelling settings, their preference keys and the
 // wording of their confirmation line.
 const SPELLING_SETTINGS = {
   typo: { feature: 'typoDetection', pref: 'spellingTypoDetection', label: 'Typo detection' },
@@ -543,7 +543,7 @@ const handlers = {
       initialValue: messageText(target),
       onResizeRepaint: ctx.onResizeRepaint,
       // The nested editor is the same prompt editor, so it carries the same
-      // macOS spelling assistance as the main prompt.
+      // spelling assistance as the main prompt.
       spelling: ctx.spelling,
       // The edited content is a user message (never a command, even when it
       // starts with `/`), so the submitted line carries the user marker — but
@@ -699,10 +699,16 @@ const handlers = {
     const settings = ctx.spellingSettings ?? resolveSpellingSettings(ctx.prefs ?? {})
     const value = ctx.args
     if (!value) {
-      // Off darwin no provider was constructed and the feature is inert; the
-      // setting still persists in case this preferences file meets a Mac.
+      // Dictionary completions need the system checker, so the portable
+      // provider names that one gap; a session without a provider still lists
+      // the persisted values as inactive.
+      const state = `typo detection ${spellingState(settings.typoDetection)}, autocomplete ${spellingState(settings.autocomplete)}, autocorrect ${spellingState(settings.autocorrect)}.`
+      if (ctx.spelling?.completionsSupported === false) {
+        console.log(`Spelling: ${state} (dictionary completions are macOS-only)\n`)
+        return
+      }
       const inactive = ctx.spelling ? '' : ' (inactive on this platform)'
-      console.log(`Spelling (macOS): typo detection ${spellingState(settings.typoDetection)}, autocomplete ${spellingState(settings.autocomplete)}, autocorrect ${spellingState(settings.autocorrect)}.${inactive}\n`)
+      console.log(`Spelling (macOS): ${state}${inactive}\n`)
       return
     }
     const [key, mode, ...rest] = value.split(/\s+/)
@@ -770,8 +776,9 @@ export function visibleChatCommands({ visionSupported, e2ee = false, providerNam
   if (visionSupported === false || e2ee) hidden.push('/attach', '/attachments')
   if (e2ee) hidden.push('/web-search', '/web-results')
   // Web scraping is a Venice-only feature and spelling exists only where a
-  // spelling provider was constructed (darwin): both provider axes are fixed
-  // at session start (never switch mid-session), so the list is computed once.
+  // spelling provider was constructed (every platform; darwin's system checker
+  // or the portable dictionary): both provider axes are fixed at session start
+  // (never switch mid-session), so the list is computed once.
   if (e2ee || providerName !== 'venice') hidden.push('/scrape')
   if (!spellingSupported) hidden.push('/spelling')
   return CHAT_COMMANDS.filter((c) => !hidden.includes(c))

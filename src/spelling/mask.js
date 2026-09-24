@@ -1,8 +1,9 @@
 // Prose masking for the spelling provider: which checked words may be
 // underlined. Flags, paths, urls, model ids, code and emoji must never be
 // flagged — the spell checker has no idea what they are, it only knows they are
-// not in a dictionary (npm, openai). Italian and Russian prose is left to the
-// checker (see jxa.js).
+// not in a dictionary (npm, openai). Non-English prose is left to the checker
+// only where the checker knows the user's languages: darwin's nil-language
+// scan (see jxa.js) accepts it, while the portable English dictionary flags it.
 const CODEISH_CHARACTERS = /[\\/@_=:{}[\]<>]/u
 const UNPROSE_CHARACTERS = /[.~$%#]/u
 const DIGIT = /\d/u

@@ -756,9 +756,19 @@ test('a queued correction starts before a queued check', async () => {
   spelling.dispose()
 })
 
-test('off darwin the platform provider is a complete no-op', () => {
+test('off darwin the platform provider is built on the portable backend', () => {
   for (const platform of ['linux', 'win32', 'freebsd']) {
-    assert.equal(createPlatformSpellingProvider({ platform, features: {} }), null)
+    const provider = createPlatformSpellingProvider({ platform, features: {} })
+    assert.equal(typeof provider.getTypoRanges, 'function')
+    assert.equal(typeof provider.getWordCompletion, 'function')
+    assert.equal(typeof provider.getWordReplacements, 'function')
+    assert.equal(typeof provider.getAutocorrection, 'function')
+    assert.equal(typeof provider.setFeatures, 'function')
+    assert.equal(typeof provider.dispose, 'function')
+    assert.equal(provider.maxCheckedLines, 256)
+    assert.equal(provider.onUpdate, null)
+    assert.equal(provider.completionsSupported, false, 'the portable backend answers no dictionary completions')
+    provider.dispose()
   }
 })
 
@@ -772,6 +782,7 @@ test('on darwin the platform provider exposes the provider contract', () => {
   assert.equal(typeof provider.dispose, 'function')
   assert.equal(provider.maxCheckedLines, 256)
   assert.equal(provider.onUpdate, null)
+  assert.equal(provider.completionsSupported, true, 'the system checker answers dictionary completions')
   // Dispose without ever asking: nothing was spawned, so this is a plain no-op.
   provider.dispose()
 })

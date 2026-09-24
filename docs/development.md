@@ -72,13 +72,14 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 │   ├── keys.js            — raw-mode input consumer (paste markers, escapes, DSR replies)
 │   └── index.js           — readEditor: terminal lifecycle, keymap, submit/cancel
 ├── spelling/
-│   ├── index.js           — spelling provider composition + the darwin platform gate
+│   ├── index.js           — spelling provider composition + platform backend selection (darwin helper / portable nspell)
 │   ├── jxa.js             — JXA program text for osascript (NSSpellChecker)
 │   ├── osascript.js       — osascript backend (one child per call, hard timeout)
 │   ├── helper.m           — Objective-C spelling daemon source (compiled into ~/.communicator)
 │   ├── helper-backend.js  — compiled-helper backend (build/cache/spawn/watchdog, osascript fallback)
 │   ├── provider.js        — platform-free spelling core (cache, debounce, failure policy)
-│   └── mask.js            — prose masking (which words may be underlined)
+│   ├── mask.js            — prose masking (which words may be underlined)
+│   └── nspell.js          — portable spelling backend (nspell + the English dictionary, Linux/Windows)
 ├── input.js              — chat input via the frame-diffing editor (with command suggestions)
 ├── suggest.js            — prefix matching for command suggestions (matchCommands)
 ├── ui/
@@ -94,7 +95,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 └── chat.js               — runChatSession: DI chat loop (readInput/renderer/stdout/exit/save/signals), banner, SIGINT
 ```
 
-Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing, [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) and [`@inquirer/core`](https://www.npmjs.com/package/@inquirer/core) for the interactive search/select UI, [`markdown-it`](https://www.npmjs.com/package/markdown-it) for terminal markdown rendering, [`string-width`](https://www.npmjs.com/package/string-width) for emoji-aware column measurement (stream rewind math), and [`sharp`](https://www.npmjs.com/package/sharp) for local image preprocessing (an optional dependency, imported lazily and only when an image is attached). Multi-line input uses the in-repo frame-diffing editor (`src/editor/`), whose behaviour contract was originally defined by the vendored `@toiroakr/read-multiline` 0.4.1 (removed in 2026-08; the contract now lives in MEMORY.md §Command autocomplete).
+Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing, [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) and [`@inquirer/core`](https://www.npmjs.com/package/@inquirer/core) for the interactive search/select UI, [`markdown-it`](https://www.npmjs.com/package/markdown-it) for terminal markdown rendering, [`string-width`](https://www.npmjs.com/package/string-width) for emoji-aware column measurement (stream rewind math), [`nspell`](https://www.npmjs.com/package/nspell) and [`dictionary-en`](https://www.npmjs.com/package/dictionary-en) for the portable spelling backend (pure JS, loaded lazily), and [`sharp`](https://www.npmjs.com/package/sharp) for local image preprocessing (an optional dependency, imported lazily and only when an image is attached). Multi-line input uses the in-repo frame-diffing editor (`src/editor/`), whose behaviour contract was originally defined by the vendored `@toiroakr/read-multiline` 0.4.1 (removed in 2026-08; the contract now lives in MEMORY.md §Command autocomplete).
 
 ## Architecture
 
@@ -145,4 +146,4 @@ The check cannot verify behavioral prose. When touching related code, re-verify 
 - ZDR: OpenRouter-only, filters pickers to ZDR-capable endpoints, runtime error kept as a safety net, not persisted.
 - Venice watermark (image-session `/watermark off` hides it → `hideWatermark: true`) and safe-mode are global preferences.
 - Session file format: `providerName`/`providerType`/`usage`/`sources` fields, `ref://attachments/` blobs, the `.index.json` sidecar rebuild, title from the first user message truncated to 50 chars.
-- Command autocomplete: hints appear on `/`, Tab fills the first match, Shift+Tab the last, Enter always submits. On macOS a dictionary completion hint is accepted with Tab only when no `/`-command list is open, Ctrl+. lists spelling replacements, and autocorrect (off by default) fixes a misspelled word when the character that closes it is typed.
+- Command autocomplete: hints appear on `/`, Tab fills the first match, Shift+Tab the last, Enter always submits. A dictionary completion hint (macOS only) is accepted with Tab only when no `/`-command list is open; Ctrl+. lists spelling replacements, and autocorrect (off by default) fixes a misspelled word when the character that closes it is typed.

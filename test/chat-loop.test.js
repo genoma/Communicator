@@ -61,7 +61,7 @@ function makeDeps(overrides = {}) {
     savePrefs: async (updates) => prefsCalls.push(updates),
     newSessionId: async () => '2026-01-02T00-00-00',
     // Never construct the real platform provider: a stub keeps the command
-    // list deterministic across platforms (null = no provider, as off darwin).
+    // list deterministic across platforms (null = no provider).
     createSpelling: () => null,
     onSignal: (handlers) => {
       signalHandlers = handlers
@@ -783,7 +783,7 @@ test('unknown command list lists /spelling with a spelling provider', async (t) 
 
   assert.equal(calls.length, 0)
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
-  assert.ok(unknownLine.includes('/spelling'), 'a provider lists the macOS-only command')
+  assert.ok(unknownLine.includes('/spelling'), 'a provider lists the spelling command')
 })
 
 test('autocomplete commands omit /attach and /attachments when the model lacks vision', async (t) => {
@@ -804,7 +804,7 @@ test('autocomplete commands omit /attach and /attachments when the model lacks v
     assert.ok(!commands.includes('/attach'))
     assert.ok(!commands.includes('/attachments'))
     assert.ok(!commands.includes('/watermark'))
-    assert.ok(!commands.includes('/spelling'), 'no provider hides the macOS-only command')
+    assert.ok(!commands.includes('/spelling'), 'no provider hides the spelling command')
   }
 })
 
