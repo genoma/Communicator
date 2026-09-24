@@ -1,8 +1,9 @@
 # Compilation plan — allowing compiled artifacts
 
-**Status: decisions resolved, not merged.** Branch `docs/compilation-plan`, cut from `main` at `5e26bb8`
-(`5.0.6`). This branch is docs-only: the policy in `AGENTS.md` §Compiled artifacts plus this plan.
-Implementation lands on its own branches, in the order of §3.
+**Status: S0 and S1 landed on `main` (`5.1.0`).** The policy lives in `AGENTS.md` §Compiled artifacts. S1
+(image preprocessing) shipped in `bb9e255` + `0d9cf0d`, was reviewed by six independent lanes and merged as
+`6b2f2e4`. D9's one open question was resolved by the owner on 2026-09-24: the `attached:` / `/attachments`
+size is the transformed payload actually sent. S2–S4 are open in §5.
 
 Baseline (re-run on this branch): `npm test` **2250/2250, 0 fail, 0 skipped** (119 suites, Node 26.9.0,
 macOS 27.0/M5), `npm run lint` and `npx knip` clean. CI runs the same gate on macOS/Ubuntu/Windows ×
@@ -78,8 +79,8 @@ precedent that makes the new policy real.
   downscaled; EXIF orientation fixture generated with sharp at test time; missing/declined transform
   leaves today's formats byte-identical.
 - **Docs**: `docs/attachments.md`, `docs/platforms.md`, `README.md` limits — same commit as the dependency.
-- **UX gate**: accepted formats, the pixel cap, the re-encode quality, the new error wording, and whether
-  the attach path mentions that it downscaled.
+- **UX gate**: accepted formats, the pixel cap, the re-encode quality and the error wording were approved
+  with D9; the printed size for a transformed image was approved on 2026-09-24 (the sent payload).
 
 ### W2 — pre-flight tokens: measure before claiming (spike only)
 
@@ -154,8 +155,12 @@ Prebuilt macOS helper (D4), clipboard read (D10), single-file binary (D11), and 
 Each stage is its own branch off `main`, one commit per logical step, gate before moving on.
 
 - **S0 — done (this branch).** Policy + plan, docs-only.
-- **S1 — sharp: dependency, loader, seam, downscale/orientation/limits.** Gate: suite (fake seam) +
-  real-codec test, lint, knip, docs updated in the same commit, UX approval for limits/wording.
+- **S1 — done (`5.1.0`).** `src/image-transform.js` (lazy optional sharp, EXIF bake, 2048 px long edge,
+  50 MP decode cap, metadata stripped, byte-for-byte passthrough on every failure incl. gif and animated
+  WebP/PNG), the `loadAttachment`/`loadAttachments` seam with an injected transform, raw-bytes limits for
+  every kind plus a post-read re-check, docs and MEMORY in the same commit. Gate: `npm test` 2266/2266,
+  lint, knip and `npm audit --omit=dev` clean, suite green with sharp physically absent. The
+  encoded-payload bound (~4/3 of the raw limit) is documented, not enforced.
 - **S2 — image formats + HEIC bridge (macOS) and honest failures elsewhere.** Gate as S1, plus the
   generated-fixture test on macOS.
 - **S3 — tokenizer spike; ship or stop.** Gate: the written measurement and the decision, not code.
