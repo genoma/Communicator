@@ -1,9 +1,11 @@
 # Compilation plan — allowing compiled artifacts
 
-**Status: S0–S2 landed on `main` (`5.2.0`); S3 closed as a spike; S4 is complete on its branch, pending the
-owner's nod on the one new user-visible string.** The policy lives in `AGENTS.md` §Compiled artifacts. S2
-(avif/tiff/heic + the macOS HEIC bridge) shipped as `5.2.0`. S3 measured `js-tiktoken` against provider
-truth and shipped nothing. S4 (portable spelling on Linux/Windows) is described in §5.
+**Status: completed in `5.3.0`.** All four stages landed on `main`: S1 (image preprocessing) in `5.1.0`, S2
+(avif/tiff + the macOS HEIC bridge) in `5.2.0`, S3 closed as a measured spike with no code, S4 (portable
+spelling on Linux/Windows) in `5.3.0`. The binding policy lives in `AGENTS.md` §Compiled artifacts; the
+per-stage implementation facts live in `MEMORY.md`. Deferred by decision: the prebuilt macOS spelling helper
+(no publish channel), clipboard read, and single-file binaries — see §2 and §6 for the decision text and the
+conditions that would reopen each.
 
 Baseline (re-run on this branch): `npm test` **2250/2250, 0 fail, 0 skipped** (119 suites, Node 26.9.0,
 macOS 27.0/M5), `npm run lint` and `npx knip` clean. CI runs the same gate on macOS/Ubuntu/Windows ×
@@ -183,7 +185,7 @@ Each stage is its own branch off `main`, one commit per logical step, gate befor
   answers identically across routes (Venice `e2ee-qwen-2-5-7b-p` with the system prompt off == OpenRouter
   `qwen-2.5-7b-instruct` on Phala: 30/490/447/452/267), and Venice's default system prompt costs ~1.7k
   tokens per request (the app disables it, see MEMORY.md §Known quirks).
-- **S4 — done.** `src/spelling/nspell.js` (pure-JS nspell over `dictionary-en`, code-unit tokenizer,
+- **S4 — done (`5.3.0`).** `src/spelling/nspell.js` (pure-JS nspell over `dictionary-en`, code-unit tokenizer,
   lazy memoized dictionary, same `run()` contract) selected for every non-darwin platform; the macOS stack
   is untouched. `completions` answers the empty list off darwin (documented degradation). Because nspell
   ranks a one-character replacement above an adjacent transposition (`teh` → `ten`), the portable backend
