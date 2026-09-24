@@ -122,7 +122,7 @@ test('loadAttachment uses a shrinking image transform and its mime', async (t) =
   const att = await loadAttachment(file, {
     transformImage: async (buffer, options) => {
       calls.push({ buffer, options })
-      return { buffer: Buffer.from('SMALL'), mime: 'image/webp', resized: true }
+      return { buffer: Buffer.from('SMALL'), mime: 'image/webp' }
     },
   })
   assert.equal(calls.length, 1)
@@ -144,7 +144,7 @@ test('loadAttachment keeps the original bytes when the transform returns null', 
 
 test('loadAttachment keeps the original bytes when the transform exceeds the image limit', async (t) => {
   const file = await writeFixture(t, 'a.png', 'PNGDATA')
-  const transformImage = async () => ({ buffer: Buffer.alloc(MAX_IMAGE_ATTACHMENT_BYTES + 1), mime: 'image/webp', resized: false })
+  const transformImage = async () => ({ buffer: Buffer.alloc(MAX_IMAGE_ATTACHMENT_BYTES + 1), mime: 'image/webp' })
   const att = await loadAttachment(file, { transformImage })
   assert.equal(att.mime, 'image/png')
   assert.equal(att.size, 7)
@@ -164,7 +164,7 @@ test('loadAttachment does not transform non-images', async (t) => {
 test('loadAttachments threads the image transform through to loadAttachment', async (t) => {
   const first = await writeFixture(t, 'a.png', 'PNGDATA')
   const second = await writeFixture(t, 'b.png', 'PNGDATA2')
-  const transformImage = async () => ({ buffer: Buffer.from('X'), mime: 'image/webp', resized: true })
+  const transformImage = async () => ({ buffer: Buffer.from('X'), mime: 'image/webp' })
   const { attachments } = await loadAttachments([first, second], {}, { transformImage })
   assert.deepEqual(attachments.map((att) => att.mime), ['image/webp', 'image/webp'])
   assert.deepEqual(attachments.map((att) => att.size), [1, 1])

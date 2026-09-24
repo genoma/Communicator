@@ -35,7 +35,7 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Markdown / JSONL export** — export one or more saved sessions with `--export` (multi-select checkbox) into per-session folders (`session-{id}/`). Default is `markdown` (separate thinking sections, cost summary, attachments materialized as linked files); `--export-format jsonl` writes one JSON object per line (session header + messages) instead
 - **Session persistence** — last model, provider, and per-model reasoning effort, temperature and top-p are saved to `~/.communicator.json` and restored on next launch
 - **CLI flags to skip pickers** — `-m` skips *all* pickers for fully non-interactive use; `--reasoning-effort` skips only the reasoning picker
-- **Lightweight** — six runtime dependencies; the one native piece is a prebuilt image codec, loaded only when you attach an image
+- **Lightweight** — five runtime dependencies plus one optional prebuilt image codec, loaded only when you attach an image
 
 ## Documentation
 

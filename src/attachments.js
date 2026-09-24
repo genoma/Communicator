@@ -105,22 +105,20 @@ export async function loadAttachment(path, { transformImage = transformImageAtta
   if (!kind) throw new Error(`Unsupported file type: ${extname(path).slice(1) || '(none)'}`)
 
   const fullPath = resolve(path)
+  const filename = basename(fullPath)
+  const [limit, limitLabel] = kind === 'image'
+    ? [MAX_IMAGE_ATTACHMENT_BYTES, 'image limit is 20 MB']
+    : kind === 'text'
+      ? [MAX_FILE_ATTACHMENT_BYTES, 'text limit is 25 MB']
+      : [MAX_FILE_ATTACHMENT_BYTES, 'file limit is 25 MB']
+
   let size
   try {
     size = (await stat(fullPath)).size
   } catch {
     throw new Error(`Cannot read attachment: ${path}`)
   }
-
-  if (kind === 'image' && size > MAX_IMAGE_ATTACHMENT_BYTES) {
-    throw new Error(`Attachment too large: ${basename(fullPath)} (image limit is 20 MB)`)
-  }
-  if ((kind === 'pdf' || kind === 'office') && size > MAX_FILE_ATTACHMENT_BYTES) {
-    throw new Error(`Attachment too large: ${basename(fullPath)} (file limit is 25 MB)`)
-  }
-  if (kind === 'text' && size > MAX_FILE_ATTACHMENT_BYTES) {
-    throw new Error(`Attachment too large: ${basename(fullPath)} (text limit is 25 MB)`)
-  }
+  if (size > limit) throw new Error(`Attachment too large: ${filename} (${limitLabel})`)
 
   let buffer
   try {
@@ -128,8 +126,10 @@ export async function loadAttachment(path, { transformImage = transformImageAtta
   } catch {
     throw new Error(`Cannot read attachment: ${path}`)
   }
+  // A file can grow between the stat() above and this read: the limit must hold
+  // for the bytes that were actually loaded.
+  if (buffer.length > limit) throw new Error(`Attachment too large: ${filename} (${limitLabel})`)
 
-  const filename = basename(fullPath)
   let payload = buffer
   let payloadMime = mime
 

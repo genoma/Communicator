@@ -13,7 +13,6 @@ test('downsizes a 4000x3000 JPEG to the long-edge cap', async (t) => {
   const input = await sharp({ create: { width: 4000, height: 3000, channels: 3, background: '#3366aa' } }).jpeg().toBuffer()
   const out = await transformImageAttachment(input, { mime: 'image/jpeg' })
   assert.ok(out, 'a decodable JPEG must be transformed')
-  assert.equal(out.resized, true)
   assert.equal(out.mime, 'image/jpeg')
   const meta = await sharp(out.buffer).metadata()
   assert.equal(meta.format, 'jpeg')
@@ -21,13 +20,12 @@ test('downsizes a 4000x3000 JPEG to the long-edge cap', async (t) => {
   assert.equal(meta.height, 1536)
 })
 
-test('leaves a small image at its dimensions with resized=false', async (t) => {
+test('leaves a small image at its dimensions', async (t) => {
   if (!(await isImageTransformAvailable())) return t.skip('sharp unavailable')
   const sharp = await realSharp()
   const input = await sharp({ create: { width: 120, height: 80, channels: 3, background: '#22aa66' } }).png().toBuffer()
   const out = await transformImageAttachment(input, { mime: 'image/png' })
   assert.ok(out)
-  assert.equal(out.resized, false)
   assert.equal(out.mime, 'image/png')
   const meta = await sharp(out.buffer).metadata()
   assert.equal(meta.format, 'png')
@@ -45,7 +43,6 @@ test('bakes EXIF orientation and drops EXIF', async (t) => {
   assert.equal((await sharp(input).metadata()).orientation, 6)
   const out = await transformImageAttachment(input, { mime: 'image/jpeg' })
   assert.ok(out)
-  assert.equal(out.resized, false)
   const meta = await sharp(out.buffer).metadata()
   assert.equal(meta.width, 20)
   assert.equal(meta.height, 40)
@@ -66,6 +63,24 @@ test('returns null for an animated WebP', async (t) => {
 
 test('returns null for image/gif', async () => {
   assert.equal(await transformImageAttachment(Buffer.from('GIF89a'), { mime: 'image/gif' }), null)
+})
+
+function pngChunk(type, data = Buffer.alloc(0)) {
+  const head = Buffer.alloc(8)
+  head.writeUInt32BE(data.length, 0)
+  head.write(type, 4, 'latin1')
+  return Buffer.concat([head, data, Buffer.alloc(4)])
+}
+
+test('returns null for an animated PNG before the codec sees it', async () => {
+  const apng = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', Buffer.alloc(13)),
+    pngChunk('acTL', Buffer.alloc(8)),
+    pngChunk('IDAT', Buffer.from([0x78, 0x9c, 0x00])),
+    pngChunk('IEND'),
+  ])
+  assert.equal(await transformImageAttachment(apng, { mime: 'image/png' }), null)
 })
 
 test('returns null for an undecodable buffer', async (t) => {
@@ -89,7 +104,6 @@ test('decodes with the attachment pixel cap', async () => {
   assert.deepEqual(seen, [{ limitInputPixels: ATTACHMENT_MAX_PIXELS }])
   assert.equal(out.buffer.toString(), 'REENC0DED')
   assert.equal(out.mime, 'image/jpeg')
-  assert.equal(out.resized, false)
 })
 
 test('returns null when the codec is unavailable', async () => {

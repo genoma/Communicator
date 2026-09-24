@@ -26,8 +26,10 @@
     "@inquirer/prompts": "^8.0.0",
     "commander": "^14.0.0",
     "markdown-it": "^14.3.0",
-    "sharp": "^0.35.4",
     "string-width": "^8.2.2"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.35.4"
   },
   "license": "MIT",
   "devDependencies": {
