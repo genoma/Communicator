@@ -2,7 +2,7 @@
 
 Supported platforms, terminals, data locations, per-OS install notes, and uninstalling. See the [README](../README.md#documentation) for the full docs index.
 
-Communicator is written in pure Node.js ESM with no native dependencies, so the same codebase runs on macOS, Linux, and Windows. It is developed and tested on macOS; Linux and Windows are verified by the CI matrix (GitHub Actions runs `npm test` and `npm run lint` on all three OSes).
+Communicator is written in Node.js ESM. Its one native piece is [`sharp`](https://sharp.pixelplumbing.com/), a prebuilt image codec loaded only when you attach an image and never required to run the app, so the same codebase runs on macOS, Linux, and Windows. It is developed and tested on macOS; Linux and Windows are verified by the CI matrix (GitHub Actions runs `npm test` and `npm run lint` on all three OSes).
 
 | Platform | Status | Notes |
 |----------|--------|-------|
@@ -13,7 +13,7 @@ Communicator is written in pure Node.js ESM with no native dependencies, so the 
 ## Requirements
 
 - **Node.js >= 22.15** on all platforms
-- No native dependencies — pure ESM
+- One native piece — [`sharp`](https://sharp.pixelplumbing.com/), a per-platform prebuilt image codec imported only when you attach an image; every feature works without it (images are then sent untransformed)
 
 ## Clipboard tools
 
