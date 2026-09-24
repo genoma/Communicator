@@ -170,7 +170,18 @@ Each stage is its own branch off `main`, one commit per logical step, gate befor
   and are rejected elsewhere with an explicit message. `MIME_EXT` extended so produced artifacts
   round-trip. Six review lanes: no blockers; unread stderr pipe dropped, docs and this plan updated in the
   same change.
-- **S3 — tokenizer spike; ship or stop.** Gate: the written measurement and the decision, not code.
+- **S3 — done (spike only, nothing shipped).** Two lanes measured `js-tiktoken` (cl100k/o200k) against 62
+  provider responses across six OpenRouter families and two Venice models, with a per-model chat-template
+  overhead probe, repeat runs, and an independent methodology audit (verdict: sound with notes; the
+  supervisor re-derived the local counts exactly). Worst payload-relative error after correcting overhead:
+  GPT 0.0% (o200k), Llama 3.x 2.4%, DeepSeek 4.5%, Qwen/Venice-e2ee 9.7%, Mistral 12.2%, Gemini 15.3%,
+  Venice mercury 14.5% with shape-dependent accounting. Decision: **no local tokenizer ships** — the only
+  defensible slice (GPT-family o200k) needs a hand-maintained model→encoding map, and the CTX row already
+  shows provider-exact counts after each turn. Reopen only with a hard pre-flight budgeting need and new
+  measurements; the spike's raw requests/responses live outside the repo. Side facts: the same tokenizer
+  answers identically across routes (Venice `e2ee-qwen-2-5-7b-p` with the system prompt off == OpenRouter
+  `qwen-2.5-7b-instruct` on Phala: 30/490/447/452/267), and Venice's default system prompt costs ~1.7k
+  tokens per request (the app disables it, see MEMORY.md §Known quirks).
 - **S4 — spelling non-macOS backend.** Gate: backend suite, gate tests, docs, UX approval for the note.
 
 ## 6. Explicitly not doing

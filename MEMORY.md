@@ -87,6 +87,8 @@
 
 ## Budget semantics
 
+- There is no local tokenizer and no pre-flight token estimate: counts are provider-reported only (`estimatePromptTokens` in `src/providers/openrouter.js` is a private chars/4 heuristic for the Anthropic cache TTL, never displayed or costed). A measured spike (S3 of `COMPILATION-PLAN.md`, 2026-09-24: six OpenRouter families + two Venice models, 62 responses, per-model chat-template overhead probed and corrected) found `js-tiktoken` payload-relative error worst-case: GPT 0.0% (o200k), Llama 3.x 2.4%, DeepSeek 4.5%, Qwen 9.7%, Mistral 12.2%, Gemini 15.3%; the estimate was rejected on that evidence. Do not re-add a local counter without new measurements — the numbers and reopen conditions live in the plan.
+
 - `budgetStatus(cost, budget)` → `{ pct, remaining }`; warning at ≥80% once; refusal pre-turn when `cost >= budget`.
 - Per-session, stored/restored, cleared by `/new`.
 - `/budget <usd>` sets/resets warning; bare shows status. The standing `--budget` flag was removed in 4.0.0: `/budget` is the only cap path, a fresh session starts uncapped, and a legacy `prefs.budget` entry is inert (no longer read, no migration).
@@ -292,6 +294,8 @@ Half the rule set self-updates (`\p{Emoji_Presentation}` reads the runtime's ICU
 - Command list derived from `CHAT_COMMANDS`; pure `matchCommands` in `src/suggest.js`.
 
 ## Known quirks
+
+- Venice marks nearly the whole prompt as a cache read on first sight (`cached_tokens`/`cache_read_input_tokens` ≈ prompt − 1, e.g. 29/30, 489/490) while `prompt_tokens` and billing still cover the full prompt; do not read it as a cache hit. Its default system prompt adds ~1.7k tokens per request, which is why the app always sends `include_venice_system_prompt: false`.
 
 - Editor raw mode intercepts Ctrl+C at prompt; during streaming the chat starts its own raw-mode key listener so Ctrl+C arrives as the `\x03` byte (a data key, not a real SIGINT) and is mapped to the same interrupt — save partial + exit 130. A lone Esc aborts the in-progress generation and returns to the prompt without exiting (see `src/stream-keys.js` and `src/turn-runner.js`). A programmatic `kill -INT` / SIGTERM still fires the real signal handler.
 - Known-limitation, live/history parity edge: a turn that stopped (Esc) *within* the spinner's grace window — content arrived but the checkpoint was never shown — replays with a `✓ Waiting for response`/`✓ Searching the web` line because the stopped-partial path (`buildPartial`) stashes `waitLine` by the `contentParts.length > 0` proxy instead of the `waitLineShown` gate the success verdict uses. Rarer than the success-path edge (which is gated); left intact deliberately to keep the Esc-stop contract stable. If a strict parity pass ever wants it, gate `buildPartial` on the same `waitLineShown` boolean.
