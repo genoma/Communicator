@@ -8,7 +8,7 @@
 // fd 1 — or merely produces many frames — makes the parent silently lose
 // results: `test/one-shot.test.js` reported 25 of its 30 tests on Node 24/26 and
 // 28 of 30 on Node 22, deterministically, with the bodies still running
-// (KNOWN-ISSUES F34/O27, nodejs/node#62693). Running a single file in the
+// (nodejs/node#62693). Running a single file in the
 // runner's own process removes the frame channel entirely, so every result is
 // reported and the suite counts the same on every Node version. Per-file process
 // isolation is preserved — one process per file — so file-level module mocks and

@@ -138,7 +138,7 @@ async function main(opts, promptArg) {
   // Notices and warnings about the run that is about to start are held back
   // until the resolved-provider guard below has accepted it: a refused run
   // must not announce a resume (or warn about session storage) that never
-  // happens — the F8/F11 "notice before a rejected dispatch" shape.
+  // happens — the "notice before a rejected dispatch" shape.
   const rpgNotices = []
   const rpgWarnings = []
   // Warnings go to stderr; notices follow the stdout-is-TTY gate so a piped
@@ -375,7 +375,7 @@ async function main(opts, promptArg) {
     ? (rpgResume ? getProvider(rpgResume.providerType ?? providerType) : provider)
     : null
   // The provider limitation must beat the key error, like the --zdr/--e2ee
-  // guards above (F17): a missing key is not the reason the run cannot scrape.
+  // guards above: a missing key is not the reason the run cannot scrape.
   if (scrapeProvider) assertScrapeCapability(scrapeProvider)
 
   const apiKey = rpgResume

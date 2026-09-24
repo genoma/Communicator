@@ -7,8 +7,8 @@ import assert from 'node:assert/strict'
 // the runner frames its v8-serialized results on: text that reaches the parent
 // in the same buffer as a message is parsed as a header plus a size and
 // deserialized, which fails a whole file with "Unable to deserialize cloned
-// data due to invalid or unsupported version" (see scripts/child-console-guard.js
-// and KNOWN-ISSUES F42). The guard reaches `--import` as a file URL, the way the
+// data due to invalid or unsupported version" (see scripts/child-console-guard.js).
+// The guard reaches `--import` as a file URL, the way the
 // wrapper passes it: the ESM resolver only treats a specifier starting with `/`,
 // `./` or `../` as a path, so a Windows drive letter would be read as a `c:` URL.
 const GUARD = new URL('../scripts/child-console-guard.js', import.meta.url).href

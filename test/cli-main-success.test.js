@@ -1591,7 +1591,7 @@ test('--rpg --resume --e2ee reports the chapter provider before the missing key'
 
   assert.match(err.join('\n'), /Error: --e2ee is only available with --provider venice\./)
   assert.ok(!err.some((l) => /OPENROUTER_API_KEY environment variable is not set/.test(l)))
-  // F28: a refused resume announces nothing and warns about nothing.
+  // A refused resume announces nothing and warns about nothing.
   assert.deepEqual(warnings, [])
   assert.ok(!`${out.join('\n')}\n${err.join('\n')}`.includes('Resumed RPG conversation from'))
 })

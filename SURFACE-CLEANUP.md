@@ -10,7 +10,7 @@ How to use: stages are ordered and each ends with a green gate plus one commit. 
 they land. Do not start a stage before the previous one is green.
 
 Owner confirmations (recorded 2026-09-12): **E1 approved as designed** (a bare non-prompt flag
-opens a chat); **O26 closure approved** — `--seed` stays `--image`-only and the item closes as
+opens a chat); **the `--seed` closure approved** — `--seed` stays `--image`-only and closes as
 documented behavior (the alternative resurrects the silent-no-op class); **Stage 2 as written**
 (the five image knobs go; the image REPL commands and their persisted defaults stay).
 
@@ -22,7 +22,7 @@ resolver/constraint errors that only the image session can trigger lost their fl
 owner-approved naming fix) — gate 1850/1850, lint and knip clean. Stage 4 (the set-and-exit
 `config-set.js` dispatch, its two call sites, the four predicates and the `--output-dir` bare form
 are gone; `budget` left `applyPreferenceUpdates`; docs/backlog swept) — gate 1821/1821, lint and
-knip clean. Stage 5 (the O1/O31/O15/O26 strikes with provenance F37, the F29/O16 clause refresh,
+knip clean. Stage 5 (the backlog close-out, the piped-`--budget` clause refresh,
 MEMORY's completed status and the `exportFormat` contract) — gate 1822/1822, lint and knip clean.
 Stage 6 (4.0.0 bump + changelog, fast-forward into `main`, tag pushed, CI green on all three
 platforms, branch deleted).
@@ -75,8 +75,8 @@ macOS/Ubuntu/Windows for `3.49.2`.
 - `--seed` (run flag) and the image REPL commands `/variants`, `/resolution`, `/quality`,
   `/format`, `/aspect`, `/seed`, `/watermark` — the REPL keeps persisting its per-provider
   defaults, and those defaults still reach `--image`/`-m <image-model>` runs.
-- `--aspect-ratio` / `--image-format` run forms (persist per-provider, F24) and their notices.
-- `--no-watermark` / `--no-safe-mode` run forms (persist on every launch path, F22/F25).
+- `--aspect-ratio` / `--image-format` run forms (persist per-provider) and their notices.
+- `--no-watermark` / `--no-safe-mode` run forms (persist on every launch path).
 - Every `/command` in both REPLs; `--config` view (D7); exit modes (`--list-*`, `--export`,
   `--delete`, `--delete-all-sessions`); `--resume`/`--rpg`.
 
@@ -101,7 +101,7 @@ macOS/Ubuntu/Windows for `3.49.2`.
 
 - **E1 — a flag with no prompt opens a run.** After the dispatch is gone, `--temperature 0.5`,
   `--smooth-speed fast`, `-m <id>` etc. with no prompt on a TTY start an interactive chat instead
-  of saving and exiting. Flags that persist on run paths (F22/F24) still persist; runtime-only
+  of saving and exiting. Flags that persist on run paths still persist; runtime-only
   knobs (`--smooth-speed`, `--compact-thinking`) apply to that session and are persisted by their
   `/commands`. With **piped stdin** a bare flag cannot open a chat: the run takes the one-shot
   path and fails at the model-selection TTY gate (`Interactive selection needs a TTY. Use -m
@@ -232,7 +232,7 @@ Commit `feat!: remove the bare set-and-exit config dispatch`.
       `opts.resume !== undefined`; the `--output-dir` rule becomes simply "requires `--export` or
       `--image`" (E4).
 - [x] Tests: delete `test/config-set.test.js` and `test/config-set-command.test.js`; rewrite the
-      F21-era cases in `test/cli-main.test.js` (system-prompt/scrape now always shape the run);
+      dispatch-era cases in `test/cli-main.test.js` (system-prompt/scrape now always shape the run);
       update `test/cli-validation.test.js` and `test/cli-validation-image.test.js` (predicates and
       imports gone); add cases for E1/E2/E4 (bare flag opens a chat; `-m <id>` opens a chat;
       `--output-dir` alone errors).
@@ -240,7 +240,7 @@ Commit `feat!: remove the bare set-and-exit config dispatch`.
       `docs/commands.md`; remove every "Bare use saves the default" phrase (7 today); drop the
       "With `--model` alone, saves the per-model default" clauses; `docs/images.md` config-setter
       mentions; MEMORY §Pending surface cleanup → completed; the `cli-main`/`cli-validation`
-      bullets; KNOWN-ISSUES F21/F24/F26/F29 entries that describe the dispatch.
+      bullets; the backlog entries that describe the dispatch.
 - [x] Verify: `communicator --no-watermark` alone opens a chat and persists on exit;
       `communicator -m <id>` opens the chat; `communicator --temperature 0.5` alone opens a chat;
       `--list-models --no-watermark` still errors; `--config` view still works; gate green.
@@ -251,10 +251,10 @@ Commit `docs: close the surface-cleanup backlog items`.
 
 - [x] `grep -rn "config-set\|set-and-exit\|Bare use saves\|isConfigSetDispatch" src docs README.md
       MEMORY.md AGENTS.md index.js` → expect nothing stale.
-- [x] KNOWN-ISSUES: strike `O1`, `O31` (surface removed) and `O15` (moot); close `O26` as documented
+- [x] KNOWN-ISSUES: close the surface-removed items (the bare set-and-exit dispatch and the
+      image knobs) and the explicit-pixel item as moot; close the `--seed` item as documented
       behavior — `--seed` stays `--image`-only because validation cannot know whether `-m <id>` is
-      an image model; the image REPL `/seed` remains the session-level control. Record provenance
-      entries for each.
+      an image model; the image REPL `/seed` remains the session-level control.
 - [x] MEMORY: move the new contracts to their homes (Text vs Image for `/safe-mode`; Web search
       semantics for the export-format pref if related; command registry count), mark
       `§Pending surface cleanup` completed with a pointer to this file's final state.
