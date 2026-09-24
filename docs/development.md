@@ -37,6 +37,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 ├── errors.js             — ApiError (status/provider/retryable), TimeoutError, CliError (exitCode), formatError
 ├── sse-parser.js         — shared SSE stream parser (idle-timeout stall detection; consumed by both providers)
 ├── attachments.js        — attachment model: classify/load files (size limits), capability gate, content parts ↔ text helpers (contentText/messageText)
+├── image-transform.js    — attachment image preprocessing: lazy sharp load, 2048 px downscale, EXIF orientation baked, metadata stripped
 ├── attachment-store.js   — blob externalization/hydration, ref sentinels, artifact downloads
 ├── artifacts.js          — model-produced artifact handling (image/file output downloads and display)
 ├── config.js             — API key lookup (provider meta), preferences load/save (~/.communicator.json)
@@ -92,7 +93,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 └── chat.js               — runChatSession: DI chat loop (readInput/renderer/stdout/exit/save/signals), banner, SIGINT
 ```
 
-Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing, [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) and [`@inquirer/core`](https://www.npmjs.com/package/@inquirer/core) for the interactive search/select UI, [`markdown-it`](https://www.npmjs.com/package/markdown-it) for terminal markdown rendering, and [`string-width`](https://www.npmjs.com/package/string-width) for emoji-aware column measurement (stream rewind math). Multi-line input uses the in-repo frame-diffing editor (`src/editor/`), whose behaviour contract was originally defined by the vendored `@toiroakr/read-multiline` 0.4.1 (removed in 2026-08; the contract now lives in MEMORY.md §Command autocomplete).
+Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI argument parsing, [`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts) and [`@inquirer/core`](https://www.npmjs.com/package/@inquirer/core) for the interactive search/select UI, [`markdown-it`](https://www.npmjs.com/package/markdown-it) for terminal markdown rendering, [`string-width`](https://www.npmjs.com/package/string-width) for emoji-aware column measurement (stream rewind math), and [`sharp`](https://www.npmjs.com/package/sharp) for local image preprocessing (an optional dependency, imported lazily and only when an image is attached). Multi-line input uses the in-repo frame-diffing editor (`src/editor/`), whose behaviour contract was originally defined by the vendored `@toiroakr/read-multiline` 0.4.1 (removed in 2026-08; the contract now lives in MEMORY.md §Command autocomplete).
 
 ## Architecture
 
@@ -136,7 +137,7 @@ The check cannot verify behavioral prose. When touching related code, re-verify 
 - Config, session and sidecar files are written atomically (temp + rename) and crash-safe: a killed process never leaves a truncated JSON file behind (`src/fs-utils.js`).
 - E2EE streams fail closed: an unencrypted chunk in an `--e2ee` session aborts the stream instead of rendering (`src/sse-parser.js`).
 - One-shot mode: piped stdin capped at 10 MB; exit codes 0 / 1 / 130 (`src/cli-utils.js`, `src/cli-main.js`, `src/turn-runner.js`).
-- Attachment limits: images 20 MB, pdf/office/text 25 MB, inline text 256 KB warning; office formats are Venice-only.
+- Attachment limits: images 20 MB, pdf/office/text 25 MB (raw file size), inline text 256 KB warning; attached png/jpg/webp images are downscaled to a 2048 px long edge with EXIF orientation baked and metadata stripped when sharp is available; office formats are Venice-only.
 - Clipboard probe order: macOS `pbcopy`, Windows `clip`, Linux `wl-copy` → `xclip` → `xsel`, with a 10 s timeout per tool (`src/clipboard.js`).
 - Reasoning effort: `EFFORT_LABELS` mapping; `none` disables reasoning; Venice uses `reasoning_effort`, OpenRouter its native format.
 - Web search: modes `off`/`auto`/`always` (`on` maps to `auto`); OpenRouter `auto` = server tool with a total result cap, `always` = legacy plugin; Venice maps to `enable_web_search`; the chat banner shows a `[web: <mode>]` badge.

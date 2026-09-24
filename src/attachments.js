@@ -1,6 +1,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { extname, basename, resolve } from 'node:path'
 import { MAX_IMAGE_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES, MAX_INLINE_TEXT_ATTACHMENT_BYTES } from './constants.js'
+import { transformImageAttachment } from './image-transform.js'
 import { CliError } from './errors.js'
 
 const IMAGE_MIMES = {
@@ -99,29 +100,25 @@ export function classifyPath(path) {
   return { kind: null, mime: null }
 }
 
-export async function loadAttachment(path) {
+export async function loadAttachment(path, { transformImage = transformImageAttachment } = {}) {
   const { kind, mime } = classifyPath(path)
   if (!kind) throw new Error(`Unsupported file type: ${extname(path).slice(1) || '(none)'}`)
 
   const fullPath = resolve(path)
+  const filename = basename(fullPath)
+  const [limit, limitLabel] = kind === 'image'
+    ? [MAX_IMAGE_ATTACHMENT_BYTES, 'image limit is 20 MB']
+    : kind === 'text'
+      ? [MAX_FILE_ATTACHMENT_BYTES, 'text limit is 25 MB']
+      : [MAX_FILE_ATTACHMENT_BYTES, 'file limit is 25 MB']
+
   let size
   try {
     size = (await stat(fullPath)).size
   } catch {
     throw new Error(`Cannot read attachment: ${path}`)
   }
-
-  const encoded = Math.ceil(size * 4 / 3) + `data:${mime};base64,`.length
-
-  if (kind === 'image' && encoded > MAX_IMAGE_ATTACHMENT_BYTES) {
-    throw new Error(`Attachment too large: ${basename(fullPath)} (image limit is 20 MB)`)
-  }
-  if ((kind === 'pdf' || kind === 'office') && encoded > MAX_FILE_ATTACHMENT_BYTES) {
-    throw new Error(`Attachment too large: ${basename(fullPath)} (file limit is 25 MB)`)
-  }
-  if (kind === 'text' && size > MAX_FILE_ATTACHMENT_BYTES) {
-    throw new Error(`Attachment too large: ${basename(fullPath)} (text limit is 25 MB)`)
-  }
+  if (size > limit) throw new Error(`Attachment too large: ${filename} (${limitLabel})`)
 
   let buffer
   try {
@@ -129,8 +126,20 @@ export async function loadAttachment(path) {
   } catch {
     throw new Error(`Cannot read attachment: ${path}`)
   }
+  // A file can grow between the stat() above and this read: the limit must hold
+  // for the bytes that were actually loaded.
+  if (buffer.length > limit) throw new Error(`Attachment too large: ${filename} (${limitLabel})`)
 
-  const filename = basename(fullPath)
+  let payload = buffer
+  let payloadMime = mime
+
+  if (kind === 'image') {
+    const transformed = await transformImage(buffer, { mime })
+    if (transformed && transformed.buffer.length > 0 && transformed.buffer.length <= MAX_IMAGE_ATTACHMENT_BYTES) {
+      payload = transformed.buffer
+      payloadMime = transformed.mime
+    }
+  }
 
   if (kind === 'text') {
     if (buffer.length > MAX_INLINE_TEXT_ATTACHMENT_BYTES) {
@@ -139,10 +148,10 @@ export async function loadAttachment(path) {
     return { kind, filename, mime, size: buffer.length, data: buffer.toString('utf-8') }
   }
 
-  return { kind, filename, mime, size: buffer.length, data: `data:${mime};base64,${buffer.toString('base64')}` }
+  return { kind, filename, mime: payloadMime, size: payload.length, data: `data:${payloadMime};base64,${payload.toString('base64')}` }
 }
 
-export async function loadAttachments(paths, gateOptions, { skipNonPaths = false, onError, onAttached } = {}) {
+export async function loadAttachments(paths, gateOptions, { skipNonPaths = false, onError, onAttached, transformImage = transformImageAttachment } = {}) {
   const attachments = []
   const ignored = []
   for (const token of paths) {
@@ -167,7 +176,7 @@ export async function loadAttachments(paths, gateOptions, { skipNonPaths = false
     }
     let att
     try {
-      att = await loadAttachment(token)
+      att = await loadAttachment(token, { transformImage })
     } catch (err) {
       const message = `Error: ${err.message}`
       if (onError) onError(message)

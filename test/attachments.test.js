@@ -8,6 +8,7 @@ import {
   classifyPath,
   splitPathArgs,
   loadAttachment,
+  loadAttachments,
   attachmentGate,
   buildContent,
   contentText,
@@ -105,11 +106,69 @@ test('loadAttachment rejects images over the 20 MB limit', async (t) => {
   await assert.rejects(loadAttachment(file), /image limit is 20 MB/)
 })
 
-test('loadAttachment gates images on the base64-encoded size', async (t) => {
+test('loadAttachment gates images on the raw file size, not the encoded size', async (t) => {
   const raw = MAX_IMAGE_ATTACHMENT_BYTES * 3 / 4 + 1
   assert.ok(raw < MAX_IMAGE_ATTACHMENT_BYTES)
   const file = await writeFixture(t, 'borderline.png', Buffer.alloc(raw))
-  await assert.rejects(loadAttachment(file), /image limit is 20 MB/)
+  const att = await loadAttachment(file)
+  assert.equal(att.kind, 'image')
+  assert.equal(att.size, raw)
+  assert.ok(att.data.length > MAX_IMAGE_ATTACHMENT_BYTES)
+})
+
+test('loadAttachment uses a shrinking image transform and its mime', async (t) => {
+  const file = await writeFixture(t, 'photo.png', 'PNGDATA')
+  const calls = []
+  const att = await loadAttachment(file, {
+    transformImage: async (buffer, options) => {
+      calls.push({ buffer, options })
+      return { buffer: Buffer.from('SMALL'), mime: 'image/webp' }
+    },
+  })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].buffer.toString(), 'PNGDATA')
+  assert.equal(calls[0].options.mime, 'image/png')
+  assert.equal(att.kind, 'image')
+  assert.equal(att.mime, 'image/webp')
+  assert.equal(att.size, 5)
+  assert.equal(att.data, `data:image/webp;base64,${Buffer.from('SMALL').toString('base64')}`)
+})
+
+test('loadAttachment keeps the original bytes when the transform returns null', async (t) => {
+  const file = await writeFixture(t, 'a.png', 'PNGDATA')
+  const att = await loadAttachment(file, { transformImage: async () => null })
+  assert.equal(att.mime, 'image/png')
+  assert.equal(att.size, 7)
+  assert.equal(att.data, `data:image/png;base64,${Buffer.from('PNGDATA').toString('base64')}`)
+})
+
+test('loadAttachment keeps the original bytes when the transform exceeds the image limit', async (t) => {
+  const file = await writeFixture(t, 'a.png', 'PNGDATA')
+  const transformImage = async () => ({ buffer: Buffer.alloc(MAX_IMAGE_ATTACHMENT_BYTES + 1), mime: 'image/webp' })
+  const att = await loadAttachment(file, { transformImage })
+  assert.equal(att.mime, 'image/png')
+  assert.equal(att.size, 7)
+  assert.equal(att.data, `data:image/png;base64,${Buffer.from('PNGDATA').toString('base64')}`)
+})
+
+test('loadAttachment does not transform non-images', async (t) => {
+  const pdf = await writeFixture(t, 'report.pdf', '%PDF-1.4')
+  const text = await writeFixture(t, 'notes.txt', 'hello')
+  let calls = 0
+  const transformImage = async () => { calls += 1; return null }
+  await loadAttachment(pdf, { transformImage })
+  await loadAttachment(text, { transformImage })
+  assert.equal(calls, 0)
+})
+
+test('loadAttachments threads the image transform through to loadAttachment', async (t) => {
+  const first = await writeFixture(t, 'a.png', 'PNGDATA')
+  const second = await writeFixture(t, 'b.png', 'PNGDATA2')
+  const transformImage = async () => ({ buffer: Buffer.from('X'), mime: 'image/webp' })
+  const { attachments } = await loadAttachments([first, second], {}, { transformImage })
+  assert.deepEqual(attachments.map((att) => att.mime), ['image/webp', 'image/webp'])
+  assert.deepEqual(attachments.map((att) => att.size), [1, 1])
+  assert.deepEqual(attachments.map((att) => att.data), ['data:image/webp;base64,WA==', 'data:image/webp;base64,WA=='])
 })
 
 test('loadAttachment rejects pdfs over the 25 MB limit', async (t) => {

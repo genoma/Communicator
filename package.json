@@ -28,6 +28,9 @@
     "markdown-it": "^14.3.0",
     "string-width": "^8.2.2"
   },
+  "optionalDependencies": {
+    "sharp": "^0.35.4"
+  },
   "license": "MIT",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
