@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { extname, basename, resolve } from 'node:path'
 import { MAX_IMAGE_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES, MAX_INLINE_TEXT_ATTACHMENT_BYTES } from './constants.js'
-import { transformImageAttachment } from './image-transform.js'
+import { transformImageAttachment, MUST_CONVERT_MIMES, HEIC_MIMES } from './image-transform.js'
 import { CliError } from './errors.js'
 
 const IMAGE_MIMES = {
@@ -11,6 +11,11 @@ const IMAGE_MIMES = {
   gif: 'image/gif',
   webp: 'image/webp',
   bmp: 'image/bmp',
+  avif: 'image/avif',
+  tif: 'image/tiff',
+  tiff: 'image/tiff',
+  heic: 'image/heic',
+  heif: 'image/heif',
 }
 
 const OFFICE_MIMES = {
@@ -28,6 +33,10 @@ const MIME_EXT = {
   'image/gif': 'gif',
   'image/webp': 'webp',
   'image/bmp': 'bmp',
+  'image/avif': 'avif',
+  'image/tiff': 'tiff',
+  'image/heic': 'heic',
+  'image/heif': 'heif',
   [PDF_MIME]: 'pdf',
   [OFFICE_MIMES.xlsx]: 'xlsx',
   [OFFICE_MIMES.xls]: 'xls',
@@ -100,9 +109,12 @@ export function classifyPath(path) {
   return { kind: null, mime: null }
 }
 
-export async function loadAttachment(path, { transformImage = transformImageAttachment } = {}) {
+export async function loadAttachment(path, { transformImage = transformImageAttachment, platform = process.platform } = {}) {
   const { kind, mime } = classifyPath(path)
   if (!kind) throw new Error(`Unsupported file type: ${extname(path).slice(1) || '(none)'}`)
+  if (HEIC_MIMES.has(mime) && platform !== 'darwin') {
+    throw new Error(`Unsupported file type: ${extname(path).slice(1).toLowerCase()} (HEIC/HEIF images are supported on macOS only — convert to JPEG or PNG)`)
+  }
 
   const fullPath = resolve(path)
   const filename = basename(fullPath)
@@ -135,9 +147,12 @@ export async function loadAttachment(path, { transformImage = transformImageAtta
 
   if (kind === 'image') {
     const transformed = await transformImage(buffer, { mime })
-    if (transformed && transformed.buffer.length > 0 && transformed.buffer.length <= MAX_IMAGE_ATTACHMENT_BYTES) {
+    const usable = transformed && transformed.buffer.length > 0 && transformed.buffer.length <= MAX_IMAGE_ATTACHMENT_BYTES
+    if (usable) {
       payload = transformed.buffer
       payloadMime = transformed.mime
+    } else if (MUST_CONVERT_MIMES.has(mime)) {
+      throw new Error(`Cannot read attachment: ${path} (image conversion failed)`)
     }
   }
 

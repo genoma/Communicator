@@ -6,14 +6,16 @@ Communicator is written in Node.js ESM. Its one native piece is [`sharp`](https:
 
 | Platform | Status | Notes |
 |----------|--------|-------|
-| macOS    | Primary — developed and tested locally and in CI | Clipboard via built-in `pbcopy`; prompt-editor spelling assistance (system spell checker, optional compiled helper — see Data locations) |
-| Linux    | Expected to work, CI-verified | Clipboard tools probed at runtime: `wl-copy` (Wayland) → `xclip` → `xsel` (X11) |
-| Windows  | Expected to work, CI-verified | Clipboard via built-in `clip`; multi-line input normalizes CRLF |
+| macOS    | Primary — developed and tested locally and in CI | Clipboard via built-in `pbcopy`; prompt-editor spelling assistance (system spell checker, optional compiled helper — see Data locations); `heic`/`heif` attachments decoded by the built-in `sips` converter |
+| Linux    | Expected to work, CI-verified | Clipboard tools probed at runtime: `wl-copy` (Wayland) → `xclip` → `xsel` (X11); `heic`/`heif` attachments rejected |
+| Windows  | Expected to work, CI-verified | Clipboard via built-in `clip`; multi-line input normalizes CRLF; `heic`/`heif` attachments rejected |
+
+`heic`/`heif` attachments are macOS-only: the system `sips` converter decodes them there (converting the result to `jpeg`/`png` still needs the image codec), while Linux and Windows reject them before reading the file with `Unsupported file type: heic (HEIC/HEIF images are supported on macOS only — convert to JPEG or PNG)` (the `heif` spelling for a `.heif` file).
 
 ## Requirements
 
 - **Node.js >= 22.15** on all platforms
-- One native piece — [`sharp`](https://sharp.pixelplumbing.com/), a per-platform prebuilt image codec imported only when you attach an image; every feature works without it (images are then sent untransformed)
+- One native piece — [`sharp`](https://sharp.pixelplumbing.com/), a per-platform prebuilt image codec imported only when you attach an image; it is never required to run the app. Without it, png/jpg/jpeg/webp attachments are sent untransformed (and `gif`/`bmp` are always untouched), while the formats that must be converted — `avif`, `tif`/`tiff` and `heic`/`heif` — are rejected with `Cannot read attachment: <path> (image conversion failed)` (on Linux and Windows `heic`/`heif` report the macOS-only message above instead, before the file is read), and `heic`/`heif` are macOS-only regardless (`sips`)
 
 ## Clipboard tools
 

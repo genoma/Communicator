@@ -36,6 +36,11 @@ test('classifyPath maps extensions to kinds and mimes', () => {
   assert.deepEqual(classifyPath('a.gif'), { kind: 'image', mime: 'image/gif' })
   assert.deepEqual(classifyPath('a.webp'), { kind: 'image', mime: 'image/webp' })
   assert.deepEqual(classifyPath('a.bmp'), { kind: 'image', mime: 'image/bmp' })
+  assert.deepEqual(classifyPath('a.avif'), { kind: 'image', mime: 'image/avif' })
+  assert.deepEqual(classifyPath('a.tif'), { kind: 'image', mime: 'image/tiff' })
+  assert.deepEqual(classifyPath('A.TIFF'), { kind: 'image', mime: 'image/tiff' })
+  assert.deepEqual(classifyPath('a.heic'), { kind: 'image', mime: 'image/heic' })
+  assert.deepEqual(classifyPath('a.HEIF'), { kind: 'image', mime: 'image/heif' })
   assert.deepEqual(classifyPath('a.pdf'), { kind: 'pdf', mime: 'application/pdf' })
   assert.deepEqual(classifyPath('a.xlsx'), { kind: 'office', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   assert.deepEqual(classifyPath('a.xls'), { kind: 'office', mime: 'application/vnd.ms-excel' })
@@ -149,6 +154,62 @@ test('loadAttachment keeps the original bytes when the transform exceeds the ima
   assert.equal(att.mime, 'image/png')
   assert.equal(att.size, 7)
   assert.equal(att.data, `data:image/png;base64,${Buffer.from('PNGDATA').toString('base64')}`)
+})
+
+test('loadAttachment stores the converted bytes and target mime for a must-convert image', async (t) => {
+  const file = await writeFixture(t, 'scan.tif', 'TIFFDATA')
+  const att = await loadAttachment(file, {
+    transformImage: async () => ({ buffer: Buffer.from('JPEGDATA'), mime: 'image/jpeg' }),
+  })
+  assert.equal(att.kind, 'image')
+  assert.equal(att.filename, 'scan.tif')
+  assert.equal(att.mime, 'image/jpeg')
+  assert.equal(att.size, 8)
+  assert.equal(att.data, `data:image/jpeg;base64,${Buffer.from('JPEGDATA').toString('base64')}`)
+})
+
+test('loadAttachment rejects a must-convert image when the transform returns null', async (t) => {
+  const file = await writeFixture(t, 'scan.avif', 'AVIFDATA')
+  await assert.rejects(loadAttachment(file, { transformImage: async () => null }), {
+    message: `Cannot read attachment: ${file} (image conversion failed)`,
+  })
+})
+
+test('loadAttachment rejects a must-convert image when the transform result is unusable', async (t) => {
+  const file = await writeFixture(t, 'scan.avif', 'AVIFDATA')
+  await assert.rejects(
+    loadAttachment(file, { transformImage: async () => ({ buffer: Buffer.alloc(0), mime: 'image/jpeg' }) }),
+    { message: `Cannot read attachment: ${file} (image conversion failed)` },
+  )
+  await assert.rejects(
+    loadAttachment(file, { transformImage: async () => ({ buffer: Buffer.alloc(MAX_IMAGE_ATTACHMENT_BYTES + 1), mime: 'image/jpeg' }) }),
+    { message: `Cannot read attachment: ${file} (image conversion failed)` },
+  )
+})
+
+test('loadAttachment rejects heic and heif off darwin before touching the file', async (t) => {
+  const dir = await tempDir(t)
+  await assert.rejects(loadAttachment(join(dir, 'photo.heic'), { platform: 'linux' }), {
+    message: 'Unsupported file type: heic (HEIC/HEIF images are supported on macOS only — convert to JPEG or PNG)',
+  })
+  await assert.rejects(loadAttachment(join(dir, 'photo.heif'), { platform: 'win32' }), {
+    message: 'Unsupported file type: heif (HEIC/HEIF images are supported on macOS only — convert to JPEG or PNG)',
+  })
+})
+
+test('loadAttachment converts heic on darwin through the injected transform', async (t) => {
+  const file = await writeFixture(t, 'photo.heic', 'HEICDATA')
+  const att = await loadAttachment(file, {
+    platform: 'darwin',
+    transformImage: async (buffer, options) => {
+      assert.equal(buffer.toString(), 'HEICDATA')
+      assert.equal(options.mime, 'image/heic')
+      return { buffer: Buffer.from('JPEGDATA'), mime: 'image/jpeg' }
+    },
+  })
+  assert.equal(att.mime, 'image/jpeg')
+  assert.equal(att.size, 8)
+  assert.equal(att.data, `data:image/jpeg;base64,${Buffer.from('JPEGDATA').toString('base64')}`)
 })
 
 test('loadAttachment does not transform non-images', async (t) => {

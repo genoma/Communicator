@@ -117,3 +117,86 @@ test('returns null when the codec import fails without throwing', async () => {
   })
   assert.equal(out, null)
 })
+
+test('converts an alpha-less avif to jpeg', async (t) => {
+  if (!(await isImageTransformAvailable())) return t.skip('sharp unavailable')
+  const sharp = await realSharp()
+  const input = await sharp({ create: { width: 40, height: 30, channels: 3, background: '#3366aa' } }).avif().toBuffer()
+  const out = await transformImageAttachment(input, { mime: 'image/avif' })
+  assert.ok(out, 'a decodable AVIF must be converted')
+  assert.equal(out.mime, 'image/jpeg')
+  assert.equal((await sharp(out.buffer).metadata()).format, 'jpeg')
+})
+
+test('converts an avif with alpha to png', async (t) => {
+  if (!(await isImageTransformAvailable())) return t.skip('sharp unavailable')
+  const sharp = await realSharp()
+  const input = await sharp({ create: { width: 40, height: 30, channels: 4, background: { r: 51, g: 102, b: 170, alpha: 0.5 } } }).avif().toBuffer()
+  const out = await transformImageAttachment(input, { mime: 'image/avif' })
+  assert.ok(out)
+  assert.equal(out.mime, 'image/png')
+  assert.equal((await sharp(out.buffer).metadata()).format, 'png')
+})
+
+test('converts a tiff to jpeg', async (t) => {
+  if (!(await isImageTransformAvailable())) return t.skip('sharp unavailable')
+  const sharp = await realSharp()
+  const input = await sharp({ create: { width: 40, height: 30, channels: 3, background: '#3366aa' } }).tiff().toBuffer()
+  const out = await transformImageAttachment(input, { mime: 'image/tiff' })
+  assert.ok(out)
+  assert.equal(out.mime, 'image/jpeg')
+  assert.equal((await sharp(out.buffer).metadata()).format, 'jpeg')
+})
+
+test('targets png for a must-convert image with alpha', async () => {
+  const fakeSharp = (buffer) => {
+    assert.equal(buffer.toString(), 'TIFFDATA')
+    return {
+      metadata: async () => ({ width: 10, height: 10, hasAlpha: true }),
+      rotate() { return this },
+      resize() { return this },
+      png() { return this },
+      toBuffer: async () => Buffer.from('CONVERTED'),
+    }
+  }
+  const out = await transformImageAttachment(Buffer.from('TIFFDATA'), { mime: 'image/tiff', loadSharp: async () => fakeSharp })
+  assert.deepEqual(out, { buffer: Buffer.from('CONVERTED'), mime: 'image/png' })
+})
+
+test('converts heic through the injected converter and targets jpeg', async () => {
+  const decoded = []
+  const fakeSharp = (buffer) => {
+    decoded.push(buffer.toString())
+    return {
+      metadata: async () => ({ width: 100, height: 80, hasAlpha: false }),
+      rotate() { return this },
+      resize() { return this },
+      jpeg() { return this },
+      toBuffer: async () => Buffer.from('CONVERTED'),
+    }
+  }
+  const out = await transformImageAttachment(Buffer.from('HEICDATA'), {
+    mime: 'image/heic',
+    heic: async () => Buffer.from('DECODED'),
+    loadSharp: async () => fakeSharp,
+  })
+  assert.deepEqual(decoded, ['DECODED'])
+  assert.equal(out.buffer.toString(), 'CONVERTED')
+  assert.equal(out.mime, 'image/jpeg')
+})
+
+test('returns null when the heic converter fails', async () => {
+  let converted = 0
+  const out = await transformImageAttachment(Buffer.from('HEICDATA'), {
+    mime: 'image/heif',
+    heic: async () => { converted += 1; return null },
+    loadSharp: async () => () => { throw new Error('must not decode') },
+  })
+  assert.equal(out, null)
+  assert.equal(converted, 1)
+})
+
+test('returns null for a must-convert mime when the codec is unavailable', async () => {
+  assert.equal(await transformImageAttachment(Buffer.from('AVIFDATA'), { mime: 'image/avif', loadSharp: async () => null }), null)
+  assert.equal(await transformImageAttachment(Buffer.from('HEICDATA'), { mime: 'image/heic', loadSharp: async () => null }), null)
+})

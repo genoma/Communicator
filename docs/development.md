@@ -38,6 +38,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 ├── sse-parser.js         — shared SSE stream parser (idle-timeout stall detection; consumed by both providers)
 ├── attachments.js        — attachment model: classify/load files (size limits), capability gate, content parts ↔ text helpers (contentText/messageText)
 ├── image-transform.js    — attachment image preprocessing: lazy sharp load, 2048 px downscale, EXIF orientation baked, metadata stripped
+├── heic-decode.js        — macOS-only HEIC/HEIF decode through the system sips converter (temp dir, SIGKILL timeout, null on failure)
 ├── attachment-store.js   — blob externalization/hydration, ref sentinels, artifact downloads
 ├── artifacts.js          — model-produced artifact handling (image/file output downloads and display)
 ├── config.js             — API key lookup (provider meta), preferences load/save (~/.communicator.json)
@@ -137,7 +138,7 @@ The check cannot verify behavioral prose. When touching related code, re-verify 
 - Config, session and sidecar files are written atomically (temp + rename) and crash-safe: a killed process never leaves a truncated JSON file behind (`src/fs-utils.js`).
 - E2EE streams fail closed: an unencrypted chunk in an `--e2ee` session aborts the stream instead of rendering (`src/sse-parser.js`).
 - One-shot mode: piped stdin capped at 10 MB; exit codes 0 / 1 / 130 (`src/cli-utils.js`, `src/cli-main.js`, `src/turn-runner.js`).
-- Attachment limits: images 20 MB, pdf/office/text 25 MB (raw file size), inline text 256 KB warning; attached png/jpg/webp images are downscaled to a 2048 px long edge with EXIF orientation baked and metadata stripped when sharp is available; office formats are Venice-only.
+- Attachment limits: images 20 MB, pdf/office/text 25 MB (raw file size), inline text 256 KB warning; attached png/jpg/jpeg/webp images are downscaled to a 2048 px long edge with EXIF orientation baked and metadata stripped when sharp is available, and avif/tiff/heic/heif are converted to jpeg/png (heic/heif through the macOS `sips` converter, rejected elsewhere); office formats are Venice-only.
 - Clipboard probe order: macOS `pbcopy`, Windows `clip`, Linux `wl-copy` → `xclip` → `xsel`, with a 10 s timeout per tool (`src/clipboard.js`).
 - Reasoning effort: `EFFORT_LABELS` mapping; `none` disables reasoning; Venice uses `reasoning_effort`, OpenRouter its native format.
 - Web search: modes `off`/`auto`/`always` (`on` maps to `auto`); OpenRouter `auto` = server tool with a total result cap, `always` = legacy plugin; Venice maps to `enable_web_search`; the chat banner shows a `[web: <mode>]` badge.

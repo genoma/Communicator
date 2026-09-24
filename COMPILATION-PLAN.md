@@ -134,8 +134,10 @@ Prebuilt macOS helper (D4), clipboard read (D10), single-file binary (D11), and 
 - **Images**: path is `/attach` → `loadAttachments` → `classifyPath`/`loadAttachment` → `buildContent` →
   `toPart` → provider. Limits: images compare **base64-encoded** length against 20 MiB
   (`src/attachments.js:114-117`; raw ceiling ≈15.0 MiB) while the download path applies the same constant
-  to raw bytes (`src/attachment-store.js:170`) — the inconsistency D9 unifies. Current image formats:
-  `png jpg jpeg gif webp bmp`; HEIC/AVIF/TIFF/SVG hard-fail at `:93-104`. Store is content-addressed
+  to raw bytes (`src/attachment-store.js:170`) — the inconsistency D9 unifies. Image formats at this
+  snapshot: `png jpg jpeg gif webp bmp`; HEIC/AVIF/TIFF/SVG hard-fail at `:93-104` (S1 unified the limit;
+  S2 made `avif`/`tif`/`tiff`/`heic`/`heif` must-convert formats — see the stage entries in §5). Store is
+  content-addressed
   (`sha256.<ext>`, never overwritten) with mime rebuilt from the extension on hydrate (`:124-127`).
   Capability gating happens only at attach time; `hydrateAttachments` has no gate (pre-existing gap, not
   in scope).
@@ -145,7 +147,8 @@ Prebuilt macOS helper (D4), clipboard read (D10), single-file binary (D11), and 
   fetched and dropped. `contextLength` is display/persistence only (`src/status-line.js:59`,
   `src/tracker.js:135,170`, `src/chat.js:239-240`).
 - **Infra**: `process.platform` branches are the clipboard probe (`src/clipboard.js:3-11`), the spelling
-  gate, the helper hash, the macOS toolchain paths, and the `/spelling` visibility gate — nothing else.
+  gate, the helper hash, the macOS toolchain paths, the `/spelling` visibility gate, and — added by S2 —
+  the attachment HEIC gate (`src/attachments.js:111`) and the `sips` bridge (`src/heic-decode.js:14`).
   Test hermeticity (cleared keys/color, throwaway `HOME`, one process per file) lives in
   `scripts/run-tests.js`; there is no network block, so a new artifact must be injectable. Startup is
   inside process noise (70.5 ms vs 72.4 ms bare) — not a compile target.
@@ -161,8 +164,12 @@ Each stage is its own branch off `main`, one commit per logical step, gate befor
   every kind plus a post-read re-check, docs and MEMORY in the same commit. Gate: `npm test` 2266/2266,
   lint, knip and `npm audit --omit=dev` clean, suite green with sharp physically absent. The
   encoded-payload bound (~4/3 of the raw limit) is documented, not enforced.
-- **S2 — image formats + HEIC bridge (macOS) and honest failures elsewhere.** Gate as S1, plus the
-  generated-fixture test on macOS.
+- **S2 — done.** `avif`/`tif`/`tiff`/`heic`/`heif` accepted as must-convert formats: they re-encode to
+  `jpeg` (or `png` when the decoded image has alpha) and can never fall back to raw provider-unsupported
+  bytes; HEIC/HEIF decode through the macOS `sips` bridge (lazy, no bundled codec, no spawn off darwin)
+  and are rejected elsewhere with an explicit message. `MIME_EXT` extended so produced artifacts
+  round-trip. Six review lanes: no blockers; unread stderr pipe dropped, docs and this plan updated in the
+  same change.
 - **S3 — tokenizer spike; ship or stop.** Gate: the written measurement and the decision, not code.
 - **S4 — spelling non-macOS backend.** Gate: backend suite, gate tests, docs, UX approval for the note.
 
