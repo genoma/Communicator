@@ -164,7 +164,7 @@ Each stage is its own branch off `main`, one commit per logical step, gate befor
   every kind plus a post-read re-check, docs and MEMORY in the same commit. Gate: `npm test` 2266/2266,
   lint, knip and `npm audit --omit=dev` clean, suite green with sharp physically absent. The
   encoded-payload bound (~4/3 of the raw limit) is documented, not enforced.
-- **S2 — done.** `avif`/`tif`/`tiff`/`heic`/`heif` accepted as must-convert formats: they re-encode to
+- **S2 — done (`5.2.0`).** `avif`/`tif`/`tiff`/`heic`/`heif` accepted as must-convert formats: they re-encode to
   `jpeg` (or `png` when the decoded image has alpha) and can never fall back to raw provider-unsupported
   bytes; HEIC/HEIF decode through the macOS `sips` bridge (lazy, no bundled codec, no spawn off darwin)
   and are rejected elsewhere with an explicit message. `MIME_EXT` extended so produced artifacts
