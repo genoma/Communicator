@@ -27,9 +27,10 @@ jobs:
       - run: npm test
       - run: npm audit --omit=dev --audit-level=high
       - name: Assert package.json is already canonical for npm
-        # npm rewrites the manifest at publish time and only warns about it —
-        # it silently removed a `./`-prefixed bin path once, which would have
-        # shipped a package that installs no command. Fail instead.
+        # npm rewrites the manifest it publishes (a `./`-prefixed bin path
+        # becomes `index.js`) and only warns; the tarball keeps the file we
+        # wrote. Keep the manifest canonical so the two agree, and fail the
+        # release rather than publish a silently rewritten manifest.
         run: |
           npm pkg fix
           git diff --exit-code -- package.json
