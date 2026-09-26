@@ -127,9 +127,25 @@ export function handleHttpError(status, body) → throws ApiError
 
 See `src/providers/openrouter.js` and `src/providers/venice.js` for reference implementations.
 
+## Releasing
+
+Every release is a bare-version tag (no `v` prefix) on `main`; the tag is the release trigger.
+
+1. Land the change on `main` (branch → gates → merge) with `package.json` `version` bumped and the lockfile in sync (`npm install --package-lock-only`).
+2. Run the gate locally — `npm test`, `npm run lint`, `npx --yes knip` — and check the CI matrix (macOS/Linux/Windows × Node 22/24).
+3. Commit the bump with the changelog message, then `git tag 5.4.1`, `git push origin main`, `git push origin 5.4.1`.
+4. `.github/workflows/publish.yml` takes it from there: lint → test → audit → tag/version assertion → skip-if-already-published → `npm publish --access public --provenance --ignore-scripts` over OIDC, from a GitHub-hosted runner on Node 24 (`--ignore-scripts` skips the `prepublishOnly` suite the job already ran).
+
+Notes:
+
+- The package is **`@vioni/communicator`**, public via `publishConfig.access`. A version can never be published twice; the workflow reports and skips when the tag's version already exists, so re-running a release is safe.
+- The **first publish of a new package name cannot use OIDC** — npm requires the package to exist before a trusted publisher can be attached (npm/cli#8544). Bootstrap it locally with `npm publish --access public` (a 2FA prompt; `prepublishOnly` runs the suite first). The bootstrap publishes the version in `package.json` at that commit — currently **5.4.0**, whose ICI tag predates the npm metadata — so the workflow-driven releases begin with the *next* version bump (5.4.1 or a minor). Then attach the publisher on the package's npm settings page: GitHub Actions, user `genoma`, repository `Communicator`, workflow filename `publish.yml`, environment blank, and **tick `npm publish`** — configurations created after 2026-09-03 default to staged publishing only, which silently fails a direct publish.
+- The workflow's `repository.url` and the trusted-publisher repository must match case-sensitively, and npm does not verify the configuration when it is saved; the failure surfaces at publish time as `ENEEDAUTH` or a 404.
+- No npm token exists in the repo or in CI. If a publish ever fails with a provenance error, the reported workaround is an explicit `--provenance` flag (already passed) or a newer npm; the workflow pins Node 24 because it bundles npm 11.19, above the OIDC (11.5.1) and `npm trust` (11.15.0) floors and above the npm 10 that Node 22 ships.
+
 ## Documentation maintenance
 
-`test/docs-consistency.test.js` mechanically verifies that the user-facing docs (`README.md`, `docs/`) stay in line with the code: CLI flags and slash commands match their registries, env vars / data paths / Node version / key defaults are mentioned, example flags exist, and every markdown link resolves. It runs as part of `npm test` — keep it green whenever a flag, command, default, path, or doc page changes.
+`test/docs-consistency.test.js` mechanically verifies that the user-facing docs (`README.md`, `docs/`) stay in line with the code: CLI flags and slash commands match their registries, env vars / data paths / Node version / key defaults are mentioned, example flags exist, every markdown link resolves (repo-relative links, plus absolute links back into this repository — anchors included, so the README's npm-page links cannot rot), and the install instructions name the published package. It runs as part of `npm test` — keep it green whenever a flag, command, default, path, or doc page changes.
 
 The check cannot verify behavioral prose. When touching related code, re-verify these documented behaviors (last verified as of v3.30.0):
 

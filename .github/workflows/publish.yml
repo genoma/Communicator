@@ -1,0 +1,54 @@
+name: Publish Package
+
+# Releases are bare-version tags (5.4.0), never v-prefixed, so only tags that
+# start with a digit trigger a publish. See docs/development.md §Releasing.
+on:
+  push:
+    tags: ['[0-9]*']
+
+permissions:
+  id-token: write # trusted publishing (OIDC); no token is stored anywhere
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest # GitHub-hosted only; OIDC does not work on self-hosted
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          # Node 24 bundles npm 11.19.0: above the OIDC floor (11.5.1) and the
+          # `npm trust` floor (11.15.0). Node 22 still bundles npm 10.
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=high
+      - name: Assert the tag matches package.json
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+      - name: Check whether this version is already published
+        id: check
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          if out="$(npm view "${name}@${GITHUB_REF_NAME}" version 2>&1)"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::${name}@${GITHUB_REF_NAME} is already published; nothing to do"
+          elif printf '%s' "$out" | grep -qE 'E404|404 Not Found'; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::registry check failed: $out"
+            exit 1
+          fi
+      - name: Publish
+        if: steps.check.outputs.exists == 'false'
+        # Provenance is generated automatically for a public package from a
+        # public repo over OIDC; the flag states it explicitly. --ignore-scripts
+        # skips prepublishOnly because the gate above already ran the suite.
+        run: npm publish --access public --provenance --ignore-scripts

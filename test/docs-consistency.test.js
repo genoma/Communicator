@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile, readdir, stat } from 'node:fs/promises'
 import { basename, dirname, join, normalize, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -265,19 +265,40 @@ test('markdown links resolve to existing files and anchors', async () => {
   }
 
   const problems = []
+  const repoUrl = 'https://github.com/genoma/Communicator/'
   for (const file of files) {
     const text = (await readTextCached(file)).replace(/```[\s\S]*?```/g, '')
     for (const m of text.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
       const target = m[1].trim()
-      if (/^(https?:|mailto:|data:)/.test(target)) continue
-      if (!target.includes('.') && !target.startsWith('#')) continue
-      const [pathPart, anchor] = target.split('#')
+      if (/^(mailto:|data:)/.test(target)) continue
+      // Absolute links back into this repository (README links are absolute so
+      // they also resolve on the npm package page) are validated here as if
+      // they were relative, anchors included.
+      let linkTarget = target
+      if (target.startsWith(repoUrl)) {
+        const match = /^(?:blob|tree)\/main\/(.*)$/.exec(target.slice(repoUrl.length))
+        if (!match) continue
+        linkTarget = match[1] || '.'
+      } else if (/^https?:/.test(target)) {
+        continue
+      }
+      if (!linkTarget.includes('.') && !linkTarget.startsWith('#')) continue
+      const [pathPart, anchor] = linkTarget.split('#')
       const abs = pathPart
         ? normalize(join(dirname(join(ROOT, file)), pathPart))
         : join(ROOT, file)
       const rel = relative(ROOT, abs)
       if (rel.startsWith(`..${sep}`) || rel === '..') {
         problems.push(`${file}: link ${target} resolves outside the repo`)
+        continue
+      }
+      const info = await stat(abs).catch(() => null)
+      if (!info) {
+        problems.push(`${file}: link ${target} resolves to missing file ${rel}`)
+        continue
+      }
+      if (info.isDirectory()) {
+        if (anchor) problems.push(`${file}: link ${target} points at a directory with an anchor`)
         continue
       }
       const targetText = await readTextCached(rel)
@@ -294,8 +315,15 @@ test('markdown links resolve to existing files and anchors', async () => {
   assert.deepEqual(problems, [], problems.join('\n'))
 })
 
-async function listSourceFiles(dir) {
-  const entries = await readdir(dir, { withFileTypes: true })
+test('the install instructions name the published package', async () => {
+  const pkg = JSON.parse(await readText('package.json'))
+  for (const file of ['README.md', 'docs/platforms.md']) {
+    const text = await readText(file)
+    assert.ok(text.includes(pkg.name), `${file} must name the published package ${pkg.name}`)
+  }
+})
+
+async function listSourceFiles(dir) {  const entries = await readdir(dir, { withFileTypes: true })
   const files = []
   for (const entry of entries) {
     const full = join(dir, entry.name)

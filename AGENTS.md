@@ -38,6 +38,14 @@
 - Delete branches once merged into main: local via `git branch -d`, using `git branch --merged main` as the check, and on the remote via `git push origin --delete <branch>` — the agent **may and should push** to `origin` after the merge into `main` (fast-forward or merge commit), including deleting merged remote branches. Pushing after a fast-forward merge is expected, not forbidden. The merge commit preserves the full history, so cleanup is lossless. Never delete unmerged branches.
 - Merge with fast-forward when possible; if main has advanced, use a regular merge commit. Never rebase a pushed branch (avoids force-push).
 
+### Publishing (npm)
+
+- The package is `@vioni/communicator` (public). `package.json` `repository.url` must stay in sync with the GitHub repository configured on the npm trusted publisher (`github.com/genoma/Communicator`, case-sensitive) — a mismatch fails the publish with `ENEEDAUTH`/404, and npm does not validate the config when it is saved.
+- `.github/workflows/publish.yml` publishes on a bare-version tag push: it gates on lint/test/audit, asserts the tag equals `package.json` `version`, skips when that version is already published, and publishes with provenance over OIDC. A version is burned once published — always bump before tagging.
+- The first publish of a new package name cannot use OIDC (npm requires the package to exist), so it is a manual `npm publish --access public` with a 2FA prompt; the trusted publisher is then attached in the npm UI with **direct `npm publish` allowed** (configurations created after 2026-09-03 default to staged publishing only).
+- No npm token is ever stored in the repo or CI: publishing is OIDC-only.
+- Releasing, step by step: `docs/development.md` §Releasing.
+
 ## UX change approval
 
 - **Every UX change must be asked first and approved by the user before implementation.** This covers all user-facing behavior, look, or output: commands and flags, prompts, messages, markers/separators, terminal layout, streaming/history-replay/rebuild rendering, mode differences, compact/full TTY output — anything the user sees or interacts with.

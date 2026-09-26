@@ -1,7 +1,28 @@
 {
-  "name": "communicator",
+  "name": "@vioni/communicator",
   "version": "5.4.0",
   "description": "Terminal-first AI chat client for OpenRouter and Venice.ai with streaming responses, session persistence, and cost tracking",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/genoma/Communicator.git"
+  },
+  "homepage": "https://github.com/genoma/Communicator#readme",
+  "bugs": {
+    "url": "https://github.com/genoma/Communicator/issues"
+  },
+  "author": "Alessandro Vioni",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "cli",
+    "ai",
+    "chat",
+    "llm",
+    "openrouter",
+    "venice",
+    "terminal"
+  ],
   "type": "module",
   "engines": {
     "node": ">=22.15.0"
@@ -19,7 +40,8 @@
     "dev": "node --watch index.js",
     "test": "node scripts/run-tests.js",
     "test:coverage": "node scripts/run-tests.js --experimental-test-coverage",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "prepublishOnly": "npm test"
   },
   "dependencies": {
     "@inquirer/core": "^12.0.1",

@@ -58,7 +58,7 @@ On macOS the prompt editor uses the system spell checker; on first use Communica
 
 ## Install & environment on Linux/Windows
 
-`npm link` places the `communicator` binary on your PATH. The exact location depends on your Node.js setup:
+`npm install -g @vioni/communicator` installs the `communicator` binary (or `npx @vioni/communicator` runs it without installing); a source checkout can use `npm link` instead. The exact location depends on your Node.js setup:
 
 | OS / setup                                   | Symlink path                               |
 |----------------------------------------------|--------------------------------------------|
@@ -88,7 +88,7 @@ The `~/.zshrc` / `~/.bashrc` examples in the Quick start section of the README a
 ## Uninstall
 
 ```bash
-npm unlink -g communicator
+npm uninstall -g @vioni/communicator   # or: npm unlink -g communicator, for a source checkout
 rm ~/.communicator.json
 rm -rf ~/.communicator
 ```

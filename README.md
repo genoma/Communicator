@@ -10,16 +10,16 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Reasoning effort control** — per-model effort level persisted across sessions. OpenRouter uses its native reasoning format; Venice uses the standard OpenAI `reasoning_effort`
 - **Temperature control** — `--temperature <0-2|default>` flag, `/temp` command (with `default` to reset), per-model default persisted in preferences (omitted unless set, so the provider default applies)
 - **Top-p control** — `--top-p <0-1|default>` flag, `/top-p` command (with `default` to reset), per-model default persisted in preferences (omitted unless set, so the provider default applies)
-- **Web search** — three modes per model (`off`, `auto` = model decides, `always` = force a search; `on` is a legacy alias for `auto`) via `--web-search`/`/web-search`, with a result-count knob on OpenRouter. See [docs/web-search.md](docs/web-search.md)
-- **Web scraping** — scrape a public page into the conversation as markdown context with `--scrape <url>` (one-shot + prompt, or bare to open a chat with the page) and `/scrape <url>` mid-chat; flat $0.01 per page, tracked in the session cost. Venice only. See [docs/web-scrape.md](docs/web-scrape.md)
-- **File & image attachments** — attach images, PDFs, office files, and text/code files with `/attach <path>...` (interactive) or `--attach <path>` (one-shot), or queue an image straight from the system clipboard with `/paste`. See [docs/attachments.md](docs/attachments.md)
+- **Web search** — three modes per model (`off`, `auto` = model decides, `always` = force a search; `on` is a legacy alias for `auto`) via `--web-search`/`/web-search`, with a result-count knob on OpenRouter. See [docs/web-search.md](https://github.com/genoma/Communicator/blob/main/docs/web-search.md)
+- **Web scraping** — scrape a public page into the conversation as markdown context with `--scrape <url>` (one-shot + prompt, or bare to open a chat with the page) and `/scrape <url>` mid-chat; flat $0.01 per page, tracked in the session cost. Venice only. See [docs/web-scrape.md](https://github.com/genoma/Communicator/blob/main/docs/web-scrape.md)
+- **File & image attachments** — attach images, PDFs, office files, and text/code files with `/attach <path>...` (interactive) or `--attach <path>` (one-shot), or queue an image straight from the system clipboard with `/paste`. See [docs/attachments.md](https://github.com/genoma/Communicator/blob/main/docs/attachments.md)
 - **Model-produced images & files** — artifacts from image-output models are downloaded into the session, saved with the conversation, replayed on `--resume`, and exported as files under the session's `attachments/` folder with `--export`
-- **Image generation** — generate images on **both providers** with `--image`, or by picking an image model in the unified picker; per-provider sizing defaults, Venice watermark and safe mode controls included. See [docs/images.md](docs/images.md)
+- **Image generation** — generate images on **both providers** with `--image`, or by picking an image model in the unified picker; per-provider sizing defaults, Venice watermark and safe mode controls included. See [docs/images.md](https://github.com/genoma/Communicator/blob/main/docs/images.md)
 - **One-shot mode** — pass a prompt argument or pipe stdin for a single non-interactive answer. TTY-aware output: styled with a usage footer on a terminal, plain answer text only when piped
-- **RPG mode** — `--rpg <dir>` assembles `char.md`, `user.md`, `prompt.md`, and `scenario.md` into one fixed roleplay system prompt and seeds `first-message.md` as the opening assistant turn; missing files are created as fill-in templates. Continue a story with `--rpg <dir> --resume`; add `--debug` to log every request to `prompt-log.jsonl` in the directory. See [docs/chat.md](docs/chat.md)
+- **RPG mode** — `--rpg <dir>` assembles `char.md`, `user.md`, `prompt.md`, and `scenario.md` into one fixed roleplay system prompt and seeds `first-message.md` as the opening assistant turn; missing files are created as fill-in templates. Continue a story with `--rpg <dir> --resume`; add `--debug` to log every request to `prompt-log.jsonl` in the directory. See [docs/chat.md](https://github.com/genoma/Communicator/blob/main/docs/chat.md)
 - **Per-session budget caps** — `/budget <usd>` caps accumulated session cost for the current session; warns at 80% used and refuses further turns at 100% in interactive sessions
 - **Zero data retention** — `--zdr` (OpenRouter only) routes every request only to zero-data-retention endpoints: no logging, no training, no retained data. OpenRouter treats ephemeral provider-side prompt caching as non-retention, so caching may still happen — cache hits appear in the footer. Picker selection filters to ZDR-capable entries
-- **End-to-end encryption** — `--e2ee` (Venice only) runs the session against E2EE-capable models: prompts are encrypted client-side with ECDH + AES-256-GCM before leaving your machine, and only the attested TEE enclave can decrypt them. Web search, attachments, and prompt caching are disabled; model selection and `/model` switch only to E2EE-capable models, and unencrypted sessions cannot be resumed. See [docs/providers.md#end-to-end-encryption-e2ee](docs/providers.md#end-to-end-encryption-e2ee)
+- **End-to-end encryption** — `--e2ee` (Venice only) runs the session against E2EE-capable models: prompts are encrypted client-side with ECDH + AES-256-GCM before leaving your machine, and only the attested TEE enclave can decrypt them. Web search, attachments, and prompt caching are disabled; model selection and `/model` switch only to E2EE-capable models, and unencrypted sessions cannot be resumed. See [docs/providers.md#end-to-end-encryption-e2ee](https://github.com/genoma/Communicator/blob/main/docs/providers.md#end-to-end-encryption-e2ee)
 - **Terminal markdown rendering** — responses styled in the terminal (headers, bold/italic, code blocks, lists, quotes, links) with a `/markdown` toggle
 - **Streaming responses** — tokens appear as they arrive, with reasoning shown in gray under a `❯ Thinking` banner
 - **Stop with `Esc`** — press `Esc` while a response is streaming to abort the provider fetch and keep what has already streamed as the turn result, returning straight to the prompt (the app does not exit). `Ctrl+C` keeps its existing behavior: save the partial and exit
@@ -28,7 +28,7 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 - **Compact thinking** — replace the streamed reasoning text with a live `Thinking` meter (spinner + character count + elapsed seconds) on TTY; toggle anytime with `/compact-thinking` (which persists the choice), or apply it to a single run with `--compact-thinking`. The reasoning stays in the session file and exports
 - **Spelling assistance** — misspelled prose in the prompt input is underlined as you type. On macOS the system spell checker and your own dictionaries are used (a small helper Communicator compiles on first use into `~/.communicator`, falling back to a per-call `osascript` process whenever the build is not available — never the other way around, and a Mac without Command Line Tools never compiles anything at all: the compiler shim is not invoked, so no installer is ever offered); on Linux and Windows a built-in English dictionary (`nspell` + `dictionary-en`, pure JS) checks the words instead. Paths, flags and URLs are never flagged, but a code-ish word the dictionary does not know (`npm`, `openai`, or the `deepseek` inside `deepseek-chat`) can still be underlined. Ctrl+. lists replacements for the flagged word under the caret, and on macOS a dictionary completion appears as a dim hint accepted with Tab while no `/`-command list is open. Autocorrect is off by default: with `/spelling autocorrect on`, the character that closes a word (a space or sentence punctuation) replaces a confidently misspelled word with the checker's correction as one undoable edit — only a single-character insert triggers it, so pasted text is never rewritten, and the same dictionary-gap words that can be underlined can also be corrected. Toggle with `/spelling typo|autocomplete|autocorrect on|off` (persisted)
 - **Usage & cost tracking** — per-turn and cumulative token counts, a context-window (CTX) indicator, cache-hit detection, and dollar-cost breakdowns; check anytime with `/cost`
-- **Slash commands** — `/new`, `/model`, `/reasoning`, `/temp`, `/top-p`, `/budget`, `/web-search`, `/attach`, `/paste`, `/retry`, `/edit`, `/delete`, `/copy`, `/markdown`, `/smooth`, `/compact-thinking`, `/spelling`, `/cost`, `/quit`, and more (image sessions add sizing commands plus Venice-only `/watermark`). See [docs/commands.md#slash-commands](docs/commands.md#slash-commands)
+- **Slash commands** — `/new`, `/model`, `/reasoning`, `/temp`, `/top-p`, `/budget`, `/web-search`, `/attach`, `/paste`, `/retry`, `/edit`, `/delete`, `/copy`, `/markdown`, `/smooth`, `/compact-thinking`, `/spelling`, `/cost`, `/quit`, and more (image sessions add sizing commands plus Venice-only `/watermark`). See [docs/commands.md#slash-commands](https://github.com/genoma/Communicator/blob/main/docs/commands.md#slash-commands)
 - **Session auto-save** — every chat is saved as a JSON file in `~/.communicator/sessions/` with an auto-generated title, on quit, model switch, new session, or `Ctrl+C` — the last exchange is never lost
 - **Session resume** — restore any past conversation with `--resume`, keeping the same model, provider, reasoning effort, temperature, top-p, and budget
 - **Session deletion** — remove one or more saved sessions with `--delete` (multi-select checkbox with confirmation), or wipe everything with `--delete-all-sessions` (asks for confirmation; `y` confirms non-interactively). Both delete best-effort and exit 1 naming anything they could not remove instead of failing silently
@@ -39,7 +39,7 @@ A terminal-first AI chat client for **OpenRouter** and **Venice.ai** — stream 
 
 ## Documentation
 
-The full documentation lives in the [`docs/`](docs/) folder, organized into guides, reference pages, and a contributor guide — see the [documentation index](docs/README.md).
+The full documentation lives in the [`docs/`](https://github.com/genoma/Communicator/tree/main/docs/) folder, organized into guides, reference pages, and a contributor guide — see the [documentation index](https://github.com/genoma/Communicator/blob/main/docs/README.md).
 
 ## Requirements
 
@@ -58,14 +58,23 @@ You can set up both to switch between them at runtime.
 
 ## Quick start
 
+Install it globally, or run it once without installing:
+
 ```bash
-git clone <your-fork-or-original-repo-url> ~/Communicator
+npm install -g @vioni/communicator   # global install
+npx @vioni/communicator              # or run it without installing
+```
+
+The global install puts the `communicator` binary on your PATH — see [Install & environment on Linux/Windows](https://github.com/genoma/Communicator/blob/main/docs/platforms.md#install--environment-on-linuxwindows) for the per-OS path table.
+
+To run from source instead:
+
+```bash
+git clone https://github.com/genoma/Communicator ~/Communicator
 cd ~/Communicator
 npm install
 npm link
 ```
-
-`npm link` creates a system-wide symlink so `communicator` is available from any terminal. The exact path depends on your Node.js installation — see [Install & environment on Linux/Windows](docs/platforms.md#install--environment-on-linuxwindows) for the per-OS table.
 
 Set your API key:
 
@@ -88,4 +97,4 @@ communicator -m "openai/gpt-4o" "What is the capital of France?"
 
 ## License
 
-[MIT](LICENSE.md)
+[MIT](https://github.com/genoma/Communicator/blob/main/LICENSE.md)
