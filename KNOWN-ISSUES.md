@@ -15,4 +15,13 @@ lists **open items only**:
 
 ## Open issues
 
-None.
+### Reasoning-only turns drop the streamed reasoning
+
+A completed turn whose finish reason is `length` (the model spent its whole output budget on
+reasoning) but which streamed reasoning and no content falls into the empty-output verdict in
+`src/turn-runner.js`: the user message is popped/stashed and the streamed reasoning is not salvaged,
+so the transcript loses the only output the turn produced. The Esc/stop and Ctrl+C/interrupt paths
+already append a reasoning-only partial (see MEMORY.md §Display consistency contract); this path
+needs the same producer plus its own replay-parity tests. Filed separately from the context-overflow
+honesty work, which deliberately left it out to avoid adding a new reasoning-partial producer
+mid-slice.

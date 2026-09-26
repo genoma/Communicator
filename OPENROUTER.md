@@ -156,6 +156,34 @@ Consequences:
 - Stray blank row before the answer → the `stop({ done: true })` visibility
   contract regressed.
 
+## Context-window compression on ≤8k routes (probe-verified 2026-09-26)
+
+OpenRouter endpoints whose context length is 8,192 tokens or less default to the
+`context-compression` plugin (engine `middle-out`): messages are truncated from the middle
+server-side until the prompt fits, so the request succeeds instead of failing. Larger windows only
+compress when the request or the account opts in. This is easy to mistake for a client bug — the
+session file, export and `--resume` replay hold the full conversation while the model saw a
+compressed prompt.
+
+Wire behavior observed with one 15,040-token prompt on an 8,192-window route:
+
+- No plugins sent: HTTP 200, `usage.prompt_tokens = 1560`, and the model answered as if most of the
+  prompt was absent. The rewrite is only visible when the request sends
+  `X-OpenRouter-Metadata: enabled`: the response then carries
+  `openrouter_metadata.pipeline = [{ type: "context_compression", name: "context-compression",
+  summary: "Compressed messages from 1 to 1", data: { engine: "middle-out", input_type: "messages",
+  original_count: 1, compressed_count: 1 } }]`.
+- `plugins: [{ id: "context-compression", enabled: false }]`: the same prompt returns the normal
+  pre-flight 400 (over-window wording), so the per-request disable works on an account without an
+  override policy. Account-level plugin defaults plus the "Prevent overrides" setting can still
+  force compression regardless of the request.
+
+Client stance (decided by the 2026-09-26 council): the client sends no compression plugin and no
+metadata header, so on these routes an over-window prompt may succeed with silently rewritten
+history. Diagnostics must therefore never assume every over-window prompt errors, and the local
+transcript/export cannot be claimed to be exactly what the model saw. The metadata header is the
+future visibility path if the residual ever needs to be surfaced.
+
 ## Tests
 
 - `test/sse-parser.test.js` — "anchors the thinking clock at request start so a
