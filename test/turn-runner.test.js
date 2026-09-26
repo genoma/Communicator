@@ -145,6 +145,9 @@ test('a successful turn streams tokens, records usage and appends the message', 
   assert.equal(state.messages[2].usage.total_tokens, 15)
   assert.equal(sessionState.tracker.requests, 1)
   assert.equal(sessionState.tracker.promptTokens, 10)
+  assert.equal(sessionState.tracker.completionTokens, 5)
+  assert.ok(sessionState.tracker.cost > 0)
+  assert.equal(sessionState.tracker.peakContext, 10 + 5)
   assert.equal(exitCodes.length, 0)
 })
 
@@ -822,6 +825,14 @@ test('Esc stop salvages the partial, appends it, saves the session and does not 
   assert.equal(state.messages[2].content, 'Hel')
   assert.equal(produced, true)
   assert.equal(sessionState.streaming, false)
+  // The fetch-abort stop never received a completed apiResult: no usage may be
+  // invented for the tracker or the persisted partial.
+  assert.equal(sessionState.tracker.requests, 0)
+  assert.equal(sessionState.tracker.promptTokens, 0)
+  assert.equal(sessionState.tracker.completionTokens, 0)
+  assert.equal(sessionState.tracker.cost, 0)
+  assert.equal(sessionState.tracker.peakContext, 0)
+  assert.equal('usage' in state.messages[2], false)
 })
 
 test('Esc stop with no streamed content pops the user message for /retry and does not exit', async (t) => {
@@ -1373,6 +1384,17 @@ test('Esc during the post-stream drain finalizes as stopped without exiting', as
   assert.equal(state.messages[2].content, 'Hello!')
   assert.equal(state.messages.length, 3)
   assert.ok(writes.join('').includes(`${dim('Stopped')}\n\n`), 'the drain-phase stop still writes the Stopped note')
+  // The stream had completed, so the drain-window stop records the billed
+  // usage and persists it on the partial (a resume replays it via
+  // seedTracker) without printing the turn footer.
+  assert.equal(sessionState.tracker.requests, 1)
+  assert.equal(sessionState.tracker.promptTokens, 10)
+  assert.equal(sessionState.tracker.completionTokens, 5)
+  assert.equal(sessionState.tracker.totalTokens, 15)
+  assert.ok(sessionState.tracker.cost > 0)
+  assert.equal(sessionState.tracker.peakContext, 10 + 5)
+  assert.equal(sessionState.lastTurnMetrics, null)
+  assert.deepEqual(state.messages[2].usage, { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 })
 })
 
 test('Esc then Ctrl+C during finalize stays stopped and does not exit 130', async (t) => {

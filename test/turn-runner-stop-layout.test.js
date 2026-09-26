@@ -120,6 +120,17 @@ test('post-metrics Esc stop keeps one blank row above the Stopped note when the 
   assert.deepEqual(exitCodes, [])
   assert.deepEqual(saves, ['session'])
   assert.equal(state.messages[2].content, 'Hello!')
+  // The stream completed, so the turn is billed: the post-metrics stop records
+  // the completed usage (visible to /cost and to a resume) without printing
+  // the turn footer or touching the stopped layout.
+  assert.equal(sessionState.tracker.requests, 1)
+  assert.equal(sessionState.tracker.promptTokens, 10)
+  assert.equal(sessionState.tracker.completionTokens, 5)
+  assert.equal(sessionState.tracker.totalTokens, 15)
+  assert.ok(sessionState.tracker.cost > 0)
+  assert.equal(sessionState.tracker.peakContext, 10 + 5)
+  assert.equal(sessionState.lastTurnMetrics, null)
+  assert.deepEqual(state.messages[2].usage, { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 })
   assert.deepEqual(writes, ['\n', '\n\n', `${dim('Stopped')}\n\n`])
   // A post-metrics stop that already appended the live partial must report the
   // message was produced (so /retry and /edit skip the full-screen rebuild).

@@ -125,7 +125,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       return Boolean(hasContent)
     }
 
-    const buildPartial = (err, reasoningMs = null) => {
+    const buildPartial = (err, reasoningMs = null, usage = null) => {
       const partial = { role: 'assistant', content: contentParts.join('') }
       if (reasoningParts.length > 0) partial.reasoning = reasoningParts.join('')
       // Mirror the success-path reasoning timestamp (see apiResultMessage) so
@@ -135,6 +135,11 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       // apiResult when no error is available (post-stream Esc stop).
       const carriedReasoningMs = err?.reasoningMs ?? reasoningMs
       if (carriedReasoningMs != null && partial.reasoning) partial.reasoningMs = carriedReasoningMs
+      // A post-stream stop keeps the completed turn's provider usage on the
+      // partial (mirroring apiResultMessage), so a resume replays the billed
+      // turn through seedTracker. The fetch-abort stop has no usage and never
+      // invents one.
+      if (usage) partial.usage = usage
       if (render.sources?.length > 0) partial.sources = render.sources
       if (!partial.content && !partial.reasoning && err?.pendingBuffer) {
         const pending = extractPartialToken(err.pendingBuffer)
@@ -272,7 +277,11 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       if (sessionState.stopped) {
         stdout.write('\n\n')
         stdout.write(`${dim('Stopped')}\n\n`)
-        return await finishStopped(buildPartial(null, apiResult.reasoningMs))
+        // The stream completed, so the turn is billed: record the completed
+        // usage the normal path below records (without the turn footer, which
+        // would change the stopped layout) and carry it on the partial.
+        if (apiResult.usage) sessionState.tracker.record(apiResult.usage, state.pricing)
+        return await finishStopped(buildPartial(null, apiResult.reasoningMs, apiResult.usage))
       }
       stdout.write('\n\n')
 
@@ -300,7 +309,11 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         const metricsEndedWithBlank = (apiResult.sources?.length ?? 0) > 0 && (apiResult.skippedChunks ?? 0) === 0 && !finishNotice(apiResult.finishReason, apiResult.content)
         if (wroteMetrics && !metricsEndedWithBlank) stdout.write('\n\n')
         stdout.write(`${dim('Stopped')}\n\n`)
-        return await finishStopped(buildPartial(null, apiResult.reasoningMs))
+        // Same completed-stream billing as the flush-window stop above: record
+        // the usage the normal path would (no printTurn, layout untouched)
+        // and persist it on the partial for the resume replay.
+        if (apiResult.usage) sessionState.tracker.record(apiResult.usage, state.pricing)
+        return await finishStopped(buildPartial(null, apiResult.reasoningMs, apiResult.usage))
       }
 
       if (apiResult.usage) {
