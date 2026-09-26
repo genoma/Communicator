@@ -588,10 +588,11 @@ test('the suggestion list reflects only the gated commands passed in', async (t)
     return rows
   }
   const textOnly = visibleChatCommands({ visionSupported: false, providerName: 'openrouter' })
-  assert.ok(!textOnly.includes('/attach') && !textOnly.includes('/attachments') && !textOnly.includes('/scrape'))
+  assert.ok(!textOnly.includes('/attach') && !textOnly.includes('/paste') && !textOnly.includes('/attachments') && !textOnly.includes('/scrape'))
   const nonVision = await make(textOnly)
   assert.ok(nonVision.some((l) => l === '› /quit'), 'commands show')
   assert.ok(!nonVision.some((l) => l.includes('/attach')), '/attach hidden for text-only models')
+  assert.ok(!nonVision.some((l) => l.includes('/paste')), '/paste hidden for text-only models')
   assert.ok(!nonVision.some((l) => l.includes('/scrape')), '/scrape hidden outside Venice')
 
   const full = visibleChatCommands({ visionSupported: true, providerName: 'openrouter' })

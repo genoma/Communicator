@@ -8,7 +8,7 @@ import { sessionLabel } from '../../ui/format.js'
 import { dim, you } from '../../ui/style.js'
 import { sanitizeSingleLine } from '../../ui/hyperlink.js'
 import { attachmentLine, renderHistory } from '../../ui/stream.js'
-import { loadAttachments, attachmentGate, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
+import { loadAttachments, attachmentGate, attachmentFromBytes, messageText, formatBytes, splitPathArgs } from '../../attachments.js'
 import { attachGateOptions } from '../../session-setup.js'
 import { fetchModelPubKey } from '../../e2ee.js'
 import { buildStatusLine, wrapStatusLine } from '../../status-line.js'
@@ -35,6 +35,7 @@ const COMMAND_DESCRIPTIONS = {
   '/new': 'Save the session and start a fresh one',
   '/model': 'Switch models mid-chat (re-picks effort and endpoint)',
   '/attach': 'Queue a file for the next message',
+  '/paste': 'Queue the clipboard image for the next message',
   '/attachments': 'List or clear the queued attachments',
   '/reasoning': 'Re-run the reasoning-effort picker',
   '/temp': 'Set the session temperature',
@@ -104,6 +105,11 @@ export function budgetGuard(ctx) {
 
 function attachmentGateOptions(ctx) {
   return attachGateOptions(ctx.state, ctx.provider.meta)
+}
+
+function clipboardImageFilename(now = new Date()) {
+  const pad = (value) => String(value).padStart(2, '0')
+  return `clipboard-${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.png`
 }
 
 // The edited text replaces the message text part in place; attachment parts
@@ -272,6 +278,32 @@ const handlers = {
     if (ignored.length) {
       console.log(`note: "${ignored.join(' ')}" is not a file path — /attach takes file paths only; type your message on the next line.\n`)
     }
+  },
+
+  '/paste': async (ctx) => {
+    if (ctx.state.e2ee) {
+      console.error('E2EE does not support file uploads.\n')
+      return
+    }
+    const gateError = attachmentGate([{ kind: 'image' }], attachmentGateOptions(ctx))
+    if (gateError) {
+      console.error(`Error: ${gateError}\n`)
+      return
+    }
+    const result = await ctx.readClipboardImage()
+    if (!result.ok) {
+      console.error(`${result.error}\n`)
+      return
+    }
+    let attachment
+    try {
+      attachment = await attachmentFromBytes(result.data, { mime: result.mime, filename: clipboardImageFilename() })
+    } catch (err) {
+      console.error(`Error: ${err.message}\n`)
+      return
+    }
+    ctx.state.pendingAttachments.push(attachment)
+    console.log(`${attachmentLine('attached', attachment.filename, { meta: `${attachment.kind}, ${formatBytes(attachment.size)}` })}\n`)
   },
 
   '/attachments': async (ctx) => {
@@ -773,7 +805,7 @@ export const CHAT_COMMANDS = Object.keys(handlers)
 
 export function visibleChatCommands({ visionSupported, e2ee = false, providerName, spellingSupported = false }) {
   const hidden = []
-  if (visionSupported === false || e2ee) hidden.push('/attach', '/attachments')
+  if (visionSupported === false || e2ee) hidden.push('/attach', '/paste', '/attachments')
   if (e2ee) hidden.push('/web-search', '/web-results')
   // Web scraping is a Venice-only feature and spelling exists only where a
   // spelling provider was constructed (every platform; darwin's system checker

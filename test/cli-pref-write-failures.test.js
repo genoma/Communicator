@@ -2,7 +2,7 @@ import { test, mock, after } from 'node:test'
 import assert from 'node:assert/strict'
 import * as realFs from 'node:fs/promises'
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import * as realOs from 'node:os'
 import { join } from 'node:path'
 
 // POSIX permission bits cannot express an unwritable config on Windows: chmod
@@ -27,10 +27,10 @@ mock.module('node:fs/promises', {
 
 // Hermetic home: the sessions dir, the default config path and the session
 // claim files all resolve under this directory.
-const tempHome = await mkdtemp(join(tmpdir(), 'communicator-pref-home-'))
+const tempHome = await mkdtemp(join(realOs.tmpdir(), 'communicator-pref-home-'))
 after(() => rm(tempHome, { recursive: true, force: true }))
 
-mock.module('node:os', { namedExports: { homedir: () => tempHome } })
+mock.module('node:os', { namedExports: { homedir: () => tempHome, tmpdir: realOs.tmpdir } })
 
 // Scripted stdin for the chat loop's default reader (`src/input.js`): the real
 // one would take over the terminal, and `startChat` cannot inject deps.
@@ -147,7 +147,7 @@ function withVeniceApiKey(t, value = 'venice-test-key') {
 }
 
 async function tempDir(t, prefix) {
-  const dir = await mkdtemp(join(tmpdir(), prefix))
+  const dir = await mkdtemp(join(realOs.tmpdir(), prefix))
   t.after(() => rm(dir, { recursive: true, force: true }))
   return dir
 }
@@ -162,7 +162,7 @@ async function tempConfig(t) {
 // for this directory, above). The cleanup hook clears the injection before
 // removing, so it owns the whole dir.
 async function readonlyConfig(t, prefs = {}) {
-  const dir = await mkdtemp(join(tmpdir(), 'communicator-pref-ro-'))
+  const dir = await mkdtemp(join(realOs.tmpdir(), 'communicator-pref-ro-'))
   const file = join(dir, 'config.json')
   await realFs.writeFile(file, `${JSON.stringify(prefs, null, 2)}\n`)
   readonlyDir = dir

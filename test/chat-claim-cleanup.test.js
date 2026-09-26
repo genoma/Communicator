@@ -2,12 +2,12 @@ import { test, mock, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import * as realOs from 'node:os'
 
 // The homedir mock must be registered before chat.js/sessions.js resolve
 // SESSIONS_DIR at module load.
-const tempHome = await mkdtemp(join(tmpdir(), 'communicator-chat-home-'))
-mock.module('node:os', { namedExports: { homedir: () => tempHome } })
+const tempHome = await mkdtemp(join(realOs.tmpdir(), 'communicator-chat-home-'))
+mock.module('node:os', { namedExports: { homedir: () => tempHome, tmpdir: realOs.tmpdir } })
 
 const { runChatSession } = await import('../src/chat.js')
 const { ensureSessionsDir, generateSessionId } = await import('../src/sessions.js')

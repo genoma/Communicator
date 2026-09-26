@@ -1,4 +1,26 @@
 import { spawn } from 'node:child_process'
+import { closeSync, openSync } from 'node:fs'
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { tmpdir as osTmpdir } from 'node:os'
+import { join } from 'node:path'
+import { MAX_IMAGE_ATTACHMENT_BYTES } from './constants.js'
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+const TIFF_SIGNATURES = [Buffer.from([0x49, 0x49, 0x2a, 0x00]), Buffer.from([0x4d, 0x4d, 0x00, 0x2a])]
+
+const NO_IMAGE_ERROR = 'No image in the clipboard.'
+const NO_TOOL_ERROR = 'No clipboard image tool found. Install wl-paste (wl-clipboard) or xclip.'
+const READ_ERROR = 'Cannot read the clipboard image.'
+const TOO_LARGE_ERROR = 'The clipboard image is larger than 20 MB.'
+
+// The output path travels through the environment: TEMP can hold spaces and
+// apostrophes, and interpolating it into PowerShell source would break on both.
+const WINDOWS_SCRIPT = [
+  'Add-Type -AssemblyName System.Windows.Forms,System.Drawing',
+  '$img = Get-Clipboard -Format Image',
+  'if ($null -eq $img) { exit 1 }',
+  '$img.Save($env:COMMUNICATOR_CLIP_OUT, [System.Drawing.Imaging.ImageFormat]::Png)',
+].join('\n')
 
 function clipboardCommands(platform = process.platform) {
   if (platform === 'darwin') return [['pbcopy']]
@@ -62,4 +84,128 @@ export function copyText(text, { platform = process.platform, timeoutMs = 10000 
     }
     tryNext(0)
   })
+}
+
+function appleScriptClipboardWrite(flavor, target) {
+  const escaped = target.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  return [
+    `set outputFile to POSIX file "${escaped}"`,
+    'set fileRef to open for access outputFile with write permission',
+    'set eof fileRef to 0',
+    `write (the clipboard as «class ${flavor}») to fileRef`,
+    'close access fileRef',
+  ].join('\n')
+}
+
+function imageAttempts(platform, dir) {
+  if (platform === 'darwin') {
+    const pngTarget = join(dir, 'clip.png')
+    const tiffTarget = join(dir, 'clip.tiff')
+    return [
+      { cmd: '/usr/bin/osascript', args: ['-e', appleScriptClipboardWrite('PNGf', pngTarget)], target: pngTarget, signature: 'png', mime: 'image/png' },
+      { cmd: '/usr/bin/osascript', args: ['-e', appleScriptClipboardWrite('TIFF', tiffTarget)], target: tiffTarget, signature: 'tiff', mime: 'image/tiff' },
+    ]
+  }
+  const pngTarget = join(dir, 'clip.png')
+  if (platform === 'win32') {
+    return [{
+      cmd: 'powershell.exe',
+      args: ['-NoProfile', '-STA', '-Command', WINDOWS_SCRIPT],
+      env: { ...process.env, COMMUNICATOR_CLIP_OUT: pngTarget },
+      target: pngTarget,
+      signature: 'png',
+      mime: 'image/png',
+    }]
+  }
+  return [
+    { cmd: 'wl-paste', args: ['--type', 'image/png'], target: join(dir, 'clip-wl.png'), pipeStdout: true, signature: 'png', mime: 'image/png' },
+    { cmd: 'xclip', args: ['-selection', 'clipboard', '-t', 'image/png', '-o'], target: join(dir, 'clip-xclip.png'), pipeStdout: true, signature: 'png', mime: 'image/png' },
+  ]
+}
+
+function runAttempt(attempt, timeoutMs) {
+  return new Promise((resolve) => {
+    let fd = null
+    let stdio = 'ignore'
+    if (attempt.pipeStdout) {
+      try {
+        fd = openSync(attempt.target, 'w')
+      } catch {
+        resolve('io-failed')
+        return
+      }
+      stdio = ['ignore', fd, 'ignore']
+    }
+    let settled = false
+    let child = null
+    const finish = (outcome) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (fd !== null) {
+        try {
+          closeSync(fd)
+        } catch {
+          // The child may already have closed the inherited descriptor.
+        }
+      }
+      resolve(outcome)
+    }
+    const timer = setTimeout(() => {
+      if (settled) return
+      if (child) child.kill('SIGKILL')
+      finish('failed')
+    }, timeoutMs)
+    try {
+      child = spawn(attempt.cmd, attempt.args, { stdio, env: attempt.env })
+    } catch {
+      finish('failed')
+      return
+    }
+    child.on('error', (err) => finish(err?.code === 'ENOENT' ? 'missing' : 'failed'))
+    child.on('close', (code) => finish(code === 0 ? 'exited' : 'failed'))
+  })
+}
+
+function isUsableImage(buffer, signature) {
+  if (!buffer || buffer.length === 0 || buffer.length > MAX_IMAGE_ATTACHMENT_BYTES) return false
+  if (signature === 'png') return buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
+  return TIFF_SIGNATURES.some((magic) => buffer.subarray(0, magic.length).equals(magic))
+}
+
+export async function readClipboardImage({ platform = process.platform, timeoutMs = 10000, tmpdir: tempRoot = osTmpdir() } = {}) {
+  let dir
+  try {
+    dir = await mkdtemp(join(tempRoot, 'communicator-clipboard-'))
+  } catch {
+    return { ok: false, error: READ_ERROR }
+  }
+  try {
+    let sawTool = false
+    let sawOversized = false
+    for (const attempt of imageAttempts(platform, dir)) {
+      const outcome = await runAttempt(attempt, timeoutMs)
+      if (outcome === 'io-failed') return { ok: false, error: READ_ERROR }
+      if (outcome === 'missing') continue
+      sawTool = true
+      if (outcome !== 'exited') continue
+      // A killed or failed attempt can leave bytes that pass the magic check:
+      // only an exit code 0 makes the file trustworthy.
+      const info = await stat(attempt.target).catch(() => null)
+      if (!info || info.size === 0) continue
+      if (info.size > MAX_IMAGE_ATTACHMENT_BYTES) {
+        sawOversized = true
+        continue
+      }
+      const data = await readFile(attempt.target).catch(() => null)
+      if (!isUsableImage(data, attempt.signature)) continue
+      return { ok: true, data, mime: attempt.mime }
+    }
+    if (sawOversized) return { ok: false, error: TOO_LARGE_ERROR }
+    return { ok: false, error: sawTool ? NO_IMAGE_ERROR : NO_TOOL_ERROR }
+  } catch {
+    return { ok: false, error: READ_ERROR }
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
 }

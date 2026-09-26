@@ -25,4 +25,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
+        env:
+          # test/clipboard-real.test.js drives the real pasteboard; only the
+          # macOS runner has one.
+          COMMUNICATOR_CLIPBOARD_TEST: ${{ matrix.os == 'macos-latest' && '1' || '0' }}
       - run: npm audit --omit=dev --audit-level=high

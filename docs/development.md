@@ -24,7 +24,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 │   ├── image-gen.js      — image generation command (--image flag, sizing validation, persistence)
 │   ├── image-session.js  — interactive image session REPL (sizing commands, /model handoff to chat)
 │   └── chat/
-│       └── index.js      — slash command registry (26 chatCommands) + budgetGuard
+│       └── index.js      — slash command registry (27 chatCommands) + budgetGuard
 ├── providers/
 │   ├── index.js          — factory: getProvider(name) → provider module; common chatCompletion contract
 │   ├── openrouter.js     — OpenRouter API client: models, endpoints, chat completions
@@ -60,7 +60,7 @@ cli (index.js)            — commander argument parsing, delegates to runCli
 ├── status-line.js        — session-setting badges and the live chat status line
 ├── scrape.js             — web-scraping context normalization (--scrape)
 ├── e2ee.js               — E2EE crypto (ECDH + HKDF + AES-256-GCM) and TEE attestation
-├── clipboard.js          — clipboard copy via pbcopy/clip/wl-copy/xclip/xsel
+├── clipboard.js          — clipboard copy via pbcopy/clip/wl-copy/xclip/xsel and clipboard image read for /paste (osascript/wl-paste/xclip/PowerShell)
 ├── editor/
 │   ├── chars.js           — display-width helpers (wcwidth-style)
 │   ├── style.js           — theme/style resolution (stateful prefixes, prompt header)
@@ -102,7 +102,7 @@ Dependencies: [`commander`](https://www.npmjs.com/package/commander) for CLI arg
 The chat flow is built around four pieces:
 
 - **`ChatState` (`src/chat-state.js`)** — the mutable session state (model, reasoning effort, temperature, top-p, budget, web search, messages, …) with pure transitions (`setTemperature`, `setTopP`, `applyModelSelection`, `toggleMarkdown`, …). `toFinalState()` produces the exact snapshot written to the session file; `resetForNewSession()` backs `/new`.
-- **Command registry (`src/commands/chat/index.js`)** — the 26 slash commands live in a data-driven map of `/name → async (ctx) => outcome`; `CHAT_COMMANDS` is derived from the registry keys so the suggestion list and the loop can never drift. Handlers never call `process.exit` — they return `{ exit }` / `{ reset }` signals that the loop translates into exit codes, which keeps every handler unit-testable (`test/chat-commands.test.js`).
+- **Command registry (`src/commands/chat/index.js`)** — the 27 slash commands live in a data-driven map of `/name → async (ctx) => outcome`; `CHAT_COMMANDS` is derived from the registry keys so the suggestion list and the loop can never drift. Handlers never call `process.exit` — they return `{ exit }` / `{ reset }` signals that the loop translates into exit codes, which keeps every handler unit-testable (`test/chat-commands.test.js`).
 - **`runChatSession(ctx, deps)` (`src/chat.js`)** — the chat loop is dependency-injected: `deps = { readInput, renderer, stdout, exit, saveSession, savePrefs, onSignal, newSessionId }`, each defaulting to the real implementation, so production behavior is unchanged while the whole loop is drivable with fakes (`test/chat-loop.test.js`). Signal handling (idle/streaming SIGINT, `beforeExit`, `uncaughtException`) is registered through `onSignal` (`src/signals.js`); per-turn orchestration — stream rendering, abort, interrupt salvage, usage tracking — lives in `src/turn-runner.js` on a shared `sessionState` object.
 - **`src/flags.js`** — CLI flag parsing helpers (`resolveTemperatureFlag`, `resolveTopPFlag`, `resolveWebResultsFlag`, `resolveWebSearchFlag`, `resolveReasoningFlag`, `resolveBudget`) shared by the chat loop, one-shot mode, and chat-start.
 
@@ -140,7 +140,7 @@ The check cannot verify behavioral prose. When touching related code, re-verify 
 - E2EE streams fail closed: an unencrypted chunk in an `--e2ee` session aborts the stream instead of rendering (`src/sse-parser.js`).
 - One-shot mode: piped stdin capped at 10 MB; exit codes 0 / 1 / 130 (`src/cli-utils.js`, `src/cli-main.js`, `src/turn-runner.js`).
 - Attachment limits: images 20 MB, pdf/office/text 25 MB (raw file size), inline text 256 KB warning; attached png/jpg/jpeg/webp images are downscaled to a 2048 px long edge with EXIF orientation baked and metadata stripped when sharp is available, and avif/tiff/heic/heif are converted to jpeg/png (heic/heif through the macOS `sips` converter, rejected elsewhere); office formats are Venice-only.
-- Clipboard probe order: macOS `pbcopy`, Windows `clip`, Linux `wl-copy` → `xclip` → `xsel`, with a 10 s timeout per tool (`src/clipboard.js`).
+- Clipboard probe order: macOS `pbcopy`, Windows `clip`, Linux `wl-copy` → `xclip` → `xsel`, with a 10 s timeout per tool. Clipboard image reads (`/paste`) probe macOS `osascript` («class PNGf», then the «class TIFF» fallback), Windows PowerShell 5.1 `Get-Clipboard -Format Image`, Linux `wl-paste --type image/png` → `xclip -selection clipboard -t image/png -o`, with the same per-tool timeout; `COMMUNICATOR_CLIPBOARD_TEST=1` opts `test/clipboard-real.test.js` into the real round trip, which clobbers the pasteboard (CI sets it on the macOS leg only) (`src/clipboard.js`).
 - Reasoning effort: `EFFORT_LABELS` mapping; `none` disables reasoning; Venice uses `reasoning_effort`, OpenRouter its native format.
 - Web search: modes `off`/`auto`/`always` (`on` maps to `auto`); OpenRouter `auto` = server tool with a total result cap, `always` = legacy plugin; Venice maps to `enable_web_search`; the chat banner shows a `[web: <mode>]` badge.
 - ZDR: OpenRouter-only, filters pickers to ZDR-capable endpoints, runtime error kept as a safety net, not persisted.

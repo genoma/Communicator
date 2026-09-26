@@ -3,20 +3,20 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
 import { Readable } from 'node:stream'
 import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import * as realOs from 'node:os'
 
 // SESSIONS_DIR is computed at module load from homedir(), so point the OS home
 // at a temp dir BEFORE importing the modules that read it. This keeps the
 // global sessions dir under tempHome and lets the test prove RPG runs never
 // write there.
-const tempHome = await mkdtemp(join(tmpdir(), 'communicator-rpg-home-'))
-const rpgTmp = await mkdtemp(join(tmpdir(), 'communicator-rpg-story-'))
+const tempHome = await mkdtemp(join(realOs.tmpdir(), 'communicator-rpg-home-'))
+const rpgTmp = await mkdtemp(join(realOs.tmpdir(), 'communicator-rpg-story-'))
 after(() => Promise.all([
   rm(tempHome, { recursive: true, force: true }),
   rm(rpgTmp, { recursive: true, force: true }),
 ]))
 
-mock.module('node:os', { namedExports: { homedir: () => tempHome } })
+mock.module('node:os', { namedExports: { homedir: () => tempHome, tmpdir: realOs.tmpdir } })
 
 const { runChatSession } = await import('../src/chat.js')
 const { loadSession, createNewSession, saveSession } = await import('../src/sessions.js')

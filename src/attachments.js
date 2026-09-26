@@ -109,6 +109,32 @@ export function classifyPath(path) {
   return { kind: null, mime: null }
 }
 
+function attachmentLimit(kind) {
+  if (kind === 'image') return [MAX_IMAGE_ATTACHMENT_BYTES, 'image limit is 20 MB']
+  if (kind === 'text') return [MAX_FILE_ATTACHMENT_BYTES, 'text limit is 25 MB']
+  return [MAX_FILE_ATTACHMENT_BYTES, 'file limit is 25 MB']
+}
+
+async function buildAttachmentPayload({ kind, mime, filename, buffer, transformImage }) {
+  if (kind === 'text') {
+    return { kind, filename, mime, size: buffer.length, data: buffer.toString('utf-8') }
+  }
+  if (kind !== 'image') {
+    return { kind, filename, mime, size: buffer.length, data: `data:${mime};base64,${buffer.toString('base64')}` }
+  }
+  let transformed
+  try {
+    transformed = await transformImage(buffer, { mime })
+  } catch {
+    transformed = null
+  }
+  const usable = transformed && transformed.buffer.length > 0 && transformed.buffer.length <= MAX_IMAGE_ATTACHMENT_BYTES
+  if (!usable && MUST_CONVERT_MIMES.has(mime)) return null
+  const payload = usable ? transformed.buffer : buffer
+  const payloadMime = usable ? transformed.mime : mime
+  return { kind, filename, mime: payloadMime, size: payload.length, data: `data:${payloadMime};base64,${payload.toString('base64')}` }
+}
+
 export async function loadAttachment(path, { transformImage = transformImageAttachment, platform = process.platform } = {}) {
   const { kind, mime } = classifyPath(path)
   if (!kind) throw new Error(`Unsupported file type: ${extname(path).slice(1) || '(none)'}`)
@@ -118,11 +144,7 @@ export async function loadAttachment(path, { transformImage = transformImageAtta
 
   const fullPath = resolve(path)
   const filename = basename(fullPath)
-  const [limit, limitLabel] = kind === 'image'
-    ? [MAX_IMAGE_ATTACHMENT_BYTES, 'image limit is 20 MB']
-    : kind === 'text'
-      ? [MAX_FILE_ATTACHMENT_BYTES, 'text limit is 25 MB']
-      : [MAX_FILE_ATTACHMENT_BYTES, 'file limit is 25 MB']
+  const [limit, limitLabel] = attachmentLimit(kind)
 
   let size
   try {
@@ -142,28 +164,21 @@ export async function loadAttachment(path, { transformImage = transformImageAtta
   // for the bytes that were actually loaded.
   if (buffer.length > limit) throw new Error(`Attachment too large: ${filename} (${limitLabel})`)
 
-  let payload = buffer
-  let payloadMime = mime
-
-  if (kind === 'image') {
-    const transformed = await transformImage(buffer, { mime })
-    const usable = transformed && transformed.buffer.length > 0 && transformed.buffer.length <= MAX_IMAGE_ATTACHMENT_BYTES
-    if (usable) {
-      payload = transformed.buffer
-      payloadMime = transformed.mime
-    } else if (MUST_CONVERT_MIMES.has(mime)) {
-      throw new Error(`Cannot read attachment: ${path} (image conversion failed)`)
-    }
+  if (kind === 'text' && buffer.length > MAX_INLINE_TEXT_ATTACHMENT_BYTES) {
+    console.warn(`Warning: ${filename} is ${formatBytes(buffer.length)} of inline text and will use significant context.`)
   }
 
-  if (kind === 'text') {
-    if (buffer.length > MAX_INLINE_TEXT_ATTACHMENT_BYTES) {
-      console.warn(`Warning: ${filename} is ${formatBytes(buffer.length)} of inline text and will use significant context.`)
-    }
-    return { kind, filename, mime, size: buffer.length, data: buffer.toString('utf-8') }
-  }
+  const attachment = await buildAttachmentPayload({ kind, mime, filename, buffer, transformImage })
+  if (!attachment) throw new Error(`Cannot read attachment: ${path} (image conversion failed)`)
+  return attachment
+}
 
-  return { kind, filename, mime: payloadMime, size: payload.length, data: `data:${payloadMime};base64,${payload.toString('base64')}` }
+export async function attachmentFromBytes(buffer, { mime, filename, transformImage = transformImageAttachment } = {}) {
+  const [limit, limitLabel] = attachmentLimit('image')
+  if (buffer.length > limit) throw new Error(`Attachment too large: ${filename} (${limitLabel})`)
+  const attachment = await buildAttachmentPayload({ kind: 'image', mime, filename, buffer, transformImage })
+  if (!attachment) throw new Error(`Cannot read attachment: ${filename} (image conversion failed)`)
+  return attachment
 }
 
 export async function loadAttachments(paths, gateOptions, { skipNonPaths = false, onError, onAttached, transformImage = transformImageAttachment } = {}) {

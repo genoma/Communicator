@@ -12,7 +12,7 @@ import { ensureSessionsDir, generateSessionId, persistSessionFile, persistSessio
 import { logRpgPrompt, flushRpgPromptLog, rpgSessionsDir, ensureRpgSessionsDir } from './rpg.js'
 import { savePreferences, syncPreferenceUpdates, savePrefsBestEffort, resolveSpellingSettings } from './config.js'
 import { createPlatformSpellingProvider } from './spelling/index.js'
-import { copyText } from './clipboard.js'
+import { copyText, readClipboardImage as defaultReadClipboardImage } from './clipboard.js'
 import { ChatState } from './chat-state.js'
 import { createE2eeSession } from './e2ee.js'
 import { CliError, formatError, commandErrorLine, isExitPromptError } from './errors.js'
@@ -105,6 +105,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     // src/spelling/index.js and picks the darwin system checker or the portable
     // backend, so no caller branches on the platform itself.
     createSpelling = (features) => createPlatformSpellingProvider({ features }),
+    readClipboardImage = defaultReadClipboardImage,
   } = deps
 
   const rpgSessionDir = rpgDir ? rpgSessionsDir(rpgDir) : null
@@ -448,6 +449,7 @@ export async function runChatSession(ctx = {}, deps = {}) {
     onResizeRepaint: renderAboveEditor,
     newSessionId,
     copyText,
+    readClipboardImage,
     stdout,
     exit: exitCleanly,
   }

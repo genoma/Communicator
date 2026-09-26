@@ -4,7 +4,7 @@ import * as realFs from 'node:fs/promises'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import * as realOs from 'node:os'
 
 // Holding the prompt-log append open (src/rpg.js is its only writer on this
 // path) turns "the line is on disk" into a deterministic assertion; the gate
@@ -25,8 +25,8 @@ mock.module('node:fs/promises', {
 
 // The homedir mock must be registered before chat.js/sessions.js resolve
 // SESSIONS_DIR at module load.
-const tempHome = await mkdtemp(join(tmpdir(), 'communicator-chat-home-'))
-mock.module('node:os', { namedExports: { homedir: () => tempHome } })
+const tempHome = await mkdtemp(join(realOs.tmpdir(), 'communicator-chat-home-'))
+mock.module('node:os', { namedExports: { homedir: () => tempHome, tmpdir: realOs.tmpdir } })
 
 // rpg.js is imported after the fs mock (so its appendFile is the gated one),
 // then re-registered with a tracked flush: the beforeExit handler is
@@ -222,7 +222,7 @@ test('a late-reasoning burst turn rebuilds the compact thinking checkpoint', asy
 
 test('beforeExit flushes a held prompt-log append with one best-effort save and a spelling dispose', async (t) => {
   silenceConsole(t)
-  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  const dir = await mkdtemp(join(realOs.tmpdir(), 'communicator-rpg-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const { provider, calls } = fakeProvider()
   // The loop parks on this input, so the handler runs while the session is

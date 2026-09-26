@@ -48,7 +48,7 @@ communicator --provider venice --e2ee -m "e2ee-qwen3-5-122b-a10b" "What is 2+2?"
 E2EE intentionally disables features that would leak content or that the enclave cannot serve:
 
 - **Web search** — rejected at the CLI (`--web-search`, `--web-results`) and in the REPL (`/web-search`, `/web-results` are hidden and refused); web search is forced off even if a per-model preference says otherwise.
-- **Attachments** — `--attach` is rejected; `/attach` and `/attachments` are hidden and refused.
+- **Attachments** — `--attach` is rejected; `/attach`, `/paste` and `/attachments` are hidden and refused.
 - **Prompt caching** — `prompt_cache_key` is not sent; the host cannot key a cache on ciphertext.
 - **Image generation** — `--image` is rejected; E2EE is text-only.
 - **Resume** — sessions record an `e2ee` marker. An encrypted session may only be resumed with `--e2ee`, and `--e2ee` refuses to resume an unencrypted session — both directions fail fast rather than silently downgrade.

@@ -4,7 +4,7 @@ import * as realFs from 'node:fs/promises'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import * as realOs from 'node:os'
 
 // The prompt log is written through `appendFile` (src/rpg.js); holding that one
 // write open is what makes "the line is already on disk when the session exits"
@@ -23,8 +23,8 @@ mock.module('node:fs/promises', {
 
 // The homedir mock must be registered before chat.js/sessions.js resolve
 // SESSIONS_DIR at module load.
-const tempHome = await mkdtemp(join(tmpdir(), 'communicator-chat-home-'))
-mock.module('node:os', { namedExports: { homedir: () => tempHome } })
+const tempHome = await mkdtemp(join(realOs.tmpdir(), 'communicator-chat-home-'))
+mock.module('node:os', { namedExports: { homedir: () => tempHome, tmpdir: realOs.tmpdir } })
 
 const { runChatSession } = await import('../src/chat.js')
 const { createSpellingProvider } = await import('../src/spelling/provider.js')
@@ -101,7 +101,7 @@ function baseCtx(provider, rpgDir) {
 }
 
 async function tempRpgDir(t) {
-  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  const dir = await mkdtemp(join(realOs.tmpdir(), 'communicator-rpg-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   return dir
 }
@@ -461,7 +461,7 @@ test('a real SIGTERM on the process registry lands the prompt log before exiting
   t.mock.method(console, 'error', () => {})
   // Not tempRpgDir(t): the rm has to happen after the parked session is
   // released, so it lives in the cleanup hook below instead.
-  const dir = await mkdtemp(join(tmpdir(), 'communicator-rpg-'))
+  const dir = await mkdtemp(join(realOs.tmpdir(), 'communicator-rpg-'))
   const { provider, calls } = fakeProvider()
   // The loop parks on this input, so the SIGTERM listener sees an idle session
   // and takes the save+flush exit path.

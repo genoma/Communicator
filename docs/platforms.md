@@ -27,6 +27,10 @@ Communicator is written in Node.js ESM. Its one native piece is [`sharp`](https:
 
 When none is available, `/copy` reports `Copy failed: No clipboard tool found. Install wl-copy, xclip, or xsel.`
 
+## Clipboard image paste
+
+`/paste` queues the image currently on the clipboard. Reading is separate from copying and has its own tools: `osascript` on macOS (built-in), Windows PowerShell 5.1 (`Get-Clipboard -Format Image`, built-in — PowerShell 7 cannot read images at all), and `wl-paste` or `xclip` on Linux (from the `wl-clipboard`/`xclip` packages; `xsel` cannot serve images, so on X11 install `xclip`). When no reader is present, or the clipboard holds no image, or the image is over the 20 MB attachment limit, `/paste` says so and queues nothing.
+
 ## Terminals
 
 The full experience requires a modern terminal emulator:

@@ -61,6 +61,7 @@ function makeCtx(overrides = {}) {
     render: { markdown: true, smooth: true, smoothCharsPerTick: 40 },
     newSessionId: async () => '2026-01-02T00-00-00',
     copyText: async (text) => { copied = text; return { ok: true } },
+    readClipboardImage: async () => ({ ok: false, error: 'No image in the clipboard.' }),
     onResizeRepaint: null,
     selectModelAndEndpoint: undefined,
     selectReasoningEffort: undefined,
@@ -1687,6 +1688,68 @@ test('/attach with no args lists the queue like /attachments', async (t) => {
   assert.equal(consoleSpy.log(0), 'No attachments queued. Use /attach <path> to add one.\n')
 })
 
+// A signature-only PNG cannot be decoded by sharp, so the real transform
+// always answers null and the bytes pass through unchanged on every machine.
+const FAKE_PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('PNGDATA')])
+const FAKE_TIFF = Buffer.concat([Buffer.from([0x49, 0x49, 0x2a, 0x00]), Buffer.from('TIFFDATA')])
+
+test('/paste queues the clipboard image and prints the same line as /attach', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({ readClipboardImage: async () => ({ ok: true, data: FAKE_PNG, mime: 'image/png' }) })
+
+  await chatCommands['/paste'](ctx)
+
+  assert.equal(ctx.state.pendingAttachments.length, 1)
+  const attachment = ctx.state.pendingAttachments[0]
+  assert.equal(attachment.kind, 'image')
+  assert.match(attachment.filename, /^clipboard-\d{2}:\d{2}:\d{2}\.png$/)
+  assert.equal(attachment.mime, 'image/png')
+  assert.equal(attachment.size, FAKE_PNG.length)
+  assert.equal(attachment.data, `data:image/png;base64,${FAKE_PNG.toString('base64')}`)
+  assert.equal(consoleSpy.log(0), `attached: ${attachment.filename} (image, ${FAKE_PNG.length} B)\n`)
+  assert.equal(consoleSpy.error(0), undefined)
+})
+
+test('/paste reports the bytes-path conversion error with the synthesized filename', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({ readClipboardImage: async () => ({ ok: true, data: FAKE_TIFF, mime: 'image/tiff' }) })
+
+  await chatCommands['/paste'](ctx)
+
+  assert.deepEqual(ctx.state.pendingAttachments, [])
+  assert.match(consoleSpy.error(0), /^Error: Cannot read attachment: clipboard-\d{2}:\d{2}:\d{2}\.png \(image conversion failed\)\n$/)
+})
+
+test('/paste prints the no-image line and queues nothing', async (t) => {
+  const consoleSpy = mockConsole(t)
+  let reads = 0
+  const { ctx } = makeCtx({
+    readClipboardImage: async () => { reads += 1; return { ok: false, error: 'No image in the clipboard.' } },
+  })
+
+  await chatCommands['/paste'](ctx)
+
+  assert.equal(reads, 1)
+  assert.deepEqual(ctx.state.pendingAttachments, [])
+  assert.equal(consoleSpy.error(0), 'No image in the clipboard.\n')
+  assert.equal(consoleSpy.log(0), undefined)
+})
+
+test('/paste refuses a model without vision before reading the clipboard', async (t) => {
+  const consoleSpy = mockConsole(t)
+  let reads = 0
+  const { ctx } = makeCtx({
+    readClipboardImage: async () => { reads += 1; return { ok: true, data: FAKE_PNG, mime: 'image/png' } },
+  })
+  ctx.state.visionSupported = false
+
+  await chatCommands['/paste'](ctx)
+
+  assert.equal(reads, 0)
+  assert.deepEqual(ctx.state.pendingAttachments, [])
+  assert.equal(consoleSpy.error(0), 'Error: The selected model does not support image input.\n')
+})
+
 test('/attachments lists the queue with name, kind and size', async (t) => {
   const consoleSpy = mockConsole(t)
   const { ctx } = makeCtx()
@@ -1772,13 +1835,14 @@ test('/model keeps compatible attachments on switch', async (t) => {
   assert.equal(consoleSpy.log(0), 'Switched to NewProvider / new/model\n')
 })
 
-test('CHAT_COMMANDS keeps the 26-command order', () => {
+test('CHAT_COMMANDS keeps the 27-command order', () => {
   assert.deepEqual(CHAT_COMMANDS, [
     '/quit',
     '/status',
     '/new',
     '/model',
     '/attach',
+    '/paste',
     '/attachments',
     '/reasoning',
     '/temp',
@@ -1811,11 +1875,12 @@ test('visibleChatCommands hides /spelling without a spelling provider', () => {
   assert.deepEqual(visibleChatCommands({ visionSupported: true, providerName: 'venice', spellingSupported: true }), CHAT_COMMANDS)
 })
 
-test('visibleChatCommands hides /attach and /attachments only when vision is known unsupported', () => {
+test('visibleChatCommands hides /attach, /paste and /attachments only when vision is known unsupported', () => {
   const hidden = visibleChatCommands({ visionSupported: false, providerName: 'venice', spellingSupported: true })
   assert.ok(!hidden.includes('/attach'))
+  assert.ok(!hidden.includes('/paste'))
   assert.ok(!hidden.includes('/attachments'))
-  assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => c !== '/attach' && c !== '/attachments'))
+  assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => !['/attach', '/paste', '/attachments'].includes(c)))
 
   assert.deepEqual(visibleChatCommands({ visionSupported: true, providerName: 'venice', spellingSupported: true }), CHAT_COMMANDS)
   assert.deepEqual(visibleChatCommands({ visionSupported: undefined, providerName: 'venice', spellingSupported: true }), CHAT_COMMANDS)
@@ -1828,13 +1893,13 @@ test('visibleChatCommands hides /scrape outside Venice', () => {
 
 test('visibleChatCommands hides attach and web commands under e2ee', () => {
   const hidden = visibleChatCommands({ visionSupported: true, e2ee: true, providerName: 'venice', spellingSupported: true })
-  assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => !['/attach', '/attachments', '/web-search', '/web-results', '/scrape'].includes(c)))
-  for (const cmd of ['/attach', '/attachments', '/web-search', '/web-results', '/scrape']) {
+  assert.deepEqual(hidden, CHAT_COMMANDS.filter((c) => !['/attach', '/paste', '/attachments', '/web-search', '/web-results', '/scrape'].includes(c)))
+  for (const cmd of ['/attach', '/paste', '/attachments', '/web-search', '/web-results', '/scrape']) {
     assert.ok(!hidden.includes(cmd), `${cmd} must be hidden under e2ee`)
   }
 })
 
-test('e2ee blocks /attach, /attachments, /web-search and /web-results', async (t) => {
+test('e2ee blocks /attach, /paste, /attachments, /web-search and /web-results', async (t) => {
   mockConsole(t)
   const { ctx } = makeCtx({
     state: new ChatState({
@@ -1856,12 +1921,13 @@ test('e2ee blocks /attach, /attachments, /web-search and /web-results', async (t
   })
 
   await chatCommands['/attach']({ ...ctx, args: 'a.png' })
+  await chatCommands['/paste'](ctx)
   await chatCommands['/attachments']({ ...ctx, args: '' })
   await chatCommands['/web-search']({ ...ctx, args: 'auto' })
   await chatCommands['/web-results']({ ...ctx, args: '5' })
 
   const errors = console.error.mock.calls.map((c) => String(c.arguments[0]))
-  assert.equal(errors.filter((e) => e.includes('E2EE does not support file uploads')).length, 2)
+  assert.equal(errors.filter((e) => e.includes('E2EE does not support file uploads')).length, 3)
   assert.equal(errors.filter((e) => e.includes('E2EE does not support web search')).length, 2)
   assert.equal(ctx.state.pendingAttachments.length, 0)
   assert.equal(ctx.state.webSearch, 'off')

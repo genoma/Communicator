@@ -702,7 +702,7 @@ test('unknown command is rejected with the exact message and the provider is not
   const unknownLine = consoleSpy.allLogs().find((l) => l.startsWith('Unknown command'))
   assert.equal(
     unknownLine,
-    'Unknown command "/nope". Available: /quit, /status, /new, /model, /attach, /attachments, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /edit, /delete, /copy, /markdown, /smooth, /compact-thinking, /export-format, /cost, /help, /exit, /q\n'
+    'Unknown command "/nope". Available: /quit, /status, /new, /model, /attach, /paste, /attachments, /reasoning, /temp, /top-p, /budget, /web-search, /web-results, /retry, /edit, /delete, /copy, /markdown, /smooth, /compact-thinking, /export-format, /cost, /help, /exit, /q\n'
   )
 })
 
@@ -758,7 +758,7 @@ test('a normal message never takes the seam: the turn owns its own leading newli
   assert.equal(turnWrites.filter(([, text]) => text === '\n').length, 1)
 })
 
-test('unknown command list omits /attach and /attachments when the model lacks vision', async (t) => {
+test('unknown command list omits /attach, /paste and /attachments when the model lacks vision', async (t) => {
   const consoleSpy = mockConsole(t)
   const { provider, calls } = fakeProvider()
   const harness = makeDeps({ readInput: scriptedInput(['/nope', '/quit']) })
@@ -786,7 +786,7 @@ test('unknown command list lists /spelling with a spelling provider', async (t) 
   assert.ok(unknownLine.includes('/spelling'), 'a provider lists the spelling command')
 })
 
-test('autocomplete commands omit /attach and /attachments when the model lacks vision', async (t) => {
+test('autocomplete commands omit /attach, /paste and /attachments when the model lacks vision', async (t) => {
   mockConsole(t)
   const commandsSeen = []
   const inner = scriptedInput(['/quit'])
@@ -802,6 +802,7 @@ test('autocomplete commands omit /attach and /attachments when the model lacks v
   assert.ok(commandsSeen.length > 0)
   for (const commands of commandsSeen) {
     assert.ok(!commands.includes('/attach'))
+    assert.ok(!commands.includes('/paste'))
     assert.ok(!commands.includes('/attachments'))
     assert.ok(!commands.includes('/watermark'))
     assert.ok(!commands.includes('/spelling'), 'no provider hides the spelling command')
