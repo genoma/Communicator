@@ -125,7 +125,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       return Boolean(hasContent)
     }
 
-    const buildPartial = (err, reasoningMs = null, usage = null) => {
+    const buildPartial = (err, reasoningMs = null, usage = null, finishReason = null) => {
       const partial = { role: 'assistant', content: contentParts.join('') }
       if (reasoningParts.length > 0) partial.reasoning = reasoningParts.join('')
       // Mirror the success-path reasoning timestamp (see apiResultMessage) so
@@ -140,6 +140,9 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       // turn through seedTracker. The fetch-abort stop has no usage and never
       // invents one.
       if (usage) partial.usage = usage
+      // Only the post-metrics stop prints the finish notice live; carrying the
+      // reason keeps a rebuild/resume from replaying the answer as complete.
+      if (finishReason && finishReason !== 'stop') partial.finishReason = finishReason
       if (render.sources?.length > 0) partial.sources = render.sources
       if (!partial.content && !partial.reasoning && err?.pendingBuffer) {
         const pending = extractPartialToken(err.pendingBuffer)
@@ -311,9 +314,11 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         stdout.write(`${dim('Stopped')}\n\n`)
         // Same completed-stream billing as the flush-window stop above: record
         // the usage the normal path would (no printTurn, layout untouched)
-        // and persist it on the partial for the resume replay.
+        // and persist it on the partial for the resume replay. The finish
+        // reason rides along because this branch already printed the notice
+        // live; the flush-window branch above never did, so it stores none.
         if (apiResult.usage) sessionState.tracker.record(apiResult.usage, state.pricing)
-        return await finishStopped(buildPartial(null, apiResult.reasoningMs, apiResult.usage))
+        return await finishStopped(buildPartial(null, apiResult.reasoningMs, apiResult.usage, apiResult.finishReason))
       }
 
       if (apiResult.usage) {
@@ -352,7 +357,19 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
       }
       render.flush({ sync: true })
       debug(err?.stack)
-      const retryable = err instanceof ApiError && err.retryable
+      // An over-window failure is actionable (shorten or switch) and retrying
+      // it unchanged is guaranteed to fail, so it gets the classified message
+      // instead of the raw provider body. `mid-generation` is about whether
+      // the model had already delivered output, not the error's origin.
+      const midGeneration = contentParts.length > 0 || reasoningParts.length > 0
+      const overflowText = isContextOverflowError(err)
+        ? overflowErrorText({ phase: midGeneration ? 'mid-generation' : 'preflight', mode: 'repl' })
+        : null
+      // A classified overflow is never a transient to resend: force
+      // non-retryable even when a gateway 5xx/429 carried the provider's
+      // overflow wording, so the user turn is kept and any partial is
+      // salvaged instead of the pop-and-stash path.
+      const retryable = err instanceof ApiError && err.retryable && !overflowText
       // A non-retryable mid-stream failure (e.g. a content-refusal stream
       // error) can leave output the user already saw out of the transcript;
       // preserve it as an assistant message (mirroring finishStopped) so a
@@ -366,14 +383,6 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         const partial = buildPartial(err)
         if (partial.content || partial.reasoning) state.appendAssistant(partial)
       }
-      // An over-window failure is actionable (shorten or switch) and retrying
-      // it unchanged is guaranteed to fail, so it gets the classified message
-      // instead of the raw provider body. `mid-generation` is about whether
-      // the model had already delivered output, not the error's origin.
-      const midGeneration = contentParts.length > 0 || reasoningParts.length > 0
-      const overflowText = isContextOverflowError(err)
-        ? overflowErrorText({ phase: midGeneration ? 'mid-generation' : 'preflight', mode: 'repl' })
-        : null
       console.error(`\nError: ${overflowText ?? formatError(err)}\n`)
       // Record the failure summary so /retry can re-surface what it is
       // retrying, and a fresh prompt can supersede the stale notice.

@@ -172,7 +172,7 @@ export function formatMarkdown(sessionData, attachmentLink = null) {
       }
       const list = sourcesList(msg.sources)
       if (list) md += `${list}\n\n`
-      if (msg.finishReason === 'length') md += '**Note:** output limit reached — the answer above is incomplete.\n\n'
+      if (msg.finishReason === 'length' && contentText(msg.content)) md += '**Note:** output limit reached — the answer above is incomplete.\n\n'
     }
     md += '---\n\n'
   }

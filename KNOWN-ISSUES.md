@@ -19,8 +19,9 @@ lists **open items only**:
 
 A completed turn whose finish reason is `length` (the model spent its whole output budget on
 reasoning) but which streamed reasoning and no content falls into the empty-output verdict in
-`src/turn-runner.js`: the user message is popped/stashed and the streamed reasoning is not salvaged,
-so the transcript loses the only output the turn produced. The Esc/stop and Ctrl+C/interrupt paths
+`src/turn-runner.js`: `length` is non-retryable, so the user message is kept, but the streamed
+reasoning is not salvaged, and the transcript loses the only output the turn produced. The Esc/stop
+and Ctrl+C/interrupt paths
 already append a reasoning-only partial (see MEMORY.md §Display consistency contract); this path
 needs the same producer plus its own replay-parity tests. Filed separately from the context-overflow
 honesty work, which deliberately left it out to avoid adding a new reasoning-partial producer
