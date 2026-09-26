@@ -329,6 +329,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
 
     if (result.content || result.parts?.length > 0) {
       const msg = { role: 'assistant', content: result.content }
+      if (result.finishReason && result.finishReason !== 'stop') msg.finishReason = result.finishReason
       if (result.reasoning) {
         msg.reasoning = result.reasoning
         if (result.reasoningMs != null) msg.reasoningMs = result.reasoningMs

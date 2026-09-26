@@ -4,6 +4,7 @@ import { extractPartialToken } from './sse-parser.js'
 import { isEncryptedHex, decryptToken } from './e2ee.js'
 import { debug } from './ui/io.js'
 import { dim } from './ui/style.js'
+import { finishNotice } from './ui/format.js'
 import { printPostStreamMetrics } from './artifacts.js'
 import { createStreamKeyMonitor as defaultStreamKeyMonitor } from './stream-keys.js'
 
@@ -29,6 +30,12 @@ export function createSessionState() {
 export function createTurnRunner({ state, provider, apiKey, render, loader, stdout, tty, saveCurrentSession, interruptSave = saveCurrentSession, exit, sessionState, requestFn, sessionsDir = null, onRequest = null, postHistoryInstruction = null, rebuildAfterTurn = null, input = process.stdin, createStreamKeyMonitor = defaultStreamKeyMonitor }) {
   const apiResultMessage = (apiResult) => {
     const msg = { role: 'assistant', content: apiResult.content }
+    // Only an abnormal end is persisted ('stop' is the norm and stays absent),
+    // so a truncated turn replays the notice it printed live while clean turns
+    // keep the legacy message shape.
+    if (apiResult.finishReason && apiResult.finishReason !== 'stop') {
+      msg.finishReason = apiResult.finishReason
+    }
     if (apiResult.reasoning) {
       msg.reasoning = apiResult.reasoning
       if (apiResult.reasoningMs != null) msg.reasoningMs = apiResult.reasoningMs
@@ -290,7 +297,7 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         // skipped-chunks note does). Add the separator only for the bare
         // endings, or a sources-ending stop gains a doubled gap above
         // `Stopped`.
-        const metricsEndedWithBlank = (apiResult.sources?.length ?? 0) > 0 && (apiResult.skippedChunks ?? 0) === 0
+        const metricsEndedWithBlank = (apiResult.sources?.length ?? 0) > 0 && (apiResult.skippedChunks ?? 0) === 0 && !finishNotice(apiResult.finishReason, apiResult.content)
         if (wroteMetrics && !metricsEndedWithBlank) stdout.write('\n\n')
         stdout.write(`${dim('Stopped')}\n\n`)
         return await finishStopped(buildPartial(null, apiResult.reasoningMs))

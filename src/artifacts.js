@@ -5,6 +5,7 @@ import { ARTIFACT_DOWNLOAD_CONCURRENCY, MAX_PRODUCED_PARTS } from './constants.j
 import { dim } from './ui/style.js'
 import { hyperlink, sanitizeSingleLine } from './ui/hyperlink.js'
 import { attachmentLine, printSources } from './ui/stream.js'
+import { finishNotice } from './ui/format.js'
 
 // Models that advertise image output often emit the artifact as a markdown
 // image in plain text instead of a structured part. The conversion is gated on
@@ -115,10 +116,12 @@ export function printArtifacts(results, stdout = process.stdout) {
 }
 
 // Shared post-stream printer for chat (turn-runner) and one-shot: artifact
-// lines, the sources list and the malformed-chunk notice, all with the same
-// styling. `withSources`/`withSkipped` let piped one-shot keep its
-// content-only stdout contract (artifact lines go to stderr instead).
-export function printArtifactsSummary(results, apiResult, stdout = process.stdout, { withSources = true, withSkipped = true } = {}) {
+// lines, the sources list, the malformed-chunk notice and the finish notice,
+// all with the same styling. `withSources`/`withSkipped` let piped one-shot
+// keep its content-only stdout contract (it prints this block to stderr
+// instead); the finish notice stays on in both modes so a truncated piped
+// answer is still flagged.
+export function printArtifactsSummary(results, apiResult, stdout = process.stdout, { withSources = true, withSkipped = true, withFinishNotice = true } = {}) {
   let wrote = false
   if (results.length > 0) {
     printArtifacts(results, stdout)
@@ -132,10 +135,17 @@ export function printArtifactsSummary(results, apiResult, stdout = process.stdou
     stdout.write(`${dim(`${apiResult.skippedChunks} malformed stream chunk${apiResult.skippedChunks > 1 ? 's' : ''} skipped`)}\n`)
     wrote = true
   }
+  if (withFinishNotice) {
+    const notice = finishNotice(apiResult.finishReason, apiResult.content)
+    if (notice) {
+      stdout.write(`${dim(notice)}\n`)
+      wrote = true
+    }
+  }
   return wrote
 }
 
-export async function printPostStreamMetrics(apiResult, { sessionId, imageOutputSupported, stdout = process.stdout, requestFn, sessionsDir = null, withSources = true, withSkipped = true, signal }) {
+export async function printPostStreamMetrics(apiResult, { sessionId, imageOutputSupported, stdout = process.stdout, requestFn, sessionsDir = null, withSources = true, withSkipped = true, withFinishNotice = true, signal }) {
   const results = await resolveArtifacts(apiResult, { sessionId, imageOutputSupported, requestFn, sessionsDir, signal })
-  return printArtifactsSummary(results, apiResult, stdout, { withSources, withSkipped })
+  return printArtifactsSummary(results, apiResult, stdout, { withSources, withSkipped, withFinishNotice })
 }

@@ -311,6 +311,67 @@ test('one-shot piped stdout streams content but never reasoning', async (t) => {
   assert.ok(writes.some((w) => w === '\n'), 'trailing newline preserved')
 })
 
+// A length-capped answer is persisted with its finishReason (so a later export
+// or resume replays the notice) and flagged where the run's channel allows:
+// stdout on a terminal, stderr when stdout carries only answer text.
+function mockLengthTruncatedStream(t) {
+  resetOpenRouterModelCaches()
+  const models = [{ id: 'test/model-a', name: 'Model A', context_length: 1000, description: 'd', reasoning: null }]
+  const endpoints = [{ provider_name: 'ProviderX', tag: 't', status: 'available', uptime_last_30m: null, pricing: { prompt: 1e-6, completion: 2e-6 }, context_length: 1000, max_completion_tokens: null, supported_parameters: {} }]
+  const stream = [
+    event({ choices: [{ delta: { content: 'Hello' } }] }),
+    event({ choices: [{ delta: { content: ' world' }, finish_reason: 'length' }] }),
+    event({ usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }),
+    'data: [DONE]\n\n',
+  ]
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (String(url).includes('/chat/completions')) return sseResponse(stream)
+    if (String(url).includes('/endpoints')) return jsonResponse({ data: { endpoints } })
+    return jsonResponse({ data: models })
+  })
+}
+
+test('a length-truncated one-shot prints the notice on stdout on a terminal and persists the finish reason', async (t) => {
+  mockLengthTruncatedStream(t)
+  withApiKey(t)
+  withStdoutTTY(t, true)
+  const writes = mockPipedStdout(t)
+  const { errors } = captureConsole(t)
+  mockExit(t)
+
+  const { oneShotCmd } = await import('../src/commands/one-shot.js')
+  await oneShotCmd({ apiKey: 'test-key', opts: opts(), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: 'Hello' })
+
+  const notice = 'Output limit reached — the answer above is incomplete.'
+  assert.ok(writes.some((w) => w.includes(notice)), 'the notice reaches stdout on a terminal')
+  assert.ok(!errors.some((l) => l.includes(notice)), 'no stderr copy when the notice already went to stdout')
+
+  const sessionsDir = join(tempHome, '.communicator', 'sessions')
+  const files = (await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.'))
+  const saved = await Promise.all(files.map((f) => readFile(join(sessionsDir, f), 'utf-8').then(JSON.parse)))
+  const truncated = saved.find((data) => data.messages.at(-1)?.finishReason === 'length')
+  assert.ok(truncated, 'the truncated assistant message keeps its finish reason')
+  assert.equal(truncated.messages.at(-1).content, 'Hello world')
+})
+
+test('a length-truncated one-shot prints the notice to stderr when stdout is piped', async (t) => {
+  mockLengthTruncatedStream(t)
+  withApiKey(t)
+  withStdoutTTY(t, false)
+  const writes = mockPipedStdout(t)
+  const errors = []
+  t.mock.method(process.stderr, 'write', (chunk) => { errors.push(String(chunk)); return true })
+  mockExit(t)
+
+  const { oneShotCmd } = await import('../src/commands/one-shot.js')
+  await oneShotCmd({ apiKey: 'test-key', opts: opts(), prefs: {}, systemPrompt: null, providerType: 'openrouter', prompt: 'Hello' })
+
+  const notice = 'Output limit reached — the answer above is incomplete.'
+  assert.ok(errors.join('').includes(notice), 'the notice routes to stderr when stdout is piped')
+  assert.ok(writes.join('').includes('Hello world'), 'the answer still reaches piped stdout')
+  assert.ok(!writes.join('').includes(notice), 'piped stdout stays content-only')
+})
+
 test('one-shot with --web-search on persists the per-model webSearch pref', async (t) => {
   mockOpenRouterStream(t)
   withApiKey(t)

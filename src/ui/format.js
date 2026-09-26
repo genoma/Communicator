@@ -106,6 +106,19 @@ export function formatElapsedSeconds(ms) {
   return rest === 0 ? `${minutes}m` : `${minutes}m${String(rest).padStart(2, '0')}s`
 }
 
+// The one truncation/early-end notice line, shared by the live post-stream
+// summary (src/artifacts.js) and history replay (src/ui/stream.js) so a
+// resumed session or a resize rebuild shows the same line the live stream
+// did. It describes a delivered answer, so a message without content gets
+// none — the empty-content verdict in src/turn-runner.js owns that case —
+// and `stop`, `tool_calls` and an absent reason claim nothing.
+export function finishNotice(finishReason, content) {
+  if (typeof content !== 'string' || content.length === 0) return null
+  if (finishReason === 'length') return 'Output limit reached — the answer above is incomplete.'
+  if (finishReason === 'error' || finishReason === 'content_filter') return `The response ended early (finish reason: ${finishReason}).`
+  return null
+}
+
 export function formatSessionTime(value, { utc = false } = {}) {
   if (!value) return 'Unknown'
   let time = String(value).replace('T', ' ')

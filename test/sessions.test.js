@@ -155,6 +155,21 @@ test('loadSession returns full data for a known id', async (t) => {
   assert.equal(data.messages.length, 3)
 })
 
+test('a message finishReason survives a save/load round-trip unchanged', async (t) => {
+  const dir = await tempDir(t)
+  const data = sessionData({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'Write more.' },
+      { role: 'assistant', content: 'partial', finishReason: 'length' },
+    ],
+  })
+  await saveSession(dir, '2026-01-01T00-00-00', data)
+
+  const loaded = await loadSession(dir, '2026-01-01T00-00-00')
+  assert.deepEqual(loaded.messages[2], { role: 'assistant', content: 'partial', finishReason: 'length' })
+})
+
 test('loadSession turns a missing file into a clean CliError and drops the stale sidecar entry', async (t) => {
   const dir = await tempDir(t)
   await saveSession(dir, '2026-01-01T00-00-00', sessionData())

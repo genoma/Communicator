@@ -5,7 +5,7 @@ import { hyperlink, sanitizeAnsi, sanitizeSingleLine } from './hyperlink.js'
 import { SMOOTH_CHARS_PER_TICK, SMOOTH_TICK_MS, STREAM_IDLE_DOTS_ARM_MS, STREAM_IDLE_DOTS_TICK_MS } from '../constants.js'
 import { contentText, contentAttachments } from '../attachments.js'
 import { createThinkingMeter } from './loader.js'
-import { formatCompactCount, formatElapsedSeconds } from './format.js'
+import { finishNotice, formatCompactCount, formatElapsedSeconds } from './format.js'
 
 // Dim animated dots shown at the cursor once the answer has started and the
 // stream goes quiet. Three frames cycling in place, never labeled (the client
@@ -471,6 +471,8 @@ export function renderHistory(messages, { markdown = false, stdout = process.std
         out += `${attachmentLine(att.kind, att.filename)}\n`
       }
       out += sourcesText(msg.sources)
+      const notice = finishNotice(msg.finishReason, msg.content)
+      if (notice) out += `${dim(notice)}\n`
     }
   }
   // Continuation redraws (/retry, /edit) end the transcript flush so the

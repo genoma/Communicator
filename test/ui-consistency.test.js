@@ -318,6 +318,55 @@ test('printArtifactsSummary dims the malformed-chunk notice and honors the pipe 
   assert.equal(piped.plain(), '')
 })
 
+// A truncated turn is the same element on both paths: the live summary prints
+// the notice after the sources block, and the history replay rebuilt from the
+// persisted finishReason must emit that exact tail — otherwise a resumed
+// session or a resize rebuild silently drops (or reflows) what the live stream
+// showed. Covers the sources order too: notice after sources, not before.
+test('a truncated live summary and its history replay emit the same finish notice', (t) => {
+  enableAnsi(t)
+  const source = { title: 'One', url: 'https://one.example' }
+  const notice = 'Output limit reached — the answer above is incomplete.'
+
+  const live = capture()
+  printArtifactsSummary([], { content: 'partial answer', finishReason: 'length', sources: [source] }, live.stdout)
+
+  const history = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: 'partial answer', sources: [source], finishReason: 'length' },
+  ], { markdown: false, stdout: history.stdout })
+
+  assert.equal(live.plain(), `\nSources (1)\n[1] One\n\n${notice}\n`)
+  assert.ok(history.text().endsWith(live.text()), 'the replay tail must be byte-identical to the live summary')
+  assert.match(live.text(), /\x1b\[2mOutput limit reached/)
+  assert.match(history.text(), /\x1b\[2mOutput limit reached/)
+
+  const suppressed = capture()
+  printArtifactsSummary([], { content: 'partial answer', finishReason: 'length' }, suppressed.stdout, { withFinishNotice: false })
+  assert.equal(suppressed.plain(), '')
+})
+
+test('an early-ended live summary and its history replay emit the same content-filter notice', (t) => {
+  enableAnsi(t)
+  const notice = 'The response ended early (finish reason: content_filter).'
+
+  const live = capture()
+  printArtifactsSummary([], { content: 'partial answer', finishReason: 'content_filter' }, live.stdout)
+
+  const history = capture()
+  renderHistory([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'question' },
+    { role: 'assistant', content: 'partial answer', finishReason: 'content_filter' },
+  ], { markdown: false, stdout: history.stdout })
+
+  assert.equal(live.plain(), `${notice}\n`)
+  assert.ok(history.text().endsWith(live.text()), 'the replay tail must be byte-identical to the live summary')
+  assert.match(history.text(), /\x1b\[2mThe response ended early/)
+})
+
 test('printImageOutcome dims the saved-to lines like text-chat artifact notes', (t) => {
   enableAnsi(t)
   const { stdout, text, plain } = capture()

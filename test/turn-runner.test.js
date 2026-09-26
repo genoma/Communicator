@@ -590,6 +590,92 @@ test('an empty-content turn with a content-filter finish reason names it', async
   assert.match(state.lastError.message, /no output.*content_filter/)
 })
 
+test('a length-truncated answer stores its finish reason and prints the truncation notice', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const provider = okProvider({
+    async chatCompletion() {
+      return { content: 'partial answer', finishReason: 'length', usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }
+    },
+  })
+  const { deps } = makeDeps({ provider, stdout: { write: (s) => writes.push(String(s)) } })
+  const state = fakeState()
+
+  await runTurn(deps, state)
+
+  assert.equal(state.messages[2].finishReason, 'length')
+  assert.ok(writes.includes('Output limit reached — the answer above is incomplete.\n'))
+})
+
+test('a content-filtered answer stores its finish reason and names it in the early-end notice', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const provider = okProvider({
+    async chatCompletion() {
+      return { content: 'partial answer', finishReason: 'content_filter' }
+    },
+  })
+  const { deps } = makeDeps({ provider, stdout: { write: (s) => writes.push(String(s)) } })
+  const state = fakeState()
+
+  await runTurn(deps, state)
+
+  assert.equal(state.messages[2].finishReason, 'content_filter')
+  assert.ok(writes.includes('The response ended early (finish reason: content_filter).\n'))
+})
+
+test('a normal stop finish reason is not stored and prints no notice', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const provider = okProvider({
+    async chatCompletion() {
+      return { content: 'Hello!', finishReason: 'stop' }
+    },
+  })
+  const { deps } = makeDeps({ provider, stdout: { write: (s) => writes.push(String(s)) } })
+  const state = fakeState()
+
+  await runTurn(deps, state)
+
+  assert.equal('finishReason' in state.messages[2], false)
+  assert.ok(!writes.some((l) => l.includes('Output limit reached')))
+})
+
+test('an unmapped finish reason is stored but prints no notice', async (t) => {
+  mockConsole(t)
+  const writes = []
+  const provider = okProvider({
+    async chatCompletion() {
+      return { content: 'Hello!', finishReason: 'tool_calls' }
+    },
+  })
+  const { deps } = makeDeps({ provider, stdout: { write: (s) => writes.push(String(s)) } })
+  const state = fakeState()
+
+  await runTurn(deps, state)
+
+  assert.equal(state.messages[2].finishReason, 'tool_calls')
+  assert.ok(!writes.some((l) => l.includes('limit reached') || l.includes('ended early')))
+})
+
+test('an empty length-truncated answer keeps the no-output verdict and prints no notice', async (t) => {
+  const errors = captureErrors(t)
+  const writes = []
+  const provider = okProvider({
+    async chatCompletion() {
+      return { content: '', finishReason: 'length' }
+    },
+  })
+  const { deps } = makeDeps({ provider, stdout: { write: (s) => writes.push(String(s)) } })
+  const state = fakeState()
+
+  await runTurn(deps, state)
+
+  assert.equal(state.messages.length, 1)
+  assert.match(errors[0], /Provider returned no output \(finish reason: length\)\./)
+  assert.ok(!writes.some((l) => l.includes('Output limit reached')))
+})
+
 test('an interrupted stream salvages the partial response, saves and exits 130', async (t) => {
   mockConsole(t)
   let rejectCompletion

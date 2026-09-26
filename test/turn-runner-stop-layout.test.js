@@ -14,6 +14,7 @@ mock.module(new URL('../src/artifacts.js', import.meta.url).href, {
       await gate
       if (metrics.sources) apiResult.sources = metrics.sources
       if (metrics.skippedChunks != null) apiResult.skippedChunks = metrics.skippedChunks
+      if (metrics.finishReason != null) apiResult.finishReason = metrics.finishReason
       if (metrics.line != null) stdout.write(metrics.line)
       return metrics.emits
     },
@@ -171,6 +172,38 @@ test('post-metrics Esc stop with a sources-ending block writes no extra separato
   // The sources block ends with its own blank row, so the stop note must not
   // add a second separator (that would triple the gap above Stopped).
   assert.deepEqual(writes, ['\n', '\n\n', '\nSources (1)\n[1] One\n\n', `${dim('Stopped')}\n\n`])
+  assert.equal(produced, true)
+})
+
+test('post-metrics Esc stop with a finish notice after sources keeps the separator above Stopped', async () => {
+  const writes = []
+  metrics = {
+    emits: true,
+    line: '\nSources (1)\n[1] One\n\n\u001b[2mOutput limit reached \u2014 the answer above is incomplete.\u001b[22m\n',
+    sources: [{ title: 'One', url: 'https://one.example' }],
+    finishReason: 'length',
+    entered: false,
+    resolve: null,
+  }
+  const state = fakeState()
+  const sessionState = createSessionState()
+  const { deps, exitCodes, saves } = makeDeps({
+    provider: okProvider(),
+    sessionState,
+    stdout: { write: (s) => writes.push(String(s)) },
+  })
+
+  const turn = runTurn(deps, state)
+  while (!metrics.entered) await new Promise((resolve) => setTimeout(resolve, 0))
+  sessionState.stopped = true
+  metrics.resolve()
+  const produced = await turn
+
+  assert.deepEqual(exitCodes, [])
+  assert.deepEqual(saves, ['session'])
+  // The notice ends with a bare newline (not the sources block's blank row),
+  // so the stop note needs its own separator instead of being glued to it.
+  assert.deepEqual(writes, ['\n', '\n\n', metrics.line, '\n\n', `${dim('Stopped')}\n\n`])
   assert.equal(produced, true)
 })
 

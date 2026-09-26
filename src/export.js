@@ -172,6 +172,7 @@ export function formatMarkdown(sessionData, attachmentLink = null) {
       }
       const list = sourcesList(msg.sources)
       if (list) md += `${list}\n\n`
+      if (msg.finishReason === 'length') md += '**Note:** output limit reached — the answer above is incomplete.\n\n'
     }
     md += '---\n\n'
   }
@@ -203,6 +204,7 @@ export function formatJsonl(sessionData, sessionId = null) {
     if (msg.reasoningMs != null) obj.reasoningMs = msg.reasoningMs
     if (msg.usage != null) obj.usage = msg.usage
     if (msg.sources?.length) obj.sources = msg.sources
+    if (msg.finishReason != null) obj.finishReason = msg.finishReason
     lines.push(JSON.stringify(obj))
   }
   return lines.join('\n') + '\n'

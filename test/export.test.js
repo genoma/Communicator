@@ -64,6 +64,34 @@ test('formatJsonl emits a session header and one object per message', () => {
   assert.deepEqual(lines[3], { role: 'assistant', content: 'Paris.', reasoning: 'The user asks a geography question.', usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17 } })
 })
 
+test('formatMarkdown notes an incomplete answer when the turn hit the output limit', () => {
+  const md = formatMarkdown(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'Write an essay.' },
+      { role: 'assistant', content: 'Once upon a time', finishReason: 'length' },
+    ],
+  }))
+  assert.match(md, /### Answer\n\nOnce upon a time\n\n\*\*Note:\*\* output limit reached — the answer above is incomplete\.\n\n---/)
+  // A clean turn (no finishReason) carries no note.
+  assert.doesNotMatch(formatMarkdown(session()), /\*\*Note:\*\*/)
+})
+
+test('formatJsonl carries finishReason for a truncated turn and omits it otherwise', () => {
+  const jsonl = formatJsonl(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'Write an essay.' },
+      { role: 'assistant', content: 'Once upon a time', finishReason: 'length' },
+    ],
+  }), 'sess-1')
+  const lines = jsonl.trim().split('\n').map(JSON.parse)
+  assert.equal(lines.at(-1).finishReason, 'length')
+
+  const clean = formatJsonl(session(), 'sess-1').trim().split('\n').map(JSON.parse)
+  assert.equal('finishReason' in clean.at(-1), false)
+})
+
 test('formatMarkdown prefers the persisted costSummary over the replay calculation', () => {
   // The replay from usage would be 12*2.5e-6 + 5*1e-5 = 0.00008, but the
   // persisted summary (the authoritative total incl. scrapes) is preferred.
