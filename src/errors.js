@@ -58,6 +58,44 @@ export function commandErrorLine(err) {
   return err instanceof CliError ? `${sanitizeAnsi(err.message)}\n` : `Error: ${formatError(err)}\n`
 }
 
+const OVERFLOW_ERROR_TYPES = new Set(['context_length_exceeded', 'too_many_tokens'])
+
+// An over-window request reaches the client in three shapes: a typed
+// error_type/error code (mid-stream SSE events), or provider wording only.
+// Both providers' live pre-flight 400s ship wording without a usable type
+// (OpenRouter sends a numeric code, Venice a bare string), so classification
+// is status-agnostic and wording-first, and the patterns stay conservative to
+// avoid catching unrelated 400s.
+const OVERFLOW_MESSAGE_PATTERNS = [
+  /maximum context length/i,
+  /longer than the model['\u2019]s context length/i,
+  /exceeds the model['\u2019]s (?:maximum )?context/i,
+  /combined input and output tokens exceed/i,
+]
+
+export function isContextOverflowError(err) {
+  if (!err || typeof err !== 'object') return false
+  if (OVERFLOW_ERROR_TYPES.has(String(err.errorType).toLowerCase())) return true
+  if (OVERFLOW_ERROR_TYPES.has(String(err.code).toLowerCase())) return true
+  const message = typeof err.message === 'string' ? err.message : ''
+  return OVERFLOW_MESSAGE_PATTERNS.some((pattern) => pattern.test(message))
+}
+
+const OVERFLOW_TEXTS = {
+  repl: {
+    preflight: "Request exceeds this model's context window; retrying unchanged will fail. Shorten it with /edit or /delete, start fresh with /new, or switch to a larger-window /model.",
+    'mid-generation': 'The model hit its context window before finishing; retrying unchanged will fail. Shorten it with /edit or /delete, start fresh with /new, or switch to a larger-window /model.',
+  },
+  oneshot: {
+    preflight: "The request exceeds the model's context window. Retry with a shorter prompt or less history.",
+    'mid-generation': 'The model hit its context window before finishing. Retry with a shorter prompt or less history.',
+  },
+}
+
+export function overflowErrorText({ phase = 'preflight', mode = 'repl' } = {}) {
+  return OVERFLOW_TEXTS[mode]?.[phase] ?? OVERFLOW_TEXTS.repl.preflight
+}
+
 // Unwraps a provider error body (OpenAI-compatible: `{ error: { message,
 // code, metadata: { error_type } } }`, Venice `error.type`, or a bare string
 // `{ error: "..." }`) into the fields the ApiError carries. Unknown shapes

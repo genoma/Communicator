@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createTurnRunner, createSessionState } from '../src/turn-runner.js'
-import { ApiError } from '../src/errors.js'
+import { ApiError, makeHandleHttpError, overflowErrorText } from '../src/errors.js'
 import { dim } from '../src/ui/style.js'
 
 function fakeState(overrides = {}) {
@@ -85,6 +85,32 @@ function okProvider(overrides = {}) {
 function mockConsole(t) {
   t.mock.method(console, 'log', () => {})
   t.mock.method(console, 'error', () => {})
+}
+
+function captureErrors(t) {
+  const errors = []
+  t.mock.method(console, 'log', () => {})
+  t.mock.method(console, 'error', (line) => { errors.push(String(line)) })
+  return errors
+}
+
+const handleOpenRouterError = makeHandleHttpError({ providerName: 'OpenRouter', apiKeyEnv: 'OPENROUTER_API_KEY' })
+
+// The live OpenRouter pre-flight over-window 400: wording only (numeric code,
+// no error_type), so the REPL must classify it before rendering anything.
+function openRouterOverflowError() {
+  try {
+    handleOpenRouterError(400, JSON.stringify({
+      error: {
+        message: "This endpoint's maximum context length is 16384 tokens. However, you requested about 26265 tokens (26255 of text input, 10 in the output). Please reduce the length of either one, or use the context-compression plugin to compress your prompt automatically.",
+        code: 400,
+        metadata: { provider_name: null },
+      },
+    }))
+  } catch (err) {
+    return err
+  }
+  throw new Error('expected the OpenRouter handler to throw')
 }
 
 function enableAnsi(t) {
@@ -455,6 +481,69 @@ test('a non-retryable mid-stream error salvages the rendered partial as an assis
   assert.equal(state.retryTurn, undefined)
   assert.equal(state.lastError.retryable, false)
   assert.equal(state.lastError.type, 'content_filter')
+})
+
+test('a pre-flight context overflow renders the REPL message and keeps the user message', async (t) => {
+  const errors = captureErrors(t)
+  const provider = okProvider({
+    async chatCompletion() {
+      throw openRouterOverflowError()
+    },
+  })
+  const state = fakeState()
+  const { deps } = makeDeps({ provider })
+
+  await runTurn(deps, state)
+
+  const text = overflowErrorText({ phase: 'preflight', mode: 'repl' })
+  // The classified message replaces the raw provider body (and never leaks the
+  // 'request failed' rendering); the failure is non-retryable, so the user
+  // message stays in the transcript.
+  assert.deepEqual(errors, [`\nError: ${text}\n`])
+  assert.equal(state.messages.length, 2)
+  assert.equal(state.retryTurn, undefined)
+  assert.deepEqual(state.lastError, { message: text, status: 400, code: '400', type: null, retryable: false })
+})
+
+test('a mid-generation context overflow renders the REPL message and salvages the partial', async (t) => {
+  const errors = captureErrors(t)
+  const provider = okProvider({
+    async chatCompletion({ onToken }) {
+      onToken('Partial ', 'content')
+      throw new ApiError('Provider error', { errorType: 'context_length_exceeded', retryable: false })
+    },
+  })
+  const state = fakeState()
+  const { deps } = makeDeps({ provider })
+
+  await runTurn(deps, state)
+
+  const text = overflowErrorText({ phase: 'mid-generation', mode: 'repl' })
+  assert.deepEqual(errors, [`\nError: ${text}\n`])
+  // Delivered output classifies the failure as mid-generation, and the
+  // non-retryable salvage keeps the partial in the transcript.
+  assert.equal(state.messages.length, 3)
+  assert.equal(state.messages.at(-1).role, 'assistant')
+  assert.equal(state.messages.at(-1).content, 'Partial ')
+  assert.equal(state.retryTurn, undefined)
+  assert.deepEqual(state.lastError, { message: text, status: null, code: null, type: 'context_length_exceeded', retryable: false })
+})
+
+test('a non-overflow 400 keeps the raw provider rendering', async (t) => {
+  const errors = captureErrors(t)
+  const provider = okProvider({
+    async chatCompletion() {
+      throw new ApiError('OpenRouter request failed (400): Invalid model id', { status: 400, retryable: false })
+    },
+  })
+  const state = fakeState()
+  const { deps } = makeDeps({ provider })
+
+  await runTurn(deps, state)
+
+  assert.deepEqual(errors, ['\nError: OpenRouter request failed (400): Invalid model id\n'])
+  assert.equal(state.messages.length, 2)
+  assert.equal(state.lastError.message, 'OpenRouter request failed (400): Invalid model id')
 })
 
 test('a retryable failure records the failure summary on state.lastError', async (t) => {

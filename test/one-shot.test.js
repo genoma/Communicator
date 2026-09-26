@@ -1618,3 +1618,49 @@ test('the mandatory-reasoning note prints on stdout on a terminal', async (t) =>
   assert.ok(logs.some((l) => l.includes('reasoning is mandatory for test/model-mandatory')))
   assert.ok(!errors.some((l) => l.includes('reasoning is mandatory for test/model-mandatory')), 'the note belongs on stdout on a terminal')
 })
+
+test('one-shot reports a pre-flight context overflow with the one-shot message', async (t) => {
+  resetOpenRouterModelCaches()
+  const models = [{ id: 'test/model-a', name: 'Model A', context_length: 1000, description: 'd', reasoning: null }]
+  const endpoints = [{ provider_name: 'ProviderX', tag: 't', status: 'available', uptime_last_30m: null, pricing: { prompt: 1e-6, completion: 2e-6 }, context_length: 1000, max_completion_tokens: null, supported_parameters: {} }]
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (String(url).includes('/chat/completions')) {
+      return jsonResponse({
+        error: {
+          message: "This endpoint's maximum context length is 16384 tokens. However, you requested about 26265 tokens (26255 of text input, 10 in the output). Please reduce the length of either one, or use the context-compression plugin to compress your prompt automatically.",
+          code: 400,
+          metadata: { provider_name: null },
+        },
+      }, 400)
+    }
+    if (String(url).includes('/endpoints')) return jsonResponse({ data: { endpoints } })
+    return jsonResponse({ data: models })
+  })
+  withApiKey(t)
+  mockPipedStdout(t)
+  t.mock.method(console, 'error', () => {})
+
+  const { exited, exitCode, message } = await runOneShot(t)
+
+  assert.equal(exited, true)
+  assert.equal(exitCode, 1)
+  assert.equal(message, "Error: The request exceeds the model's context window. Retry with a shorter prompt or less history.")
+})
+
+test('one-shot reports a mid-generation context overflow after a delivered delta', async (t) => {
+  const stream = [
+    event({ choices: [{ delta: { content: 'Partial answer' } }] }),
+    event({ error: { message: 'The model hit its context window.', metadata: { error_type: 'context_length_exceeded' } } }),
+  ]
+  mockOpenRouterStream(t, [], [], stream)
+  withApiKey(t)
+  const writes = mockPipedStdout(t)
+  t.mock.method(console, 'error', () => {})
+
+  const { exited, exitCode, message } = await runOneShot(t)
+
+  assert.equal(exited, true)
+  assert.equal(exitCode, 1)
+  assert.equal(message, 'Error: The model hit its context window before finishing. Retry with a shorter prompt or less history.')
+  assert.ok(writes.join('').includes('Partial answer'), 'the delta that classified the failure as mid-generation was delivered')
+})

@@ -5,7 +5,7 @@ import { createNewSession, ensureSessionsDir, removeEmptySessionClaim } from '..
 import { createStreamRenderer } from '../ui/stream.js'
 import { UsageTracker, seedTracker, budgetLine, trackerCostSummary } from '../tracker.js'
 import { ChatState } from '../chat-state.js'
-import { CliError, formatError, isExitPromptError } from '../errors.js'
+import { CliError, formatError, isExitPromptError, isContextOverflowError, overflowErrorText } from '../errors.js'
 import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { loadAttachments, buildContent } from '../attachments.js'
 import { resolveArtifacts, printArtifactsSummary } from '../artifacts.js'
@@ -195,6 +195,10 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
   }
 
   let result
+  // Any content/reasoning delta means the model already started generating:
+  // an over-window failure then truncated a delivered answer instead of
+  // rejecting the request up front.
+  let sawStreamOutput = false
   try {
     const completionOpts = {
       apiKey: runApiKey,
@@ -262,7 +266,10 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
       render.turnStartedAt = performance.now()
       result = await provider.chatCompletion({
         ...completionOpts,
-        onToken: render,
+        onToken: (text, type) => {
+          if (type === 'content' || type === 'reasoning') sawStreamOutput = true
+          render(text, type)
+        },
         onSources: (sources) => {
           render.sources = sources
         },
@@ -272,6 +279,7 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
       result = await provider.chatCompletion({
         ...completionOpts,
         onToken: (text, type) => {
+          if (type === 'content' || type === 'reasoning') sawStreamOutput = true
           // Piped stdout stays raw answer-only: stream content deltas, sanitize
           // each chunk (same per-chunk level as the TTY renderer), and never
           // emit reasoning, markers, sources or non-text parts.
@@ -292,6 +300,9 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
       process.exit(130)
     }
     if (err instanceof CliError) throw err
+    if (isContextOverflowError(err)) {
+      throw new CliError(`Error: ${overflowErrorText({ phase: sawStreamOutput ? 'mid-generation' : 'preflight', mode: 'oneshot' })}`)
+    }
     throw new CliError(`Error: ${formatError(err)}`)
   } finally {
     requestSettled = true

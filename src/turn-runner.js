@@ -1,5 +1,5 @@
 import { UsageTracker, budgetLine } from './tracker.js'
-import { formatError, ApiError } from './errors.js'
+import { formatError, ApiError, isContextOverflowError, overflowErrorText } from './errors.js'
 import { extractPartialToken } from './sse-parser.js'
 import { isEncryptedHex, decryptToken } from './e2ee.js'
 import { debug } from './ui/io.js'
@@ -346,11 +346,19 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
         const partial = buildPartial(err)
         if (partial.content || partial.reasoning) state.appendAssistant(partial)
       }
-      console.error(`\nError: ${formatError(err)}\n`)
+      // An over-window failure is actionable (shorten or switch) and retrying
+      // it unchanged is guaranteed to fail, so it gets the classified message
+      // instead of the raw provider body. `mid-generation` is about whether
+      // the model had already delivered output, not the error's origin.
+      const midGeneration = contentParts.length > 0 || reasoningParts.length > 0
+      const overflowText = isContextOverflowError(err)
+        ? overflowErrorText({ phase: midGeneration ? 'mid-generation' : 'preflight', mode: 'repl' })
+        : null
+      console.error(`\nError: ${overflowText ?? formatError(err)}\n`)
       // Record the failure summary so /retry can re-surface what it is
       // retrying, and a fresh prompt can supersede the stale notice.
       state.lastError = {
-        message: err?.message ?? 'Unknown error',
+        message: overflowText ?? err?.message ?? 'Unknown error',
         status: err instanceof ApiError ? err.status : null,
         code: err instanceof ApiError ? (err.code ?? null) : null,
         type: err instanceof ApiError ? (err.errorType ?? null) : null,
