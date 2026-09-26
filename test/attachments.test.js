@@ -262,7 +262,7 @@ test('attachmentFromBytes builds the same payload shape as the file path', async
   const calls = []
   const att = await attachmentFromBytes(Buffer.from('PNGDATA'), {
     mime: 'image/png',
-    filename: 'clipboard-12:00:00.png',
+    filename: 'clipboard-12-00-00.png',
     transformImage: async (buffer, options) => {
       calls.push({ buffer, options })
       return { buffer: Buffer.from('SMALL'), mime: 'image/webp' }
@@ -272,7 +272,7 @@ test('attachmentFromBytes builds the same payload shape as the file path', async
   assert.equal(calls[0].buffer.toString(), 'PNGDATA')
   assert.equal(calls[0].options.mime, 'image/png')
   assert.equal(att.kind, 'image')
-  assert.equal(att.filename, 'clipboard-12:00:00.png')
+  assert.equal(att.filename, 'clipboard-12-00-00.png')
   assert.equal(att.mime, 'image/webp')
   assert.equal(att.size, 5)
   assert.equal(att.data, `data:image/webp;base64,${Buffer.from('SMALL').toString('base64')}`)
@@ -281,7 +281,7 @@ test('attachmentFromBytes builds the same payload shape as the file path', async
 test('attachmentFromBytes keeps the original bytes when the transform returns null', async () => {
   const att = await attachmentFromBytes(Buffer.from('PNGDATA'), {
     mime: 'image/png',
-    filename: 'clipboard-12:00:00.png',
+    filename: 'clipboard-12-00-00.png',
     transformImage: async () => null,
   })
   assert.equal(att.mime, 'image/png')
@@ -291,8 +291,8 @@ test('attachmentFromBytes keeps the original bytes when the transform returns nu
 
 test('attachmentFromBytes rejects bytes over the 20 MB limit', async () => {
   await assert.rejects(
-    attachmentFromBytes(Buffer.alloc(MAX_IMAGE_ATTACHMENT_BYTES + 1), { mime: 'image/png', filename: 'clipboard-12:00:00.png' }),
-    { message: 'Attachment too large: clipboard-12:00:00.png (image limit is 20 MB)' },
+    attachmentFromBytes(Buffer.alloc(MAX_IMAGE_ATTACHMENT_BYTES + 1), { mime: 'image/png', filename: 'clipboard-12-00-00.png' }),
+    { message: 'Attachment too large: clipboard-12-00-00.png (image limit is 20 MB)' },
   )
 })
 
@@ -300,10 +300,10 @@ test('attachmentFromBytes throws the conversion error for a must-convert image i
   await assert.rejects(
     attachmentFromBytes(Buffer.from('TIFFDATA'), {
       mime: 'image/tiff',
-      filename: 'clipboard-12:00:00.png',
+      filename: 'clipboard-12-00-00.png',
       transformImage: async () => null,
     }),
-    { message: 'Cannot read attachment: clipboard-12:00:00.png (image conversion failed)' },
+    { message: 'Cannot read attachment: clipboard-12-00-00.png (image conversion failed)' },
   )
 })
 
@@ -315,10 +315,10 @@ test('a rejecting injected transform degrades instead of failing the attach', as
   await assert.rejects(
     attachmentFromBytes(Buffer.from('TIFFDATA'), {
       mime: 'image/tiff',
-      filename: 'clipboard-12:00:00.png',
+      filename: 'clipboard-12-00-00.png',
       transformImage: async () => { throw new Error('boom') },
     }),
-    { message: 'Cannot read attachment: clipboard-12:00:00.png (image conversion failed)' },
+    { message: 'Cannot read attachment: clipboard-12-00-00.png (image conversion failed)' },
   )
 })
 

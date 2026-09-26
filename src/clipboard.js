@@ -2,8 +2,9 @@ import { spawn } from 'node:child_process'
 import { closeSync, openSync } from 'node:fs'
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir as osTmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, isAbsolute, join } from 'node:path'
 import { MAX_IMAGE_ATTACHMENT_BYTES } from './constants.js'
+import { classifyPath } from './attachments.js'
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 const TIFF_SIGNATURES = [Buffer.from([0x49, 0x49, 0x2a, 0x00]), Buffer.from([0x4d, 0x4d, 0x00, 0x2a])]
@@ -12,6 +13,18 @@ const NO_IMAGE_ERROR = 'No image in the clipboard.'
 const NO_TOOL_ERROR = 'No clipboard image tool found. Install wl-paste (wl-clipboard) or xclip.'
 const READ_ERROR = 'Cannot read the clipboard image.'
 const TOO_LARGE_ERROR = 'The clipboard image is larger than 20 MB.'
+const STDOUT_CAPTURE_LIMIT = 8 * 1024
+
+// AppleScript coerces any text into a file URL, so the flavor has to be checked
+// before the coercion is attempted: only a real file URL passes this probe.
+const FILE_URL_SCRIPT = [
+  'set found to false',
+  'repeat with entry in (clipboard info)',
+  '  if (item 1 of entry is «class furl») then set found to true',
+  'end repeat',
+  'if not found then error number -1700',
+  'return POSIX path of (the clipboard as «class furl»)',
+].join('\n')
 
 // The output path travels through the environment: TEMP can hold spaces and
 // apostrophes, and interpolating it into PowerShell source would break on both.
@@ -102,6 +115,7 @@ function imageAttempts(platform, dir) {
     const pngTarget = join(dir, 'clip.png')
     const tiffTarget = join(dir, 'clip.tiff')
     return [
+      { cmd: '/usr/bin/osascript', args: ['-e', FILE_URL_SCRIPT], captureStdout: true, fileUrl: true },
       { cmd: '/usr/bin/osascript', args: ['-e', appleScriptClipboardWrite('PNGf', pngTarget)], target: pngTarget, signature: 'png', mime: 'image/png' },
       { cmd: '/usr/bin/osascript', args: ['-e', appleScriptClipboardWrite('TIFF', tiffTarget)], target: tiffTarget, signature: 'tiff', mime: 'image/tiff' },
     ]
@@ -131,13 +145,17 @@ function runAttempt(attempt, timeoutMs) {
       try {
         fd = openSync(attempt.target, 'w')
       } catch {
-        resolve('io-failed')
+        resolve({ outcome: 'io-failed', stdout: '' })
         return
       }
       stdio = ['ignore', fd, 'ignore']
+    } else if (attempt.captureStdout) {
+      stdio = ['ignore', 'pipe', 'ignore']
     }
     let settled = false
     let child = null
+    let stdout = ''
+    let overflowed = false
     const finish = (outcome) => {
       if (settled) return
       settled = true
@@ -149,7 +167,7 @@ function runAttempt(attempt, timeoutMs) {
           // The child may already have closed the inherited descriptor.
         }
       }
-      resolve(outcome)
+      resolve({ outcome, stdout })
     }
     const timer = setTimeout(() => {
       if (settled) return
@@ -162,9 +180,30 @@ function runAttempt(attempt, timeoutMs) {
       finish('failed')
       return
     }
+    if (attempt.captureStdout) {
+      child.stdout?.on('data', (chunk) => {
+        if (overflowed) return
+        stdout += chunk
+        if (stdout.length > STDOUT_CAPTURE_LIMIT) overflowed = true
+      })
+    }
     child.on('error', (err) => finish(err?.code === 'ENOENT' ? 'missing' : 'failed'))
-    child.on('close', (code) => finish(code === 0 ? 'exited' : 'failed'))
+    child.on('close', (code) => finish(code === 0 && !overflowed ? 'exited' : 'failed'))
   })
+}
+
+async function readClipboardFileUrl(text) {
+  const path = text.trim()
+  if (!path || !isAbsolute(path)) return null
+  const { kind, mime } = classifyPath(path)
+  if (kind !== 'image') return null
+  const info = await stat(path).catch(() => null)
+  if (!info || info.size === 0) return null
+  if (info.size > MAX_IMAGE_ATTACHMENT_BYTES) return { oversized: true }
+  const data = await readFile(path).catch(() => null)
+  if (!data || data.length === 0) return null
+  if (data.length > MAX_IMAGE_ATTACHMENT_BYTES) return { oversized: true }
+  return { data, mime, filename: basename(path) }
 }
 
 function isUsableImage(buffer, signature) {
@@ -184,11 +223,20 @@ export async function readClipboardImage({ platform = process.platform, timeoutM
     let sawTool = false
     let sawOversized = false
     for (const attempt of imageAttempts(platform, dir)) {
-      const outcome = await runAttempt(attempt, timeoutMs)
+      const { outcome, stdout } = await runAttempt(attempt, timeoutMs)
       if (outcome === 'io-failed') return { ok: false, error: READ_ERROR }
       if (outcome === 'missing') continue
       sawTool = true
       if (outcome !== 'exited') continue
+      if (attempt.fileUrl) {
+        const file = await readClipboardFileUrl(stdout)
+        if (file?.oversized) {
+          sawOversized = true
+          continue
+        }
+        if (!file) continue
+        return { ok: true, ...file }
+      }
       // A killed or failed attempt can leave bytes that pass the magic check:
       // only an exit code 0 makes the file trustworthy.
       const info = await stat(attempt.target).catch(() => null)

@@ -29,7 +29,7 @@ When none is available, `/copy` reports `Copy failed: No clipboard tool found. I
 
 ## Clipboard image paste
 
-`/paste` queues the image currently on the clipboard. Reading is separate from copying and has its own tools: `osascript` on macOS (built-in), Windows PowerShell 5.1 (`Get-Clipboard -Format Image`, built-in — PowerShell 7 cannot read images at all), and `wl-paste` or `xclip` on Linux (from the `wl-clipboard`/`xclip` packages; `xsel` cannot serve images, so on X11 install `xclip`). When no reader is present, or the clipboard holds no image, or the image is over the 20 MB attachment limit, `/paste` says so and queues nothing.
+`/paste` queues the image currently on the clipboard. Reading is separate from copying and has its own tools: `osascript` on macOS (built-in), Windows PowerShell 5.1 (`Get-Clipboard -Format Image`, built-in — PowerShell 7 cannot read images at all), and `wl-paste` or `xclip` on Linux (from the `wl-clipboard`/`xclip` packages; `xsel` cannot serve images, so on X11 install `xclip`). On macOS a file URL on the pasteboard is preferred when present (a Finder copy, ⌘C, or a staged screenshot from the Screenshot UI): that file is queued exactly like `/attach <path>` and named from its basename. A screenshot copied straight to the clipboard carries only image flavours (PNG, TIFF, JPEG, AVIF, …) and no file URL, so it keeps the synthesized `clipboard-<hh-mm-ss>.png` name. The Linux and Windows readers are unchanged and do not follow file URLs. When no reader is present, or the clipboard holds no image, or the image is over the 20 MB attachment limit and no image flavour is readable, `/paste` says so and queues nothing.
 
 ## Terminals
 

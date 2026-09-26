@@ -1,3 +1,4 @@
+import { basename, extname } from 'node:path'
 import { formatError, commandErrorLine, isExitPromptError } from '../../errors.js'
 import { selectModelAndEndpoint } from '../../model-selection.js'
 import { getEffortLabel, selectReasoningEffort } from '../../prompts.js'
@@ -109,7 +110,30 @@ function attachmentGateOptions(ctx) {
 
 function clipboardImageFilename(now = new Date()) {
   const pad = (value) => String(value).padStart(2, '0')
-  return `clipboard-${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.png`
+  return `clipboard-${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}.png`
+}
+
+function capFilename(name, max = 80) {
+  const chars = [...name]
+  if (chars.length <= max) return name
+  const ext = extname(name)
+  if (!ext || ext.length >= max) return chars.slice(0, max).join('')
+  return chars.slice(0, max - ext.length).join('') + ext
+}
+
+function sanitizeClipboardFilename(name) {
+  const cleaned = basename(String(name ?? ''))
+    .replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, '')
+    .replace(/[<>:"\\|?*]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^\.+/, '')
+    .trim()
+  return cleaned ? capFilename(cleaned) : null
+}
+
+function clipboardFilename(source, now = new Date()) {
+  return sanitizeClipboardFilename(source) ?? clipboardImageFilename(now)
 }
 
 // The edited text replaces the message text part in place; attachment parts
@@ -297,7 +321,7 @@ const handlers = {
     }
     let attachment
     try {
-      attachment = await attachmentFromBytes(result.data, { mime: result.mime, filename: clipboardImageFilename() })
+      attachment = await attachmentFromBytes(result.data, { mime: result.mime, filename: clipboardFilename(result.filename) })
     } catch (err) {
       console.error(`Error: ${err.message}\n`)
       return

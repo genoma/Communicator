@@ -300,6 +300,32 @@ test('exportSession rejects when the target directory is not writable', async (t
   )
 })
 
+test('materializes a colon-bearing attachment under a Windows-safe file name', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const pdf = Buffer.from('pdf-bytes')
+  const data = session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'See this' },
+          { type: 'file', file: { filename: 'notes:2026.pdf', file_data: `data:application/pdf;base64,${pdf.toString('base64')}` } },
+        ],
+      },
+      { role: 'assistant', content: 'Got it.' },
+    ],
+  })
+  const folder = await exportSession(data, dir, '2026-07-30T19-11-45')
+
+  assert.deepEqual(await readFile(join(folder, 'attachments', 'notes2026.pdf')), pdf)
+  assert.deepEqual(await readdir(join(folder, 'attachments')), ['notes2026.pdf'])
+  const md = await readFile(join(folder, 'session-2026-07-30T19-11-45.md'), 'utf-8')
+  // The link points at the sanitized file; the label keeps the original name.
+  assert.match(md, /> \*\*Attachment:\*\* \[notes:2026\.pdf\]\(attachments\/notes2026\.pdf\)/)
+})
+
 test('materializes user attachment parts as files with relative links', async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'communicator-export-'))
   t.after(() => rm(dir, { recursive: true, force: true }))

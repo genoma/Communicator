@@ -1702,12 +1702,89 @@ test('/paste queues the clipboard image and prints the same line as /attach', as
   assert.equal(ctx.state.pendingAttachments.length, 1)
   const attachment = ctx.state.pendingAttachments[0]
   assert.equal(attachment.kind, 'image')
-  assert.match(attachment.filename, /^clipboard-\d{2}:\d{2}:\d{2}\.png$/)
+  assert.match(attachment.filename, /^clipboard-\d{2}-\d{2}-\d{2}\.png$/)
   assert.equal(attachment.mime, 'image/png')
   assert.equal(attachment.size, FAKE_PNG.length)
   assert.equal(attachment.data, `data:image/png;base64,${FAKE_PNG.toString('base64')}`)
   assert.equal(consoleSpy.log(0), `attached: ${attachment.filename} (image, ${FAKE_PNG.length} B)\n`)
   assert.equal(consoleSpy.error(0), undefined)
+})
+
+test('/paste uses the reader filename for the attached label', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({
+    readClipboardImage: async () => ({ ok: true, data: FAKE_PNG, mime: 'image/png', filename: 'Screenshot 2026-09-26 at 11.35.24.png' }),
+  })
+
+  await chatCommands['/paste'](ctx)
+
+  const attachment = ctx.state.pendingAttachments[0]
+  assert.equal(attachment.filename, 'Screenshot 2026-09-26 at 11.35.24.png')
+  assert.equal(consoleSpy.log(0), `attached: Screenshot 2026-09-26 at 11.35.24.png (image, ${FAKE_PNG.length} B)\n`)
+})
+
+test('/paste sanitizes the reader filename for the attached label', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({
+    readClipboardImage: async () => ({ ok: true, data: FAKE_PNG, mime: 'image/png', filename: '/tmp/../.shot:\u0007  2026?.png' }),
+  })
+
+  await chatCommands['/paste'](ctx)
+
+  const attachment = ctx.state.pendingAttachments[0]
+  assert.equal(attachment.filename, 'shot 2026.png')
+  assert.equal(consoleSpy.log(0), `attached: shot 2026.png (image, ${FAKE_PNG.length} B)\n`)
+})
+
+test('/paste caps a long reader filename and keeps its extension', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const long = `${'x'.repeat(100)}.png`
+  const { ctx } = makeCtx({ readClipboardImage: async () => ({ ok: true, data: FAKE_PNG, mime: 'image/png', filename: long }) })
+
+  await chatCommands['/paste'](ctx)
+
+  const attachment = ctx.state.pendingAttachments[0]
+  assert.equal(attachment.filename.length, 80)
+  assert.ok(attachment.filename.endsWith('.png'))
+  assert.equal(consoleSpy.log(0), `attached: ${attachment.filename} (image, ${FAKE_PNG.length} B)\n`)
+})
+
+test('/paste strips bidi and zero-width characters from the reader filename', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({
+    readClipboardImage: async () => ({ ok: true, data: FAKE_PNG, mime: 'image/png', filename: 'sh\u202eot\u200b.png' }),
+  })
+
+  await chatCommands['/paste'](ctx)
+
+  const attachment = ctx.state.pendingAttachments[0]
+  assert.equal(attachment.filename, 'shot.png')
+  assert.equal(consoleSpy.log(0), `attached: shot.png (image, ${FAKE_PNG.length} B)\n`)
+})
+
+test('/paste caps an astral filename without splitting a surrogate pair', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const long = `${'\ud83d\ude00'.repeat(90)}.png`
+  const { ctx } = makeCtx({ readClipboardImage: async () => ({ ok: true, data: FAKE_PNG, mime: 'image/png', filename: long }) })
+
+  await chatCommands['/paste'](ctx)
+
+  const attachment = ctx.state.pendingAttachments[0]
+  assert.equal([...attachment.filename].length, 80)
+  assert.ok(attachment.filename.endsWith('.png'))
+  assert.doesNotMatch(attachment.filename, /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/)
+  assert.equal(consoleSpy.log(0), `attached: ${attachment.filename} (image, ${FAKE_PNG.length} B)\n`)
+})
+
+test('/paste falls back to the synthesized name when the reader filename sanitizes to nothing', async (t) => {
+  const consoleSpy = mockConsole(t)
+  const { ctx } = makeCtx({ readClipboardImage: async () => ({ ok: true, data: FAKE_PNG, mime: 'image/png', filename: ':::' }) })
+
+  await chatCommands['/paste'](ctx)
+
+  const attachment = ctx.state.pendingAttachments[0]
+  assert.match(attachment.filename, /^clipboard-\d{2}-\d{2}-\d{2}\.png$/)
+  assert.equal(consoleSpy.log(0), `attached: ${attachment.filename} (image, ${FAKE_PNG.length} B)\n`)
 })
 
 test('/paste reports the bytes-path conversion error with the synthesized filename', async (t) => {
@@ -1717,7 +1794,7 @@ test('/paste reports the bytes-path conversion error with the synthesized filena
   await chatCommands['/paste'](ctx)
 
   assert.deepEqual(ctx.state.pendingAttachments, [])
-  assert.match(consoleSpy.error(0), /^Error: Cannot read attachment: clipboard-\d{2}:\d{2}:\d{2}\.png \(image conversion failed\)\n$/)
+  assert.match(consoleSpy.error(0), /^Error: Cannot read attachment: clipboard-\d{2}-\d{2}-\d{2}\.png \(image conversion failed\)\n$/)
 })
 
 test('/paste prints the no-image line and queues nothing', async (t) => {

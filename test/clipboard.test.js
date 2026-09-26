@@ -1,7 +1,7 @@
 import { test, mock } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { readdirSync, writeFileSync, writeSync } from 'node:fs'
+import { mkdtemp, rm, truncate } from 'node:fs/promises'
+import { mkdirSync, readdirSync, writeFileSync, writeSync } from 'node:fs'
 import * as realFs from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -20,6 +20,16 @@ class FakeChild {
       },
       emit: (event, ...args) => {
         this.stdin.listeners[event]?.(...args)
+      },
+    }
+    this.stdout = {
+      listeners: {},
+      on: (event, fn) => {
+        this.stdout.listeners[event] = fn
+        return this.stdout
+      },
+      emit: (event, ...args) => {
+        this.stdout.listeners[event]?.(...args)
       },
     }
     this.killed = false
@@ -230,12 +240,25 @@ function scriptTarget(args) {
   return /POSIX file "([^"]+)"/.exec(args[1])[1]
 }
 
+async function darwinFileUrlAttempt(calls) {
+  return waitForCall(calls, 0)
+}
+
+async function failDarwinImageFlavours(calls) {
+  const pngAttempt = await waitForCall(calls, 1)
+  pngAttempt.child.fail(1)
+  const tiffAttempt = await waitForCall(calls, 2)
+  tiffAttempt.child.fail(1)
+}
+
 test('readClipboardImage reads a PNG written by osascript on darwin', async (t) => {
   const calls = captureReadSpawn()
   const root = await readTempRoot(t)
 
   const promise = readClipboardImage({ platform: 'darwin', tmpdir: root })
-  const call = await waitForCall(calls)
+  const furlAttempt = await waitForCall(calls, 0)
+  furlAttempt.child.fail(1)
+  const call = await waitForCall(calls, 1)
   writeFileSync(scriptTarget(call.args), PNG_BYTES)
   call.child.succeed()
   const result = await promise
@@ -252,9 +275,11 @@ test('readClipboardImage retries the TIFF flavor when the PNG write fails', asyn
   const calls = captureReadSpawn()
 
   const promise = readClipboardImage({ platform: 'darwin' })
-  const pngAttempt = await waitForCall(calls, 0)
+  const furlAttempt = await waitForCall(calls, 0)
+  furlAttempt.child.fail(1)
+  const pngAttempt = await waitForCall(calls, 1)
   pngAttempt.child.fail(1)
-  const tiffAttempt = await waitForCall(calls, 1)
+  const tiffAttempt = await waitForCall(calls, 2)
   writeFileSync(scriptTarget(tiffAttempt.args), TIFF_BYTES)
   tiffAttempt.child.succeed()
   const result = await promise
@@ -262,6 +287,172 @@ test('readClipboardImage retries the TIFF flavor when the PNG write fails', asyn
   assert.ok(pngAttempt.args[1].includes('«class PNGf»'))
   assert.ok(tiffAttempt.args[1].includes('«class TIFF»'))
   assert.deepEqual(result, { ok: true, data: TIFF_BYTES, mime: 'image/tiff' })
+})
+
+test('readClipboardImage reads the file URL behind a darwin pasteboard', async (t) => {
+  const calls = captureReadSpawn()
+  const root = await readTempRoot(t)
+  const target = join(root, 'Screenshot 2026-09-26 at 11.35.24.png')
+  writeFileSync(target, PNG_BYTES)
+
+  const promise = readClipboardImage({ platform: 'darwin', tmpdir: root })
+  const furlAttempt = await darwinFileUrlAttempt(calls)
+  furlAttempt.child.stdout.emit('data', Buffer.from(`${target}\n`))
+  furlAttempt.child.succeed()
+  const result = await promise
+
+  assert.ok(furlAttempt.args[1].includes('clipboard info'))
+  assert.ok(furlAttempt.args[1].includes('«class furl»'))
+  assert.ok(furlAttempt.args[1].includes('error number -1700'))
+  assert.deepEqual(furlAttempt.opts.stdio, ['ignore', 'pipe', 'ignore'])
+  assert.deepEqual(result, { ok: true, data: PNG_BYTES, mime: 'image/png', filename: 'Screenshot 2026-09-26 at 11.35.24.png' })
+})
+
+test('readClipboardImage prefers the file URL over the image flavours', async (t) => {
+  const calls = captureReadSpawn()
+  const root = await readTempRoot(t)
+  const target = join(root, 'photo.png')
+  writeFileSync(target, PNG_BYTES)
+
+  const promise = readClipboardImage({ platform: 'darwin', tmpdir: root })
+  const furlAttempt = await waitForCall(calls, 0)
+  furlAttempt.child.stdout.emit('data', Buffer.from(`${target}\n`))
+  furlAttempt.child.succeed()
+  const result = await promise
+
+  assert.equal(calls.length, 1, 'no flavour attempt runs once the file URL resolved')
+  assert.deepEqual(result, { ok: true, data: PNG_BYTES, mime: 'image/png', filename: 'photo.png' })
+})
+
+test('readClipboardImage falls through when the file URL probe prints nothing', async () => {
+  const calls = captureReadSpawn()
+
+  const promise = readClipboardImage({ platform: 'darwin' })
+  const furlAttempt = await darwinFileUrlAttempt(calls)
+  furlAttempt.child.succeed()
+  await failDarwinImageFlavours(calls)
+
+  assert.deepEqual(await promise, { ok: false, error: 'No image in the clipboard.' })
+})
+
+test('readClipboardImage falls back to a flavour when the file URL target is too large', async (t) => {
+  const calls = captureReadSpawn()
+  const root = await readTempRoot(t)
+  const target = join(root, 'huge.png')
+  writeFileSync(target, PNG_BYTES)
+  await truncate(target, MAX_IMAGE_ATTACHMENT_BYTES + 1)
+
+  const promise = readClipboardImage({ platform: 'darwin', tmpdir: root })
+  const furlAttempt = await darwinFileUrlAttempt(calls)
+  furlAttempt.child.stdout.emit('data', Buffer.from(target))
+  furlAttempt.child.succeed()
+  const pngAttempt = await waitForCall(calls, 1)
+  writeFileSync(scriptTarget(pngAttempt.args), PNG_BYTES)
+  pngAttempt.child.succeed()
+  const result = await promise
+
+  assert.deepEqual(result, { ok: true, data: PNG_BYTES, mime: 'image/png' })
+  assert.equal(result.filename, undefined)
+})
+
+test('readClipboardImage ignores darwin file URL output when the probe exits non-zero', async (t) => {
+  const calls = captureReadSpawn()
+  const root = await readTempRoot(t)
+  const target = join(root, 'shot.png')
+  writeFileSync(target, PNG_BYTES)
+
+  const promise = readClipboardImage({ platform: 'darwin', tmpdir: root })
+  const furlAttempt = await darwinFileUrlAttempt(calls)
+  furlAttempt.child.stdout.emit('data', Buffer.from(`${target}\n`))
+  furlAttempt.child.fail(1)
+  await failDarwinImageFlavours(calls)
+
+  assert.deepEqual(await promise, { ok: false, error: 'No image in the clipboard.' })
+})
+
+test('readClipboardImage refuses a relative path from the darwin file URL probe', async () => {
+  const calls = captureReadSpawn()
+
+  const promise = readClipboardImage({ platform: 'darwin' })
+  const furlAttempt = await darwinFileUrlAttempt(calls)
+  furlAttempt.child.stdout.emit('data', Buffer.from('furl.png\n'))
+  furlAttempt.child.succeed()
+  await failDarwinImageFlavours(calls)
+
+  assert.deepEqual(await promise, { ok: false, error: 'No image in the clipboard.' })
+})
+
+test('readClipboardImage ignores a darwin file URL that is not an image', async (t) => {
+  const calls = captureReadSpawn()
+  const root = await readTempRoot(t)
+  const target = join(root, 'notes.txt')
+  writeFileSync(target, 'plain text')
+
+  const promise = readClipboardImage({ platform: 'darwin', tmpdir: root })
+  const furlAttempt = await darwinFileUrlAttempt(calls)
+  furlAttempt.child.stdout.emit('data', Buffer.from(target))
+  furlAttempt.child.succeed()
+  await failDarwinImageFlavours(calls)
+
+  assert.deepEqual(await promise, { ok: false, error: 'No image in the clipboard.' })
+})
+
+test('readClipboardImage ignores a darwin file URL whose file is gone', async (t) => {
+  const calls = captureReadSpawn()
+  const root = await readTempRoot(t)
+
+  const promise = readClipboardImage({ platform: 'darwin', tmpdir: root })
+  const furlAttempt = await darwinFileUrlAttempt(calls)
+  furlAttempt.child.stdout.emit('data', Buffer.from(join(root, 'gone.png')))
+  furlAttempt.child.succeed()
+  await failDarwinImageFlavours(calls)
+
+  assert.deepEqual(await promise, { ok: false, error: 'No image in the clipboard.' })
+})
+
+test('readClipboardImage ignores a darwin file URL that cannot be read', async (t) => {
+  const calls = captureReadSpawn()
+  const root = await readTempRoot(t)
+  mkdirSync(join(root, 'blocked.png'))
+
+  const promise = readClipboardImage({ platform: 'darwin', tmpdir: root })
+  const furlAttempt = await darwinFileUrlAttempt(calls)
+  furlAttempt.child.stdout.emit('data', Buffer.from(join(root, 'blocked.png')))
+  furlAttempt.child.succeed()
+  await failDarwinImageFlavours(calls)
+
+  assert.deepEqual(await promise, { ok: false, error: 'No image in the clipboard.' })
+})
+
+test('readClipboardImage reports the too-large error for an oversized darwin file URL', async (t) => {
+  const calls = captureReadSpawn()
+  const root = await readTempRoot(t)
+  const target = join(root, 'huge.png')
+  writeFileSync(target, PNG_BYTES)
+  await truncate(target, MAX_IMAGE_ATTACHMENT_BYTES + 1)
+
+  const promise = readClipboardImage({ platform: 'darwin', tmpdir: root })
+  const furlAttempt = await darwinFileUrlAttempt(calls)
+  furlAttempt.child.stdout.emit('data', Buffer.from(target))
+  furlAttempt.child.succeed()
+  await failDarwinImageFlavours(calls)
+
+  assert.deepEqual(await promise, { ok: false, error: 'The clipboard image is larger than 20 MB.' })
+})
+
+test('readClipboardImage treats darwin file URL output over the stdout cap as a failed attempt', async (t) => {
+  const calls = captureReadSpawn()
+  const root = await readTempRoot(t)
+  const target = join(root, 'shot.png')
+  writeFileSync(target, PNG_BYTES)
+
+  const promise = readClipboardImage({ platform: 'darwin', tmpdir: root })
+  const furlAttempt = await darwinFileUrlAttempt(calls)
+  furlAttempt.child.stdout.emit('data', Buffer.from(`${target}\n${' '.repeat(8192)}`))
+  furlAttempt.child.succeed()
+  await failDarwinImageFlavours(calls)
+
+  assert.deepEqual(await promise, { ok: false, error: 'No image in the clipboard.' })
 })
 
 test('readClipboardImage pipes wl-paste and xclip stdout into the temp file on linux', async () => {
@@ -340,10 +531,12 @@ test('readClipboardImage rejects bytes a failed attempt left behind', async () =
   const calls = captureReadSpawn()
 
   const promise = readClipboardImage({ platform: 'darwin' })
-  const pngAttempt = await waitForCall(calls, 0)
+  const furlAttempt = await waitForCall(calls, 0)
+  furlAttempt.child.fail(1)
+  const pngAttempt = await waitForCall(calls, 1)
   writeFileSync(scriptTarget(pngAttempt.args), PNG_BYTES)
   pngAttempt.child.fail(1)
-  const tiffAttempt = await waitForCall(calls, 1)
+  const tiffAttempt = await waitForCall(calls, 2)
   tiffAttempt.child.fail(1)
 
   assert.deepEqual(await promise, { ok: false, error: 'No image in the clipboard.' })

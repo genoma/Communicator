@@ -56,8 +56,10 @@ function attachmentParts(content) {
 // Attachment names become file paths, so separators and control chars are
 // stripped and degenerate names fall back to a fixed label.
 function sanitizeFilename(name) {
+  // Colons are legal on macOS and Linux but illegal on Windows, where the
+  // exported file would be skipped with a warning.
   const cleaned = String(name ?? '')
-    .replace(/[\\/]/g, '')
+    .replace(/[\\/:]/g, '')
     .split('')
     .filter((ch) => {
       const code = ch.charCodeAt(0)

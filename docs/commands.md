@@ -148,7 +148,7 @@ communicator -p venice --aspect-ratio 16:9 --image-format png          # open a 
 | `/export-format` | Set the export format (`/export-format <markdown\|jsonl>`, persisted), show it with no args |
 | `/scrape`      | Scrape a web page into the conversation as context (`/scrape <url>`, Venice only, $0.01 per page). Type the message on the next line after the command |
 | `/attach`      | Queue files for the next message (`/attach <path>...`). No args = same as `/attachments` |
-| `/paste`       | Queue the image on the system clipboard for the next message (macOS, Windows and Linux desktops). Prints the same `attached: clipboard-<hh:mm:ss>.png (image, <size>)` line as `/attach`, and `No image in the clipboard.` when there is none |
+| `/paste`       | Queue the image on the system clipboard for the next message (macOS, Windows and Linux desktops). Prints the same `attached:` line as `/attach` — named after the macOS clipboard file when the clipboard is a file URL, `clipboard-<hh-mm-ss>.png` otherwise — and `No image in the clipboard.` when there is none |
 | `/attachments` | List the queued attachments, or clear them with `/attachments clear` |
 | `/retry`       | Re-run the last user turn (regenerates the last answer and replaces it in the TTY transcript) |
 | `/edit`        | Re-open the last user message in the editor; on Enter it replaces the message, drops the stale answer, and re-runs the turn (attachments are kept) |
