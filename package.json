@@ -1,6 +1,6 @@
 {
   "name": "@vioni/communicator",
-  "version": "5.4.1",
+  "version": "5.4.0",
   "description": "Terminal-first AI chat client for OpenRouter and Venice.ai with streaming responses, session persistence, and cost tracking",
   "repository": {
     "type": "git",
