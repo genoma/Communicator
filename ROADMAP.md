@@ -33,13 +33,22 @@ recommendation — a reactive, dependency-free package:
 3. record provider-reported usage when a stream errors or an Esc-stopped turn was billed.
 
 Rejected by the council: pre-send proximity notice, `/retry` guard, local tokenizer,
-auto-compaction, client trimming, and opting into server-side compression. Documented residual:
-OpenRouter ≤8k-context routes compress by default (disableable per request, invisible in responses;
-account-level "Prevent overrides" can force it).
+auto-compaction, client trimming, and the server-side compression opt-out (documented residual
+instead: OpenRouter ≤8k-context routes compress by default, a per-request disable exists but
+account-level "Prevent overrides" can void it, and no response signal exposes it).
 
-**Pending owner decisions:** approve the UX (overflow wording, truncation notice, empty-answer
-behavior), whether the usage-capture item ships in the same slice, and whether to add the explicit
-compression opt-out (it converts silent server-side truncation into a loud failure on ≤8k routes).
+**Final decisions (council Pass 3, 2026-09-26):** no token or window numbers in the overflow line
+(the CTX row is the honest home for occupancy, and `contextLength` can be stale on resume);
+typed-code classification in the runner catch, not in the provider; `finishReason` persisted as one
+optional assistant-message field and re-rendered in replay/export for parity; empty answers
+classified per reason (`length` and `content_filter` non-retryable, a bare `error` reworded without
+overflow attribution, `stop`/null unchanged); usage capture on stopped turns rides in the same slice
+as its own revertable commit, recording only usage the provider actually reported; the pre-flight
+provider probes are funded before the classifier freezes. Reasoning-only `length` salvage and the
+80-char `/retry` notice cap are filed as separate items.
+
+**Pending owner decisions:** approve the UX copy (overflow lines, truncation notice, empty-answer
+behavior, one-shot exit) and the probe spend (pennies, live keys).
 
 **Evidence:** council memo of 2026-09-26; `COMPILATION-PLAN.md` §W2/S3; `src/errors.js` (4xx path),
 `src/sse-parser.js` (stream error), `src/turn-runner.js` (empty-output verdict), `src/status-line.js:59`,
