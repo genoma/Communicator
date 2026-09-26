@@ -795,8 +795,9 @@ test('one-shot --rpg --debug does not return before the prompt log has landed', 
 
 // The same tail exit with an empty answer: the assistant-message branch is
 // skipped and the piped path only emits the bare newline, so the tail finally
-// is the only flush left to await before the run returns.
-test('one-shot --rpg --debug with an empty answer does not return before the prompt log has landed', async (t) => {
+// is the only flush left to await before the classified verdict throws. The
+// exit is non-zero, but it must not race the prompt log it promised to write.
+test('one-shot --rpg --debug with an empty answer flushes the prompt log before the non-zero exit', async (t) => {
   const bodies = []
   mockOpenRouterStream(t, [], bodies, [
     event({ usage: { prompt_tokens: 10, completion_tokens: 0, total_tokens: 10 } }),
@@ -812,15 +813,17 @@ test('one-shot --rpg --debug with an empty answer does not return before the pro
   appendFileDelayMs = 200
   t.after(() => { appendFileDelayMs = 0 })
 
-  const { exited } = await runOneShot(t, {
+  const { exited, exitCode, message } = await runOneShot(t, {
     overrides: { config: file, rpg: rpgDir, debug: true },
     systemPrompt: 'RPG system prompt',
     rpgFirstMessage: 'The gate creaks open.',
   })
 
-  assert.equal(exited, false)
+  assert.equal(exited, true)
+  assert.equal(exitCode, 1)
+  assert.equal(message, 'Error: Provider returned no output.')
   assert.equal(getExitCode(), null)
-  // An empty answer keeps the trailing-newline contract: one bare newline and
+  // The piped trailing-newline contract is untouched: one bare newline and
   // nothing else on stdout.
   assert.deepEqual(writes, ['\n'])
   const lines = (await readFile(join(rpgDir, 'prompt-log.jsonl'), 'utf-8')).trim().split('\n')
@@ -1724,4 +1727,104 @@ test('one-shot reports a mid-generation context overflow after a delivered delta
   assert.equal(exitCode, 1)
   assert.equal(message, 'Error: The model hit its context window before finishing. Retry with a shorter prompt or less history.')
   assert.ok(writes.join('').includes('Partial answer'), 'the delta that classified the failure as mid-generation was delivered')
+})
+
+// A settled one-shot that produced nothing used to exit 0 with a bare newline;
+// it is the same failure the REPL reports, so it exits non-zero with the
+// one-shot wording (no REPL-only commands) after the normal tail has run.
+test('an empty length-capped one-shot exits 1 with the one-shot output-limit text and keeps the tail intact', async (t) => {
+  mockOpenRouterStream(t, [], [], [
+    event({ choices: [{ delta: {}, finish_reason: 'length' }] }),
+    event({ usage: { prompt_tokens: 10, completion_tokens: 0, total_tokens: 10 } }),
+    'data: [DONE]\n\n',
+  ])
+  withApiKey(t)
+  withStdoutTTY(t, false)
+  const writes = mockPipedStdout(t)
+  const getExitCode = mockExit(t)
+  const file = await tempConfig(t)
+  const sessionsDir = join(tempHome, '.communicator', 'sessions')
+  let before = new Set()
+  try {
+    before = new Set((await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.')))
+  } catch {
+    // No sessions exist yet; the one below is the only file.
+  }
+
+  const { exited, exitCode, message } = await runOneShot(t, { overrides: { config: file } })
+
+  assert.equal(exited, true)
+  assert.equal(exitCode, 1)
+  assert.equal(message, 'Error: Output limit reached: no answer was produced (the model used its whole output budget before writing content). Lower the reasoning effort or shorten the prompt.')
+  assert.equal(getExitCode(), null)
+  // The trailing-newline contract is untouched: the empty answer still puts one
+  // bare newline on stdout, and the diagnostic never lands there.
+  assert.deepEqual(writes, ['\n'])
+  // The failure happens after the tail, so usage recording and the session
+  // persistence the successful path performs are unchanged.
+  const created = (await readdir(sessionsDir)).filter((f) => f.endsWith('.json') && !f.startsWith('.') && !before.has(f))
+  assert.equal(created.length, 1)
+  const saved = JSON.parse(await readFile(join(sessionsDir, created[0]), 'utf-8'))
+  assert.equal(saved.messages.at(-1).role, 'user')
+  assert.equal(saved.costSummary.promptTokens, 10)
+  assert.equal(saved.costSummary.requests, 1)
+})
+
+test('an empty stop one-shot exits 1 with the generic verdict', async (t) => {
+  mockOpenRouterStream(t, [], [], [
+    event({ choices: [{ delta: {}, finish_reason: 'stop' }] }),
+    event({ usage: { prompt_tokens: 10, completion_tokens: 0, total_tokens: 10 } }),
+    'data: [DONE]\n\n',
+  ])
+  withApiKey(t)
+  withStdoutTTY(t, false)
+  const writes = mockPipedStdout(t)
+  mockExit(t)
+
+  const { exited, exitCode, message } = await runOneShot(t)
+
+  assert.equal(exited, true)
+  assert.equal(exitCode, 1)
+  assert.equal(message, 'Error: Provider returned no output (finish reason: stop).')
+  assert.deepEqual(writes, ['\n'])
+})
+
+// --no-save takes its own exit out of the tail, so the verdict has to be
+// raised there too: the run still fails non-zero and still leaves no state.
+test('an empty one-shot with --no-save exits 1 and still leaves no session state', async (t) => {
+  mockOpenRouterStream(t, [], [], [
+    event({ choices: [{ delta: {}, finish_reason: 'length' }] }),
+    event({ usage: { prompt_tokens: 10, completion_tokens: 0, total_tokens: 10 } }),
+    'data: [DONE]\n\n',
+  ])
+  withApiKey(t)
+  withStdoutTTY(t, false)
+  const writes = mockPipedStdout(t)
+  mockExit(t)
+  const globalSessions = await ensureSessionsDir()
+  const sessionsBefore = await listFiles(globalSessions)
+
+  const { exited, exitCode, message } = await runOneShot(t, { overrides: { save: false } })
+
+  assert.equal(exited, true)
+  assert.equal(exitCode, 1)
+  assert.equal(message, 'Error: Output limit reached: no answer was produced (the model used its whole output budget before writing content). Lower the reasoning effort or shorten the prompt.')
+  assert.deepEqual(writes, ['\n'])
+  assert.deepEqual(await listFiles(globalSessions), sessionsBefore)
+})
+
+test('a non-empty answer with an abnormal finish reason still exits 0', async (t) => {
+  mockLengthTruncatedStream(t)
+  withApiKey(t)
+  withStdoutTTY(t, false)
+  const writes = mockPipedStdout(t)
+  const errors = []
+  t.mock.method(process.stderr, 'write', (chunk) => { errors.push(String(chunk)); return true })
+  mockExit(t)
+
+  const { exited } = await runOneShot(t)
+
+  assert.equal(exited, false)
+  assert.ok(writes.join('').includes('Hello world'))
+  assert.ok(errors.join('').includes('Output limit reached — the answer above is incomplete.'))
 })

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ApiError, makeHandleHttpError, isContextOverflowError, overflowErrorText } from '../src/errors.js'
+import { ApiError, makeHandleHttpError, isContextOverflowError, overflowErrorText, emptyAnswerOutcome } from '../src/errors.js'
 
 const handleOpenRouterError = makeHandleHttpError({ providerName: 'OpenRouter', apiKeyEnv: 'OPENROUTER_API_KEY' })
 const handleVeniceError = makeHandleHttpError({ providerName: 'Venice', apiKeyEnv: 'VENICE_API_KEY' })
@@ -95,4 +95,55 @@ test('overflowErrorText returns the exact mode-specific texts', () => {
 
 test('overflowErrorText defaults to the REPL pre-flight text', () => {
   assert.equal(overflowErrorText(), overflowErrorText({ phase: 'preflight', mode: 'repl' }))
+})
+
+test('emptyAnswerOutcome returns the exact classified texts and non-retryable flag', () => {
+  assert.deepEqual(emptyAnswerOutcome('length'), {
+    message: 'Output limit reached: no answer was produced (the model used its whole output budget before writing content). Lower /reasoning effort or shorten the request.',
+    retryable: false,
+  })
+  assert.deepEqual(emptyAnswerOutcome('length', { mode: 'oneshot' }), {
+    message: 'Output limit reached: no answer was produced (the model used its whole output budget before writing content). Lower the reasoning effort or shorten the prompt.',
+    retryable: false,
+  })
+  assert.deepEqual(emptyAnswerOutcome('content_filter'), {
+    message: "Blocked by the provider's content filter: no answer was produced. Edit the message (/edit) or change the request.",
+    retryable: false,
+  })
+  assert.deepEqual(emptyAnswerOutcome('content_filter', { mode: 'oneshot' }), {
+    message: "Blocked by the provider's content filter: no answer was produced. Change the request and try again.",
+    retryable: false,
+  })
+  assert.deepEqual(emptyAnswerOutcome('error'), {
+    message: 'The provider ended the generation with an error: no answer was produced.',
+    retryable: false,
+  })
+  assert.deepEqual(emptyAnswerOutcome('error', { mode: 'oneshot' }), {
+    message: 'The provider ended the generation with an error: no answer was produced.',
+    retryable: false,
+  })
+})
+
+test('emptyAnswerOutcome keeps the generic retryable verdict for stop, null and unknown reasons', () => {
+  for (const reason of ['stop', 'tool_calls', 'made_up_reason']) {
+    assert.deepEqual(emptyAnswerOutcome(reason), {
+      message: `Provider returned no output (finish reason: ${reason}).`,
+      retryable: true,
+    })
+  }
+  assert.deepEqual(emptyAnswerOutcome(null), { message: 'Provider returned no output.', retryable: true })
+  assert.deepEqual(emptyAnswerOutcome(undefined, { mode: 'oneshot' }), { message: 'Provider returned no output.', retryable: true })
+  // The provider controls this string, so an inherited Object member must not
+  // become a classified reason with an undefined message.
+  assert.deepEqual(emptyAnswerOutcome('constructor'), { message: 'Provider returned no output (finish reason: constructor).', retryable: true })
+})
+
+test('the one-shot empty-answer texts never name REPL-only commands', () => {
+  for (const reason of ['length', 'content_filter', 'error', 'stop', null]) {
+    const { message } = emptyAnswerOutcome(reason, { mode: 'oneshot' })
+    assert.ok(!/\/(?:edit|delete|new|reasoning)\b/.test(message), message)
+  }
+  // The REPL texts are the ones that name the commands the user can reach.
+  assert.match(emptyAnswerOutcome('length').message, /\/reasoning/)
+  assert.match(emptyAnswerOutcome('content_filter').message, /\/edit/)
 })

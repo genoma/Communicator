@@ -5,7 +5,7 @@ import { createNewSession, ensureSessionsDir, removeEmptySessionClaim } from '..
 import { createStreamRenderer } from '../ui/stream.js'
 import { UsageTracker, seedTracker, budgetLine, trackerCostSummary } from '../tracker.js'
 import { ChatState } from '../chat-state.js'
-import { CliError, formatError, isExitPromptError, isContextOverflowError, overflowErrorText } from '../errors.js'
+import { CliError, formatError, isExitPromptError, isContextOverflowError, overflowErrorText, emptyAnswerOutcome } from '../errors.js'
 import { fail, readStdin, NO_PROMPT_MESSAGE } from '../cli-utils.js'
 import { loadAttachments, buildContent } from '../attachments.js'
 import { resolveArtifacts, printArtifactsSummary } from '../artifacts.js'
@@ -387,14 +387,22 @@ export async function oneShotCmd({ apiKey, opts, prefs, systemPrompt, rpgFirstMe
     // must stay untouched.
     if (opts.save === false) {
       if (!resumed) await removeEmptySessionClaim(dir, sessionId)
-      return
+    } else {
+      // Persist the authoritative cost summary with the session file.
+      state.costSummary = trackerCostSummary(tracker)
+      const finalState = state.toFinalState(provider.meta.name)
+
+      await persistSession({ finalState, prefs, config: opts.config, rpgDir: opts.rpg, rpgCharName, rpgUserName, rpgFirstMessage })
     }
 
-    // Persist the authoritative cost summary with the session file.
-    state.costSummary = trackerCostSummary(tracker)
-    const finalState = state.toFinalState(provider.meta.name)
-
-    await persistSession({ finalState, prefs, config: opts.config, rpgDir: opts.rpg, rpgCharName, rpgUserName, rpgFirstMessage })
+    // A settled request that delivered neither text nor parts is a failure, and
+    // the tail above (usage, persistence or the --no-save claim removal) has
+    // already run exactly as for a non-empty answer. Raise the classified
+    // verdict last so the run exits non-zero instead of succeeding silently;
+    // the caller prints this message once.
+    if (!result.content && !(result.parts?.length > 0)) {
+      throw new CliError(`Error: ${emptyAnswerOutcome(result.finishReason, { mode: 'oneshot' }).message}`)
+    }
   } finally {
     // The caller exits the process as soon as this returns, so what the run
     // issued has to be on disk first (see flushRpgPromptLog).

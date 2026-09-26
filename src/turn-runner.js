@@ -1,5 +1,5 @@
 import { UsageTracker, budgetLine } from './tracker.js'
-import { formatError, ApiError, isContextOverflowError, overflowErrorText } from './errors.js'
+import { formatError, ApiError, isContextOverflowError, overflowErrorText, emptyAnswerOutcome } from './errors.js'
 import { extractPartialToken } from './sse-parser.js'
 import { isEncryptedHex, decryptToken } from './e2ee.js'
 import { debug } from './ui/io.js'
@@ -432,15 +432,18 @@ export function createTurnRunner({ state, provider, apiKey, render, loader, stdo
     // A completed turn with no content (a refusal / content-filter / empty
     // response) never throws, so it used to end with no error at all. Surface
     // a real failure so /retry and /edit act on it instead of silently
-    // re-running the turn.
-    const reason = apiResult.finishReason ? ` (finish reason: ${apiResult.finishReason})` : ''
-    const message = `Provider returned no output${reason}.`
-    state.lastError = { message, status: null, code: null, type: null, retryable: true }
+    // re-running the turn. A classified verdict (output limit, content
+    // filter, provider error) is terminal — retrying the same turn cannot
+    // produce output — so it keeps the user message in the transcript (/edit
+    // targets it, a resume preserves it) and stashes no retryTurn; the
+    // generic fallback keeps the pop-and-stash path below.
+    const { message, retryable } = emptyAnswerOutcome(apiResult.finishReason, { mode: 'repl' })
+    state.lastError = { message, status: null, code: null, type: null, retryable }
     // The success-path `\n\n` before the metrics block already supplied the
     // one blank row below the loader/meter row, so the error line itself must
     // not add another leading newline (it would double the gap).
     console.error(`Error: ${message}\n`)
-    if (state.messages[state.messages.length - 1]?.role === 'user') {
+    if (retryable && state.messages[state.messages.length - 1]?.role === 'user') {
       state.retryTurn = state.messages.pop().content
     }
     return false

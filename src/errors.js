@@ -96,6 +96,37 @@ export function overflowErrorText({ phase = 'preflight', mode = 'repl' } = {}) {
   return OVERFLOW_TEXTS[mode]?.[phase] ?? OVERFLOW_TEXTS.repl.preflight
 }
 
+// A completed turn that produced no text and no parts is classified by why the
+// provider stopped. The named reasons are terminal: the provider already spent
+// the turn without writing, so replaying it unchanged cannot produce output
+// (retryable stays false and the caller keeps the user turn for /edit).
+// One-shot gets its own wording because it has no REPL commands to name.
+const EMPTY_ANSWER_TEXTS = {
+  length: {
+    repl: 'Output limit reached: no answer was produced (the model used its whole output budget before writing content). Lower /reasoning effort or shorten the request.',
+    oneshot: 'Output limit reached: no answer was produced (the model used its whole output budget before writing content). Lower the reasoning effort or shorten the prompt.',
+  },
+  content_filter: {
+    repl: "Blocked by the provider's content filter: no answer was produced. Edit the message (/edit) or change the request.",
+    oneshot: "Blocked by the provider's content filter: no answer was produced. Change the request and try again.",
+  },
+  error: {
+    repl: 'The provider ended the generation with an error: no answer was produced.',
+    oneshot: 'The provider ended the generation with an error: no answer was produced.',
+  },
+}
+
+// `finishReason` is provider-controlled, so the lookup is own-property guarded:
+// an unknown value must reach the generic fallback, never an inherited member.
+export function emptyAnswerOutcome(finishReason, { mode = 'repl' } = {}) {
+  if (Object.hasOwn(EMPTY_ANSWER_TEXTS, finishReason)) {
+    const texts = EMPTY_ANSWER_TEXTS[finishReason]
+    return { message: texts[mode] ?? texts.repl, retryable: false }
+  }
+  const reason = finishReason ? ` (finish reason: ${finishReason})` : ''
+  return { message: `Provider returned no output${reason}.`, retryable: true }
+}
+
 // Unwraps a provider error body (OpenAI-compatible: `{ error: { message,
 // code, metadata: { error_type } } }`, Venice `error.type`, or a bare string
 // `{ error: "..." }`) into the fields the ApiError carries. Unknown shapes

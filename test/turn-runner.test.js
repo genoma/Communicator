@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createTurnRunner, createSessionState } from '../src/turn-runner.js'
-import { ApiError, makeHandleHttpError, overflowErrorText } from '../src/errors.js'
+import { ApiError, makeHandleHttpError, overflowErrorText, emptyAnswerOutcome } from '../src/errors.js'
 import { dim } from '../src/ui/style.js'
 
 function fakeState(overrides = {}) {
@@ -573,13 +573,12 @@ test('an empty-content turn is surfaced as a real failure and stashed for /retry
 
   assert.equal(state.messages.length, 1)
   assert.equal(state.retryTurn, 'hello')
-  assert.equal(state.lastError.retryable, true)
-  assert.match(state.lastError.message, /Provider returned no output/)
+  assert.deepEqual(state.lastError, { message: 'Provider returned no output.', status: null, code: null, type: null, retryable: true })
 })
 
-test('an empty-content turn with a content-filter finish reason names it', async (t) => {
+test('an empty-content turn with a stop finish reason keeps the generic retryable verdict', async (t) => {
   mockConsole(t)
-  const provider = okProvider({ async chatCompletion() { return { content: '', finishReason: 'content_filter' } } })
+  const provider = okProvider({ async chatCompletion() { return { content: '', finishReason: 'stop' } } })
   const state = fakeState()
   const { deps } = makeDeps({ provider })
 
@@ -587,7 +586,31 @@ test('an empty-content turn with a content-filter finish reason names it', async
 
   assert.equal(state.messages.length, 1)
   assert.equal(state.retryTurn, 'hello')
-  assert.match(state.lastError.message, /no output.*content_filter/)
+  assert.deepEqual(state.lastError, { message: 'Provider returned no output (finish reason: stop).', status: null, code: null, type: null, retryable: true })
+})
+
+// A classified empty answer (the provider spent the turn without writing) is
+// terminal: the user message stays so /edit can target it and a resume keeps it,
+// and no retryTurn is stashed because replaying the same turn cannot succeed.
+test('a length, content-filter or error empty answer is non-retryable and keeps the user message', async (t) => {
+  const errors = captureErrors(t)
+  for (const finishReason of ['length', 'content_filter', 'error']) {
+    errors.length = 0
+    const provider = okProvider({ async chatCompletion() { return { content: '', finishReason } } })
+    const state = fakeState()
+    const { deps } = makeDeps({ provider })
+
+    await runTurn(deps, state)
+
+    const { message, retryable } = emptyAnswerOutcome(finishReason, { mode: 'repl' })
+    assert.equal(retryable, false)
+    assert.deepEqual(errors, [`Error: ${message}\n`], finishReason)
+    assert.deepEqual(state.lastError, { message, status: null, code: null, type: null, retryable: false }, finishReason)
+    assert.equal(state.messages.length, 2, finishReason)
+    assert.equal(state.messages.at(-1).role, 'user')
+    assert.equal(state.messages.at(-1).content, 'hello')
+    assert.equal(state.retryTurn, undefined)
+  }
 })
 
 test('a length-truncated answer stores its finish reason and prints the truncation notice', async (t) => {
@@ -658,7 +681,7 @@ test('an unmapped finish reason is stored but prints no notice', async (t) => {
   assert.ok(!writes.some((l) => l.includes('limit reached') || l.includes('ended early')))
 })
 
-test('an empty length-truncated answer keeps the no-output verdict and prints no notice', async (t) => {
+test('an empty length-truncated answer is the output-limit verdict, keeps the user message and prints no notice', async (t) => {
   const errors = captureErrors(t)
   const writes = []
   const provider = okProvider({
@@ -671,9 +694,11 @@ test('an empty length-truncated answer keeps the no-output verdict and prints no
 
   await runTurn(deps, state)
 
-  assert.equal(state.messages.length, 1)
-  assert.match(errors[0], /Provider returned no output \(finish reason: length\)\./)
-  assert.ok(!writes.some((l) => l.includes('Output limit reached')))
+  const { message } = emptyAnswerOutcome('length', { mode: 'repl' })
+  assert.deepEqual(errors, [`Error: ${message}\n`])
+  assert.equal(state.messages.length, 2)
+  assert.equal(state.retryTurn, undefined)
+  assert.ok(!writes.some((l) => l.includes('Output limit reached')), 'the non-empty-only truncation notice stays silent')
 })
 
 test('an interrupted stream salvages the partial response, saves and exits 130', async (t) => {
