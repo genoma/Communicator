@@ -212,9 +212,47 @@ test('post-metrics Esc stop with a finish notice after sources keeps the separat
 
   assert.deepEqual(exitCodes, [])
   assert.deepEqual(saves, ['session'])
+  // The partial carries the reason behind the notice this branch printed
+  // live, so a rebuild/resume replays the answer as truncated, not complete.
+  assert.equal(state.messages[2].finishReason, 'length')
   // The notice ends with a bare newline (not the sources block's blank row),
   // so the stop note needs its own separator instead of being glued to it.
   assert.deepEqual(writes, ['\n', '\n\n', metrics.line, '\n\n', `${dim('Stopped')}\n\n`])
+  assert.equal(produced, true)
+})
+
+test('flush-window Esc stop keeps no finishReason on the appended partial', async () => {
+  const writes = []
+  metrics = { emits: false, line: null, entered: false, resolve: null }
+  let flushResolve
+  const render = () => {}
+  render.sources = []
+  render.resetMessage = () => {}
+  render.flush = () => new Promise((resolve) => { flushResolve = resolve })
+  const state = fakeState()
+  const sessionState = createSessionState()
+  const { deps, exitCodes, saves } = makeDeps({
+    render,
+    provider: okProvider(),
+    sessionState,
+    stdout: { write: (s) => writes.push(String(s)) },
+  })
+
+  const turn = runTurn(deps, state)
+  while (!flushResolve) await new Promise((resolve) => setTimeout(resolve, 0))
+  sessionState.stopped = true
+  flushResolve()
+  const produced = await turn
+
+  assert.deepEqual(exitCodes, [])
+  assert.deepEqual(saves, ['session'])
+  // The stop landed while the post-stream flush was still draining, before the
+  // metrics block (and its finish notice) ever ran: the partial must not claim
+  // a finish reason it never printed live.
+  assert.equal(metrics.entered, false)
+  assert.equal(state.messages[2].content, 'Hello!')
+  assert.equal('finishReason' in state.messages[2], false)
+  assert.deepEqual(writes, ['\n', '\n\n', `${dim('Stopped')}\n\n`])
   assert.equal(produced, true)
 })
 

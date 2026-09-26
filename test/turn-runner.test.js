@@ -532,6 +532,58 @@ test('a mid-generation context overflow renders the REPL message and salvages th
   assert.deepEqual(state.lastError, { message: text, status: null, code: null, type: 'context_length_exceeded', retryable: false })
 })
 
+test('a retryable-flagged context overflow is forced non-retryable and keeps the salvaged partial', async (t) => {
+  const errors = captureErrors(t)
+  const provider = okProvider({
+    async chatCompletion({ onToken }) {
+      onToken('Partial ', 'content')
+      throw new ApiError('maximum context length exceeded', { status: 502, retryable: true })
+    },
+  })
+  const state = fakeState()
+  const { deps } = makeDeps({ provider })
+
+  await runTurn(deps, state)
+
+  // A gateway 5xx carrying the provider's overflow wording is a classified
+  // overflow, not a transient: resending the same over-window request cannot
+  // succeed, so the pop-and-stash retry path must not run — the user turn
+  // stays and the delivered partial is preserved.
+  const text = overflowErrorText({ phase: 'mid-generation', mode: 'repl' })
+  assert.deepEqual(errors, [`\nError: ${text}\n`])
+  assert.equal(state.messages.length, 3)
+  assert.equal(state.messages.at(-1).role, 'assistant')
+  assert.equal(state.messages.at(-1).content, 'Partial ')
+  assert.equal(state.retryTurn, undefined)
+  assert.equal(state.lastError.retryable, false)
+  assert.equal(state.lastError.status, 502)
+})
+
+test('a reasoning-only mid-generation context overflow renders the REPL message and salvages the reasoning', async (t) => {
+  const errors = captureErrors(t)
+  const provider = okProvider({
+    async chatCompletion({ onToken }) {
+      onToken('thinking', 'reasoning')
+      throw new ApiError('Provider error', { errorType: 'context_length_exceeded', retryable: false })
+    },
+  })
+  const state = fakeState()
+  const { deps } = makeDeps({ provider })
+
+  await runTurn(deps, state)
+
+  // Reasoning alone was delivered, so the model had started answering: the
+  // failure is mid-generation even though no content token arrived.
+  const text = overflowErrorText({ phase: 'mid-generation', mode: 'repl' })
+  assert.deepEqual(errors, [`\nError: ${text}\n`])
+  assert.equal(state.messages.length, 3)
+  assert.equal(state.messages.at(-1).role, 'assistant')
+  assert.equal(state.messages.at(-1).content, '')
+  assert.equal(state.messages.at(-1).reasoning, 'thinking')
+  assert.equal(state.retryTurn, undefined)
+  assert.deepEqual(state.lastError, { message: text, status: null, code: null, type: 'context_length_exceeded', retryable: false })
+})
+
 test('a non-overflow 400 keeps the raw provider rendering', async (t) => {
   const errors = captureErrors(t)
   const provider = okProvider({
@@ -1383,6 +1435,9 @@ test('Esc during the post-stream drain finalizes as stopped without exiting', as
   assert.deepEqual(saves, ['session'])
   assert.equal(state.messages[2].content, 'Hello!')
   assert.equal(state.messages.length, 3)
+  // The flush-window stop never printed the finish notice, so the partial
+  // carries no finish reason to replay as truncated.
+  assert.equal('finishReason' in state.messages[2], false)
   assert.ok(writes.join('').includes(`${dim('Stopped')}\n\n`), 'the drain-phase stop still writes the Stopped note')
   // The stream had completed, so the drain-window stop records the billed
   // usage and persists it on the partial (a resume replays it via

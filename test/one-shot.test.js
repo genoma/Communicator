@@ -1729,6 +1729,27 @@ test('one-shot reports a mid-generation context overflow after a delivered delta
   assert.ok(writes.join('').includes('Partial answer'), 'the delta that classified the failure as mid-generation was delivered')
 })
 
+test('one-shot reports a mid-generation context overflow from a reasoning-only delta', async (t) => {
+  const stream = [
+    event({ choices: [{ delta: { reasoning: 'thinking' } }] }),
+    event({ error: { message: 'The model hit its context window.', metadata: { error_type: 'context_length_exceeded' } } }),
+  ]
+  mockOpenRouterStream(t, [], [], stream)
+  withApiKey(t)
+  withStdoutTTY(t, false)
+  const writes = mockPipedStdout(t)
+  t.mock.method(console, 'error', () => {})
+
+  const { exited, exitCode, message } = await runOneShot(t)
+
+  assert.equal(exited, true)
+  assert.equal(exitCode, 1)
+  assert.equal(message, 'Error: The model hit its context window before finishing. Retry with a shorter prompt or less history.')
+  // The reasoning delta is what made the failure mid-generation; piped stdout
+  // stays answer-only, so it carries none of it.
+  assert.deepEqual(writes, [])
+})
+
 // A settled one-shot that produced nothing used to exit 0 with a bare newline;
 // it is the same failure the REPL reports, so it exits non-zero with the
 // one-shot wording (no REPL-only commands) after the normal tail has run.
@@ -1786,6 +1807,46 @@ test('an empty stop one-shot exits 1 with the generic verdict', async (t) => {
   assert.equal(exited, true)
   assert.equal(exitCode, 1)
   assert.equal(message, 'Error: Provider returned no output (finish reason: stop).')
+  assert.deepEqual(writes, ['\n'])
+})
+
+test('an empty content-filtered one-shot exits 1 with the one-shot filter text', async (t) => {
+  mockOpenRouterStream(t, [], [], [
+    event({ choices: [{ delta: {}, finish_reason: 'content_filter' }] }),
+    event({ usage: { prompt_tokens: 10, completion_tokens: 0, total_tokens: 10 } }),
+    'data: [DONE]\n\n',
+  ])
+  withApiKey(t)
+  withStdoutTTY(t, false)
+  const writes = mockPipedStdout(t)
+  const getExitCode = mockExit(t)
+
+  const { exited, exitCode, message } = await runOneShot(t)
+
+  assert.equal(exited, true)
+  assert.equal(exitCode, 1)
+  assert.equal(message, "Error: Blocked by the provider's content filter: no answer was produced. Change the request and try again.")
+  assert.equal(getExitCode(), null)
+  assert.deepEqual(writes, ['\n'])
+})
+
+test('an empty one-shot ended by a provider error exits 1 with the one-shot error text', async (t) => {
+  mockOpenRouterStream(t, [], [], [
+    event({ choices: [{ delta: {}, finish_reason: 'error' }] }),
+    event({ usage: { prompt_tokens: 10, completion_tokens: 0, total_tokens: 10 } }),
+    'data: [DONE]\n\n',
+  ])
+  withApiKey(t)
+  withStdoutTTY(t, false)
+  const writes = mockPipedStdout(t)
+  const getExitCode = mockExit(t)
+
+  const { exited, exitCode, message } = await runOneShot(t)
+
+  assert.equal(exited, true)
+  assert.equal(exitCode, 1)
+  assert.equal(message, 'Error: The provider ended the generation with an error: no answer was produced.')
+  assert.equal(getExitCode(), null)
   assert.deepEqual(writes, ['\n'])
 })
 

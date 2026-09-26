@@ -59,6 +59,21 @@ test('a TOO_MANY_TOKENS code with the Venice docs wording classifies as a contex
   assert.equal(isContextOverflowError(new ApiError('Provider error', { code: 'TOO_MANY_TOKENS' })), true, 'the code alone classifies without wording')
 })
 
+test('message-only overflow wordings classify without any typed field', () => {
+  // Venice's documented wording and OpenRouter's combined-token wording ship
+  // no code or error_type at all, so the message regexes alone classify them.
+  assert.equal(
+    isContextOverflowError(new ApiError("Your request exceeds the model's maximum context. Please reduce your prompt or completion length.")),
+    true,
+  )
+  assert.equal(
+    isContextOverflowError(new ApiError("The combined input and output tokens exceed the model's context window.")),
+    true,
+  )
+  // The typed classification is case-insensitive.
+  assert.equal(isContextOverflowError(new ApiError('Provider error', { errorType: 'CONTEXT_LENGTH_EXCEEDED' })), true)
+})
+
 test('rate limits and unrelated 400s do not classify as a context overflow', () => {
   const rateLimited = thrownError(() => handleOpenRouterError(429, JSON.stringify({ error: { message: 'Rate limit exceeded' } })))
   assert.equal(isContextOverflowError(rateLimited), false)

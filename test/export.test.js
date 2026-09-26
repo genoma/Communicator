@@ -77,6 +77,40 @@ test('formatMarkdown notes an incomplete answer when the turn hit the output lim
   assert.doesNotMatch(formatMarkdown(session()), /\*\*Note:\*\*/)
 })
 
+test('formatMarkdown only notes an incomplete answer when the truncated turn carries text', () => {
+  // A parts-only (image/file) truncated turn has no answer text for the note
+  // to describe, so it gets none even though finishReason is 'length'.
+  const partsOnly = formatMarkdown(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'Make an image.' },
+      { role: 'assistant', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }], finishReason: 'length' },
+    ],
+  }))
+  assert.doesNotMatch(partsOnly, /\*\*Note:\*\*/)
+  assert.match(partsOnly, /> \*\*Image:\*\* `image\.png`/)
+
+  // The same holds for an empty-string content.
+  const emptyText = formatMarkdown(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'Write an essay.' },
+      { role: 'assistant', content: '', finishReason: 'length' },
+    ],
+  }))
+  assert.doesNotMatch(emptyText, /\*\*Note:\*\*/)
+
+  // A text-bearing truncated answer still carries the note.
+  const withText = formatMarkdown(session({
+    messages: [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'Write an essay.' },
+      { role: 'assistant', content: 'Once upon a time', finishReason: 'length' },
+    ],
+  }))
+  assert.match(withText, /\*\*Note:\*\* output limit reached — the answer above is incomplete\./)
+})
+
 test('formatJsonl carries finishReason for a truncated turn and omits it otherwise', () => {
   const jsonl = formatJsonl(session({
     messages: [
