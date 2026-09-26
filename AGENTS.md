@@ -44,6 +44,7 @@
 - `.github/workflows/publish.yml` publishes on a bare-version tag push: it gates on lint/test/audit, asserts the tag equals `package.json` `version`, skips when that version is already published, and publishes with provenance over OIDC. A version is burned once published — always bump before tagging.
 - The first publish of a new package name cannot use OIDC (npm requires the package to exist), so it is a manual `npm publish --access public` with a 2FA prompt; the trusted publisher is then attached in the npm UI with **direct `npm publish` allowed** (configurations created after 2026-09-03 default to staged publishing only).
 - No npm token is ever stored in the repo or CI: publishing is OIDC-only.
+- **`package.json` must already be canonical**: npm rewrites the manifest at publish time and only prints a warning. It removed a `./`-prefixed `bin` path outright once, which would have shipped a package with no command. Write `"bin": { "communicator": "index.js" }` (no `./`); the publish workflow runs `npm pkg fix` plus `git diff --exit-code -- package.json` and fails the release instead of publishing a corrected manifest. npm scans every new version before it becomes installable (typically ~5 minutes, longer at peak; a version can also be held for manual review or blocked), so a successful `npm publish` is not yet proof the version is installable — `npm view <name>@<version>` may legitimately 404 for a while after.
 - Releasing, step by step: `docs/development.md` §Releasing.
 
 ## UX change approval

@@ -26,6 +26,13 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm audit --omit=dev --audit-level=high
+      - name: Assert package.json is already canonical for npm
+        # npm rewrites the manifest at publish time and only warns about it —
+        # it silently removed a `./`-prefixed bin path once, which would have
+        # shipped a package that installs no command. Fail instead.
+        run: |
+          npm pkg fix
+          git diff --exit-code -- package.json
       - name: Assert the tag matches package.json
         run: |
           version="$(node -p "require('./package.json').version")"

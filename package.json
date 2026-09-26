@@ -28,7 +28,7 @@
     "node": ">=22.15.0"
   },
   "bin": {
-    "communicator": "./index.js"
+    "communicator": "index.js"
   },
   "files": [
     "index.js",
