@@ -10,49 +10,23 @@ lands, fold its facts into `MEMORY.md` and replace its entry with a completed po
 
 Last reviewed: 2026-09-26.
 
-## 1. Context-overflow behavior — investigated, recommendation awaiting owner approval
+## 1. Context-overflow behavior — landed in `5.5.0`
 
-**Gap:** `contextLength` is display-only (status line and the `CTX:` row). There is no pre-flight
-check, no history trimming and no overflow branch: a request that exceeds the window surfaces as the
-generic provider error (`src/errors.js`, 4xx path), and `peakContext` shows the damage only after
-the fact. S3 (`COMPILATION-PLAN.md` §W2) measured local token counting for a pre-flight warning and
-rejected it (worst-family error 15.3%).
+**Fixed:** `contextLength` was display-only and an over-window request surfaced as the generic
+provider error. The shipped reactive package: one classifier for both wire shapes (pre-flight 400
+with typed codes or provider wording; mid-generation HTTP 200 + SSE error), honest
+pre-flight/mid-generation messages naming the recovery (`/edit`, `/delete`, `/new`, larger-window
+`/model`), `finishReason` persisted on assistant messages with truncation and early-end notices on
+live/replay/export/one-shot parity paths, per-reason empty-answer classification with one-shot exit
+1 (`length` / `content_filter` / `error` non-retryable, `stop` / null unchanged), and
+provider-reported usage captured on post-stream Esc-stopped turns.
 
-**Investigation (2026-09-26):** recon + adversarial verification + council (2 oracles + 1 reviewer,
-two passes; artifacts under the session's `subagent-artifacts/recon` and `audit`). Converged
-recommendation — a reactive, dependency-free package:
+**Still open from the arc:** reasoning-only `length` salvage (`KNOWN-ISSUES.md`); the OpenRouter
+≤8k silent-compression residual (`OPENROUTER.md`); the pre-send notice and the `/retry` guard were
+rejected unanimously, and a local tokenizer stays rejected by S3 (`COMPILATION-PLAN.md` §W2).
 
-1. one shared overflow classifier for both wire shapes — pre-flight 400 (typed codes first:
-   OpenRouter `context_length_exceeded`, Venice `TOO_MANY_TOKENS`) and mid-generation HTTP 200 + SSE
-   error / `finish_reason: "error"` — replacing the generic message with an honest, actionable one
-   naming the recovery (`/edit`, `/delete`, `/new`, `/model`) and keeping the user message;
-2. `finish_reason` truth: persist an optional `finishReason` on assistant messages, surface
-   truncation (`length` with content), classify empty completions per reason (`length` and
-   `content_filter` non-retryable, `error` reworded without overflow attribution), salvage streamed
-   reasoning on reasoning-only turns, and give one-shot non-zero-exit parity on an empty answer;
-3. record provider-reported usage when a stream errors or an Esc-stopped turn was billed.
-
-Rejected by the council: pre-send proximity notice, `/retry` guard, local tokenizer,
-auto-compaction, client trimming, and the server-side compression opt-out (documented residual
-instead: OpenRouter ≤8k-context routes compress by default, a per-request disable exists but
-account-level "Prevent overrides" can void it, and no response signal exposes it).
-
-**Final decisions (council Pass 3, 2026-09-26):** no token or window numbers in the overflow line
-(the CTX row is the honest home for occupancy, and `contextLength` can be stale on resume);
-typed-code classification in the runner catch, not in the provider; `finishReason` persisted as one
-optional assistant-message field and re-rendered in replay/export for parity; empty answers
-classified per reason (`length` and `content_filter` non-retryable, a bare `error` reworded without
-overflow attribution, `stop`/null unchanged); usage capture on stopped turns rides in the same slice
-as its own revertable commit, recording only usage the provider actually reported; the pre-flight
-provider probes are funded before the classifier freezes. Reasoning-only `length` salvage and the
-80-char `/retry` notice cap are filed as separate items.
-
-**Pending owner decisions:** approve the UX copy (overflow lines, truncation notice, empty-answer
-behavior, one-shot exit) and the probe spend (pennies, live keys).
-
-**Evidence:** council memo of 2026-09-26; `COMPILATION-PLAN.md` §W2/S3; `src/errors.js` (4xx path),
-`src/sse-parser.js` (stream error), `src/turn-runner.js` (empty-output verdict), `src/status-line.js:59`,
-`src/tracker.js:46`.
+**Evidence:** the shipped behavior is in `MEMORY.md` §Error handling contract and the display
+contract, with the public copy in `docs/chat.md` and `docs/sessions.md`.
 
 ## 2. Prebuilt macOS spelling helper — deferred by decision
 
