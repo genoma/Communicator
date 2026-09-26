@@ -96,10 +96,17 @@ test('the compiled helper replies to the corpus exactly like the osascript backe
 
   assert.equal(await backend.whenReady(), true, 'the helper compiled through the real build path')
 
+  // Warm the system checker through the osascript backend before comparing: the
+  // cold state is what produced the empty-list mismatches below, and a single
+  // discarded request takes the hit instead of the first corpus entry.
+  await osascript.run({ op: 'completions', text: 'recon', location: 0, length: 5 }).catch(() => {})
+
   for (const { name, request } of CORPUS) {
     let pair = await runBoth(backend, osascript, request)
-    for (let attempt = 0; attempt < 2 && repliesDiffer(pair); attempt += 1) {
-      await delay(250)
+    // Four retries with a growing backoff (250/500/750/1000 ms): a loaded macOS
+    // CI runner kept the cold checker empty past the original 500 ms budget.
+    for (let attempt = 0; attempt < 4 && repliesDiffer(pair); attempt += 1) {
+      await delay(250 * (attempt + 1))
       pair = await runBoth(backend, osascript, request)
     }
     const [helper, jxa] = pair
