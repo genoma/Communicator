@@ -26,8 +26,15 @@ cat notes.md | communicator -m "openai/gpt-4o" --system-prompt ~/reviewer.md
 - Piped stdin is read up to a 10MB sanity limit. Piping input without `-m` is an error — pickers can't run without a TTY.
 - Output is TTY-aware: on a terminal you get the streaming response with reasoning labels and the usage/cost footer; when stdout is piped you get **only** the plain answer text (no banners, no usage) — plain text, ideal for scripting.
 - The answer is saved as a regular session (title, temperature, top-p, budget, usage) and the model/temperature/top-p preferences are persisted, exactly like an interactive chat.
-- Exit codes: `0` success, `1` API/validation error (message on stderr), `130` interrupted with `Ctrl+C`.
+- Exit codes: `0` success, `1` API/validation error (message on stderr), `130` interrupted with `Ctrl+C`. An empty answer (no text and no parts) is a failure and exits `1`.
 - A prompt *argument* cannot be combined with `--resume`, `--export`, `--delete`, or `--list-*` flags (error + exit 1), and `--resume`/`--export`/`--delete` cannot be combined with `--list-*` flags either. Piped stdin has no such conflict: `--list-models`, `--list-sessions`, and `--list-endpoints <model>` work with piped stdin, and so do `--resume`, `--export` and `--delete` when they select by session ID instead of opening a picker. The interactive pickers (bare `--resume`/`--export`/`--delete`, and bare `--list-endpoints`) need a TTY.
+
+## Provider errors and truncated answers
+
+- An over-window request is classified instead of shown raw. A pre-flight rejection and a stream that hits the window mid-generation both render one line naming the recovery — `Error: Request exceeds this model's context window; retrying unchanged will fail. Shorten it with /edit or /delete, start fresh with /new, or switch to a larger-window /model.` (a mid-generation hit says the model hit the window before finishing). One-shot prints the equivalent line on stderr and exits 1.
+- A truncated answer is marked: `Output limit reached — the answer above is incomplete.` after the answer, both live and when the session is resumed, and the markdown export carries a `**Note:**` line. An answer that ended with a provider error or a content filter after producing text says so the same way.
+- An answer with no output at all is reported by cause — output limit, content filter, or provider error — and keeps the user turn in the session so `/edit` can shorten or rewrite it. `/retry` re-sends the identical turn, so it cannot rescue a too-long conversation by itself; shorten it first, start a new session, or switch models.
+- OpenRouter endpoints that advertise an 8k-token window or less may silently compress the middle of a prompt server-side before sending it (the provider's default `context-compression` behavior). The client neither opts in nor detects it, so on those small-window models the model may not have seen the full transcript even though the session and export show it. See [OPENROUTER.md](../OPENROUTER.md) for the wire evidence.
 
 ## Chat session
 
